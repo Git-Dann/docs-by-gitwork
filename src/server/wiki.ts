@@ -37,6 +37,7 @@ import {
   type IntakeCategory,
 } from "@/lib/wiki-intake-categories";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
+import { clientVisibleIncidents, clientVisibleMonitors } from "@/lib/monitor-environment";
 import { publicIncident } from "@/lib/monitor-incidents";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
@@ -3395,16 +3396,18 @@ function forPublic(dto: WikiDTO): WikiDTO {
     sheets: forPublicSheets(dto.sheets),
     // Whose Google account reads the folder for the client is ours, not theirs.
     drive: forPublicDrive(dto.drive),
+    // Only PRODUCTION monitors, and their incidents, leave: a staging box being redeployed is
+    // not the client's outage (src/lib/monitor-environment.ts). Removed here, not flagged.
     // A heartbeat's ping URL is its credential — anyone holding it can mark the job healthy.
     // Header names say how a client's API is protected; internal incident notes and who on our
     // team picked an incident up are ours.
     monitors: {
       ...dto.monitors,
-      monitors: dto.monitors.monitors.map((m) => {
+      monitors: clientVisibleMonitors(dto.monitors.monitors).map((m) => {
         const base = { ...m, headerNames: [], hasBody: false };
         return m.heartbeat ? { ...base, target: "", heartbeat: { ...m.heartbeat, pingUrl: null } } : base;
       }),
-      incidents: (dto.monitors.incidents ?? []).map(publicIncident),
+      incidents: clientVisibleIncidents(dto.monitors.incidents ?? [], dto.monitors.monitors).map(publicIncident),
     },
   };
 

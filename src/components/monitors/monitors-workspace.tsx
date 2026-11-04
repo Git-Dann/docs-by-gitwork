@@ -15,9 +15,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowPathIcon, ArrowTopRightOnSquareIcon, MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ArrowTopRightOnSquareIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { useMonitorsPage } from "@/hooks/use-wiki";
 import {
+  boardEnvironments,
+  filterBoardByEnvironment,
   monitorState,
   orderBoard,
   summariseBoard,
@@ -27,11 +29,12 @@ import {
   type BoardMonitorState,
 } from "@/lib/monitor-board";
 import { AGENCY_CLIENT_SLUG } from "@/lib/agency-client";
-import { Dot, LEVEL, STATE, relTime, shortTarget } from "@/components/clients/wiki/monitor-board";
+import { Dot, EnvironmentTag, LEVEL, STATE, relTime, shortTarget } from "@/components/clients/wiki/monitor-board";
 import { IncidentCard } from "@/components/clients/wiki/monitor-incidents";
 import { FadeIn } from "@/components/ui/motion/fade-in";
 import { SkeletonCards } from "@/components/ui/motion/skeleton";
 import { AddMonitorDialog, type AddMonitorClient } from "./add-monitor-dialog";
+import { environmentLabel } from "@/lib/monitor-environment";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'DM Serif Display', Georgia, serif";
@@ -70,7 +73,7 @@ function StatTile({ label, value, tone }: { label: string; value: string; tone: 
   );
 }
 
-function MonitorRow({ m }: { m: BoardMonitor }) {
+function MonitorRow({ m, onEdit }: { m: BoardMonitor; onEdit?: () => void }) {
   const state = monitorState(m);
   const meta = STATE[state];
   const bad = state === "down" || state === "flaky";
@@ -81,9 +84,12 @@ function MonitorRow({ m }: { m: BoardMonitor }) {
         <Dot state={state} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-medium text-[var(--text-1)]" title={m.name}>
-          {m.name}
-        </p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <p className="truncate text-[13px] font-medium text-[var(--text-1)]" title={m.name}>
+            {m.name}
+          </p>
+          <EnvironmentTag environment={m.environment} />
+        </div>
         <p className="truncate text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }} title={m.target}>
           {shortTarget(m.target)}
         </p>
@@ -103,6 +109,17 @@ function MonitorRow({ m }: { m: BoardMonitor }) {
         )}
         <div className="text-[var(--text-4)]">{m.uptime24h != null ? `${m.uptime24h}%` : "—"}</div>
       </div>
+      {onEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          title="Edit"
+          aria-label={`Edit ${m.name}`}
+          className="-mr-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+        >
+          <PencilSquareIcon className="h-4 w-4" aria-hidden />
+        </button>
+      ) : null}
     </li>
   );
 }
@@ -118,7 +135,15 @@ const LABEL_TEXT: Record<BoardMonitorState, string> = {
   pending: "text-[var(--text-3)]",
 };
 
-function ClientCard({ client, canOpen }: { client: BoardClient; canOpen: boolean }) {
+function ClientCard({
+  client,
+  canOpen,
+  onEdit,
+}: {
+  client: BoardClient;
+  canOpen: boolean;
+  onEdit: (monitorId: string) => void;
+}) {
   const states = client.monitors.map(monitorState);
   const worst = worstState(states) ?? "pending";
   const up = states.filter((s) => s === "up").length;
@@ -170,7 +195,8 @@ function ClientCard({ client, canOpen }: { client: BoardClient; canOpen: boolean
       </div>
       <ul className="divide-y divide-[var(--border-1)] px-4 py-3">
         {client.monitors.map((m) => (
-          <MonitorRow key={m.id} m={m} />
+          // Edit only where this person can work on the client — the route checks the same.
+          <MonitorRow key={m.id} m={m} onEdit={canOpen ? () => onEdit(m.id) : undefined} />
         ))}
       </ul>
       <div
@@ -201,13 +227,22 @@ export function MonitorsWorkspace() {
   const [query, setQuery] = useState("");
   // The Add monitor popup: closed, or open on a client (null = choose one).
   const [adding, setAdding] = useState<{ clientId: string | null } | null>(null);
+  // The Edit popup: one monitor, on its client.
+  const [editing, setEditing] = useState<{ clientId: string; monitorId: string } | null>(null);
+  const [environment, setEnvironment] = useState<string>("all");
 
-  const clients = useMemo(() => data?.clients ?? [], [data]);
+  const allClients = useMemo(() => data?.clients ?? [], [data]);
+  const environments = useMemo(() => boardEnvironments(allClients), [allClients]);
+  // A filter for an environment that no longer has a monitor falls back to everything.
+  const env = environment === "all" || environments.includes(environment) ? environment : "all";
+  const clients = useMemo(() => filterBoardByEnvironment(allClients, env), [allClients, env]);
   const summary = summariseBoard(clients);
-  const { monitored, unmonitored } = useMemo(() => orderBoard(clients), [clients]);
+  const { monitored } = useMemo(() => orderBoard(clients), [clients]);
+  // "Not monitored" is about clients with no monitor at all, whatever the filter says.
+  const { unmonitored } = useMemo(() => orderBoard(allClients), [allClients]);
   const openable = data?.openableClientIds ?? null;
   const canOpen = (clientId: string) => openable === null || openable.includes(clientId);
-  const addable: AddMonitorClient[] = clients
+  const addable: AddMonitorClient[] = allClients
     .filter((c) => canOpen(c.clientId))
     .map((c) => ({ clientId: c.clientId, slug: c.slug, name: c.name, monitorCount: c.monitors.length }));
   const lead = STATE[LEVEL[summary.level]];
@@ -223,7 +258,9 @@ export function MonitorsWorkspace() {
   const shown = (filter === "attention" ? needsAttention : monitored).filter(
     (c) => !q || c.name.toLowerCase().includes(q) || c.monitors.some((m) => m.name.toLowerCase().includes(q) || m.target.toLowerCase().includes(q)),
   );
-  const incidents = data?.incidents ?? [];
+  const incidents = (data?.incidents ?? []).filter(
+    (i) => env === "all" || clients.some((c) => c.monitors.some((m) => m.id === i.monitorId)),
+  );
 
   if (isError) {
     return (
@@ -310,7 +347,7 @@ export function MonitorsWorkspace() {
                   incident={i}
                   slug={i.clientSlug}
                   clientName={i.clientName}
-                  audience={canOpen(clients.find((c) => c.slug === i.clientSlug)?.clientId ?? "") ? "team" : "client"}
+                  audience={canOpen(allClients.find((c) => c.slug === i.clientSlug)?.clientId ?? "") ? "team" : "client"}
                 />
               ))}
             </ul>
@@ -358,6 +395,24 @@ export function MonitorsWorkspace() {
                 </button>
               ))}
             </div>
+            {environments.length > 1 ? (
+              <label className="flex items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                Environment
+                <select
+                  className="app-select-compact h-8 w-auto py-0 normal-case tracking-normal"
+                  value={env}
+                  onChange={(e) => setEnvironment(e.target.value)}
+                  aria-label="Which environment to show"
+                >
+                  <option value="all">All environments</option>
+                  {environments.map((e) => (
+                    <option key={e} value={e}>
+                      {environmentLabel(e)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="relative ml-auto flex min-w-[180px] flex-1 items-center sm:max-w-[280px]">
               <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 h-4 w-4 text-[var(--text-4)]" aria-hidden />
               <input
@@ -389,7 +444,12 @@ export function MonitorsWorkspace() {
             ) : (
               <ul className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {shown.map((c) => (
-                  <ClientCard key={c.clientId} client={c} canOpen={canOpen(c.clientId)} />
+                  <ClientCard
+                    key={c.clientId}
+                    client={c}
+                    canOpen={canOpen(c.clientId)}
+                    onEdit={(monitorId) => setEditing({ clientId: c.clientId, monitorId })}
+                  />
                 ))}
               </ul>
             )}
@@ -424,9 +484,9 @@ export function MonitorsWorkspace() {
         ) : null}
 
         <p className="px-1 text-[12px] text-[var(--text-4)]">
-          Each monitor lives on its client&apos;s wiki, under Monitors: add it here or there and it shows in
-          both. When a service fails two checks in a row, the ops channel on Slack gets an alert, and
-          another when it&apos;s back.
+          Each monitor lives on its client&apos;s wiki, under Monitors: add or edit it here or there and it
+          shows in both. Clients only ever see their production monitors. When a service fails two
+          checks in a row, the ops channel on Slack gets an alert, and another when it&apos;s back.
         </p>
       </FadeIn>
 
@@ -439,6 +499,7 @@ export function MonitorsWorkspace() {
         clients={addable}
         initialClientId={adding?.clientId ?? null}
       />
+      <AddMonitorDialog open={editing !== null} onClose={() => setEditing(null)} clients={addable} editing={editing} />
     </>
   );
 }

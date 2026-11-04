@@ -38,6 +38,7 @@ import {
   syncBigWedgeStatusApi,
   createWikiMonitorApi,
   updateWikiMonitorApi,
+  getWikiMonitorsApi,
   deleteWikiMonitorApi,
   runWikiMonitorApi,
   getWikiMonitorSuggestionsApi,
@@ -1005,6 +1006,25 @@ export function useUpdateWikiMonitor(slug: string) {
     mutationFn: ({ id, input }: { id: string; input: Partial<MonitorInput> }) =>
       updateWikiMonitorApi(slug, id, input),
     onSuccess: () => invalidateMonitorViews(queryClient, slug),
+  });
+}
+
+/** One client's monitors in full — the Monitors page's Edit popup reads the monitor from here. */
+export function useClientWikiMonitors(slug: string | null) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "monitors"],
+    queryFn: () => getWikiMonitorsApi(slug as string),
+    enabled: !!slug,
+  });
+}
+
+/** Edit any client's monitor — the Monitors page's Edit popup. */
+export function useUpdateMonitorForClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, id, input }: { slug: string; id: string; input: Partial<MonitorInput> }) =>
+      updateWikiMonitorApi(slug, id, input),
+    onSuccess: (_m, { slug }) => invalidateMonitorViews(queryClient, slug),
   });
 }
 

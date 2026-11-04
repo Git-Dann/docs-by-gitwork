@@ -8,6 +8,7 @@
  */
 
 import { AGENCY_CLIENT_SLUG } from "@/lib/agency-client";
+import { environmentLabel, isClientVisibleEnvironment } from "@/lib/monitor-environment";
 
 export type BoardMonitorState = "up" | "slow" | "flaky" | "down" | "stale" | "pending";
 
@@ -15,6 +16,8 @@ export interface BoardMonitor {
   id: string;
   name: string;
   target: string;
+  /** Which environment it watches (src/lib/monitor-environment.ts). */
+  environment: string;
   /** Latest probe status as stored. */
   status: "UP" | "DEGRADED" | "DOWN" | "UNKNOWN";
   /** Not checked recently enough to trust `status` (see `isStale`). */
@@ -104,9 +107,13 @@ export function summariseBoard(clients: BoardClient[]): BoardSummary {
 
   if (total === 0) return { level: "empty", headline: "No monitors yet", sub, total, up, down, degraded, unchecked };
   if (down > 0) {
-    const where = clients
-      .filter((c) => c.monitors.some((m) => monitorState(m) === "down"))
-      .map((c) => c.name);
+    // Name the environment when it isn't production, so "Fellas Loaded (Staging)" never reads
+    // as the client's live service being down.
+    const where = clients.flatMap((c) => {
+      const downEnvs = [...new Set(c.monitors.filter((m) => monitorState(m) === "down").map((m) => m.environment))];
+      if (downEnvs.length === 0) return [];
+      return downEnvs.some(isClientVisibleEnvironment) ? [c.name] : [`${c.name} (${downEnvs.map(environmentLabel).join(", ")})`];
+    });
     const headline = `${plural(down, "service")} down — ${where.join(", ")}`;
     return { level: "outage", headline, sub, total, up, down, degraded, unchecked };
   }
@@ -135,4 +142,21 @@ export function orderBoard(clients: BoardClient[]): { monitored: BoardClient[]; 
     return a.name.localeCompare(b.name);
   });
   return { monitored, unmonitored };
+}
+
+/** The environments present on the board, production first — the page's filter shows only these. */
+export function boardEnvironments(clients: BoardClient[]): string[] {
+  const present = new Set(clients.flatMap((c) => c.monitors.map((m) => m.environment)));
+  return [...present].sort((a, b) => Number(isClientVisibleEnvironment(b)) - Number(isClientVisibleEnvironment(a)) || a.localeCompare(b));
+}
+
+/**
+ * The board narrowed to one environment ("all" = everything). A client keeps its place only
+ * while it has a monitor in that environment, so "Not monitored" is never inflated by a filter.
+ */
+export function filterBoardByEnvironment(clients: BoardClient[], environment: string): BoardClient[] {
+  if (environment === "all") return clients;
+  return clients
+    .map((c) => ({ ...c, monitors: c.monitors.filter((m) => m.environment === environment) }))
+    .filter((c) => c.monitors.length > 0);
 }

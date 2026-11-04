@@ -8,6 +8,7 @@
  */
 
 import type { MonitorWireInput } from "@/server/wiki-monitors";
+import { DEFAULT_MONITOR_ENVIRONMENT, isMonitorEnvironment, type MonitorEnvironment } from "@/lib/monitor-environment";
 
 export const MONITOR_TYPE_OPTIONS = [
   { value: "HTTP", label: "HTTP / HTTPS", hint: "https://api.example.com/health" },
@@ -22,6 +23,8 @@ export const MONITOR_METHODS = ["GET", "HEAD", "POST"] as const;
 export type MonitorFormState = {
   name: string;
   type: MonitorFormType;
+  /** Only production is shown to the client. */
+  environment: MonitorEnvironment;
   target: string;
   method: string;
   expectedStatus: string;
@@ -40,6 +43,7 @@ export type MonitorFormState = {
 export const EMPTY_MONITOR_FORM: MonitorFormState = {
   name: "",
   type: "HTTP",
+  environment: DEFAULT_MONITOR_ENVIRONMENT,
   target: "",
   method: "GET",
   expectedStatus: "",
@@ -57,6 +61,7 @@ export const EMPTY_MONITOR_FORM: MonitorFormState = {
 export interface MonitorFormSource {
   name: string;
   type: MonitorFormType;
+  environment: string;
   target: string;
   method: string;
   expectedStatus: number | null;
@@ -71,6 +76,8 @@ export function monitorToForm(m: MonitorFormSource): MonitorFormState {
   return {
     name: m.name,
     type: m.type,
+    // Unrecognised → production in the form only; saving then makes it explicit.
+    environment: isMonitorEnvironment(m.environment) ? m.environment : DEFAULT_MONITOR_ENVIRONMENT,
     target: m.target,
     method: m.method,
     expectedStatus: m.expectedStatus?.toString() ?? "",
@@ -126,6 +133,7 @@ export function formToMonitorInput(form: MonitorFormState): MonitorFormResult {
   const input: MonitorWireInput = {
     name: form.name.trim(),
     type: form.type,
+    environment: form.environment,
     target: heartbeat ? "" : form.target.trim(),
     graceMinutes: grace,
     // Headers: new text replaces; "remove" clears; otherwise leave what's saved alone.

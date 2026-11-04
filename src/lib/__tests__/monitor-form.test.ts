@@ -20,6 +20,7 @@ describe("formToMonitorInput", () => {
     ).toEqual({
       name: "API",
       type: "HTTP",
+      environment: "production",
       target: "https://api.x.co/health",
       graceMinutes: null,
       method: "GET",
@@ -82,10 +83,26 @@ describe("formToMonitorInput", () => {
 describe("monitorToForm", () => {
   it("round-trips a saved monitor without its secrets", () => {
     const f = monitorToForm({
-      name: "API", type: "HTTP", target: "https://x.co", method: "HEAD", expectedStatus: 204, keyword: null,
+      name: "API", type: "HTTP", environment: "staging", target: "https://x.co", method: "HEAD", expectedStatus: 204, keyword: null,
       degradedMs: null, intervalMinutes: 3, headerNames: ["Authorization"], heartbeat: null,
     });
+    expect(f.environment).toBe("staging");
+    expect(input(f).environment).toBe("staging");
     expect(f).toMatchObject({ method: "HEAD", expectedStatus: "204", intervalMinutes: "3", savedHeaders: ["Authorization"], headersText: "", body: "" });
     expect(input(f)).not.toHaveProperty("requestHeaders"); // saved headers stay as they are
+  });
+});
+
+describe("environment", () => {
+  it("defaults a new monitor to production, which the client sees", () => {
+    expect(input(form({ name: "A", target: "https://x.co" })).environment).toBe("production");
+  });
+
+  it("reads an unrecognised stored environment as production in the form", () => {
+    const f = monitorToForm({
+      name: "API", type: "HTTP", environment: "qa-box", target: "https://x.co", method: "GET", expectedStatus: null,
+      keyword: null, degradedMs: null, intervalMinutes: 5, headerNames: [], heartbeat: null,
+    });
+    expect(f.environment).toBe("production");
   });
 });

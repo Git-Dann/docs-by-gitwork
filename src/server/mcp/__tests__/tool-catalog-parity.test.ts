@@ -33,6 +33,7 @@ function toolNames(relative: string, indent = 4): string[] {
 const handler = [
   ...toolNames("src/server/mcp/handler.ts"),
   ...toolNames("src/server/mcp/sheet-tools.ts", 6),
+  ...toolNames("src/server/mcp/monitor-tools.ts", 6),
 ].sort();
 const catalog = toolNames("src/components/settings/mcp-tools-catalog.tsx");
 
@@ -162,5 +163,38 @@ describe("sheet tools are registered and their writers gated", () => {
   it("sheets can be switched on and off with enable_wiki_section", () => {
     const src = readFileSync(join(ROOT, "src/server/mcp/handler.ts"), "utf8");
     expect(src).toContain("  sheets: setWikiSheetsEnabled,");
+  });
+});
+
+describe("monitor tools are registered and gated", () => {
+  const src = () => readFileSync(join(ROOT, "src/server/mcp/monitor-tools.ts"), "utf8");
+  const block = (name: string) => {
+    const s = src();
+    const start = s.indexOf(`name: "${name}",`);
+    expect(start, `${name} not found`).toBeGreaterThan(-1);
+    const end = s.indexOf('      name: "', start + 20);
+    return s.slice(start, end === -1 ? undefined : end);
+  };
+
+  it.each(["summarise_monitors", "update_monitor", "check_monitor", "delete_monitor", "list_monitor_incidents", "update_monitor_incident"])(
+    "%s",
+    (name) => expect(handler).toContain(name),
+  );
+
+  it("the writers need 'Manage clients', like add_monitor", () => {
+    for (const name of ["update_monitor", "check_monitor", "delete_monitor"]) {
+      expect(block(name), `${name} is not gated`).toContain("assertCan(user, canManageClients");
+    }
+  });
+
+  it("the every-client readers need the Monitors permission, as the Monitors page does", () => {
+    expect(block("summarise_monitors")).toContain("assertMonitorsReader(user)");
+    expect(block("list_monitor_incidents")).toContain("assertMonitorsReader(user)");
+  });
+
+  it("incident actions are for the team, on a client the caller can see", () => {
+    const b = block("update_monitor_incident");
+    expect(b).toContain("assertTeam(user)");
+    expect(b).toContain("resolveClient(user, p.client)");
   });
 });

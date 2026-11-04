@@ -41,6 +41,7 @@ import { storeSecret } from "@/server/stored-secret";
 import { monitorHeaders } from "./wiki-monitors/http";
 import { remoteProbe } from "./wiki-monitors/remote";
 import { randomBytes } from "node:crypto";
+import { DEFAULT_MONITOR_ENVIRONMENT, isMonitorEnvironment, nameWithEnvironment, type MonitorEnvironment } from "@/lib/monitor-environment";
 
 /** The URL a job calls each time it runs. Add /fail to report a failed run. */
 export function heartbeatPingUrl(token: string): string {
@@ -66,6 +67,8 @@ export interface WikiMonitorDTO {
   degradedMs: number | null;
   enabled: boolean;
   intervalMinutes: number;
+  /** Which environment it watches. The client only ever sees production. */
+  environment: MonitorEnvironment;
   /** Current denormalised status + last probe details. */
   status: MonitorStatus;
   checkedAt: string | null;
@@ -152,6 +155,8 @@ async function buildMonitorDTO(m: WikiMonitor): Promise<WikiMonitorDTO> {
     degradedMs: m.degradedMs,
     enabled: m.enabled,
     intervalMinutes: m.intervalMinutes,
+    // An unrecognised stored value is reported as-is, so `isClientVisibleEnvironment` keeps it internal.
+    environment: m.environment as MonitorEnvironment,
     status: m.lastStatus as MonitorStatus,
     checkedAt: m.lastCheckedAt ? m.lastCheckedAt.toISOString() : null,
     latencyMs: m.lastLatencyMs,
@@ -290,6 +295,8 @@ export interface MonitorInput {
   degradedMs?: number | null;
   intervalMinutes?: number;
   enabled?: boolean;
+  /** Which environment it watches (default production). */
+  environment?: MonitorEnvironment;
   /** HEARTBEAT: minutes after the expected ping before it counts as missed. */
   graceMinutes?: number | null;
   /** Pause alerts until this time (null ends maintenance). */
@@ -344,6 +351,7 @@ export async function createMonitor(clientId: string, input: MonitorInput): Prom
       degradedMs: input.degradedMs ?? null,
       intervalMinutes: input.intervalMinutes ?? 5,
       enabled: input.enabled ?? true,
+      environment: input.environment && isMonitorEnvironment(input.environment) ? input.environment : DEFAULT_MONITOR_ENVIRONMENT,
       sortOrder: (max._max.sortOrder ?? 0) + 1,
     },
   });
@@ -371,13 +379,15 @@ export async function updateMonitor(
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
       // A heartbeat's type and ping URL are fixed — changing either would orphan the job's URL.
       ...(input.type !== undefined && existing.type !== "HEARTBEAT" && input.type !== "HEARTBEAT" ? { type: input.type } : {}),
-      ...(input.target !== undefined && existing.type !== "HEARTBEAT" ? { target: input.target.trim() } : {}),
+      // A blank target is "leave it": a heartbeat's form sends one, and its URL is fixed anyway.
+      ...(input.target !== undefined && input.target.trim() && existing.type !== "HEARTBEAT" ? { target: input.target.trim() } : {}),
       ...(input.method !== undefined ? { method: input.method.trim() || "GET" } : {}),
       ...(input.expectedStatus !== undefined ? { expectedStatus: input.expectedStatus } : {}),
       ...(input.keyword !== undefined ? { keyword: input.keyword?.trim() || null } : {}),
       ...(input.degradedMs !== undefined ? { degradedMs: input.degradedMs } : {}),
       ...(input.intervalMinutes !== undefined ? { intervalMinutes: input.intervalMinutes } : {}),
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+      ...(input.environment !== undefined && isMonitorEnvironment(input.environment) ? { environment: input.environment } : {}),
       ...(input.graceMinutes !== undefined ? { graceMinutes: input.graceMinutes } : {}),
       ...(input.maintenanceUntil !== undefined ? { maintenanceUntil: input.maintenanceUntil } : {}),
       ...(input.maintenanceNote !== undefined ? { maintenanceNote: input.maintenanceNote?.trim() || null } : {}),
@@ -540,10 +550,10 @@ async function serviceRows(wikiId: string): Promise<ServiceRow[]> {
   const monitors = await prisma.wikiMonitor.findMany({
     where: { wikiId, enabled: true },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    select: { name: true, lastStatus: true, alertKind: true, enabled: true, lastCheckedAt: true, createdAt: true, intervalMinutes: true },
+    select: { name: true, environment: true, lastStatus: true, alertKind: true, enabled: true, lastCheckedAt: true, createdAt: true, intervalMinutes: true },
   });
   return monitors.map((m) => ({
-    name: m.name,
+    name: nameWithEnvironment(m.name, m.environment),
     state: isStale(m, now)
       ? "stale"
       : m.lastStatus === "DOWN"
@@ -566,13 +576,15 @@ async function sendMonitorAlert(
     if (!client) return;
     // One post per client, not per service: a second service going down minutes after the first
     // is already in that post's list, and "back" is said once, when the whole client is back.
+    // Grouped within the same environment: a staging box that went down first must not carry
+    // production's outage under its headline.
     const siblings = await prisma.wikiMonitor.findMany({
-      where: { wikiId: monitor.wikiId, enabled: true, id: { not: monitor.id } },
+      where: { wikiId: monitor.wikiId, enabled: true, environment: monitor.environment, id: { not: monitor.id } },
       select: { alertKind: true, alertedDownAt: true },
     });
     if (!shouldPostAlert(alert.kind, siblings, new Date())) return;
     const { title, body } = alertMessage(
-      { clientName: client.name, monitorName: monitor.name, target: monitor.target },
+      { clientName: client.name, monitorName: nameWithEnvironment(monitor.name, monitor.environment), target: monitor.target },
       alert,
       detail,
     );
@@ -616,6 +628,7 @@ export async function checkMonitorsWatchdog(now: Date = new Date()): Promise<{ s
     select: {
       id: true,
       name: true,
+      environment: true,
       enabled: true,
       lastCheckedAt: true,
       createdAt: true,
@@ -633,7 +646,7 @@ export async function checkMonitorsWatchdog(now: Date = new Date()): Promise<{ s
   }
   for (const [workspaceId, list] of byWorkspace) {
     const { title, body } = staleMessage(
-      list.map((m) => ({ clientName: m.wiki.client.name, monitorName: m.name, lastCheckedAt: m.lastCheckedAt })),
+      list.map((m) => ({ clientName: m.wiki.client.name, monitorName: nameWithEnvironment(m.name, m.environment), lastCheckedAt: m.lastCheckedAt })),
       now,
     );
     const actionUrl = `/app/portal/${list[0].wiki.client.slug}/wiki#monitors`;
@@ -650,7 +663,7 @@ export async function checkMonitorsWatchdog(now: Date = new Date()): Promise<{ s
           url: `${appBaseUrl()}${actionUrl}`,
           description:
             "These monitors have not been checked recently, so their status can't be trusted. The wiki-monitors job may have stopped.",
-          services: list.map((m) => ({ name: `${m.wiki.client.name} — ${m.name}`, state: "stale" as const })),
+          services: list.map((m) => ({ name: `${m.wiki.client.name} — ${nameWithEnvironment(m.name, m.environment)}`, state: "stale" as const })),
           footer: "Foundry uptime monitoring · watchdog",
           button: allMonitorsButton(),
         }),
@@ -729,7 +742,7 @@ async function recordIncident(
   error: string | null,
   now: Date,
 ): Promise<void> {
-  const change = incidentChangeFor(alert, monitor.name, error);
+  const change = incidentChangeFor(alert, nameWithEnvironment(monitor.name, monitor.environment), error);
   if (!change) return;
   const open = await prisma.wikiMonitorIncident.findFirst({
     where: { monitorId: monitor.id, resolvedAt: null },

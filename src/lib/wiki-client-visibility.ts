@@ -12,6 +12,7 @@ import type { WikiSection } from "@/components/clients/wiki/wiki-sidebar";
 import { COURSE_REQUESTS_SLUGS } from "@/lib/wiki-sections";
 import { isPlannable } from "@/lib/wiki-estimates";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
+import { clientVisibleMonitors } from "@/lib/monitor-environment";
 
 type WikiPageType = "IA_GUIDE" | "DEV_API_GUIDE" | "API_DOCS" | "ARCHITECTURE" | "RUNBOOK" | "DATA_MODEL" | "CUSTOM";
 
@@ -43,7 +44,8 @@ export function clientVisibleSections(wiki: WikiDTO): WikiSection[] {
     // whatever sections exist below.
     "dashboard",
     ...(hasTimeline ? (["timeline"] as const) : []),
-    ...(wiki.monitors.enabled && wiki.monitors.monitors.some((m) => m.enabled)
+    // Production only: a wiki watching nothing but staging has nothing to show the client.
+    ...(wiki.monitors.enabled && clientVisibleMonitors(wiki.monitors.monitors).some((m) => m.enabled)
       ? (["monitors"] as const)
       : []),
     // Resources shows with at least one resource, or with the client's Drive files switched on

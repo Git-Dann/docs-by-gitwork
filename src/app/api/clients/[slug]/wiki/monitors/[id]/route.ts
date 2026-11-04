@@ -4,17 +4,21 @@ import { updateMonitor, deleteMonitor } from "@/server/wiki-monitors";
 import { z } from "zod";
 import { MAX_BODY, headersField } from "@/lib/monitor-request";
 import { clientIdForSlug } from "@/server/clients-scope";
+import { MONITOR_ENVIRONMENT_VALUES } from "@/lib/monitor-environment";
+import { assertMonitorWriter } from "@/server/wiki-monitor-access";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
   type: z.enum(["HTTP", "TCP", "HEARTBEAT"]).optional(),
-  target: z.string().min(1).optional(),
+  // Blank leaves it as it is (a heartbeat's form sends one; its ping URL is fixed).
+  target: z.string().optional(),
   method: z.string().optional(),
   expectedStatus: z.number().int().min(100).max(599).nullable().optional(),
   keyword: z.string().max(200).nullable().optional(),
   degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
   enabled: z.boolean().optional(),
+  environment: z.enum(MONITOR_ENVIRONMENT_VALUES).optional(),
   graceMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   /** "Name: value" per line. Blank or null clears; omitted keeps what's saved. */
   requestHeaders: z.string().max(100_000).nullable().optional(),
@@ -30,6 +34,7 @@ export async function PATCH(
 ) {
   try {
     const { slug, id } = await params;
+    await assertMonitorWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = updateSchema.parse(await req.json());
@@ -49,6 +54,7 @@ export async function DELETE(
 ) {
   try {
     const { slug, id } = await params;
+    await assertMonitorWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const ok = await deleteMonitor(clientId, id);
