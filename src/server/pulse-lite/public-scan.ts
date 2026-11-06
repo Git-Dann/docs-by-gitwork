@@ -14,6 +14,7 @@ import { notifyLeadOfScanResult } from "./leads";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { recordScanInCorpus } from "./corpus";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { freeScanScore } from "@/server/pulse-lite/free-score";
 import { splitByFreeSet } from "@/lib/pulse-free-tier";
 
 export interface LiteCategorySummary {
@@ -42,6 +43,10 @@ export interface PublicScanView {
   pass: number;
   warn: number;
   fail: number;
+  /** Too little of the site was judged for the score to be more than a guide (free-score.ts). */
+  scoreProvisional?: boolean;
+  /** How much of what the scan set out to check it could judge, 0–100. */
+  scoreCoverage?: number | null;
   /** Controls that ran without reaching a verdict — most often a client-rendered page whose
    *  content is not in the static HTML. Shown to the visitor so the score is read in context. */
   inconclusive: number;
@@ -283,7 +288,9 @@ export async function runPublicLiteScan(liteScanId: string, url: string): Promis
       data: {
         status: "COMPLETED",
         checks: result.checks as unknown as object,
-        healthScore: result.healthScore,
+        // The cautious free-scan score (half marks for what it couldn't judge), so the
+        // lead, the list and our email all carry the same number the widget showed.
+        healthScore: freeScanScore(result.checks).score,
         techStack: result.techStack as unknown as object,
       },
       select: { leadId: true },

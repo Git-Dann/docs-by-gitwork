@@ -14,7 +14,6 @@ import {
   getDefaultLinkPayload,
   getDefaultCtaPayload,
   getDefaultAssetPayload,
-  DEFAULT_WORKSPACE_SLUG,
 } from "@/server/proposals";
 import { calculateHealthScore, SCAN_VERSION } from "@/server/pulse-scan";
 import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
@@ -181,14 +180,14 @@ export function serializePulseScanListItem(
 /** `clientIds: null/undefined` → unscoped (admins / trusted API_KEY callers).
  *  `clientIds: string[]` → restrict to those clients (an empty array sees nothing,
  *  the same impossible-filter convention used by the task client scope). */
-export async function listPulseScans(params?: {
+export async function listPulseScans(workspaceId: string, params?: {
   clientId?: string;
   clientIds?: string[] | null;
   /** Also include scans this user started, whatever client they belong to. */
   triggeredByUserId?: string | null;
 }): Promise<PulseScanListItem[]> {
   const workspace = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    where: { id: workspaceId },
     select: { id: true },
   });
   if (!workspace) return [];
@@ -268,6 +267,9 @@ export async function assertPulseScanAccess(
   assignedIds: () => Promise<string[]>,
 ): Promise<void> {
   if (!user) return;
+  // Another business's scan reads as not found, whatever the caller's role here.
+  const inWorkspace = await prisma.pulseScan.count({ where: { id: scanId, workspaceId: user.workspaceId } });
+  if (!inWorkspace) throw new NotFoundError("Scan not found.");
   if (canSeeAllClients(user)) return;
   if (await canViewPulseScan(user, scanId, assignedIds)) return;
   throw new NotFoundError("Scan not found.");
@@ -279,8 +281,8 @@ export async function canViewPulseScan(
   assignedIds: () => Promise<string[]>,
 ): Promise<boolean> {
   if (!user) return true;
-  const row = await prisma.pulseScan.findUnique({
-    where: { id: scanId },
+  const row = await prisma.pulseScan.findFirst({
+    where: { id: scanId, workspaceId: user.workspaceId },
     select: { clientId: true, triggeredByUserId: true },
   });
   if (!row) return false;
@@ -308,8 +310,8 @@ async function sameTargetScans(scan: { workspaceId: string; inputType: string; i
 }
 
 /** Every project (one per scanned target), most urgent first, scoped like the scan list. */
-export async function getPulseProjects(params?: { clientIds?: string[] | null; triggeredByUserId?: string | null }): Promise<PulseProject[]> {
-  return withOpenFindings(buildProjects(await listPulseScans(params)));
+export async function getPulseProjects(workspaceId: string, params?: { clientIds?: string[] | null; triggeredByUserId?: string | null }): Promise<PulseProject[]> {
+  return withOpenFindings(buildProjects(await listPulseScans(workspaceId, params)));
 }
 
 /** Each project's open-findings figure, for its newest completed scan, in one batched read. */
@@ -321,10 +323,11 @@ async function withOpenFindings(projects: PulseProject[]): Promise<PulseProject[
 
 /** Every scan of one project, newest first, scoped like the scan list. Null when the project is not visible. */
 export async function getProjectScans(
+  workspaceId: string,
   key: string,
   params?: { clientIds?: string[] | null; triggeredByUserId?: string | null },
 ): Promise<{ project: PulseProject; scans: PulseScanListItem[] } | null> {
-  const scans = (await listPulseScans(params)).filter((s) => targetKey(s) === key);
+  const scans = (await listPulseScans(workspaceId, params)).filter((s) => targetKey(s) === key);
   if (scans.length === 0) return null;
   return { project: (await withOpenFindings(buildProjects(scans)))[0], scans };
 }
@@ -335,9 +338,9 @@ export async function getProjectScans(
  * up at 100s of clients. Standalone scans with no client are grouped by target.
  * Pre-sorted by attention: alerting first, then lowest current score, then recency.
  */
-export async function getPulsePortfolio(params?: { clientIds?: string[] | null }): Promise<import("@/types/pulse").PulsePortfolioEntry[]> {
+export async function getPulsePortfolio(workspaceId: string, params?: { clientIds?: string[] | null }): Promise<import("@/types/pulse").PulsePortfolioEntry[]> {
   const workspace = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    where: { id: workspaceId },
     select: { id: true },
   });
   if (!workspace) return [];
@@ -439,20 +442,23 @@ export async function getPulsePortfolio(params?: { clientIds?: string[] | null }
   return entries;
 }
 
-export async function getPulseScan(id: string): Promise<PulseScanRecord | null> {
-  const record = await prisma.pulseScan.findUnique({
-    where: { id },
+/** A scan in `workspaceId`; another business's id reads as null (not found). */
+export async function getPulseScan(id: string, workspaceId: string): Promise<PulseScanRecord | null> {
+  const record = await prisma.pulseScan.findFirst({
+    where: { id, workspaceId },
     include: pulseInclude,
   });
   if (!record) return null;
   return serializePulseScan(record);
 }
 
-export async function deletePulseScan(id: string): Promise<void> {
-  await prisma.pulseScan.delete({ where: { id } });
+export async function deletePulseScan(id: string, workspaceId: string): Promise<void> {
+  await prisma.pulseScan.deleteMany({ where: { id, workspaceId } });
 }
 
-export async function renamePulseScan(id: string, projectName: string): Promise<PulseScanRecord> {
+export async function renamePulseScan(id: string, workspaceId: string, projectName: string): Promise<PulseScanRecord> {
+  const owned = await prisma.pulseScan.count({ where: { id, workspaceId } });
+  if (!owned) throw new NotFoundError("Scan not found.");
   const record = await prisma.pulseScan.update({
     where: { id },
     data: { projectName },
@@ -596,9 +602,9 @@ export interface PulseStatsResponse {
   recentScans: PulseScanListItem[];
 }
 
-export async function getPulseStats(): Promise<PulseStatsResponse> {
+export async function getPulseStats(workspaceId: string): Promise<PulseStatsResponse> {
   const workspace = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    where: { id: workspaceId },
     select: { id: true },
   });
   if (!workspace) {
@@ -728,8 +734,8 @@ const BENCHMARK_WINDOW_DAYS = 365;
  * have run at all, so a checks-only scan (the fast path since §18) could never be
  * benchmarked. The platform is a user-selected enum, stable across scans.
  */
-export async function getIndustryBenchmarks(scanId: string): Promise<IndustryBenchmark | null> {
-  const { workspace } = await ensureBaseRecords();
+export async function getIndustryBenchmarks(workspaceId: string, scanId: string): Promise<IndustryBenchmark | null> {
+  const workspace = { id: workspaceId };
   const scan = await prisma.pulseScan.findFirst({
     where: { id: scanId, workspaceId: workspace.id },
     select: { id: true, status: true, healthScore: true, platform: true },
@@ -805,14 +811,10 @@ export async function createPulseScanRecord(input: {
    *  push to route the completion notification to a single user vs. the whole
    *  workspace. */
   triggeredByUserId?: string | null;
-  /** The workspace the scan belongs to, and whose AI settings it runs on. Omitted = the
-   *  Gitwork workspace, as every request-driven caller still is until Phase 2.2b. A scheduled
-   *  caller (monitors) passes the owner's, or a second business's scan would land in Gitwork. */
-  workspaceId?: string;
+  /** The workspace the scan belongs to, and whose AI settings it runs on. */
+  workspaceId: string;
 }): Promise<{ scan: PulseScanRecord; aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null } }> {
-  const workspace = input.workspaceId
-    ? await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } })
-    : (await ensureBaseRecords()).workspace;
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } });
   // Use only what the workspace has explicitly configured — no silent fallbacks.
   const p = (input.aiProvider ?? workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
@@ -909,7 +911,8 @@ export async function retryPulseScan(scanId: string): Promise<{
     throw new Error("Only failed scans can be retried.");
   }
 
-  const { workspace } = await ensureBaseRecords();
+  // The scan's own workspace and its own AI settings.
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: existing.workspaceId } });
   const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
     provider: p,
@@ -962,16 +965,18 @@ export async function retryPulseScan(scanId: string): Promise<{
  */
 export async function reanalysePulseScan(
   scanId: string,
+  workspaceId: string,
   additionalContext?: string,
 ): Promise<PulseScanRecord> {
-  const existing = await prisma.pulseScan.findUnique({
-    where: { id: scanId },
+  const existing = await prisma.pulseScan.findFirst({
+    where: { id: scanId, workspaceId },
     include: pulseInclude,
   });
-  if (!existing) throw new Error("Scan not found.");
+  if (!existing) throw new NotFoundError("Scan not found.");
   if (existing.status !== "COMPLETED") throw new Error("Only completed scans can be re-analysed.");
 
-  const { workspace } = await ensureBaseRecords();
+  // The scan's own workspace and AI keys, never Gitwork's whoever owns the scan.
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: existing.workspaceId } });
   const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
     provider: p,
@@ -1626,7 +1631,10 @@ export async function generateProposalFromScan(
     return scan.generatedProposalId;
   }
 
-  const { workspace, user, template } = await ensureBaseRecords();
+  // The proposal lands in the scan's own workspace. The bootstrap owner and default template
+  // are only fallbacks: the owner when there's no actor (API key), the template as the base.
+  const workspace = { id: scan.workspaceId };
+  const { user, template } = await ensureBaseRecords();
 
   const llm = asJson<PulseAnalysisOutput | null>(scan.llmAnalysis, null);
 

@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
 async function postSlack(botToken: string, channel: string, text: string): Promise<void> {
   try {
@@ -72,15 +71,4 @@ export async function postCareDigest(workspaceId: string): Promise<void> {
   } catch {
     // Never throw — digest failures must not affect anything else.
   }
-}
-
-/**
- * Convenience wrapper: resolves the default workspace then posts the digest.
- */
-export async function postCareDigestForDefaultWorkspace(): Promise<void> {
-  const ws = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
-    select: { id: true },
-  });
-  if (ws) await postCareDigest(ws.id);
 }

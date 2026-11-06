@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getStudy } from "@/server/study";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { canManageStudy, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,8 @@ export async function GET(
   }
   const { studyId } = await params;
 
-  const initial = await getStudy(studyId);
+  const workspaceId = await workspaceIdForRequest(request);
+  const initial = await getStudy(studyId, workspaceId);
   if (!initial) return new Response("Study not found", { status: 404 });
 
   const terminal = ["COMPLETED", "FAILED", "PLAN_READY", "DRAFT"];
@@ -49,7 +51,7 @@ export async function GET(
       const poll = setInterval(async () => {
         if (closed) return;
         try {
-          const study = await getStudy(studyId);
+          const study = await getStudy(studyId, workspaceId);
           if (!study) { clearInterval(poll); clearInterval(keepalive); controller.close(); closed = true; return; }
           controller.enqueue(sseEvent("state", { study }));
           if (terminal.includes(study.status)) {

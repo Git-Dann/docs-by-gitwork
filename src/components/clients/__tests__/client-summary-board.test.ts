@@ -168,7 +168,7 @@ describe("the portfolio card", () => {
     );
     expect(shared.slice(0, 400)).toContain("endDate: null");
 
-    for (const caller of ["computeDistinctDevCount", "computeClientDevCounts"]) {
+    for (const caller of ["computeDistinctDevCount", "computeClientDevTeams"]) {
       const fn = METRICS.slice(METRICS.indexOf(`export async function ${caller}`));
       const head = fn.slice(0, 600);
       expect(head, `${caller} should reuse the shared where-clause`).toContain(
@@ -176,6 +176,25 @@ describe("the portfolio card", () => {
       );
       expect(head, `${caller} should not hand-roll its own filters`).not.toContain("PRO_BONO");
     }
+  });
+
+  /**
+   * The faces and the number come from ONE list.
+   *
+   * The client card now shows stacked avatars beside "N devs". If the count
+   * were its own query it could disagree with the faces beside it — four
+   * photos above the words "3 devs" — which is the same class of defect as the
+   * total-larger-than-its-parts bug above, one layer out. `computeClientDevCounts`
+   * must therefore be `people.length` over `computeClientDevTeams`, never a
+   * second trip to the database.
+   */
+  it("derives the dev COUNT from the dev LIST, so the card's faces and figure agree", () => {
+    const METRICS = read("src/server/client-metrics.ts");
+    const fn = METRICS.slice(METRICS.indexOf("export async function computeClientDevCounts"));
+    const head = fn.slice(0, 500);
+    expect(head, "the count should come from the teams").toContain("computeClientDevTeams(");
+    expect(head, "the count should be the list's length").toContain("people.length");
+    expect(head, "the count must not run its own query").not.toContain("prisma.");
   });
 
   it("counts devs over the VISIBLE clients, so it agrees with the cards below it", () => {

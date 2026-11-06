@@ -106,6 +106,21 @@ export interface ClientHealth {
   reasons: string[];
 }
 
+/**
+ * A person on a client's delivery team, for the stacked avatars on a client card.
+ *
+ * ⚠️ Derived from the SAME placements as `devCount`, with the same filter, so the
+ * faces and the number can never disagree. Pro-bono devs are excluded by that
+ * filter — if that ever changes, change it in one place or the card will show
+ * four faces above the words "3 devs".
+ */
+export interface ClientPerson {
+  id: string;
+  name: string;
+  /** Null when they have no photo — render initials, never a placeholder face. */
+  avatarUrl: string | null;
+}
+
 export interface ClientListItem extends ClientRecord {
   proposalCount: number;
   googleDriveFolderUrl: string | null;
@@ -114,6 +129,8 @@ export interface ClientListItem extends ClientRecord {
   repoUrls: string[];
   /** Count of developers assigned to this client (ClientAssignment). Always present. */
   devCount: number;
+  /** The people behind `devCount`, capped for the card. Always present, may be empty. */
+  people: ClientPerson[];
   /** Summed monthly dev cost — present (non-null) only when the viewer may see financials. */
   monthlyCost?: ClientMonthlyCost | null;
   /** Business days since the project's Gantt timeline started (earliest dated feature block).

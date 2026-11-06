@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   clampScore,
   codeClearDetailInclude,
@@ -10,6 +9,7 @@ import {
   normalizeGitHubAnalysisRun,
   serializeCandidateDetails,
 } from "@/server/codeclear";
+import { requestActor } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +103,7 @@ function inferIdentityConfidence(run: {
 
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(_request);
     const { id, runId } = await context.params;
     const candidate = await prisma.candidate.findFirst({
       where: {

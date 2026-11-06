@@ -5,7 +5,8 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { decryptNullable, encryptNullable } from "@/lib/encryption";
 import { storeSmtpPassword } from "@/server/smtp-password";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { requestWorkspaceId, workspaceIdForRequest } from "@/server/workspaces/scope";
+import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordAuditEntry } from "@/server/audit-log";
 import { authTest, getSlackBotToken } from "@/server/slack/client";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
@@ -19,8 +20,9 @@ function maskKey(key: string): string {
   return `${key.slice(0, 7)}${"•".repeat(Math.min(16, key.length - 11))}${key.slice(-4)}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const workspaceId = await workspaceIdForRequest(request);
     // Look up the signed-in user's per-user Google connection too — Calendar/Gmail widgets
     // run off this token, not the workspace one.
     const session = await auth();
@@ -32,7 +34,7 @@ export async function GET() {
       : null;
 
     const workspace = await prisma.workspace.findFirst({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: workspaceId },
       select: {
         aiProvider: true,
         anthropicApiKey: true,
@@ -171,6 +173,11 @@ const updateSchema = z.object({
 
 export async function PUT(request: NextRequest) {
   try {
+    // These are the workspace's AI keys, Slack token and email credentials: Admins and Super
+    // Admins only (Dan, 3 Nov 2026). The role is read from the database, not the session token.
+    const caller = await getEffectiveUserOrNull(request);
+    assertAtLeastAdmin(caller);
+    const workspaceId = await requestWorkspaceId(caller);
     const body = updateSchema.parse(await request.json());
 
     // Build update payload with explicit Prisma-typed fields only
@@ -235,7 +242,7 @@ export async function PUT(request: NextRequest) {
       let tokenForVerify = body.slackBotToken?.trim();
       if (!tokenForVerify) {
         const ws = await prisma.workspace.findFirst({
-          where: { slug: DEFAULT_WORKSPACE_SLUG },
+          where: { id: workspaceId },
           select: { slackBotToken: true, slackBotTokenEncrypted: true },
         });
         tokenForVerify = getSlackBotToken(ws) ?? undefined;
@@ -256,7 +263,7 @@ export async function PUT(request: NextRequest) {
 
     // Read current values for audit before/after — only for keys that we actually log.
     const before = await prisma.workspace.findFirst({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: workspaceId },
       select: {
         id: true,
         aiProvider: true,
@@ -271,7 +278,7 @@ export async function PUT(request: NextRequest) {
     });
 
     await prisma.workspace.updateMany({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: workspaceId },
       data,
     });
 

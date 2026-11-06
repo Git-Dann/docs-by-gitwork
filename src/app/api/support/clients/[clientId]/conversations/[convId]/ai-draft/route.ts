@@ -3,26 +3,28 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { aiKeyFor } from "@/server/ai-keys";
 import { readSecret } from "@/server/stored-secret";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ clientId: string; convId: string }> },
 ) {
   try {
-    const effectiveUser = await getEffectiveUserOrNull(_req);
+    const effectiveUser = await getEffectiveUserOrNull(req);
     assertCan(effectiveUser, canGenerateAi, "generate AI support drafts");
     const { clientId, convId } = await params;
+    const workspaceId = await requireSupportClient(req, clientId);
+    await requireSupportRow("conversation", convId, clientId);
 
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
     const provider = workspace.aiProvider as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
 
     let apiKey: string | null;

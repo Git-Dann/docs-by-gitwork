@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const workspace = await prisma.workspace.findFirst({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: await workspaceIdForRequest(request) },
       select: { anthropicApiKey: true, platformAiKeysAllowed: true, openaiApiKey: true, geminiApiKey: true, localLlmUrl: true, localLlmModel: true },
     });
 

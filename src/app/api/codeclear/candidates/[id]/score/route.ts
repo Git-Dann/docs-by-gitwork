@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   codeClearDetailInclude,
   computeOverallScore,
@@ -10,6 +9,7 @@ import {
 } from "@/server/codeclear";
 import { deriveTier } from "@/server/codeclear-scoring";
 import { candidateScoreSchema } from "@/server/validators";
+import { requestActor } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ function addDays(base: Date, days: number) {
 
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(request);
     const { id } = await context.params;
     const body = candidateScoreSchema.parse(await request.json());
 

@@ -28,7 +28,10 @@ import {
   type MissingDetail,
   type StaffActivity,
 } from "@/lib/hr";
-import { getLeaveAllowance } from "@/server/backstage";
+import { canSetLeaveAllowance, getLeaveAllowance } from "@/server/backstage";
+import { looksAfterDevelopers } from "@/server/backstage-people";
+import { DEVELOPER_RECORD } from "@/server/codeclear-archived";
+import { GITWORK_EMPLOYMENT_TYPES } from "@/lib/staff";
 import { outstandingRequired, STAFF_DOCUMENT_LABEL, type StaffDocumentType } from "@/lib/hr-documents";
 
 const DAY_MS = 86_400_000;
@@ -128,9 +131,21 @@ export async function getStaffActivity(user: EffectiveUser, recordId: string, no
       label: seeLeaveType ? LEAVE_LABEL[l.type] ?? "Leave" : "Off",
       pending: l.status === "PENDING",
     })),
-    allowance: allowance
-      ? { allocated: allowance.allocated, used: allowance.used, pending: allowance.pending, remaining: allowance.remaining }
-      : null,
+    allowance:
+      allowance && userId
+        ? {
+            allocated: allowance.allocated,
+            used: allowance.used,
+            pending: allowance.pending,
+            remaining: allowance.remaining,
+            periodStart: allowance.periodStart,
+            periodEnd: allowance.periodEnd,
+            fromStartDate: allowance.fromStartDate,
+            isDefaultAllowance: allowance.isDefaultAllowance,
+            canEdit: await canSetLeaveAllowance(user, userId),
+            userId,
+          }
+        : null,
     developer: record.githubHandle
       ? { githubHandle: record.githubHandle, primaryStack: record.primaryStack || null, techStacks: record.techStacks }
       : null,
@@ -152,6 +167,9 @@ export async function getHrOverview(
 ): Promise<{ comingUp: ComingUpItem[]; missing: MissingDetail[] }> {
   if (!canManageHr(user)) throw new ForbiddenError("You don't have permission to see HR reminders");
   const today = day(now);
+  // HR who isn't an Admin looks after Gitwork's own staff: no developers, and no supplier
+  // renewals (suppliers are where developers come from). Dan, Nov 2026.
+  const staffOnly = !looksAfterDevelopers(user);
 
   const [records, suppliers, sensitive, documents] = await Promise.all([
     prisma.candidate.findMany({
@@ -160,6 +178,8 @@ export async function getHrOverview(
         archivedAt: null,
         NOT: { origin: "EXTERNAL" },
         OR: [{ memberId: null }, { member: ACTIVE_MEMBER }],
+        // Gitwork's own staff only (isGitworkStaff): Employee or Director, not a developer.
+        ...(staffOnly ? { employmentType: { in: [...GITWORK_EMPLOYMENT_TYPES] }, AND: [{ NOT: DEVELOPER_RECORD }] } : {}),
       },
       select: {
         id: true,
@@ -174,10 +194,12 @@ export async function getHrOverview(
         member: { select: { role: true, user: { select: { name: true } } } },
       },
     }),
-    prisma.supplier.findMany({
-      where: { workspaceId: user.workspaceId, archivedAt: null, agreementRenewsOn: { not: null } },
-      select: { name: true, agreementRenewsOn: true },
-    }),
+    staffOnly
+      ? Promise.resolve([] as { name: string; agreementRenewsOn: Date | null }[])
+      : prisma.supplier.findMany({
+          where: { workspaceId: user.workspaceId, archivedAt: null, agreementRenewsOn: { not: null } },
+          select: { name: true, agreementRenewsOn: true },
+        }),
     prisma.staffSensitive.findMany({ where: { workspaceId: user.workspaceId }, select: { recordId: true, payload: true } }),
     prisma.staffDocument.findMany({
       where: { workspaceId: user.workspaceId },

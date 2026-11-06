@@ -10,10 +10,10 @@
 import { z } from "zod";
 import { auth } from "@/auth";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getRoleMatrix, setRoleMatrix } from "@/server/permissions";
 import { recordAuditEntry } from "@/server/audit-log";
 import { isAtLeast, isSuperAdmin, normalizeMatrix } from "@/types/auth";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +23,13 @@ const matrixSchema = z.object({
   DEVELOPER: z.array(z.string()).max(200),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     // Admins may READ the matrix (the Team editor needs role defaults to compute
     // per-person overrides); only Super Admins may write it (PUT below).
     const session = await auth();
     if (!session?.user || !isAtLeast(session.user.role, "ADMIN")) return apiError("Forbidden", 403);
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const matrix = await getRoleMatrix(workspace.id);
     return apiOk({ matrix });
   } catch (e) {
@@ -50,7 +50,7 @@ export async function PUT(request: Request) {
       return apiError(parsed.error.issues.map((issue) => issue.message).join(", "), 400);
     }
 
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     // normalizeMatrix drops any unknown permission ids and fills missing roles with defaults.
     const saved = await setRoleMatrix(workspace.id, normalizeMatrix(parsed.data));
 

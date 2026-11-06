@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { syncClientConnections } from "@/server/support-sync";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,6 +16,7 @@ export async function POST(
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageSupport, "sync Care connectors");
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const result = await syncClientConnections(clientId);
     return apiOk(result);
   } catch (error) {

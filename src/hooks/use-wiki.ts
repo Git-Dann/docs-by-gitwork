@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { AGENCY_CLIENT_SLUG } from "@/lib/agency-client";
 import {
   getClientWiki,
   upsertWikiPage,
@@ -37,6 +38,7 @@ import {
   syncBigWedgeStatusApi,
   createWikiMonitorApi,
   updateWikiMonitorApi,
+  getWikiMonitorsApi,
   deleteWikiMonitorApi,
   runWikiMonitorApi,
   getWikiMonitorSuggestionsApi,
@@ -968,11 +970,33 @@ export function useSetCourseIngest(slug: string) {
 
 // ─── Monitors (uptime) ────────────────────────────────────────────────────────
 
+/**
+ * A monitor change shows in three places: the client's own wiki, the all-clients board on the
+ * Gitwork wiki, and the Monitors page (/app/monitors). They all read the same rows, so a change
+ * made in one refreshes the other two rather than waiting for their next minute.
+ */
+export function invalidateMonitorViews(queryClient: QueryClient, slug: string) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+    queryClient.invalidateQueries({ queryKey: ["client-wiki", AGENCY_CLIENT_SLUG, "monitor-board"] }),
+    queryClient.invalidateQueries({ queryKey: ["monitors-page"] }),
+  ]);
+}
+
 export function useCreateWikiMonitor(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: MonitorInput) => createWikiMonitorApi(slug, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+    onSuccess: () => invalidateMonitorViews(queryClient, slug),
+  });
+}
+
+/** Add a monitor to any client, chosen at save time — the Monitors page's Add monitor popup. */
+export function useCreateMonitorForClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, input }: { slug: string; input: MonitorInput }) => createWikiMonitorApi(slug, input),
+    onSuccess: (_m, { slug }) => invalidateMonitorViews(queryClient, slug),
   });
 }
 
@@ -981,7 +1005,26 @@ export function useUpdateWikiMonitor(slug: string) {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: Partial<MonitorInput> }) =>
       updateWikiMonitorApi(slug, id, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+    onSuccess: () => invalidateMonitorViews(queryClient, slug),
+  });
+}
+
+/** One client's monitors in full — the Monitors page's Edit popup reads the monitor from here. */
+export function useClientWikiMonitors(slug: string | null) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "monitors"],
+    queryFn: () => getWikiMonitorsApi(slug as string),
+    enabled: !!slug,
+  });
+}
+
+/** Edit any client's monitor — the Monitors page's Edit popup. */
+export function useUpdateMonitorForClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, id, input }: { slug: string; id: string; input: Partial<MonitorInput> }) =>
+      updateWikiMonitorApi(slug, id, input),
+    onSuccess: (_m, { slug }) => invalidateMonitorViews(queryClient, slug),
   });
 }
 
@@ -989,7 +1032,7 @@ export function useDeleteWikiMonitor(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteWikiMonitorApi(slug, id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+    onSuccess: () => invalidateMonitorViews(queryClient, slug),
   });
 }
 
@@ -1018,7 +1061,7 @@ export function useRunWikiMonitor(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => runWikiMonitorApi(slug, id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+    onSuccess: () => invalidateMonitorViews(queryClient, slug),
   });
 }
 
@@ -1026,7 +1069,7 @@ export function useSetWikiMonitorsEnabled(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiMonitorsEnabledApi(slug, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+    onSuccess: () => invalidateMonitorViews(queryClient, slug),
   });
 }
 

@@ -27,6 +27,7 @@ const updateSchema = z
     employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),
     startDate: z.string().max(20).nullable().optional(),
     managerRecordId: z.string().max(64).nullable().optional(),
+    isDeveloper: z.boolean().optional(),
   })
   .strict();
 

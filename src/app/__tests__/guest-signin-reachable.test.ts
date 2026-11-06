@@ -59,7 +59,8 @@ describe("/login offers the guest form", () => {
   const login = read("src/app/login/page.tsx");
 
   it("renders the email-and-password entry point", () => {
-    expect(login).toMatch(/Invited guest\? Sign in with an email and password/);
+    expect(login).toMatch(/Not at Gitwork\? Sign in with your email and password/);
+    expect(login).toMatch(/href="\/forgot-password"/);
   });
 
   it("does not hardcode a check count that will drift", () => {

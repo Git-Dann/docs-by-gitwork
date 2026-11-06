@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { expandQuery, deriveKeywords } from "@/server/handbook-search";
 
 // ── Handbook (internal developer knowledgebase) ──────────────────────────────────
@@ -105,10 +104,6 @@ function serializeArticle(a: HandbookRow): HandbookRecord {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function getWorkspace() {
-  const { workspace } = await ensureBaseRecords();
-  return workspace;
-}
 
 function slugify(value: string): string {
   return (
@@ -149,13 +144,13 @@ function normalizeCategory(category?: string | null): string {
 
 // ── CRUD ────────────────────────────────────────────────────────────────────────
 
-export async function listHandbookArticles(filters?: {
+export async function listHandbookArticles(workspaceId: string, filters?: {
   q?: string;
   category?: string;
   includeArchived?: boolean;
   includeDrafts?: boolean;
 }): Promise<HandbookListItem[]> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const q = filters?.q?.trim();
   // Smart search: expand the query into related terms (concept map) and match the raw phrase across
   // the text fields plus any expanded term against the hidden `keywords` / visible `tags` arrays. So
@@ -188,8 +183,8 @@ export async function listHandbookArticles(filters?: {
   return rows.map(serializeListItem);
 }
 
-export async function getHandbookArticle(id: string): Promise<HandbookRecord | null> {
-  const workspace = await getWorkspace();
+export async function getHandbookArticle(workspaceId: string, id: string): Promise<HandbookRecord | null> {
+  const workspace = { id: workspaceId };
   const row = await prisma.handbookArticle.findFirst({
     where: { id, workspaceId: workspace.id },
     include: { author: AUTHOR_SELECT },
@@ -197,8 +192,8 @@ export async function getHandbookArticle(id: string): Promise<HandbookRecord | n
   return row ? serializeArticle(row) : null;
 }
 
-export async function getHandbookArticleBySlug(slug: string): Promise<HandbookRecord | null> {
-  const workspace = await getWorkspace();
+export async function getHandbookArticleBySlug(workspaceId: string, slug: string): Promise<HandbookRecord | null> {
+  const workspace = { id: workspaceId };
   const row = await prisma.handbookArticle.findFirst({
     where: { slug, workspaceId: workspace.id },
     include: { author: AUTHOR_SELECT },
@@ -206,7 +201,7 @@ export async function getHandbookArticleBySlug(slug: string): Promise<HandbookRe
   return row ? serializeArticle(row) : null;
 }
 
-export async function createHandbookArticle(data: {
+export async function createHandbookArticle(workspaceId: string, data: {
   title: string;
   summary?: string | null;
   category?: string | null;
@@ -216,7 +211,7 @@ export async function createHandbookArticle(data: {
   status?: HandbookStatus;
   authorId?: string | null;
 }): Promise<HandbookRecord> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const slug = await uniqueSlug(data.title);
   const content = data.content ?? "";
   const status = data.status ?? "PUBLISHED";
@@ -242,7 +237,7 @@ export async function createHandbookArticle(data: {
   return serializeArticle(row);
 }
 
-export async function updateHandbookArticle(
+export async function updateHandbookArticle(workspaceId: string, 
   id: string,
   data: {
     title?: string;
@@ -256,7 +251,7 @@ export async function updateHandbookArticle(
     authorId?: string | null;
   },
 ): Promise<HandbookRecord | null> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const existing = await prisma.handbookArticle.findFirst({
     where: { id, workspaceId: workspace.id },
     select: { id: true, status: true, publishedAt: true, title: true, category: true, tags: true },
@@ -300,8 +295,8 @@ export async function updateHandbookArticle(
   return serializeArticle(row);
 }
 
-export async function deleteHandbookArticle(id: string): Promise<boolean> {
-  const workspace = await getWorkspace();
+export async function deleteHandbookArticle(workspaceId: string, id: string): Promise<boolean> {
+  const workspace = { id: workspaceId };
   const existing = await prisma.handbookArticle.findFirst({
     where: { id, workspaceId: workspace.id },
     select: { id: true },
@@ -312,8 +307,8 @@ export async function deleteHandbookArticle(id: string): Promise<boolean> {
 }
 
 /** Best-effort read counter — never blocks or throws into the read path. */
-export async function recordHandbookView(id: string): Promise<void> {
-  const workspace = await getWorkspace();
+export async function recordHandbookView(workspaceId: string, id: string): Promise<void> {
+  const workspace = { id: workspaceId };
   try {
     await prisma.handbookArticle.updateMany({
       where: { id, workspaceId: workspace.id },
@@ -325,8 +320,8 @@ export async function recordHandbookView(id: string): Promise<void> {
 }
 
 /** Distinct categories in use (for the library rail), each with its article count. */
-export async function listHandbookCategories(): Promise<{ category: string; count: number }[]> {
-  const workspace = await getWorkspace();
+export async function listHandbookCategories(workspaceId: string): Promise<{ category: string; count: number }[]> {
+  const workspace = { id: workspaceId };
   const grouped = await prisma.handbookArticle.groupBy({
     by: ["category"],
     where: { workspaceId: workspace.id, status: { not: "ARCHIVED" } },

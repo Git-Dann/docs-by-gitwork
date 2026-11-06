@@ -1,12 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 import { aiKeyFor } from "@/server/ai-keys";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,7 @@ Extract the following fields:
 - confidence: Your confidence in the extraction quality — "HIGH" if the brief is detailed and clear, "MEDIUM" if some information is vague or missing, "LOW" if the brief is very sparse or unclear`;
 
 export async function POST(request: Request) {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
   const apiKey = aiKeyFor("ANTHROPIC", workspace, "env");
   if (!apiKey) {
     return NextResponse.json(

@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { AGENTS_REGISTRY, type AgentDefinition } from "./agents-registry";
-import { DEFAULT_WORKSPACE_SLUG } from "./proposals";
 
 export interface AgentConfigRecord {
   agentKey: string;
@@ -15,17 +14,9 @@ export interface AgentConfigRecord {
   configJson: Record<string, unknown> | null;
 }
 
-async function getWorkspaceId(): Promise<string> {
-  const ws = await prisma.workspace.findFirstOrThrow({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
-    select: { id: true },
-  });
-  return ws.id;
-}
 
 /** Returns all agents merged with any workspace overrides. */
-export async function listAgentConfigs(): Promise<AgentConfigRecord[]> {
-  const workspaceId = await getWorkspaceId();
+export async function listAgentConfigs(workspaceId: string): Promise<AgentConfigRecord[]> {
 
   const overrides = await prisma.agentConfig.findMany({
     where: { workspaceId },
@@ -58,8 +49,7 @@ export interface AgentConfigInput {
 }
 
 /** Upserts a per-workspace override for one agent. */
-export async function saveAgentConfig(input: AgentConfigInput): Promise<void> {
-  const workspaceId = await getWorkspaceId();
+export async function saveAgentConfig(workspaceId: string, input: AgentConfigInput): Promise<void> {
   const def = AGENTS_REGISTRY.find((a) => a.key === input.agentKey);
   if (!def) throw new Error(`Unknown agent key: ${input.agentKey}`);
 
@@ -84,19 +74,17 @@ export async function saveAgentConfig(input: AgentConfigInput): Promise<void> {
 }
 
 /** Removes the workspace override for an agent (restores defaults). */
-export async function resetAgentConfig(agentKey: string): Promise<void> {
-  const workspaceId = await getWorkspaceId();
+export async function resetAgentConfig(workspaceId: string, agentKey: string): Promise<void> {
   await prisma.agentConfig.deleteMany({
     where: { workspaceId, agentKey },
   });
 }
 
 /** Returns the system prompt to use for a given agent key — override first, then default. */
-export async function resolveAgentPrompt(
+export async function resolveAgentPrompt(workspaceId: string, 
   agentKey: string,
   defaultPrompt: string,
 ): Promise<string> {
-  const workspaceId = await getWorkspaceId();
   const override = await prisma.agentConfig.findUnique({
     where: { workspaceId_agentKey: { workspaceId, agentKey } },
     select: { systemPromptOverride: true, enabled: true },
@@ -110,11 +98,10 @@ export async function resolveAgentPrompt(
  * Use alongside `resolveAgentPrompt()` when calling an AI provider so each agent can be
  * pinned to a different model (e.g. Pulse synthesis on Sonnet, Study persona on Haiku).
  */
-export async function resolveAgentModel(
+export async function resolveAgentModel(workspaceId: string, 
   agentKey: string,
   defaultModel: string,
 ): Promise<string> {
-  const workspaceId = await getWorkspaceId();
   const override = await prisma.agentConfig.findUnique({
     where: { workspaceId_agentKey: { workspaceId, agentKey } },
     select: { modelOverride: true, enabled: true },

@@ -14,7 +14,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { requestActor } from "@/server/workspaces/scope";
 import {
   createSignatureRequest,
   inferSignersFromSections,
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const body = createSchema.parse(await request.json().catch(() => ({})));
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(request);
 
     const document = await prisma.document.findUnique({
       where: { id },

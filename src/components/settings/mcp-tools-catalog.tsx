@@ -290,13 +290,50 @@ const TOOLS: Tool[] = [
   {
     name: "add_monitor",
     blurb:
-      "Add an uptime monitor (HTTP or TCP) to a client wiki's Monitors section; runs an immediate probe. Requires 'Manage clients'.",
-    examples: ["Monitor bigwedge.golf every 5 minutes.", "Add a TCP monitor for Speakify's API on port 443."],
+      "Add an uptime monitor (HTTP, TCP or a job heartbeat) to a client's Monitors, in production, staging, development or testing; runs an immediate probe. Only production shows to the client. Requires 'Manage clients'.",
+    examples: [
+      "Monitor bigwedge.golf every 5 minutes.",
+      "Add Fellas' staging API as a staging monitor.",
+      "Add a heartbeat for Big Wedge's nightly course import.",
+    ],
   },
   {
     name: "list_monitors",
-    blurb: "List a client wiki's uptime monitors — status, latency, and uptime % (24h/7d/30d).",
+    blurb: "List a client wiki's uptime monitors — environment, status, latency, and uptime % (24h/7d/30d).",
     examples: ["Is Big Wedge up?", "Show me Speakify's monitor uptime this week."],
+  },
+  {
+    name: "summarise_monitors",
+    blurb:
+      "Summarise every client's monitors at once: the headline, what's down or slow and why, open incidents, and who isn't monitored. Filter by environment. Requires 'Monitors'.",
+    examples: ["Is anything down right now?", "Summarise all monitors.", "How's staging looking across clients?"],
+  },
+  {
+    name: "update_monitor",
+    blurb:
+      "Change a monitor: name, address, environment, pause/resume, interval, checks, or a maintenance window. Requires 'Manage clients'.",
+    examples: ["Move Fellas' 'API' monitor to staging.", "Put Big Wedge's API in maintenance for 2 hours."],
+  },
+  {
+    name: "check_monitor",
+    blurb: "Check one monitor right now and return its fresh status. Requires 'Manage clients'.",
+    examples: ["Check Northwind's website now."],
+  },
+  {
+    name: "delete_monitor",
+    blurb: "Remove a monitor and its history (to pause instead, use update_monitor). Requires 'Manage clients'.",
+    examples: ["Remove the old staging monitor from Speakify."],
+  },
+  {
+    name: "list_monitor_incidents",
+    blurb: "List open uptime incidents across every client, or one client's including recently resolved ones.",
+    examples: ["What incidents are open?", "Show Fellas' incidents from this month."],
+  },
+  {
+    name: "update_monitor_incident",
+    blurb:
+      "Acknowledge an incident, or post an update (shown to the client unless kept internal); 'resolved' closes it.",
+    examples: ["Acknowledge the Big Wedge API incident.", "Tell Fellas we've identified the cause and are deploying a fix."],
   },
   {
     name: "get_client",

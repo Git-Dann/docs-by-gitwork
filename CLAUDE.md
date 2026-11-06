@@ -528,8 +528,8 @@ Core domains:
 
 **Auth**
 - All `/api/` routes except `/api/health` are gated by `API_KEY` env var
-- Browser traffic to `/app/**` gets a `gitwork_api_session` HttpOnly cookie from middleware
-- External API calls use `Authorization: Bearer {API_KEY}` header
+- Browser traffic is authorised by the NextAuth session (the old `gitwork_api_session` cookie carrying `API_KEY` was removed, §88)
+- External API calls use `Authorization: Bearer <key>`: a workspace key from Settings → Developer, or the env `API_KEY` (Gitwork only)
 
 **CSS / Tailwind v4**
 - No `tailwind.config.js` — config is CSS-first in `globals.css`
@@ -1807,7 +1807,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -6053,9 +6053,9 @@ Each is a policy decision or a larger change, recorded rather than done silently
    this PR an archived member's session is cleared within 5 minutes — but those routes also let
    any *active* member of any role call them (a DEVELOPER can PATCH any client's wiki documents).
    That is a general authorisation gap, larger than archiving.
-3. **Browser sessions carry the real workspace `API_KEY`** in the HttpOnly
-   `gitwork_api_session` cookie (12h), set on every `/app` response. It is why `null` = trusted is
-   so dangerous: everyone who has had a session has had the master key in their cookie jar.
+3. ✅ **Fixed (Nov 2026, §88).** Browser sessions used to carry the real workspace `API_KEY` in
+   the HttpOnly `gitwork_api_session` cookie. The middleware no longer sets it, deletes any copy a
+   browser still holds, and no longer accepts it: the env key now only works as a Bearer header.
 4. **Three duplicated sign-in/provisioning paths.** `sign-in-paths.test.ts` now finds every
    token-minting file and requires the active check before signing, but one shared
    `provisionOrRefuse(email)` is the real fix.
@@ -8731,12 +8731,9 @@ the others. `docs-gdrive-backup` loops through it. Pulse monitors scan on the mo
 - `resolveBackupAuth` fell back to any user's Google token in the database;
 - monitor scans were saved to Gitwork whoever owned the monitor.
 
-⚠️ **Care's jobs are deliberately untouched** (Dan, 29 Oct 2026: Care is a broken product and is
-left out of the multi-tenant work for now). Those jobs are `support-sync`, `care-digest`,
-`embed-conversations` and `analytics-snapshot` (the Care analytics connector). They still run on
-the Gitwork workspace only. `embed-conversations` still selects unembedded conversations from
-every workspace, which only matters once another business has Care. Fix it when Care is brought
-in. Also Gitwork-only by design: `meet-transcripts`, `wedge-course-feed`, `wedge-keepwarm`.
+Care's jobs (`support-sync`, `care-digest`, `embed-conversations`, `analytics-snapshot`) were
+left until Nov 2026 and now loop per workspace too: see "Phase 2.2b, Care" below. Gitwork-only by
+design: `meet-transcripts`, `wedge-course-feed`, `wedge-keepwarm`.
 
 Tests: `src/server/__tests__/crons-per-workspace.test.ts`, `monitor-workspace.test.ts`,
 `tests/isolation/crons.test.ts`.
@@ -8785,6 +8782,207 @@ the caller's workspace. They used to look the slug up in Gitwork's (`ensureBaseR
   there.
 - **Left as it was:** `getClientNameBySlug` (page titles) takes an optional workspace and still
   defaults to Gitwork. Pages are scoped separately.
+
+**Phase 2.2b, Team and admin (Nov 2026).** People & access, invites, the rate card, the audit log
+and the Staff schedule work inside the caller's workspace.
+- `src/server/team.ts`: `listMembers` / `listInvites` / `createInvite` take a workspace. The
+  member and invite writes find their row by id **and** workspace (`MemberActor.workspaceId`;
+  `findInvite`), so another business's id reads as not found. `updateMember` takes the actor.
+- Every `/api/team/**` route resolves the caller with `requireTeamAdmin` (a database read, §57),
+  not `auth()` + the session role. `invites/[id]` had no admin check at all, and `reset-password`
+  could reset any user's password in any workspace; both are fixed.
+  `src/app/api/team/__tests__/team-routes-scoped.test.ts` fails on a team route that uses the
+  Gitwork slug, `ensureBaseRecords` or the session role.
+- **Two older team routes brought into line (Dan's calls):**
+  - `DELETE /api/team/[userId]` now **archives** the member through `archiveMember` (audited,
+    restorable for 30 days) instead of deleting the User row. Same rules as Settings → Team.
+  - `reset-password` never goes up the role ladder: it needs `canManageRole(actor, target)`,
+    so an Admin can't reset an Admin's or a Super Admin's password. Your own is always allowed.
+  - Tests: `src/app/api/team/__tests__/team-userid-routes.test.ts`.
+
+**Phase 2.2b, Pulse scans and Study (Nov 2026).** A scan or study is found by id **and** workspace.
+- `getPulseScan`, `renamePulseScan`, `deletePulseScan`, `reanalysePulseScan` and `getStudy` /
+  `updateStudy` / `deleteStudy` / `listStudies` / `createStudy` take a workspace (`tsc` finds every
+  caller, the MCP and the starters download included). `assertPulseScanAccess` refuses another
+  business's scan before the "sees all clients" shortcut, so its Super Admin can't open one.
+- The scan sub-routes (stream, email, pdf, run-browser, share) look up with `findFirst({ id,
+  workspaceId })`. Re-analysis, fix-agent, discovery prep, study plans and study runs use the
+  row's own workspace AI keys, not Gitwork's.
+- The printable report page (`/app/pulse/[scanId]/report`) had no access check; it now has the
+  same one as the scan API. The study plan POST now checks the study is the caller's first.
+- Tests: `src/server/__tests__/pulse-study-workspace-scope.test.ts` and
+  `src/app/api/pulse/__tests__/pulse-study-routes-scoped.test.ts` (fails on a scan or study route
+  that uses `ensureBaseRecords` or an id-only `findUnique`).
+- ⚠️ Still Gitwork-scoped: the scan **list**, projects and portfolio (they read Gitwork's
+  workspace), and `getScanHistory`. Next block.
+
+**Phase 2.2b, Staff, Hiring and DevSignal (Nov 2026).** Every `/api/codeclear/**` and
+`/api/devsignal/**` route reads the caller's workspace (`workspaceIdForRequest`), not Gitwork's.
+- `requestActor(req)` (`src/server/workspaces/scope.ts`) returns the workspace and who to credit.
+  Notes, score changes, GitHub-analysis runs and validations used to be credited to the bootstrap
+  owner ("Foundry Owner"); they now name the signed-in caller. The workspace API key still credits
+  the owner.
+- `src/app/api/codeclear/__tests__/code-routes-scoped.test.ts` fails on any route in those two
+  folders that uses `ensureBaseRecords` or the Gitwork slug.
+- Left on Gitwork on purpose: the public `/apply` flow (`src/server/devsignal/apply.ts`) is
+  Gitwork's own careers page and has no caller to read a workspace from.
+
+**Phase 2.2b, Settings, workspace config and the rest of Docs (Nov 2026).** Settings
+(integrations, models, dev rates, Docs backup, custom hostname, Slack webhooks), workspace
+branding/defaults/Pulse embed and pricing, roles, the rate card, snippets, the Docs AI routes,
+document creation and Slack/meeting integrations read the caller's workspace. Routes that need
+the whole workspace row read it with `findUniqueOrThrow({ where: { id } })`.
+- Comments, versions and signature requests were recorded against the bootstrap owner; they now
+  name the caller (`requestActor` also returns `id`). The API key still credits the owner.
+- `src/app/api/__tests__/settings-docs-routes-scoped.test.ts` fails on a route in those folders
+  that takes the WORKSPACE from `ensureBaseRecords` or uses the Gitwork slug. Taking the owner
+  from it, for an API-key caller, is still allowed.
+- ⚠️ Not done, on purpose: `/api/account` and `/api/account/password` still read the Gitwork
+  membership by slug. They answer "which workspace am I in", which is what the sign-in switch
+  settles; change them with it.
+- `PUT /api/settings/integrations` (AI keys, Slack token, email) is Admins and Super Admins only
+  (Dan, 3 Nov 2026), read from the database role.
+
+**Phase 2.2b, the server modules (Nov 2026).** Handbook, Starters, Starter recipes, onboarding
+forms, Launchpad templates and summaries, Foreman and Curator (queries, runs, proposals, restore),
+Pulse (scan list, projects, portfolio, stats, benchmarks, retry, proposal from scan, monitors,
+check config, agent prompt overrides) and the code portfolio take a `workspaceId` instead of
+picking Gitwork themselves; `tsc` found every caller. Scan creation (`createPulseScanRecord`),
+Foreman and Curator runs now require it.
+- By-id lookups that ignored the workspace now refuse another business's row: onboarding forms
+  and Launchpad templates (own rows plus Foundry's stock ones, `workspaceId` null), Curator runs,
+  and Pulse retry (uses the scan's own workspace and AI keys).
+- The bare `await ensureBaseRecords();` calls left over in tasks, Backstage, absences, standups,
+  milestones, categories, Slack updates and two pages are gone: setup runs at server start.
+- Left on Gitwork on purpose: the public Pulse embed funnel (leads, full-report delivery and its
+  config), the `/apply` careers page, golf clubs, the Wedge jobs, meeting notes, the team-roster
+  seed and the `/api/dev` one-shots. Care stays out entirely (Dan).
+
+**Phase 2.3, the sign-in switch (Nov 2026).** Which workspace a person is in is decided by
+`src/server/auth/home-membership.ts`, not the Gitwork slug: the workspace their token names while
+that membership is active, else Gitwork, else their oldest active membership. Archived rows are
+never chosen. Every path uses it: `requireAuthedUser` (per request), the web sign-in and its
+five-minute recheck (`auth.ts`), the iOS and desktop token exchanges, guest password login, MCP
+(`resolveEffectiveUserById`, `getMcpAdminState`), `/api/account` and the settings, analytics and
+new-scan pages (`findSessionMembership`). Every Gitwork member resolves to Gitwork exactly as
+before. Tests: `home-membership.test.ts`, `request-workspace.test.ts` (a token naming another
+workspace the person belongs to is served it; one they don't belong to never is).
+- ⚠️ Still with Gitwork on purpose, until businesses have their own sign-up: provisioning a NEW
+  account (Google sign-in is `@gitwork.co.uk` only), the first-admin bootstrap, invite auto-accept,
+  and the env `API_KEY` (no user → Gitwork). Each business now has its own keys and MCP
+  connections are bound to a workspace (below).
+- Someone in two workspaces lands in Gitwork, or the one their token names, and can switch
+  (below).
+- ⚠️ **The isolation suite can now see b→a.** With the second test business served its own
+  workspace, 9 more Care crossings became visible (`support/**`, b→a). They are not new code,
+  they were always there behind the Gitwork-only sign-in. Recorded on the Care worklist in
+  `known-leaks.json`. A business created with `DEFAULT_BUSINESS_MODULES` cannot reach them: Care
+  is not in the bundle and the module gate refuses `/api/support` before any role check. Fix them
+  before Care is ever switched on for another business. Nothing outside Care crosses.
+
+**Per-workspace API keys, and MCP bound to a workspace (Nov 2026).**
+- **Settings → Developer → `01 // API KEYS`** (Admins and Super Admins). A key is named, shown
+  once, stored only as a SHA-256 (`WorkspaceApiKey`, additive, loose ids), at most 25 live per
+  workspace, revoked rather than deleted. Create and revoke are audited (`api_key.created` /
+  `api_key.revoked`) and refuse to be called with a key. The old "External API key" box went:
+  it saved `Workspace.externalApiKey`, which nothing read.
+- **Format** `fwk_<keyId>_<secret>_<signature>` (`src/lib/api-key-token.ts`, WebCrypto, edge-safe).
+  The signature is an HMAC under `AUTH_SECRET`, so the middleware refuses a made-up key without a
+  database read. ⚠️ Rotating `AUTH_SECRET` invalidates every key (and every session).
+- **A key acts as the person who created it, in its own workspace only.** `requireAuthedUser`
+  resolves it (`resolveApiKey`) on every request: live, not revoked, and its creator still an
+  active member of THAT workspace (`findActiveMembershipIn`, no fallback). Archive the creator and
+  their keys stop. ⚠️ Every failure is `RevokedAccessError`, never `null`: null is the trusted env
+  `API_KEY`, and a broken key must never be promoted to it.
+- **The browser cookie is gone** (§57.6 item 3). The env `API_KEY` still works as a Bearer header
+  for Gitwork's own integrations and crons, and still resolves to Gitwork.
+- **MCP:** a request is served only from the workspace its `McpConnection` was approved in
+  (`validateMcpBearer` → `resolveMcpActor(userId, workspaceId)`, strict). A revoked or missing
+  connection refuses; the token refresh checks the same. A person in two businesses connects once
+  per workspace.
+- ⚠️ A key on a route that trusts any session (§57.6 item 2) gets what any session gets there.
+  Those routes are the remaining Phase 2 worklist, the same as for sessions.
+- Tests: `api-key-token.test.ts`, `src/server/__tests__/api-keys.test.ts`,
+  `api-keys-routes.test.ts`, `mcp-access.test.ts`.
+
+**Phase 3, first slice: businesses created by us, people sign in with a password (Nov 2026).**
+Dan's calls: no public sign-up page until there's billing; people at a new business use email
+and password. Google is out for them because Foundry's Google sign-in asks for Gmail and Drive
+scopes, which Google only grants to outside users after verification and a yearly assessment.
+- **Platform console → Add business** (`createPlatformBusiness`, `POST /api/platform/workspaces`,
+  platform admins). Creates the workspace with `DEFAULT_BUSINESS_MODULES`, restricted modules
+  and `platformAiKeysAllowed: false`, plus a 14-day owner invite addressed to the owner's email
+  with role `SUPER_ADMIN`. The invite is emailed (`sendWorkspaceEmail`, the new workspace has no
+  email settings, so it uses the server's SMTP) and its link shown to copy. Audited as
+  `platform.workspace.created`. Slugs come from `businessSlug` and can never be `gitwork`.
+- **Invites carry `email` and `role`** (`WorkspaceInvite`, additive). Rules in
+  `src/lib/invite-rules.ts`: an addressed invite accepts only that email; the role defaults to
+  `DEFAULT_PROVISIONED_ROLE`. Gitwork's open label-only invites behave exactly as before.
+- **Accepting with a password** (`acceptInviteWithPassword`, `POST /api/auth/invite/[token]`,
+  public, rate-limited). Creates the account and the membership, then signs straight in.
+  ⚠️ Refused for an email that already has a Foundry account (it would take that account over),
+  and for Gitwork's own invites (Gitwork is Google-only).
+- **Who may use a password:** `isPasswordLoginAllowed(role, workspaceSlug)` in `types/auth.ts`.
+  Gitwork, or an unknown workspace: guests only, as before. Any other business: every role.
+- ⚠️ **The shared recovery key is gone.** `POST /api/auth/forgot-password` used to set ANY
+  user's password on `INITIAL_ADMIN_PASSWORD`, which is why passwords were guest-only. It now
+  emails a single-use, one-hour link (`src/server/auth/password-reset.ts`, `PasswordResetToken`,
+  SHA-256 stored), only to accounts that may use a password, and answers the same either way.
+  `/reset-password` uses it. **Never bring back a reset that doesn't prove control of the mailbox.**
+- **Settings → Team invites** take an optional email (only that address can accept) and the role
+  they join with. The inviter can only offer roles they may assign (`canManageRole`), checked again
+  in `createInvite`, so an Admin can't mint a Super Admin invite.
+- **Workspace switcher** (`src/components/workspace-switcher.tsx`, above the profile menu) for
+  someone in more than one business. It calls `useSession().update({ workspaceId })`; the jwt
+  callback switches only to a workspace the person is an ACTIVE member of
+  (`findActiveMembershipIn`), then refreshes role, permissions and modules.
+- **Getting started** card on HQ (`src/lib/getting-started.ts`, admins, never Gitwork): logo,
+  invite the team, AI key, first client. Hidden once all four are done.
+- **Google sign-in for a business** (`src/server/auth/business-google.ts`): a SECOND Google client,
+  `google-business`, asking only for `openid email profile`, so it needs no Gmail/Drive review.
+  Off until `AUTH_GOOGLE_BUSINESS_ID` / `_SECRET` are set (GitHub secrets, synced by `deploy.yml`);
+  the login button only shows then. Admits someone with an active membership, an addressed
+  invite, or (brand-new accounts only) an email on a domain exactly one business lists in
+  `Workspace.allowedEmailDomains` (Platform console → a business → Sign-in;
+  `src/lib/email-domains.ts` refuses public mail services and gitwork.co.uk). ⚠️ A domain never
+  brings back an archived or removed account. Its refresh token is NOT stored (wrong scopes for
+  the Gmail widgets), and it never touches Gitwork's provisioning or first-admin bootstrap.
+- **iOS sign-in with a password** (`POST /api/auth/mobile-password` { email, password }, public,
+  rate-limited per IP and per email). Runs `verifyPassword`, re-reads `findHomeMembership` and
+  refuses again if `isPasswordLoginAllowed` fails, then mints the same token and JSON shape as
+  `mobile-callback`, naming the member's workspace. Every refusal is one 401. ⚠️ It never creates
+  or promotes anyone. The app side is Git-Dann/foundry-ios#1 (unbuilt until a Mac build).
+- **Not done yet:** a public sign-up page.
+- Tests: `src/lib/__tests__/signup-rules.test.ts`, `src/server/__tests__/password-reset-and-signup.test.ts`.
+**Phase 2.2b, Care (Nov 2026).** Every `/api/support/clients/[clientId]/**` handler starts with
+`requireSupportClient(req, clientId)` (`src/server/support-scope.ts`), which proves the Care
+client is in the caller's workspace and returns that workspace id. A route that names a row
+under it (conversation, ticket, connection, report, draft action, workflow rule) also runs
+`requireSupportRow(kind, id, clientId)`. Another business's id reads as a 404 and nothing is
+written. Lookups only: nothing a Gitwork user sees changed.
+- `listSupportClients`, `createSupportClient`, `getSupportDashboardSummary`,
+  `getClientQueueSummaries` and `listWorkspaceMembers` take a `workspaceId`; `getWorkspaceId()`
+  (Gitwork) is gone. The dashboard, queue summaries and `support/reports/[reportId]` read the
+  caller's workspace. Linking a Portal client (`workspaceClientId`) or a conversation to a ticket
+  must stay in the same workspace / client.
+- AI routes (draft, semantic search, narratives) and draft-reply sending use the client's own
+  workspace keys. `buildSyncContext` and `syncClientConnections` use the connection's own
+  workspace; the report Document is created in the Care client's workspace.
+- The four Care crons loop with `forEachWorkspace` (workspaces with Care clients).
+  `embed-conversations` selects only that workspace's conversations and embeds with its key.
+- Exempt from the sweep: `support/webhook/[token]` (token is the credential) and
+  `support/discord/channels` (holds no workspace data).
+- Tests: `src/app/api/support/__tests__/support-routes-scoped.test.ts` (sweep),
+  `src/server/__tests__/support-workspace-scope.test.ts`, `care-crons-per-workspace.test.ts`.
+  `known-leaks.json` no longer has any `support/` entry.
+
+**What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` held only
+Care (now cleared). That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,
+so every b→a call is refused before it reaches the code. A route that still reads Gitwork's
+workspace directly passes the suite and would show Gitwork's data to another business the day
+they can sign in. The `ensureBaseRecords` / `DEFAULT_WORKSPACE_SLUG` ratchet is the real
+remaining worklist, then sign-in switches to the token's workspace (the shadow comparison's
+0 mismatches are the evidence for that).
 
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
@@ -9359,7 +9557,7 @@ this page only reads them.
   open incidents, a searchable grid of client cards (All / Needs attention), and clients with no
   monitors. Reuses the wiki board's state rules and pieces (`monitor-board.tsx` exports them).
   Refreshes every minute.
-- Not visually verified (auth-gated, no demo route). Tests: `src/app/api/monitors/__tests__`.
+- Tests: `src/app/api/monitors/__tests__`. Demo: `/demo/monitors` (§108.3).
 
 ### 108.1 Portal's Drive tab: no screenshots, and a steady height
 
@@ -9382,6 +9580,59 @@ this page only reads them.
   tokens are ~3:1 on their own `-50` tint.
 - Every card header is a fixed `h-12`, so headers line up across the grid. Gitwork's "Our
   services" tag sits on the name's line (hidden below `sm`) rather than adding a second line.
+
+### 108.3 Add monitor from the Monitors page, synced with the wiki
+
+- **Add monitor** in the CLIENTS card header (and on each "Not monitored" client, opening on that
+  client) opens the house fixed-height popup (`src/components/monitors/add-monitor-dialog.tsx`):
+  a client dropdown (clients this person can open, Gitwork first), then the wiki's own fields.
+- **One copy, so nothing to sync.** It saves through the client's wiki route
+  (`POST /api/clients/[slug]/wiki/monitors`), so it IS that client's wiki monitor. Every monitor
+  write (wiki or page) calls `invalidateMonitorViews` (`use-wiki.ts`), which refreshes the
+  client's wiki, the Gitwork all-clients board and `["monitors-page"]` together.
+- **The fields are shared:** state and request rules in `src/lib/monitor-form.ts`
+  (`formToMonitorInput` checks the server's limits and says what to fix), drawn by
+  `monitor-form-fields.tsx`. The wiki's add/edit uses the same two, so they can't drift. Inputs
+  are 16px on a phone.
+- The add route now checks the caller: guests are refused and a restricted developer can only add
+  to clients they're assigned. Edit/delete/run routes are unchanged.
+- ⚠️ **A `<Modal>` inside `<FadeIn>` is trapped.** FadeIn animates a transform, which makes it the
+  containing block for `position: fixed`, so the dialog centred on the content column and ran off
+  the bottom of the screen. Render dialogs outside it. Found by screenshot, not by any test.
+- Demo: `/demo/monitors` (add works end to end in memory). Verified there at 1440 and 390.
+
+### 108.4 Environments, and Edit from the Monitors page
+
+Asked for by Shahab (Nov 2026): clients should only see production statuses, never staging.
+
+- **`WikiMonitor.environment`** (additive, default `"production"`, so every existing monitor is
+  production): production · staging · development · testing. Rules in
+  `src/lib/monitor-environment.ts` (pure, tested).
+- **The client only ever sees production.** `forPublic` drops every other monitor, and the
+  incidents on them, before the wiki leaves on a token; the team's "Show what the client sees"
+  preview and `clientVisibleSections` apply the same rule, so a wiki watching only staging offers
+  the client no Monitors section. ⚠️ The check is exactly `"production"`: an unrecognised value
+  stays internal.
+- **Gitwork sees every environment, labelled** (a `STAGING` tag on the wiki cards, the all-clients
+  board and the Monitors page). The Monitors page has an Environment filter when more than one is
+  in use. Alerts name a non-production service ("API (Staging)"), the board headline says
+  "Fellas Loaded (Staging)" when only staging is down, and alerts are grouped within one
+  environment so a staging outage can't carry production's under its headline.
+- **Edit on the Monitors page** (pencil on each monitor, for clients the person can open): the Add
+  popup opened on one monitor, read in full from `GET /api/clients/[slug]/wiki/monitors` and saved
+  through the wiki's own PATCH. A heartbeat's blank target is now "leave it" on PATCH.
+- **Every monitor route checks the caller may work on the client** (`assertMonitorWriter`,
+  `src/server/wiki-monitor-access.ts`): GET (it carries heartbeat ping URLs), POST, PATCH, DELETE
+  and Check now. Only POST did before. A sweep test covers all five.
+- **MCP:** `add_monitor` takes `environment` and now HEARTBEAT monitors (no target; it returns
+  the ping URL), and `list_monitors` returns each environment. New, in
+  `src/server/mcp/monitor-tools.ts` (a factory spread into TOOLS, like sheet tools):
+  `summarise_monitors` (every client: headline, problems and why, open incidents, not monitored;
+  filter by environment), `update_monitor` (incl. `setEnvironment`, pause, maintenance window),
+  `check_monitor`, `delete_monitor`, `list_monitor_incidents`, `update_monitor_incident`
+  (acknowledge or post an update). The every-client readers need the `monitors` permission, as
+  the Monitors page does; writers need 'Manage clients'. Two monitors sharing a name are told
+  apart with `environment`; ambiguity is an error.
 
 ## 109. Recent Changes (November 2026) — Seasonal themes are a workspace setting
 
@@ -9494,3 +9745,256 @@ sources are Google redirect links, so a title that is *exactly* a domain counts 
   retired id shows as "Couldn't ask" with the provider's error). Usage is logged as `PULSE`,
   operation `ai_search.answers.<engine>`. Each run is questions × assistants paid calls.
 - Demo: `/demo/pulse/ai-search` (`src/lib/demo/demo-ai-answers.ts`, judged by the real rules).
+
+## 112. Recent Changes (November 2026) — Code Handover: compare versions
+
+Requested for a client's firmware handover (PollenIQ's Sender / Receiver): see what changed between
+two versions without downloading both zips.
+
+- **Compare** on each module with two or more versions, on the team's wiki AND the client's share
+  page (the code is already fully shared, so the client sees nothing new). From / To pickers, swap,
+  a file list (Changed / Added / Removed / Renamed / Unchanged with +/− counts), every changed line
+  with old and new line numbers and 3 lines of context, the newer version's release notes,
+  "Ignore whitespace", "Whole files", and **Download .patch**, which `git apply` accepts.
+- **Each version row says what it changed** since the version before it ("Since v1.1.0: 2 files ·
+  +10 −3 · See changes"). "Before" means created earlier, not listed earlier.
+- **The rules are pure, in `src/lib/code-diff.ts`.** It uses Myers' diff (the minimal one; it
+  matched `git diff --minimal` on 200 random cases) after trimming the common start and end. It
+  handles 15,000-line files in ~15ms. Files are matched by name; a removed and an added file with
+  identical contents are a rename. ⚠️ Past `MAX_EDITS` (2,000) changed lines the line diff isn't
+  attempted: the file says so and gives tallied counts, and the patch replaces the whole file
+  (still exact). Never relax that into a guessed alignment. A missing final newline is a real
+  change (it is in git too), and CRLF-only changes are reported as such rather than shown as nothing.
+- **The patch never ignores whitespace**, whatever the view says. Its format was checked line for
+  line against `git diff`, and 300 random version pairs were applied with `git apply` and matched.
+- In-line emphasis marks the changed part of an edited line, widened to whole words
+  (`9600` → `115200`, not `96` → `1152`). There is none on a line that shares only its indentation
+  (`worthEmphasising`), because highlighting a rewritten line end to end says nothing.
+- **New version starts from the current version's files** ("Start empty instead" to opt out), so
+  only what changed is edited. **Upload files** reads text files (binary or over 500,000 characters
+  refused with the reason; same name replaces). A live "Changes from vX" line shows what the draft
+  changes. Only the current version gets the filled Download button.
+- A file with over 400 changed lines starts folded (`FOLD_ABOVE_LINES`).
+- No schema or route change: files were already stored as text.
+- Demo: `/demo/wiki#code-handover` (Receiver has three versions with real edits).
+
+## 113. Recent Changes (November 2026) — Who is a developer is a fact on their Staff record
+
+Abdullah Farooq had the Developer role in Settings → Team and was missing from Code → Developers.
+That list only counted records with a GitHub handle, and nothing made a record for a new hire. A
+first fix (#799) also counted the Developer **role** and made records whenever the list loaded.
+That was replaced the same week, for two reasons. Everyone signs in as DEVELOPER (§57.6), so the
+role listed every new hire, developer or not. And a list that writes records when you look at it
+is a fix after the fact.
+
+- **`Candidate.isDeveloper`** (additive, nullable) says someone is a developer. A record counts
+  when it has a GitHub handle OR the flag is on (`DEVELOPER_RECORD` / `isDeveloperRecord` in
+  `src/server/codeclear-archived.ts`). ⚠️ **The role is never read.** A test fails if it comes back.
+- **It's decided by a person, at the right moment:**
+  - **"They're a developer"** on an invite (`WorkspaceInvite.isDeveloper`). Every path that accepts
+    an invite calls `applyInviteDeveloperFlag`, which makes or marks their record. A sweep test
+    fails if one doesn't. It never stops someone joining if it fails.
+  - **The Developer switch** in a person's Staff details and in Add someone. It's shown on and
+    locked when they have a GitHub handle, which lists them anyway.
+- **People already here were settled once** by `backfillDeveloperFlags`
+  (`src/server/staff-developer-flag.ts`, run at server start). It only looks at records and
+  memberships from before `DEVELOPER_FLAG_SINCE` (5 Nov 2026), and sets every such record to true
+  (a handle or the Developer role) or false. So it can't go on reading the role, and it writes
+  nothing once done. It makes a record for a Developer who had none, linking by email first, under
+  an advisory lock.
+- **Developers fill in their own details** in Backstage → Me (`MyDeveloperCard`,
+  `PATCH /api/staff/me/developer`, rules in `src/lib/developer-self-details.ts`). That's their GitHub
+  username (a pasted github.com link is cleaned), stack, location, time zone and links.
+  - Only their own record, and only once it's marked as a developer, so adding a handle can't put
+    someone on the list.
+  - A blank handle means "leave it", never "remove it".
+  - A handle already on someone else's profile is a 409 that says so.
+  - It opens on the form while the handle or stack is missing.
+- **Developers says who's missing details**: "N developers are missing a GitHub handle or main
+  stack" with Show them / Show everyone (`missing=1`, `MISSING_DEVELOPER_DETAILS`, counted in the
+  list response as `meta.missingDetails`).
+- A developer with no handle reads **"No GitHub yet"** (`githubLabel`), not a bare "@".
+
+## 114. Recent Changes (November 2026) — Code Handover: edit, uploads, file viewer
+
+A second pass on the wiki's Code Handover (§112).
+
+- **Edit version** (team only, ⋯ on a version row): the New version popup opens prefilled
+  (label, notes, files) and saves through the existing `PATCH versions/[versionId]`. Files replace
+  the version's files wholesale, and the live line reads "Changes from the saved vX".
+- **Uploads**: drop files, a folder or a .zip onto the Files pane, or use **Upload files** (a .zip
+  is accepted there) / **Upload folder**. Paths are kept (`src/radio.h`), and a single folder every
+  path shares is dropped, so a zipped `receiver/` lines up with the previous version's names.
+  The rules are pure, in `src/lib/code-upload.ts`, and mirror the server: text only (NUL bytes =
+  binary), 500,000 characters per file, 200-character paths, 50 files per version. Tooling,
+  dependency and build folders (`.git`, `node_modules`, `.pio`, `build`, `__MACOSX`) and OS files
+  are ignored and counted. Everything else left out is listed with its reason.
+- **Version viewer**: several files get a picker above the code (chips, or a dropdown past
+  `FILE_CHIPS_MAX` = 12) instead of every file stacked. It sits above rather than beside the code,
+  because a module card is often half the page wide. Code has line numbers (`NumberedCode`) and
+  each file has Download beside Copy.
+- **Syntax colours in the compare view**: the tokenizer moved to `code-highlight.tsx` and the
+  viewer and the diff share it. `segmentLine` splits a token where the changed-word emphasis cuts
+  through it, so both keep their colour. `tokenLines` tokenises the whole file first, so a block
+  comment is coloured on every line it spans.
+- **Older versions fold**: the newest three (current first) show, the rest behind
+  "Show N older versions" (`VISIBLE_VERSIONS`).
+- **Copy link** in the compare dialog opens that exact comparison
+  (`src/lib/code-compare-link.ts`). ⚠️ The pair rides in a `?compare=<module>:<from>..<to>` query
+  parameter, never in the hash. The internal wiki routes on an exact `#<section>` hash and rewrites
+  it on every section change, and the client's share page routes on `?section=`, so anything
+  appended to the hash would land on the dashboard or be overwritten. A link to versions that
+  aren't there is ignored. Closing the dialog removes the parameter.
+- Demo: `/demo/wiki#code-handover` (Receiver now has four versions, the newest with `src/` paths
+  and a rename).
+
+## 115. Recent Changes (November 2026) — Commitments: the promises you've made, in one list
+
+Backstage → Commitments (`?area=commitments`, a strip above the Backstage cards) and the API the
+Mac app will use. Dan's brief: a Gitwork take on a "commitment tracker" (promises pulled from email,
+Slack and meetings), easy to use by hand and intelligent. Full doc: **`docs/commitments.md`**.
+
+- **Suggested, never acted on.** Sources: the person's sent Gmail and own Slack messages (opt-in,
+  one light-tier AI read), Scribe action items, and calendar follow-ups after external meetings
+  (no AI). A suggestion waits in `02 // SUGGESTED` until accepted.
+- ⚠️ **A Gmail/Slack suggestion must quote words that are in the message** (`quoteAppearsIn`) and
+  cite a message the model was shown. Don't relax it: it's the only thing between the model and an
+  invented promise.
+- **Only the promise is stored**, never a message body. **Private**: owner only, "view as" refused.
+- Models `Commitment` + `CommitmentSettings` (additive, loose ids, no `@unique`), `AiModule
+  COMMITMENTS`. Rules `src/lib/commitments.ts` (pure, tested), server `src/server/commitments.ts`,
+  routes `/api/backstage/commitments/**`, scheduled reads from the `jobs` worker.
+- Demo: `/demo/backstage/commitments`.
+- **Not verified against real Gmail, Slack or Calendar.** The sources follow CRM's readers, but
+  `format: "full"` sent-mail reads and own-message Slack filtering are new. Post-deploy: switch on
+  Sent Gmail, press Check now, and check the suggestions quote your own words.
+- **Foundry for Mac:** Dan wants it rebuilt (it "looks shit" and isn't on the latest macOS). It
+  can't be built in a Linux session, so the rebuild is a separate task for a Mac session. It
+  consumes the API above.
+- **To-do fields for the Mac app (Nov 2026):** lists (`CommitmentList`, archived on delete), tags,
+  priority, when/evening/someday, reminders, checklists, `orderKey` + `POST …/reorder`, and repeats
+  (`nextOccurrence`; completing one creates the next in the same transaction, PATCH returns
+  `{ commitment, next }`). Contract in `docs/commitments.md`; the Mac app is written against it.
+
+
+## 116. Recent Changes (November 2026) — People & office: Staff + Backstage only, for Siân
+
+Siân runs Gitwork's own staff: their records in Staff, and their leave and expenses in
+Backstage. She doesn't look after developers. Her access is the **People & office** preset
+(Settings → People & access → a member → Quick presets), not a new role: role STAFF, with
+`codeclear`, `code.manage`, `hr.manage`, `hr.viewSensitive`, `backstage`, `backstage.approve`
+and `backstage.expenses` (`PEOPLE_OPS_PERMISSIONS`). Every other STAFF default is saved as a
+revoke, so her sidebar is Staff and Backstage.
+
+- **Expenses are a per-person permission, `backstage.expenses`** ("Review expenses"). Until
+  now only Super Admins could open them. Like the HR permissions, it is in no role's defaults
+  (`PER_PERSON_PERMISSION_IDS`), so no Admin gained the ledger when it arrived. A new expense
+  notifies Super Admins and holders (`target: permission`, `listExpenseReviewerEmails`), no
+  longer every leave approver, most of whom couldn't open it.
+- **A leave approver who isn't an Admin looks after Gitwork staff only**
+  (`src/server/backstage-people.ts`). Admins and Super Admins still look after everyone.
+  "Developer" is the Staff record's own fact (`DEVELOPER_RECORD`), never the sign-in role.
+  Someone with no record counts as staff. For that approver, the approvals queue, the team
+  leave list, Team today, staffing alerts and the HR reminders (and the Monday HR digest) leave
+  developers out, and approving, editing or cancelling a developer's leave is refused. A
+  developer's leave request notifies Admins only (`leaveApproverUserIds`).
+- **The holiday year runs from the person's start date** (`src/lib/leave-year.ts`): it starts
+  on the anniversary of the start date on their Staff record. With no start date it stays
+  January to December. A 29 February start falls on 28 February in other years. The allowance
+  carries `periodStart`/`periodEnd`, shown on Backstage → Leave and the Staff profile.
+- **Holiday days can be set per person** at last. `WorkspaceMember.annualLeaveDays` existed
+  with no way to write it, so everyone had the workspace's 25. The Staff profile's Time off card
+  has **Edit allowance** for whoever handles that person's leave
+  (`PATCH /api/backstage/members/[userId]/allowance`, `canSetLeaveAllowance`); blank = default.
+- **HQ for someone with no Portal:** Gmail and Calendar tiles now need `clients`, and three new
+  tiles appear: **Team leave** (`backstage.approve`: leave waiting + who's off next),
+  **Expenses** (`backstage.expenses`: waiting, the total per currency, the latest few) and
+  **HR** (`hr.manage`: dates coming up + records missing details). ⚠️ So Admins and Super
+  Admins also get Team leave, and Super Admins get Expenses and HR.
+- **"View as" now follows through HQ and Backstage.** Both used the real role, so a Super
+  Admin previewing Siân kept the Admin bypass and saw Agentic workflow, Analytics/Starters,
+  Handover and Expenses she doesn't have. HQ draws for `viewRole`; Backstage's
+  `useBackstageAccess` reads the preview too. The developer view (standup, My Clients)
+  now needs Portal: "not scoped to every client" only means a developer when they work on
+  clients. The On Your Desk drawer is hidden without Portal (every tab is client work).
+- **Staff → People shows Gitwork first for her** (`splitGitworkStaff`): non-developers under
+  a "Gitwork" heading, and "Developers and everyone else" folded in a `<details>` below. Only
+  for someone who isn't an Admin; Admins see the roster as before. Follows "view as".
+- Pulse monitor alert emails now go to Admins (`listAdminEmails`), not the Backstage approver
+  list they had borrowed, which would have emailed a leave approver too.
+
+## 116. Recent Changes (November 2026) — A scan with no AI write-up says so plainly, once
+
+Dan, on a scan whose AI call failed: the Summary carried a grey "AI analysis not available" box
+printing Anthropic's raw JSON (`400 {"type":"error"… credit balance is too low…}`). Now:
+- **Summary shows nothing** for a missing AI write-up. The checks, score and gate don't use AI.
+- **The Plan tab is hidden** when there is no write-up: every part of it (opportunities, roadmap,
+  stack, estimate) is AI output. A link to one of its parts opens Summary (`activeTab` in
+  `use-scan-view.tsx`).
+- **Raw provider errors are never shown.** `describeAiError` (`src/lib/ai-error-words.ts`, pure,
+  tested) turns them into one sentence: out of credit, key rejected, not set up, rate limited,
+  no answer, or a generic error. The Technical tab keeps its Regenerate banner with that sentence
+  (the raw text is in its tooltip), and the agent panel uses it too.
+
+## 118. Recent Changes (November 2026) — Who counts as Gitwork, and leave that doesn't use allowance
+
+Follow-up to the People & office section (Siân) above.
+
+- **Gitwork's own staff = Employee or Director on their Staff record, and not a developer**
+  (`isGitworkStaff` / `GITWORK_EMPLOYMENT_TYPES` in `src/lib/staff.ts`). "Not a developer" was
+  wrong: Hassaan (Product Manager, Contractor) and Syed (no Staff record) landed in Gitwork.
+  Contractors, freelancers and anyone with no record are "everyone else". The same rule drives
+  Staff → People, whose leave Siân approves and hears about, Team today, staffing alerts and her
+  HR reminders (`gitworkUserIds` / `gitworkUserFilter` in `backstage-people.ts`). A staff-only
+  viewer always sees their own leave too, even before their record has a type. ⚠️ So a Gitwork
+  employee needs an Employment type on their Staff record to be Siân's.
+- **Leave can be marked as not using allowance** (`LeaveRequest.countsToAllowance`, additive,
+  nullable; rules in `src/lib/leave-allowance.ts`). Null (older requests) keeps the old rule:
+  only Annual counts. New requests default the same way and the leave form has a "Counts towards
+  holiday allowance" tickbox that follows the type until someone sets it. The allowance query
+  uses `COUNTS_TO_ALLOWANCE_WHERE`. Leave lists say "not from allowance" / "from allowance"
+  when a request goes against its type's default.
+- The leave form's buttons are pinned to the bottom of the dialog (`BackstageModal`'s `footer`,
+  submit via `form=`); they used to float mid-panel above empty space.
+
+## 117. Recent Changes (November 2026) — Uptime alerts only for what's on fire
+
+Dan: "if they are back up within maybe 5 mins, don't ping Slack". Rules in
+`src/lib/monitor-alerts.ts`, all pure and tested:
+
+- **Nothing is posted until a service has failed every check for `ALERT_AFTER_MINUTES` (5).**
+  Checks run every minute while failing, so a real outage posts about 5 minutes in; a blip,
+  a deploy or a provider hiccup that's back before then posts nothing at all, not even a
+  "back up". Timed from `WikiMonitor.streakSince` (additive): the start of the CURRENT unbroken
+  run of failures, so an earlier blip it recovered from can't make a fresh outage count as old.
+  The post's "Down for 6 min, since 14:37" starts there too. Failed checks still count in
+  uptime % and show on the Monitors page straight away; only telling people waits. Incidents are
+  opened with the post, so a blip records no incident.
+- **"Unstable" needs flapping**: 3 of the last 6 checks failing in at least two separate runs,
+  for 5 minutes. One unbroken run that has just ended is an outage that recovered — without the
+  runs rule, a 4-minute outage posted "unstable" on the very check that showed it back.
+- **Only production posts to Slack.** A non-production monitor's alert passes
+  `skipSlack` to `dispatchNotification` (new option), so it still records the incident and tells
+  admins in Foundry, but never reaches the channel.
+- **Shorter posts.** Only the services that aren't fine are listed, then one line —
+  "4 other services OK", or "All 5 services are OK" on a recovery — instead of a green tick per
+  service.
+
+## 119. Recent Changes (November 2026) — The free scan's score errs low
+
+StayPay's free scan said **93**; the full scan said **83**. Its homepage is drawn by
+JavaScript, so the free scan (no browser) could judge only 69% of what it set out to check,
+and Pulse leaves unjudged checks out of the score. So the score went UP the less it saw, and
+the lead arrived thinking they were nearly perfect. Dan: "err on the side of a lower score".
+
+- **`freeScanScore`** (`src/server/pulse-lite/free-score.ts`): every check the free scan
+  couldn't judge gets **half marks**, halfway between the score from what it saw and the
+  breakdown's `lowerBound` (as if everything unseen had failed). A scan that saw everything
+  is unchanged. StayPay's shape (93 at 69%) comes out at 79, under the full scan's 83.
+- Under **70% coverage** (`PROVISIONAL_BELOW`, `src/lib/pulse-free-score.ts`) the score is
+  labelled provisional with one sentence why, on the widget and in our lead email.
+- Used by: the stored `PulseLiteScan.healthScore` (so the lead and the leads list carry it),
+  the widget's API, the public report and our lead email. The anonymous benchmark corpus
+  still records the score from what it saw, so it stays comparable with full scans.
+- **The visitor's own report email is unchanged**: it carries the FULL scan's score, which
+  loads the page and matches the PDF it links to.

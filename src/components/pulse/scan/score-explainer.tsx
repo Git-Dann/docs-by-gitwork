@@ -5,18 +5,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn, formatRelative } from "@/lib/format";
 import { describeRelevance } from "./scan-helpers";
+import { describeAiError } from "@/lib/ai-error-words";
 
 export function AiUnavailable({ aiError }: { aiError: string | null }) {
   return (
     <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-8 text-center">
       <p className="text-sm font-semibold text-[var(--text-2)]">AI analysis not available</p>
-      {aiError ? (
-        <p className="mt-2 text-sm text-[var(--text-3)]">{aiError}</p>
-      ) : (
-        <p className="mt-2 text-sm text-[var(--text-3)]">
-          Configure an AI provider in <strong>Settings → Integrations</strong> to see this section.
-        </p>
-      )}
+      <p className="mt-2 text-sm text-[var(--text-3)]">{describeAiError(aiError)}</p>
     </div>
   );
 }

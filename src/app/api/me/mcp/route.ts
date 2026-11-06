@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     // default; Staff/Developers can be granted it via the matrix. Same gate the
     // OAuth consent + authorize flow enforces, and the settings-shell nav.
     assertCan(user, canConnectMcp, "connect Claude (MCP)");
-    const { enabled } = await getMcpAdminState();
+    const { enabled } = await getMcpAdminState(user.workspaceId);
     const origin = originFrom(req);
     const setup = buildSetupContext(origin, enabled);
     const connections = await listOwnConnections(user);

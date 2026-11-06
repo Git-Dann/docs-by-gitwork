@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getWorkspaceSchedule, parseScheduleRange } from "@/server/schedule";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +24,9 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(request);
     const { from, to } = parseScheduleRange(request.nextUrl.searchParams);
-    const blocks = await getWorkspaceSchedule({ workspaceId: workspace.id, from, to });
+    const blocks = await getWorkspaceSchedule({ workspaceId, from, to });
     return apiOk({
       from: from.toISOString(),
       to: to.toISOString(),

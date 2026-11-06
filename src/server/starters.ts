@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { createStarterVersion, starterToSnapshot } from "@/server/starter-versions";
 
 // ── Starters (Prompt→Production library) ────────────────────────────────────────
@@ -150,10 +149,6 @@ export async function getStarterOutcomeStats(starterId: string): Promise<Starter
 
 // ── Workspace helper ──────────────────────────────────────────────────────────
 
-async function getWorkspace() {
-  const { workspace } = await ensureBaseRecords();
-  return workspace;
-}
 
 /** Built-ins have a null workspaceId; workspace-authored starters carry the workspace id. */
 function scopeWhere(workspaceId: string): Prisma.StarterWhereInput {
@@ -187,11 +182,11 @@ async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-export async function listStarters(filters?: {
+export async function listStarters(workspaceId: string, filters?: {
   type?: StarterType;
   includeArchived?: boolean;
 }): Promise<StarterListItem[]> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const rows = await prisma.starter.findMany({
     where: {
       ...scopeWhere(workspace.id),
@@ -203,21 +198,21 @@ export async function listStarters(filters?: {
   return rows.map(serializeListItem);
 }
 
-export async function getStarter(id: string): Promise<StarterRecord | null> {
-  const workspace = await getWorkspace();
+export async function getStarter(workspaceId: string, id: string): Promise<StarterRecord | null> {
+  const workspace = { id: workspaceId };
   const row = await prisma.starter.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
   if (!row) return null;
   return serializeStarter(row, await getStarterOutcomeStats(row.id));
 }
 
-export async function getStarterBySlug(slug: string): Promise<StarterRecord | null> {
-  const workspace = await getWorkspace();
+export async function getStarterBySlug(workspaceId: string, slug: string): Promise<StarterRecord | null> {
+  const workspace = { id: workspaceId };
   const row = await prisma.starter.findFirst({ where: { slug, ...scopeWhere(workspace.id) } });
   if (!row) return null;
   return serializeStarter(row, await getStarterOutcomeStats(row.id));
 }
 
-export async function createStarter(data: {
+export async function createStarter(workspaceId: string, data: {
   name: string;
   summary: string;
   description?: string | null;
@@ -226,7 +221,7 @@ export async function createStarter(data: {
   tags?: string[];
   content?: StarterContent | null;
 }): Promise<StarterRecord> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const slug = await uniqueSlug(data.name);
   const row = await prisma.starter.create({
     data: {
@@ -244,7 +239,7 @@ export async function createStarter(data: {
   return serializeStarter(row, null);
 }
 
-export async function updateStarter(
+export async function updateStarter(workspaceId: string, 
   id: string,
   data: {
     name?: string;
@@ -261,7 +256,7 @@ export async function updateStarter(
   },
   actorId?: string | null,
 ): Promise<StarterRecord | null> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const existing = await prisma.starter.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
   if (!existing) return null;
   // Auto-snapshot the prior state before any content-changing save (toggles like featured/pinned
@@ -296,8 +291,8 @@ export async function updateStarter(
   return serializeStarter(row, null);
 }
 
-export async function deleteStarter(id: string): Promise<boolean> {
-  const workspace = await getWorkspace();
+export async function deleteStarter(workspaceId: string, id: string): Promise<boolean> {
+  const workspace = { id: workspaceId };
   const existing = await prisma.starter.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
   if (!existing) return false;
   await prisma.starter.delete({ where: { id } });
@@ -309,8 +304,8 @@ export async function deleteStarter(id: string): Promise<boolean> {
  * touching the shipped library entry. The copy keeps provenance, drops isDefault, and gets a
  * fresh unique slug.
  */
-export async function duplicateStarter(id: string): Promise<StarterRecord | null> {
-  const workspace = await getWorkspace();
+export async function duplicateStarter(workspaceId: string, id: string): Promise<StarterRecord | null> {
+  const workspace = { id: workspaceId };
   const source = await prisma.starter.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
   if (!source) return null;
   const slug = await uniqueSlug(`${source.name}-copy`);
@@ -337,18 +332,18 @@ export async function duplicateStarter(id: string): Promise<StarterRecord | null
  * so the scan-results "Starters" slot flips to "View starter". One side only — a reusable Starter is
  * not back-linked to a single scan.
  */
-export async function adoptStarterForScan(
+export async function adoptStarterForScan(workspaceId: string, 
   scanId: string,
   starterId: string,
 ): Promise<{ scanId: string; starterId: string } | null> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const [scan, starter] = await Promise.all([
     prisma.pulseScan.findFirst({ where: { id: scanId, workspaceId: workspace.id }, select: { id: true } }),
     prisma.starter.findFirst({ where: { id: starterId, ...scopeWhere(workspace.id) }, select: { id: true } }),
   ]);
   if (!scan || !starter) return null;
   await prisma.pulseScan.update({ where: { id: scanId }, data: { linkedStarterId: starterId } });
-  await recordStarterUsage(starterId);
+  await recordStarterUsage(workspaceId, starterId);
   return { scanId, starterId };
 }
 
@@ -358,8 +353,8 @@ export async function adoptStarterForScan(
  * scan adoption. Non-critical: never throws, so a usage-tracking hiccup can't break the action
  * it's attached to.
  */
-export async function recordStarterUsage(id: string): Promise<void> {
-  const workspace = await getWorkspace();
+export async function recordStarterUsage(workspaceId: string, id: string): Promise<void> {
+  const workspace = { id: workspaceId };
   try {
     // Bump the counter + stamp recency, and revive a STALE starter — using it resets the clock
     // (the curator's single telemetry choke point; all three usage sites route through here).

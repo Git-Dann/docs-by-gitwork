@@ -191,3 +191,38 @@ export function parsePlatformAuditQuery(params: URLSearchParams): { page: number
     workspaceId,
   };
 }
+
+/** A new business, as the Platform console sends it (multi-tenant Phase 3). */
+export interface NewBusinessInput {
+  name: string;
+  ownerName?: string | null;
+  ownerEmail: string;
+}
+
+/** Slugs a business may never take: Gitwork's own, and words that read as Foundry's. */
+const RESERVED_SLUGS = new Set([HOME_WORKSPACE_SLUG, "foundry", "admin", "platform", "app", "api", "demo", "www"]);
+
+/** Pure: the slug a business name becomes, before any collision suffix. */
+export function businessSlug(name: string): string {
+  const base = name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  if (base.length < 2) return "business";
+  return RESERVED_SLUGS.has(base) ? `${base}-business` : base;
+}
+
+/** Pure: a checked new business, or a PlatformInputError naming what to fix. */
+export function planNewBusiness(input: NewBusinessInput): { name: string; slug: string; ownerName: string | null; ownerEmail: string } {
+  const name = (input.name ?? "").trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 80) throw new PlatformInputError("Give the business a name of 2 to 80 characters.");
+  const ownerEmail = (input.ownerEmail ?? "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) throw new PlatformInputError("Enter the owner's email address.");
+  const ownerName = (input.ownerName ?? "").trim().slice(0, 120) || null;
+  return { name, slug: businessSlug(name), ownerName, ownerEmail };
+}

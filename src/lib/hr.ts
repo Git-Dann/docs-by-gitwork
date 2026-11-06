@@ -474,8 +474,24 @@ export interface StaffActivity {
   }>;
   /** Leave in the next 90 days. `label` is only the type for the person or HR; anyone else sees "Off". */
   upcomingLeave: Array<{ start: string; end: string; label: string; pending: boolean }>;
-  /** This year's allowance, for the person, HR and leave approvers only. */
-  allowance: { allocated: number; used: number; pending: number; remaining: number } | null;
+  /**
+   * This holiday year's allowance, for the person, HR and leave approvers only. The year
+   * runs from their start date when they have one (src/lib/leave-year.ts).
+   */
+  allowance: {
+    allocated: number;
+    used: number;
+    pending: number;
+    remaining: number;
+    periodStart: string;
+    periodEnd: string;
+    fromStartDate: boolean;
+    isDefaultAllowance: boolean;
+    /** The viewer may change `allocated` (they handle this person's leave). */
+    canEdit: boolean;
+    /** Whose allowance it is, for the edit call. */
+    userId: string;
+  } | null;
   developer: { githubHandle: string; primaryStack: string | null; techStacks: string[] } | null;
 }
 

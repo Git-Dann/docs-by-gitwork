@@ -99,6 +99,29 @@ describe("clientVisibleSections", () => {
     expect(clientVisibleSections(noSource)).not.toContain("metrics");
   });
 
+  /**
+   * Monitors are offered to the client only when a PRODUCTION monitor is on: a wiki watching
+   * nothing but staging has nothing to show them, and must not land them on an empty board.
+   */
+  it("offers Monitors only for a production monitor", () => {
+    const stagingOnly = {
+      ...bare(),
+      monitors: { enabled: true, monitors: [{ id: "s", enabled: true, environment: "staging" }] },
+    } as unknown as AnyWiki;
+    expect(clientVisibleSections(stagingOnly)).not.toContain("monitors");
+    const withProduction = {
+      ...bare(),
+      monitors: {
+        enabled: true,
+        monitors: [
+          { id: "s", enabled: true, environment: "staging" },
+          { id: "p", enabled: true, environment: "production" },
+        ],
+      },
+    } as unknown as AnyWiki;
+    expect(clientVisibleSections(withProduction)).toContain("monitors");
+  });
+
   /** A section the operator hid from the client stays hidden. */
   it("honours hiddenSections for doc pages", () => {
     const wiki = {

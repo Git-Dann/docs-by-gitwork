@@ -10,6 +10,7 @@
 
 import { NextRequest } from "next/server";
 import { apiError, apiOk } from "@/lib/api-response";
+import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 10;
@@ -25,24 +26,17 @@ export async function GET(request: NextRequest) {
     return apiError("invalid url", 400);
   }
 
-  // Basic SSRF guard — only public http/https
-  if (!["http:", "https:"].includes(target.protocol)) {
-    return apiError("only http/https urls are supported", 400);
-  }
-  const blocked = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "169.254"];
-  if (blocked.some((h) => target.hostname.startsWith(h))) {
-    return apiError("private urls are not allowed", 400);
-  }
-
+  // The shared SSRF guard (src/server/pulse-lite/url-guard.ts): public http/https only, every
+  // address the name resolves to checked, and every redirect hop re-approved. The old check
+  // here was a hostname prefix list, which let 10.x, 192.168.x and the compose network through.
   try {
-    const res = await fetch(rawUrl, {
+    const res = await fetchScannableUrl(rawUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (compatible; Foundry/1.0; +https://foundry.gitwork.co.uk)",
         Accept: "text/html,application/xhtml+xml",
       },
       signal: AbortSignal.timeout(6_000),
-      redirect: "follow",
     });
 
     if (!res.ok) {

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { listTickets, createTicket } from "@/server/support";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export async function GET(
 ) {
   try {
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const limit = request.nextUrl.searchParams.get("limit");
     const cursor = request.nextUrl.searchParams.get("cursor") ?? undefined;
     const { tickets, nextCursor } = await listTickets(clientId, {
@@ -30,7 +32,11 @@ export async function POST(
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care tickets");
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const body = await request.json();
+    if (typeof body?.conversationId === "string" && body.conversationId) {
+      await requireSupportRow("conversation", body.conversationId, clientId);
+    }
     const ticket = await createTicket(clientId, body);
     return apiOk({ ticket }, { status: 201 });
   } catch (error) {

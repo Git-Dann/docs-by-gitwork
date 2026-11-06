@@ -65,7 +65,7 @@ export function useScanView(scan: PulseScanRecord) {
   const [emailMsg, setEmailMsg] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [chosenTab, setActiveTab] = useState<Tab>("overview");
   // `?tab=findings` (from the Projects list's urgent count) opens straight on the findings.
   // Read after mount, not in the initialiser: the page is server-rendered too.
   useEffect(() => {
@@ -144,6 +144,10 @@ export function useScanView(scan: PulseScanRecord) {
   }
 
   const llm = scan.llmAnalysis;
+  // Every part of Plan (opportunities, roadmap, stack, estimate) is the AI write-up. With
+  // none, the tab is hidden and a link to one of its parts opens Summary instead of an
+  // empty page or the provider's raw error.
+  const activeTab: Tab = !llm && PRIMARY_OF[chosenTab] === "plan" ? "overview" : chosenTab;
   const checksByCategory = groupChecksByCategory(scan.checks);
 
   // ── Adaptive visibility ──────────────────────────────────────────────────────
@@ -330,7 +334,7 @@ export function useScanView(scan: PulseScanRecord) {
   const tabs: Array<{ id: PrimaryTab; to: Tab; label: string; count?: number; badgeColor?: "red" | "amber" }> = [
     { id: "summary", to: "overview", label: "Summary" },
     { id: "checks", to: "checks", label: "Findings", count: openFindingCount || undefined, badgeColor: "red" as const },
-    { id: "plan", to: "opportunities", label: "Plan" },
+    ...(llm ? [{ id: "plan" as const, to: "opportunities" as const, label: "Plan" }] : []),
     { id: "technical", to: "technical", label: "Technical" },
   ];
   // The plan's parts, as one row of choices inside the Plan tab rather than five more tabs.

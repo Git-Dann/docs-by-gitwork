@@ -10,9 +10,9 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { listAuditLog, listAuditActions } from "@/server/audit-log";
 import { isAtLeast } from "@/types/auth";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       return apiError("Admin access required", 403);
     }
 
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(request);
 
     const url = request.nextUrl;
     const action = url.searchParams.get("action") ?? undefined;
@@ -35,8 +35,8 @@ export async function GET(request: NextRequest) {
     // `actions` powers the filter dropdown — every action present in the log,
     // not a hardcoded subset. Only needed for the first page.
     const [result, actions] = await Promise.all([
-      listAuditLog({ workspaceId: workspace.id, action, cursor, limit }),
-      cursor ? Promise.resolve(undefined) : listAuditActions(workspace.id),
+      listAuditLog({ workspaceId, action, cursor, limit }),
+      cursor ? Promise.resolve(undefined) : listAuditActions(workspaceId),
     ]);
 
     return apiOk({ ...result, ...(actions ? { actions } : {}) });

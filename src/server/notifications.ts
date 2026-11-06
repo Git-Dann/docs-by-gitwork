@@ -76,6 +76,9 @@ export interface DispatchInput {
    * the in-app/push copy — so they must still read well on their own.
    */
   slackBlocks?: unknown[];
+  /** Leave the Slack channel out of this one, whatever the event routes to. In-app and push
+   *  still go. Used for non-production uptime alerts (Nov 2026). */
+  skipSlack?: boolean;
 }
 
 /** Same unread group within this window is incremented rather than re-created. */
@@ -87,7 +90,7 @@ export function dispatchNotification(input: DispatchInput): void {
     try {
       // Workspace-level channel post first, and independent of the recipient set: a digest
       // routed to a channel should still land there even if every individual has muted it.
-      await postToSlackChannel(input).catch(() => undefined);
+      if (!input.skipSlack) await postToSlackChannel(input).catch(() => undefined);
 
       const recipients = await resolveRecipients(input);
       if (recipients.length === 0) return;

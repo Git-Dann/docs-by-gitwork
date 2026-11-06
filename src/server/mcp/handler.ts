@@ -105,6 +105,8 @@ import {
 } from "@/server/clients";
 import { listConversations, listSupportClients } from "@/server/support";
 import { createMonitor, loadWikiMonitors } from "@/server/wiki-monitors";
+import { MONITOR_ENVIRONMENT_VALUES } from "@/lib/monitor-environment";
+import { buildMonitorTools } from "./monitor-tools";
 import { getOrCreateWiki, upsertWikiPage, deleteWikiPage, addCourseRequest, listCourseRequests } from "@/server/wiki";
 import {
   assignedClientIds,
@@ -304,7 +306,7 @@ async function resolveSupportClient(
 ): Promise<{ id: string; name: string }> {
   const needle = input.trim();
   if (!needle) throw new Error("Care client identifier is required.");
-  const clients = await listSupportClients(user);
+  const clients = await listSupportClients(user.workspaceId, user);
   const lower = needle.toLowerCase();
 
   const byId = clients.find((c) => c.id === needle);
@@ -421,18 +423,24 @@ const addPlatformSchema = z.object({
 
 const listPlatformsSchema = z.object({ client: z.string().min(1) });
 
-const MONITOR_TYPE_VALUES = ["HTTP", "TCP"] as const;
+const MONITOR_TYPE_VALUES = ["HTTP", "TCP", "HEARTBEAT"] as const;
 
 const addMonitorSchema = z.object({
   client: z.string().min(1),
   name: z.string().min(1),
   type: z.enum(MONITOR_TYPE_VALUES),
-  target: z.string().min(1),
+  // A heartbeat has no address: Foundry gives it a ping URL.
+  target: z.string().default(""),
   method: z.string().optional(),
   expectedStatus: z.number().int().min(100).max(599).nullable().optional(),
   keyword: z.string().max(200).nullable().optional(),
   degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
+  environment: z.enum(MONITOR_ENVIRONMENT_VALUES).optional(),
+  graceMinutes: z.number().int().min(1).max(1440).optional(),
+}).refine((v) => v.type === "HEARTBEAT" || v.target.trim().length > 0, {
+  message: "An HTTP or TCP monitor needs a target.",
+  path: ["target"],
 });
 
 const listMonitorsSchema = z.object({ client: z.string().min(1) });
@@ -1102,7 +1110,10 @@ const TOOLS: ToolDef[] = [
   {
     name: "add_monitor",
     description:
-      "Add an uptime monitor to a client wiki's Monitors section (HTTP or TCP). Requires the " +
+      "Add an uptime monitor to a client wiki's Monitors section: HTTP (a URL), TCP (host:port), or " +
+      "HEARTBEAT (a cron/job that pings a URL Foundry gives back; it goes down when the pings stop). " +
+      "Set `environment` for staging/development/testing; only production shows on the client's " +
+      "status board. To change or remove one later use update_monitor / delete_monitor. Requires the " +
       "'Manage clients' permission. Resolve the client by slug, name, or cuid. Runs an immediate " +
       "probe on creation so the status is populated right away — use list_monitors to see it, " +
       "or read this call's own response (it includes the fresh status).",
@@ -1114,9 +1125,9 @@ const TOOLS: ToolDef[] = [
         type: {
           type: "string",
           enum: [...MONITOR_TYPE_VALUES],
-          description: "HTTP checks a URL; TCP checks host:port reachability.",
+          description: "HTTP checks a URL; TCP checks host:port reachability; HEARTBEAT waits for a job's pings.",
         },
-        target: { type: "string", description: "For HTTP: the URL to probe. For TCP: 'host:port'." },
+        target: { type: "string", description: "For HTTP: the URL to probe. For TCP: 'host:port'. Omit for HEARTBEAT." },
         method: { type: "string", description: "HTTP method (default GET)." },
         expectedStatus: {
           type: "integer",
@@ -1127,9 +1138,20 @@ const TOOLS: ToolDef[] = [
           type: "integer",
           description: "Latency (ms) above which the monitor is marked DEGRADED instead of UP.",
         },
-        intervalMinutes: { type: "integer", description: "How often to probe (default 5, max 1440)." },
+        intervalMinutes: {
+          type: "integer",
+          description: "How often to probe (default 5, max 1440). For HEARTBEAT: how often the job runs.",
+        },
+        graceMinutes: { type: "integer", description: "HEARTBEAT only: minutes a ping may be late before it's down." },
+        environment: {
+          type: "string",
+          enum: [...MONITOR_ENVIRONMENT_VALUES],
+          description:
+            "Which environment this watches (default production). Only production monitors appear on the " +
+            "client's status board; staging, development and testing are seen by Gitwork only.",
+        },
       },
-      required: ["client", "name", "type", "target"],
+      required: ["client", "name", "type"],
       additionalProperties: false,
     },
     handler: async (user, args) => {
@@ -1145,20 +1167,24 @@ const TOOLS: ToolDef[] = [
         keyword: parsed.keyword,
         degradedMs: parsed.degradedMs,
         intervalMinutes: parsed.intervalMinutes,
+        environment: parsed.environment,
+        graceMinutes: parsed.type === "HEARTBEAT" ? parsed.graceMinutes : undefined,
       });
       return textResult(
         monitor,
-        `Added monitor "${monitor.name}" to ${resolved.name} — status: ${monitor.status}` +
+        `Added ${monitor.environment === "production" ? "" : `${monitor.environment} `}monitor "${monitor.name}" to ${resolved.name} — status: ${monitor.status}` +
           `${monitor.latencyMs != null ? ` (${monitor.latencyMs}ms)` : ""}` +
-          `${monitor.error ? ` — ${monitor.error}` : ""}.`,
+          `${monitor.error ? ` — ${monitor.error}` : ""}.` +
+          `${monitor.heartbeat?.pingUrl ? ` Have the job call ${monitor.heartbeat.pingUrl} when it finishes (add /fail when it fails).` : ""}`,
       );
     },
   },
   {
     name: "list_monitors",
     description:
-      "List a client wiki's uptime monitors — status, latency, uptime % (24h/7d/30d), and recent " +
-      "check history. Resolve the client by slug, name, or cuid.",
+      "List a client wiki's uptime monitors — environment, status, latency, uptime % (24h/7d/30d), and " +
+      "recent check history. Only production monitors are shown to the client. Resolve the client by " +
+      "slug, name, or cuid.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1894,6 +1920,8 @@ const TOOLS: ToolDef[] = [
   },
   // Sheets — client-editable spreadsheets linked to the task board (src/server/mcp/sheet-tools.ts).
   ...buildSheetTools({ resolveClient, textResult }),
+  // Monitors beyond add/list — summary, edit, check, remove, incidents (src/server/mcp/monitor-tools.ts).
+  ...buildMonitorTools({ resolveClient, textResult }),
   {
     name: "enable_wiki_section",
     description:
@@ -2411,7 +2439,8 @@ const TOOLS: ToolDef[] = [
       // the route is the only other caller and we want low coupling between
       // the MCP path and the web path until both demonstrably need the same
       // helper. If a third caller shows up, extract into src/server/documents.ts.
-      const { workspace, user: defaultUser, template } = await ensureBaseRecords();
+      const workspace = { id: user.workspaceId };
+      const { user: defaultUser, template } = await ensureBaseRecords();
       const selectedTemplate =
         (await prisma.documentTemplate.findFirst({
           where: { slug: TEMPLATE_SLUG_BY_TYPE[documentType] },
@@ -2634,6 +2663,7 @@ const TOOLS: ToolDef[] = [
         const inputType = parsed.githubRepo ? ("GITHUB_REPO" as const) : ("URL" as const);
         const projectName = parsed.projectName ?? parsed.githubRepo ?? new URL(parsed.url!).hostname;
         const { scan, aiConfig } = await createPulseScanRecord({
+        workspaceId: user.workspaceId,
           projectName,
           inputType,
           inputUrl: parsed.url,
@@ -2667,7 +2697,7 @@ const TOOLS: ToolDef[] = [
     handler: async (user, args) => {
       assertCan(user, canManagePulse, "read Pulse scans");
       const parsed = pulseResultToolSchema.parse(args);
-      const scan = await getPulseScan(parsed.scanId);
+      const scan = await getPulseScan(parsed.scanId, user.workspaceId);
       if (!scan) return textResult({ error: "Scan not found." }, "Scan not found.");
       const verdict = buildAgentVerdict({
         url: scan.inputUrl ?? scan.inputGithubRepo ?? scan.projectName,
@@ -2860,7 +2890,7 @@ const TOOLS: ToolDef[] = [
         clientId = c.id;
         clientLabel = ` for ${c.name}`;
       }
-      const scans = await listPulseScans(clientId ? { clientId } : undefined);
+      const scans = await listPulseScans(user.workspaceId, clientId ? { clientId } : undefined);
       const cap = parsed.limit ?? 50;
       const trimmed = scans.slice(0, cap).map((s) => ({
         id: s.id,
@@ -3099,7 +3129,7 @@ async function listStarterPrompts(
   user: EffectiveUser,
 ): Promise<Array<{ name: string; title: string; description: string; arguments: [] }>> {
   if (!canManageStarters(user)) return [];
-  const starters = await listStarters();
+  const starters = await listStarters(user.workspaceId);
   // `name` stays the slug (handlePromptGet looks starters up by it); `title` is the human-readable
   // display name — without it, clients that render `name` directly show raw slugs like
   // "prompt-cd2-animation" instead of "Chat Digest".
@@ -3118,11 +3148,11 @@ async function handlePromptGet(
   if (!name || typeof name !== "string") {
     return rpcError(id, ERR_INVALID_PARAMS, "Missing prompt name.");
   }
-  const starter = await getStarterBySlug(name);
+  const starter = await getStarterBySlug(user.workspaceId, name);
   if (!starter) {
     return rpcError(id, ERR_METHOD_NOT_FOUND, `Unknown prompt: ${name}`);
   }
-  await recordStarterUsage(starter.id);
+  await recordStarterUsage(user.workspaceId, starter.id);
   return rpcResult(id, {
     description: starter.summary,
     messages: [

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { batchUpdateConversations } from "@/server/support";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -14,6 +15,7 @@ export async function PATCH(
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageSupport, "bulk-triage Care conversations");
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const body = (await request.json()) as {
       conversationIds: string[];
       data: Parameters<typeof batchUpdateConversations>[2];

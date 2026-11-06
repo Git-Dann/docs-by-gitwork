@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { duplicateStarter } from "@/server/starters";
 import { assertCan, canManageStarters, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "duplicate starters");
     const { id } = await params;
-    const starter = await duplicateStarter(id);
+    const starter = await duplicateStarter(await workspaceIdForRequest(request), id);
     if (!starter) return apiError("Starter not found", 404);
     return apiOk({ starter }, { status: 201 });
   } catch (error) {

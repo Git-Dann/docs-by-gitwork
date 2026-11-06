@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { currentClientsUpdateSchema } from "@/server/validators";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ type RouteContext = {
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id: candidateId } = await context.params;
 
     const candidate = await prisma.candidate.findFirst({

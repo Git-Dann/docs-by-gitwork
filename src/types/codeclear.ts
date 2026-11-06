@@ -403,6 +403,8 @@ export interface CandidateListParams {
   /** Only developers whose person has left (archived in Settings → Team). Default is
    *  the active roster, which excludes them. See src/server/codeclear-archived.ts. */
   archived?: boolean;
+  /** Only developers with no GitHub handle or no main stack. */
+  missing?: boolean;
 }
 
 export interface CandidateListResponse {
@@ -414,6 +416,8 @@ export interface CandidateListResponse {
     totalPages: number;
     sortBy: CandidateSortField;
     sortDir: CandidateSortDirection;
+    /** Active developers with no GitHub handle or no main stack, whatever the filters. */
+    missingDetails?: number;
   };
   facets: {
     stacks: string[];

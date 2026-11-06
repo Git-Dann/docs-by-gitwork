@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canManageDevSignal, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { promoteToCode } from "@/server/devsignal/assessment";
 import { devSignalPromoteSchema } from "@/server/validators";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ export async function POST(
   try {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageDevSignal, "promote a candidate into Code");
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { assessmentId } = await params;
     const body = devSignalPromoteSchema.parse(await request.json().catch(() => ({})));
     const result = await promoteToCode(workspace.id, assessmentId, {

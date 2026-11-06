@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { codeClearDetailInclude, serializeCandidateDetails } from "@/server/codeclear";
 import {
   assertCan,
@@ -11,6 +10,7 @@ import {
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
 import { candidateUpdateSchema } from "@/server/validators";
+import { requestActor, workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ type RouteContext = {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id } = await context.params;
     const candidate = await prisma.candidate.findFirst({
       where: {
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageCode, "edit candidates");
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(request);
     const { id } = await context.params;
     const body = candidateUpdateSchema.parse(await request.json());
     const existing = await prisma.candidate.findFirst({
@@ -239,7 +239,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageCode, "delete candidates");
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id } = await context.params;
     const existing = await prisma.candidate.findFirst({
       where: {

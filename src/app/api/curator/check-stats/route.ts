@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { getCheckStatMap } from "@/server/curator/queries";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const stats = await getCheckStatMap();
+    const stats = await getCheckStatMap(await workspaceIdForRequest(request));
     return apiOk({ stats });
   } catch (error) {
     return fromError(error);

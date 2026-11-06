@@ -4,9 +4,9 @@
  */
 
 import { NextRequest } from "next/server";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canManageDocs, getEffectiveUserOrNull, assertInternal } from "@/server/auth/effective-user";
 import { createSnippet, listSnippets } from "@/server/snippets";
 
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     // The Docs content library — reusable clauses and copy we sell with. Internal.
     assertInternal(await getEffectiveUserOrNull(request));
     const user = await getEffectiveUserOrNull(request);
-    const workspaceId = user?.workspaceId ?? (await ensureBaseRecords()).workspace.id;
+    const workspaceId = await requestWorkspaceId(user);
     return apiOk({ snippets: await listSnippets(workspaceId) });
   } catch (error) {
     return fromError(error);
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageDocs, "save snippets");
-    const workspaceId = user?.workspaceId ?? (await ensureBaseRecords()).workspace.id;
+    const workspaceId = await requestWorkspaceId(user);
     const body = createSchema.parse(await request.json());
     if (body.data === undefined) return apiError("Snippet data is required.", 400);
     const snippet = await createSnippet({

@@ -8,6 +8,7 @@ import { assertCan, canManagePulse, getEffectiveUserOrNull, assertInternal } fro
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import type { PulseAnalysisOutput } from "@/types/pulse";
 import { requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sc
     assertInternal(await getEffectiveUserOrNull(request));
     const body = bodySchema.parse(await request.json());
 
-    const scan = await prisma.pulseScan.findUnique({
-      where: { id: scanId },
+    const scan = await prisma.pulseScan.findFirst({
+      where: { id: scanId, workspaceId: await workspaceIdForRequest(request) },
       select: { workspaceId: true, projectName: true, status: true, shareToken: true, isShared: true, llmAnalysis: true },
     });
     if (!scan) return apiError("Scan not found", 404);

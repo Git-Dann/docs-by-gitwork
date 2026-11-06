@@ -8,6 +8,7 @@ import { ExpensesTab } from "@/components/backstage/expenses-tab";
 import { ApprovalsTab } from "@/components/backstage/approvals-tab";
 import { HandoverTab } from "@/components/backstage/handover-tab";
 import { MeTab } from "@/components/backstage/me-tab";
+import { CommitmentsWorkspace } from "@/components/backstage/commitments-workspace";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useBackstageAccess } from "@/components/backstage/access";
 
@@ -17,9 +18,10 @@ const AREA_LABEL: Record<BackstageArea, string> = {
   expenses: "Expenses",
   approvals: "Approvals",
   handover: "Handover",
+  commitments: "Commitments",
 };
 
-const AREAS = new Set<BackstageArea>(["me", "leave", "expenses", "approvals", "handover"]);
+const AREAS = new Set<BackstageArea>(["me", "leave", "expenses", "approvals", "handover", "commitments"]);
 
 export function BackstageWorkspace() {
   const { canManageExpenses, canApprove, isAdmin } = useBackstageAccess();
@@ -84,6 +86,7 @@ export function BackstageWorkspace() {
       {area === "expenses" ? <ExpensesTab /> : null}
       {area === "approvals" ? <ApprovalsTab /> : null}
       {area === "handover" ? <HandoverTab /> : null}
+      {area === "commitments" ? <CommitmentsWorkspace /> : null}
     </div>
   );
 }

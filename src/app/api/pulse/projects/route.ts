@@ -3,6 +3,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
 import { getPulseProjects } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await getEffectiveUserOrNull(request);
     const clientIds = user && !canSeeAllClients(user) ? await assignedClientIds(user) : null;
-    const projects = await getPulseProjects({ clientIds, triggeredByUserId: clientIds ? (user?.id ?? null) : null });
+    const projects = await getPulseProjects(await workspaceIdForRequest(request), { clientIds, triggeredByUserId: clientIds ? (user?.id ?? null) : null });
     return apiOk({ projects });
   } catch (error) {
     return fromError(error);

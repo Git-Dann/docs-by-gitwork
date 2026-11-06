@@ -1,7 +1,9 @@
 import { AppShell } from "@/components/app-shell";
 import { PulseNewScanForm } from "@/components/pulse/pulse-new-scan-form";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findSessionMembership } from "@/server/auth/home-membership";
+import { headers } from "next/headers";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { auth } from "@/auth";
 import { isAtLeast } from "@/types/auth";
 import { aiKeyFor } from "@/server/ai-keys";
@@ -9,8 +11,9 @@ import { aiKeyFor } from "@/server/ai-keys";
 export const dynamic = "force-dynamic";
 
 async function getPageData() {
+  const workspaceId = await workspaceIdForRequest(new Request("http://foundry.local", { headers: await headers() }));
   const workspace = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    where: { id: workspaceId },
     select: {
       id: true,
       aiProvider: true,
@@ -35,12 +38,8 @@ async function getPageData() {
   // picker entirely: their scan is theirs, attributed to no client. That is the
   // intended shape, not a degraded one.
   const session = await auth();
-  const viewer = session?.user?.id
-    ? await prisma.workspaceMember.findFirst({
-        where: { userId: session.user.id, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        select: { role: true, permissions: true, userId: true, workspaceId: true },
-      })
-    : null;
+  const home = session?.user?.id ? await findSessionMembership(session.user) : null;
+  const viewer = home && session?.user?.id ? { ...home, userId: session.user.id } : null;
 
   const seesAllClients =
     !!viewer &&

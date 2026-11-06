@@ -4,6 +4,7 @@ import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effect
 import { listForemanRuns } from "@/server/foreman/queries";
 import { runForeman } from "@/server/foreman/run";
 import { foremanRunSchema } from "@/server/validators";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 // Manual runs execute inline (no serverless cap on the VPS); the optional AI pass can take a moment.
@@ -12,7 +13,7 @@ export const maxDuration = 300;
 export async function GET(request: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const runs = await listForemanRuns();
+    const runs = await listForemanRuns(await workspaceIdForRequest(request));
     return apiOk({ runs });
   } catch (error) {
     return fromError(error);
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const body = await request.json().catch(() => ({}));
     const { consolidate, dryRun } = foremanRunSchema.parse(body);
-    const result = await runForeman({ consolidate, dryRun });
+    const result = await runForeman({ workspaceId: await workspaceIdForRequest(request), consolidate, dryRun });
     return apiOk({ result });
   } catch (error) {
     return fromError(error);

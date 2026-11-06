@@ -11,7 +11,6 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
 import { dispatchNotification } from "@/server/notifications";
 import type { WorkspaceAiFields } from "@/server/ai-provider";
@@ -47,7 +46,7 @@ const AI_FIELD_SELECT = {
 } as const satisfies Prisma.WorkspaceSelect;
 
 export interface RunForemanOptions {
-  workspaceId?: string;
+  workspaceId: string;
   /** Force the AI narrative pass on for this run regardless of config. */
   consolidate?: boolean;
   /** Compute everything but persist a dry_run marker + never notify. */
@@ -74,21 +73,13 @@ function trendFor(metric: number, prev: number | undefined): Trend {
   return "steady";
 }
 
-export async function runForeman(opts: RunForemanOptions = {}): Promise<ForemanRunResult> {
+export async function runForeman(opts: RunForemanOptions): Promise<ForemanRunResult> {
   const now = new Date();
 
-  const ws = opts.workspaceId
-    ? await prisma.workspace.findUniqueOrThrow({
-        where: { id: opts.workspaceId },
-        select: { id: true, foremanConfig: true, ...AI_FIELD_SELECT },
-      })
-    : await (async () => {
-        const { workspace } = await ensureBaseRecords();
-        return prisma.workspace.findUniqueOrThrow({
-          where: { id: workspace.id },
-          select: { id: true, foremanConfig: true, ...AI_FIELD_SELECT },
-        });
-      })();
+  const ws = await prisma.workspace.findUniqueOrThrow({
+    where: { id: opts.workspaceId },
+    select: { id: true, foremanConfig: true, ...AI_FIELD_SELECT },
+  });
 
   const config = resolveForemanConfig(ws.foremanConfig);
   const dryRun = !!opts.dryRun;

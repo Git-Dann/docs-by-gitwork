@@ -4,7 +4,6 @@
 
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { resolveCuratorConfig } from "./config";
 import type { CuratorConfig, CuratorProposal, CuratorStats, CuratorTransition } from "./types";
 
@@ -84,8 +83,8 @@ const RUN_SELECT = {
   error: true,
 } as const satisfies Prisma.CuratorRunSelect;
 
-export async function getCuratorStatus(): Promise<CuratorStatus> {
-  const { workspace } = await ensureBaseRecords();
+export async function getCuratorStatus(workspaceId: string): Promise<CuratorStatus> {
+  const workspace = { id: workspaceId };
   const ws = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspace.id },
     select: { id: true, curatorConfig: true },
@@ -130,8 +129,8 @@ export async function getCuratorStatus(): Promise<CuratorStatus> {
   };
 }
 
-export async function listCuratorRuns(limit = 20): Promise<CuratorRunSummary[]> {
-  const { workspace } = await ensureBaseRecords();
+export async function listCuratorRuns(workspaceId: string, limit = 20): Promise<CuratorRunSummary[]> {
+  const workspace = { id: workspaceId };
   const rows = await prisma.curatorRun.findMany({
     where: { workspaceId: workspace.id },
     orderBy: { startedAt: "desc" },
@@ -142,8 +141,8 @@ export async function listCuratorRuns(limit = 20): Promise<CuratorRunSummary[]> 
 }
 
 /** Merge a partial config over the stored one and persist. Returns the resolved config. */
-export async function updateCuratorConfig(patch: Partial<CuratorConfig>): Promise<CuratorConfig> {
-  const { workspace } = await ensureBaseRecords();
+export async function updateCuratorConfig(workspaceId: string, patch: Partial<CuratorConfig>): Promise<CuratorConfig> {
+  const workspace = { id: workspaceId };
   const current = resolveCuratorConfig(
     (await prisma.workspace.findUniqueOrThrow({ where: { id: workspace.id }, select: { curatorConfig: true } }))
       .curatorConfig,
@@ -164,8 +163,8 @@ export interface CheckStatDto {
 }
 
 /** Map checkKey → usage stat, for the Settings → Checks signal column. */
-export async function getCheckStatMap(): Promise<Record<string, CheckStatDto>> {
-  const { workspace } = await ensureBaseRecords();
+export async function getCheckStatMap(workspaceId: string): Promise<Record<string, CheckStatDto>> {
+  const workspace = { id: workspaceId };
   const rows = await prisma.pulseCheckStat.findMany({
     where: { workspaceId: workspace.id },
     select: { checkKey: true, signal: true, fireCount: true, passCount: true, lastFiredAt: true },

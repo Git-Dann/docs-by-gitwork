@@ -14,7 +14,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeToMonthly } from "@/server/rate-card";
 import { getHolidaysForCountry } from "@/server/backstage-holidays";
-import type { ClientMonthlyCost, ClientHealth, ClientHealthLevel } from "@/types/client";
+import type { ClientMonthlyCost, ClientHealth, ClientHealthLevel, ClientPerson } from "@/types/client";
 
 /** Count of active devs on each client — distinct candidates with an open placement
  *  (endDate null). Excludes "Off Bench" (PRO_BONO) devs, who work off-billing and are
@@ -56,23 +56,55 @@ export async function computeDistinctDevCount(
   return rows.length;
 }
 
+/**
+ * The active devs on each client, as people.
+ *
+ * ⚠️ This is the ONE query behind both the faces and the number. `devCount` is
+ * `people.length`, not a second `groupBy` — a card that shows four avatars above
+ * "3 devs" is the two-answers-to-one-question bug, and deriving the count from
+ * the list is what makes that unrepresentable.
+ *
+ * Ordered by name so the stack is stable between renders; a set would reorder
+ * the faces on every fetch.
+ */
+export async function computeClientDevTeams(
+  workspaceId: string,
+  clientIds: string[],
+): Promise<Map<string, ClientPerson[]>> {
+  if (clientIds.length === 0) return new Map();
+  const placements = await prisma.placement.findMany({
+    where: activeDevPlacementWhere(workspaceId, clientIds),
+    select: {
+      clientId: true,
+      candidate: { select: { id: true, name: true, avatarUrl: true } },
+    },
+  });
+  const byClient = new Map<string, Map<string, ClientPerson>>();
+  for (const p of placements) {
+    if (!p.clientId || !p.candidate) continue;
+    // Keyed by candidate id: one person placed twice on a client is one face.
+    const seen = byClient.get(p.clientId) ?? new Map<string, ClientPerson>();
+    seen.set(p.candidate.id, {
+      id: p.candidate.id,
+      name: p.candidate.name,
+      avatarUrl: p.candidate.avatarUrl ?? null,
+    });
+    byClient.set(p.clientId, seen);
+  }
+  return new Map(
+    [...byClient].map(([id, seen]) => [
+      id,
+      [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    ]),
+  );
+}
+
 export async function computeClientDevCounts(
   workspaceId: string,
   clientIds: string[],
 ): Promise<Map<string, number>> {
-  if (clientIds.length === 0) return new Map();
-  const placements = await prisma.placement.findMany({
-    where: activeDevPlacementWhere(workspaceId, clientIds),
-    select: { clientId: true, candidateId: true },
-  });
-  const byClient = new Map<string, Set<string>>();
-  for (const p of placements) {
-    if (!p.clientId) continue;
-    const set = byClient.get(p.clientId) ?? new Set<string>();
-    set.add(p.candidateId);
-    byClient.set(p.clientId, set);
-  }
-  return new Map([...byClient].map(([id, set]) => [id, set.size]));
+  const teams = await computeClientDevTeams(workspaceId, clientIds);
+  return new Map([...teams].map(([id, people]) => [id, people.length]));
 }
 
 export interface ClientPulseHealth {

@@ -845,7 +845,9 @@ For techStackAnalysis: the detected stack is in UNTRUSTED_SCAN_DATA.techStack. F
 For targetArchitecture: recommend the ideal 2026 stack for THIS product type, one entry per relevant infrastructure layer (cover the layers that matter for this product — typically 6–10 of the 14). For each: name the recommended choice + 1–2 viable alternatives with concrete pros/cons and an indicative monthly £ cost; size the migration (effort S/M/L/XL, elapsed weeks, concrete steps, real blockers); assess switching risk (data loss, query incompatibility, vendor lock-in) and how to de-risk it; explain why it matters for this vertical and at what scale (MVP/GROWTH/SCALE) it becomes important. Be realistic — a near-complete product needs few changes; a prototype needs the foundational layers. For architecturePhases: sequence the work into 2–4 phases (each tackling 2–3 layers, earliest phases unlocking the most value/risk-reduction first). Use Gitwork's preferred vendors consistently across layers.`;
 
   // Resolve system prompt — workspace override takes precedence over built-in default
-  const configuredSystemPrompt = await resolveAgentPrompt("pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT);
+  const configuredSystemPrompt = workspaceId
+    ? await resolveAgentPrompt(workspaceId, "pulse:synthesis", SYSTEM_PROMPT).catch(() => SYSTEM_PROMPT)
+    : SYSTEM_PROMPT;
   const resolvedSystemPrompt = `${configuredSystemPrompt}\n\n${UNTRUSTED_DATA_POLICY}\n${SCAN_DATA_BLOCK_NOTE}`;
 
   if (aiConfig.provider === "ANTHROPIC") {

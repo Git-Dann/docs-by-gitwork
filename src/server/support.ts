@@ -24,7 +24,6 @@ import type {
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
@@ -467,11 +466,6 @@ export function serializeAuditLog(row: {
 
 // ─── Workspace helper ─────────────────────────────────────────────────────────
 
-export async function getWorkspaceId(): Promise<string> {
-  const { workspace } = await ensureBaseRecords();
-  return workspace.id;
-}
-
 async function supportClientScopeWhere(user: EffectiveUser): Promise<Prisma.SupportClientWhereInput> {
   if (canSeeAllClients(user)) return { workspaceId: user.workspaceId };
   const clientIds = await assignedClientIds(user);
@@ -491,10 +485,12 @@ async function assertSupportClientInScope(user: EffectiveUser, supportClientId: 
 
 // ─── SupportClient CRUD ───────────────────────────────────────────────────────
 
-export async function listSupportClients(user?: EffectiveUser): Promise<SupportClient[]> {
-  const workspaceId = await getWorkspaceId();
+export async function listSupportClients(
+  workspaceId: string,
+  user?: EffectiveUser,
+): Promise<SupportClient[]> {
   const rows = await prisma.supportClient.findMany({
-    where: user ? await supportClientScopeWhere(user) : { workspaceId },
+    where: user ? { ...(await supportClientScopeWhere(user)), workspaceId } : { workspaceId },
     orderBy: { name: "asc" },
     include: {
       _count: { select: { conversations: { where: { unread: true } } } },
@@ -508,27 +504,120 @@ export async function listSupportClients(user?: EffectiveUser): Promise<SupportC
 // Single round-trip replacement for fanning out listClients → listTickets per
 // client → listConversations per client. Used by the iOS dashboard.
 
+/**
+ * Who is waiting on US — the one Care number that is a call to action.
+ *
+ * ⚠️ `total` counts conversations where the customer spoke last and nobody has
+ * replied (§42's reply state), NOT open conversations. A thread we answered is
+ * open and is nobody's queue. `oldestAt` is when the longest-waiting customer
+ * wrote, so a reader can age it themselves rather than trusting a duration we
+ * computed at an unknown moment.
+ */
+export type SupportAwaitingSummary = {
+  total: number;
+  /** null = nobody is waiting. Never a zero-length string. */
+  oldestAt: string | null;
+  /** Clients with someone waiting, worst first. Only clients that have one. */
+  clients: Array<{
+    /** The CARE client's id. */
+    clientId: string;
+    /**
+     * The PORTAL client this Care client is linked to, when it is linked.
+     *
+     * ⚠️ Load-bearing for anything that joins Care to another module. The same
+     * client is `wedge` in Portal and "Big Wedge Golf" in Care (§42.15), so a
+     * name match silently finds almost nothing — and silently is the problem,
+     * because the result looks like "no one is waiting" rather than an error.
+     */
+    workspaceClientId: string | null;
+    name: string;
+    slug: string;
+    awaiting: number;
+    oldestAt: string | null;
+  }>;
+};
+
 export type SupportDashboardSummary = {
   clientCount: number;
   openTicketCount: number;
+  /** Added Nov 2026 for the iOS dashboard — see `SupportAwaitingSummary`. */
+  awaiting: SupportAwaitingSummary;
   recentConversations: Array<
     Conversation & { client: SupportClient }
   >;
 };
 
-export async function getSupportDashboardSummary(options?: {
-  recentConversationLimit?: number;
-}): Promise<SupportDashboardSummary> {
-  const workspaceId = await getWorkspaceId();
+/**
+ * Turn the per-client queue map into the phone's "who is waiting" block.
+ *
+ * ⚠️ Only clients that actually have someone waiting are named. A client at
+ * zero is not news, and a list that includes them makes the one that matters
+ * harder to find. Ordered worst first: most waiting, then longest waiting.
+ */
+async function buildAwaitingSummary(
+  workspaceId: string,
+  queues: Record<string, ClientQueueSummary>,
+): Promise<SupportAwaitingSummary> {
+  const withWaiting = Object.entries(queues).filter(([, q]) => q.awaiting > 0);
+  // ⚠️ `total` counts every waiting conversation, including any whose client
+  // the lookup below cannot name. It can therefore exceed the sum of
+  // `clients[].awaiting`, and that is deliberate: the headline is "how many
+  // people are waiting", and dropping one because we could not label it would
+  // understate the queue. `clients` is the actionable subset, not the total.
+  const total = withWaiting.reduce((n, [, q]) => n + q.awaiting, 0);
+  if (withWaiting.length === 0) return { total: 0, oldestAt: null, clients: [] };
+
+  const rows = await prisma.supportClient.findMany({
+    where: { workspaceId, id: { in: withWaiting.map(([id]) => id) } },
+    select: { id: true, name: true, slug: true, workspaceClientId: true },
+  });
+  const named = new Map(rows.map((r) => [r.id, r]));
+
+  const clients = withWaiting
+    .flatMap(([clientId, q]) => {
+      const row = named.get(clientId);
+      // A queue whose client we could not name is dropped rather than shown as
+      // "Unknown" — it is deleted or out of scope, and either way unactionable.
+      return row
+        ? [{
+            clientId,
+            workspaceClientId: row.workspaceClientId,
+            name: row.name,
+            slug: row.slug,
+            awaiting: q.awaiting,
+            oldestAt: q.oldestAwaitingAt,
+          }]
+        : [];
+    })
+    .sort((a, b) => b.awaiting - a.awaiting || (a.oldestAt ?? "").localeCompare(b.oldestAt ?? ""));
+
+  const oldest = clients
+    .map((c) => c.oldestAt)
+    .filter((d): d is string => !!d)
+    .sort()[0] ?? null;
+
+  return { total, oldestAt: oldest, clients };
+}
+
+export async function getSupportDashboardSummary(
+  workspaceId: string,
+  options?: {
+    recentConversationLimit?: number;
+  },
+): Promise<SupportDashboardSummary> {
   const limit = options?.recentConversationLimit ?? 8;
 
-  const [clientCount, openTicketCount, conversationRows] = await Promise.all([
+  const [clientCount, openTicketCount, queues, conversationRows] = await Promise.all([
     prisma.supportClient.count({ where: { workspaceId } }),
     // "Open" now means conversations needing a human (NEW or OPEN) — the conversation
     // is the unit of triage. Field name kept for back-compat with the HQ widget/iOS.
     prisma.supportConversation.count({
       where: { status: { in: ["NEW", "OPEN"] }, client: { workspaceId } },
     }),
+    // Per-client awaiting-reply counts. Already indexed groupBys (§42.6) —
+    // the same read the web's Care home and HQ widget use, so the phone and
+    // the browser can never report different queues.
+    getClientQueueSummaries(workspaceId),
     prisma.supportConversation.findMany({
       where: { client: { workspaceId } },
       orderBy: { receivedAt: "desc" },
@@ -558,6 +647,7 @@ export async function getSupportDashboardSummary(options?: {
   return {
     clientCount,
     openTicketCount,
+    awaiting: await buildAwaitingSummary(workspaceId, queues),
     recentConversations: conversationRows.map((row) => ({
       ...serializeConversation(row),
       client: serializeSupportClient(row.client),
@@ -573,7 +663,7 @@ export async function getSupportClient(clientId: string, user?: EffectiveUser): 
   return serializeSupportClient(row);
 }
 
-export async function createSupportClient(data: {
+export async function createSupportClient(workspaceId: string, data: {
   name: string;
   slug: string;
   status?: SupportClient["status"];
@@ -583,7 +673,6 @@ export async function createSupportClient(data: {
   reportDueDay?: number;
   workspaceClientId?: string;
 }): Promise<SupportClient> {
-  const workspaceId = await getWorkspaceId();
   const row = await prisma.supportClient.create({
     data: {
       workspaceId,
@@ -932,8 +1021,7 @@ export async function getConversationViewCounts(
  * version — if the two disagreed, the home page and the cockpit would report different numbers for
  * the same client, which is exactly the class of thing that destroys trust in a dashboard.
  */
-export async function getClientQueueSummaries(): Promise<Record<string, ClientQueueSummary>> {
-  const workspaceId = await getWorkspaceId();
+export async function getClientQueueSummaries(workspaceId: string): Promise<Record<string, ClientQueueSummary>> {
   const scope: Prisma.SupportConversationWhereInput = { client: { workspaceId } };
   const active: Prisma.SupportConversationWhereInput = { ...scope, status: { in: ["NEW", "OPEN"] } };
   const awaiting: Prisma.SupportConversationWhereInput = {
@@ -2286,9 +2374,9 @@ export async function getReport(reportId: string): Promise<SupportReport | null>
 // ─── Workspace Members ────────────────────────────────────────────────────────
 
 export async function listWorkspaceMembers(
+  workspaceId: string,
   clientId?: string,
 ): Promise<{ id: string; name: string; email: string; role: string }[]> {
-  const workspaceId = await getWorkspaceId();
   const rows = await prisma.workspaceMember.findMany({
     where: { workspaceId, user: seedAccountUserWhere(), ...ACTIVE_MEMBER },
     include: { user: true },

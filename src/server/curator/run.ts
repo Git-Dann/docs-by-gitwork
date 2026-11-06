@@ -11,7 +11,6 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
 import type { WorkspaceAiFields } from "@/server/ai-provider";
 import { resolveCuratorConfig } from "./config";
@@ -39,29 +38,21 @@ const AI_FIELD_SELECT = {
 } as const satisfies Prisma.WorkspaceSelect;
 
 export interface RunCuratorOptions {
-  workspaceId?: string;
+  workspaceId: string;
   /** "prune" = deterministic only; "consolidate" = force the LLM pass on. Omitted = follow config. */
   mode?: "prune" | "consolidate";
   /** Compute everything but mutate nothing. */
   dryRun?: boolean;
 }
 
-export async function runCurator(opts: RunCuratorOptions = {}): Promise<CuratorRunResult> {
+export async function runCurator(opts: RunCuratorOptions): Promise<CuratorRunResult> {
   const now = new Date();
 
   // Resolve workspace (explicit id, else the default base workspace).
-  const ws = opts.workspaceId
-    ? await prisma.workspace.findUniqueOrThrow({
-        where: { id: opts.workspaceId },
-        select: { id: true, curatorConfig: true, ...AI_FIELD_SELECT },
-      })
-    : await (async () => {
-        const { workspace } = await ensureBaseRecords();
-        return prisma.workspace.findUniqueOrThrow({
-          where: { id: workspace.id },
-          select: { id: true, curatorConfig: true, ...AI_FIELD_SELECT },
-        });
-      })();
+  const ws = await prisma.workspace.findUniqueOrThrow({
+    where: { id: opts.workspaceId },
+    select: { id: true, curatorConfig: true, ...AI_FIELD_SELECT },
+  });
 
   const config = resolveCuratorConfig(ws.curatorConfig);
   const dryRun = !!opts.dryRun;

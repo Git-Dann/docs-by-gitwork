@@ -29,6 +29,7 @@ export interface OrchestratorResult {
 }
 
 export async function runOrchestratedScan(input: {
+  workspaceId: string;
   inputType: PulseScanInputType;
   inputUrl?: string;
   inputGithubRepo?: string;
@@ -53,7 +54,7 @@ export async function runOrchestratedScan(input: {
       runDeployAgent(input.inputUrl),
     ]);
 
-    const allChecks = await applyCheckConfigs(deduplicateChecks([
+    const allChecks = await applyCheckConfigs(input.workspaceId, deduplicateChecks([
       ...infraResult.checks,
       ...deployResult.checks,
     ]));
@@ -111,7 +112,7 @@ export async function runOrchestratedScan(input: {
       deployInsights = deployResult.insights;
     }
 
-    const allChecks = await applyCheckConfigs(deduplicateChecks([
+    const allChecks = await applyCheckConfigs(input.workspaceId, deduplicateChecks([
       ...infraResult.checks,
       ...codeResult.checks,
       ...urlChecks,
@@ -151,11 +152,11 @@ function deduplicateChecks(checks: PulseScanCheckInput[]): PulseScanCheckInput[]
  * - Label overrides → replaces label
  * - Severity overrides → clamps status to WARN/FAIL when appropriate
  */
-async function applyCheckConfigs(checks: PulseScanCheckInput[]): Promise<PulseScanCheckInput[]> {
+async function applyCheckConfigs(workspaceId: string, checks: PulseScanCheckInput[]): Promise<PulseScanCheckInput[]> {
   try {
     const [disabled, overrides] = await Promise.all([
-      getDisabledCheckKeys(),
-      getCheckOverrides(),
+      getDisabledCheckKeys(workspaceId),
+      getCheckOverrides(workspaceId),
     ]);
 
     if (disabled.size === 0 && overrides.size === 0) return checks;

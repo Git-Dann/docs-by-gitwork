@@ -14,6 +14,8 @@ import { prisma } from "@/lib/prisma";
 export type AuditAction =
   // Settings
   | "settings.ai_provider.changed"
+  | "api_key.created"
+  | "api_key.revoked"
   | "settings.ai_key.rotated"
   | "settings.external_key.rotated"
   | "settings.branding.updated"
@@ -22,6 +24,7 @@ export type AuditAction =
   | "settings.pulse_embed.updated"
   // Platform console (src/server/platform) — Gitwork acting on a business
   | "platform.workspace.settings_changed"
+  | "platform.workspace.created"
   // Team
   | "team.member.invited"
   | "team.member.role_changed"

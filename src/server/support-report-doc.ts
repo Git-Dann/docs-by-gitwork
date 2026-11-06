@@ -115,7 +115,7 @@ export async function generateSupportReportDocument(
 
   const client = await prisma.supportClient.findUnique({
     where: { id: clientId },
-    select: { id: true, name: true, workspaceClientId: true },
+    select: { id: true, name: true, workspaceClientId: true, workspaceId: true },
   });
   if (!client) throw new Error("Support client not found");
 
@@ -125,6 +125,7 @@ export async function generateSupportReportDocument(
   if (!force) {
     const existing = await prisma.document.findFirst({
       where: {
+        workspaceId: client.workspaceId,
         documentType: "REPORT",
         metadata: { path: ["supportReportKey"], equals: `${clientId}:${period}` },
         archivedAt: null,
@@ -134,7 +135,9 @@ export async function generateSupportReportDocument(
     if (existing) return existing.id;
   }
 
-  const { workspace, user, template } = await ensureBaseRecords();
+  // The workspace is the Care client's own. The owner and stock template are only fallbacks for an
+  // identity-less (API-key) call, which belongs to Gitwork today.
+  const { user, template } = await ensureBaseRecords();
 
   const data = await buildSupportReportData({ clientId, periodStart, periodEnd, periodLabel });
 
@@ -149,7 +152,7 @@ export async function generateSupportReportDocument(
 
   const document = await prisma.document.create({
     data: {
-      workspaceId: workspace.id,
+      workspaceId: client.workspaceId,
       ownerId: actor?.id ?? user.id,
       templateId: reportTemplate?.id ?? template.id,
       documentType: "REPORT",

@@ -94,7 +94,7 @@ export default async function ConsentPage({
     return (
       <ErrorScreen
         title="Not permitted"
-        body="Your Foundry account isn't permitted to connect Claude. Ask an admin to grant you the 'Connect Claude (MCP)' permission in Settings → People & access."
+        body="Your Foundry account doesn't have the 'Connect Claude' permission yet. An admin can turn it on in Settings → People & access: press Access on your name, then tick Platform → Connect Claude. Then try connecting again."
       />
     );
   }

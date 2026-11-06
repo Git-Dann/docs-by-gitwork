@@ -18,7 +18,7 @@ function person(id: string, name: string, role: StaffPerson["role"], managerReco
   return {
     key: `r:${id}`, memberId: role ? `m${id}` : null, recordId: id, name, email: null, avatarUrl: null, role, preferredName: null, pronouns: null,
     jobTitle: null, department: null, employmentType: null, startDate: null, managerRecordId, managerName: null,
-    isDeveloper: false, primaryStack: null, currentClients: [], archivedAt: null,
+    isDeveloper: false, hasGithubHandle: false, primaryStack: null, currentClients: [], archivedAt: null,
   } as StaffPerson;
 }
 

@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeftIcon, EyeIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import { EMPLOYMENT_TYPE_LABEL, isEmploymentType, type StaffPerson } from "@/lib/staff";
+import { EMPLOYMENT_TYPE_LABEL, GITWORK_EMPLOYMENT_TYPES, isEmploymentType, type StaffPerson } from "@/lib/staff";
 import {
   EMPTY_SENSITIVE,
   HR_ACCESS_LABEL,
@@ -32,10 +32,13 @@ import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { DetailsDialog } from "@/components/staff/staff-roster";
 import { DocumentsCard } from "@/components/staff/staff-documents";
 import { DeveloperCard, DeveloperNotesCard } from "@/components/staff/developer-card";
+import { MyDeveloperCard } from "@/components/staff/my-developer-card";
 import { DateWithAttention, Field, HeaderAction, formatDate, label, today } from "@/components/staff/profile-parts";
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { DatePicker } from "@/components/ui/date-picker";
 import { useStaffRoster } from "@/hooks/use-staff";
+import { useSetLeaveAllowance } from "@/hooks/use-backstage";
+import { formatLeaveYear } from "@/lib/leave-year";
 import {
   useAccessLog,
   useDeleteStaffRecord,
@@ -69,6 +72,11 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
   const [error, setError] = useState<string | null>(null);
   const suppliers = useSuppliers(editing && profile.access.editEmployment);
   const save = useUpdateEmployment(profile.recordId);
+  // "Supplied by" is the partner company a contractor comes through. Gitwork's own employees
+  // and directors aren't supplied by anyone, so it's hidden for them unless one is already set.
+  const employedByGitwork = (GITWORK_EMPLOYMENT_TYPES as readonly string[]).includes(profile.employmentType ?? "");
+  const showSupplier = !employedByGitwork || Boolean(e.supplierId);
+  const supplierOptions = suppliers.data?.suppliers ?? [];
 
   const start = () => {
     setSupplierId(e.supplierId ?? "");
@@ -106,17 +114,31 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
       {editing ? (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className={cn(label, "sm:col-span-2")}>
-              Supplied by
-              <select className="app-select mt-1 w-full" value={supplierId} onChange={(ev) => setSupplierId(ev.target.value)}>
-                <option value="">Not supplied (engaged directly)</option>
-                {(suppliers.data?.suppliers ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {!showSupplier ? null : suppliers.isSuccess && supplierOptions.length === 0 && !supplierId ? (
+              // A one-option dropdown that can only say "not supplied" is no use to anyone.
+              <div className={cn(label, "sm:col-span-2")}>
+                Supplied by
+                <p className="mt-1 text-[13px] font-normal text-[var(--text-3)]">
+                  The partner company they come through, if any. No suppliers yet:{" "}
+                  <Link href="/app/staff/suppliers" className="text-[var(--brand-600)] hover:underline">
+                    add one
+                  </Link>
+                  .
+                </p>
+              </div>
+            ) : (
+              <label className={cn(label, "sm:col-span-2")}>
+                Supplied by
+                <select className="app-select mt-1 w-full" value={supplierId} onChange={(ev) => setSupplierId(ev.target.value)}>
+                  <option value="">Not supplied (engaged directly)</option>
+                  {supplierOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className={label}>
               Contract end or leaving date
               <DatePicker className="mt-1 w-full" value={endDate} onChange={setEndDate} />
@@ -150,9 +172,11 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
         </div>
       ) : (
         <dl className="grid gap-4 sm:grid-cols-2">
-            <Field label="Supplied by" className="sm:col-span-2">
-              {e.supplierName ?? "Engaged directly"}
-            </Field>
+            {showSupplier ? (
+              <Field label="Supplied by" className="sm:col-span-2">
+                {e.supplierName ?? "Engaged directly"}
+              </Field>
+            ) : null}
             <Field label="Contract end">
               <DateWithAttention value={e.endDate} />
             </Field>
@@ -531,21 +555,99 @@ function ActivityCard({ activity, hasLogin, number }: { activity: StaffActivity 
   );
 }
 
-/** Leave in the next 90 days and, for the person, HR and approvers, this year's allowance. */
+/**
+ * Leave in the next 90 days and, for the person, HR and approvers, this holiday year's
+ * allowance. The year runs from their start date when they have one. Whoever handles their
+ * leave can change their days here (`allowance.canEdit`, decided on the server).
+ */
 function TimeOffCard({ activity, number }: { activity: StaffActivity | undefined; number: string }) {
   const a = activity?.allowance;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const save = useSetLeaveAllowance();
+  const parsed = draft.trim() === "" ? null : Number(draft);
+  const valid = parsed === null || (Number.isInteger(parsed) && parsed >= 0 && parsed <= 366);
+
+  function start() {
+    if (!a) return;
+    setDraft(a.isDefaultAllowance ? "" : String(a.allocated));
+    setEditing(true);
+  }
+  function submit() {
+    if (!a || !valid) return;
+    save.mutate({ userId: a.userId, days: parsed }, { onSuccess: () => setEditing(false) });
+  }
+
   return (
-    <WidgetCard number={number} name="Time off" status="Next 90 days" statusTone="muted">
+    <WidgetCard
+      number={number}
+      name="Time off"
+      status="Next 90 days"
+      statusTone="muted"
+      action={a?.canEdit && !editing ? <HeaderAction onClick={start} label="Edit holiday allowance">Edit allowance</HeaderAction> : undefined}
+    >
       {!activity ? (
         <p className="text-[13px] text-[var(--text-3)]">Loading…</p>
       ) : (
         <div className="space-y-4">
           {a ? (
-            <dl className="grid grid-cols-3 gap-4">
-              <Field label="Allowance">{a.allocated} days</Field>
-              <Field label="Used">{a.used}{a.pending ? <span className="text-[var(--text-3)]"> +{a.pending} pending</span> : null}</Field>
-              <Field label="Left">{a.remaining}</Field>
-            </dl>
+            <div className="space-y-2">
+              {editing ? (
+                <form
+                  className="flex flex-wrap items-end gap-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submit();
+                  }}
+                >
+                  <label className="min-w-[160px] flex-1">
+                    <span className="widget-data-label text-[var(--text-4)]">Days per holiday year</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={366}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder="Workspace default"
+                      className="app-input mt-1 text-[16px] sm:text-sm"
+                      aria-invalid={!valid}
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setEditing(false)} disabled={save.isPending}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="app-button app-button-primary app-button-sm" disabled={!valid || save.isPending}>
+                      {save.isPending ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                  <p className="w-full text-[12px] text-[var(--text-3)]">
+                    {valid ? "Leave blank to use the workspace default." : "Enter a whole number of days, 0 to 366."}
+                  </p>
+                  {save.isError ? (
+                    <p role="alert" className="w-full text-[12px] text-[var(--danger-500)]">
+                      {save.error instanceof Error ? save.error.message : "Could not save"}
+                    </p>
+                  ) : null}
+                </form>
+              ) : (
+                <dl className="grid grid-cols-3 gap-4">
+                  <Field label="Allowance">
+                    {a.allocated} days
+                    {a.isDefaultAllowance ? <span className="text-[var(--text-3)]"> · default</span> : null}
+                  </Field>
+                  <Field label="Used">{a.used}{a.pending ? <span className="text-[var(--text-3)]"> +{a.pending} pending</span> : null}</Field>
+                  <Field label="Left">{a.remaining}</Field>
+                </dl>
+              )}
+              {a.periodStart ? (
+                <p className="font-mono text-[11px] text-[var(--text-3)]">
+                  Holiday year {formatLeaveYear({ start: a.periodStart, end: a.periodEnd })}
+                  {a.fromStartDate ? " · from start date" : " · no start date, so January to December"}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           {activity.upcomingLeave.length ? (
             <ul className="divide-y divide-[var(--border-3)]">
@@ -638,6 +740,7 @@ export function StaffProfileView({
         {p.preferredName && p.preferredName !== p.name ? <Field label="Legal name">{p.name}</Field> : null}
         <Field label="Email">{p.email ?? "—"}</Field>
         <Field label="Type">{type ?? "—"}</Field>
+        <Field label="Developer">{p.isDeveloper ? "Yes" : "No"}</Field>
         <Field label="Started">{formatDate(p.startDate)}</Field>
         <Field label="Manager">
           {p.managerRecordId && p.managerName ? (
@@ -651,7 +754,8 @@ export function StaffProfileView({
         <Field label="Clients" className="sm:col-span-2">
           {p.currentClients.length ? p.currentClients.map((c) => c.name).join(", ") : "—"}
         </Field>
-        {dev && !showDeveloper ? (
+        {/* In Me a developer's own card shows these, so they aren't repeated here. */}
+        {dev && !showDeveloper && !(mode === "me" && p.isDeveloper) ? (
           <>
             <Field label="GitHub">
               <a href={`https://github.com/${dev.githubHandle}`} target="_blank" rel="noreferrer noopener" className="hover:text-[var(--brand-600)] hover:underline">
@@ -666,6 +770,8 @@ export function StaffProfileView({
     </WidgetCard>
   );
   const developer = showDeveloper ? <DeveloperCard recordId={p.recordId} number={next()} /> : null;
+  // In Me, a developer fills in what only they know (handle, stack, links).
+  const myDeveloper = mode === "me" && p.isDeveloper ? <MyDeveloperCard number={next()} /> : null;
   const employment = p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={next()} /> : null;
   const timeOff = p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={next()} /> : null;
   const notes = showDeveloper ? <DeveloperNotesCard recordId={p.recordId} number={next()} /> : null;
@@ -716,6 +822,7 @@ export function StaffProfileView({
         <div className="min-w-0 space-y-5">
           {overview}
           {developer}
+          {myDeveloper}
           {employment}
           {timeOff}
           {notes}

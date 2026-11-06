@@ -9,6 +9,7 @@ import { TeamCard } from "@/components/backstage/team-card";
 import { useBackstageAccess } from "@/components/backstage/access";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useMyStaffRecord, useStaffDocuments } from "@/hooks/use-hr";
+import { CommitmentsStrip } from "@/components/backstage/commitments-strip";
 
 /**
  * Written out in full because Tailwind only emits classes it can find as literal
@@ -34,7 +35,7 @@ const XL_COLS: Record<number, string> = {
   6: "min-[1400px]:grid-cols-6",
 };
 
-export type BackstageArea = "me" | "leave" | "expenses" | "approvals" | "handover";
+export type BackstageArea = "me" | "leave" | "expenses" | "approvals" | "handover" | "commitments";
 
 // Backstage landing — a bento grid of navigational cards (HQ dashboard pattern,
 // see app-overview.tsx + DESIGN.md) over the full team calendar. Cards show a
@@ -52,7 +53,7 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
    * How many COLUMN UNITS the row actually occupies, so the grid is exactly as
    * wide as the cards that render.
    *
-   * ⚠️ Two of these cards are permission-gated — Expenses is Super Admin and
+   * ⚠️ Two of these cards are permission-gated — Expenses is Super Admin (or `backstage.expenses`) and
    * Handover is Admin — so a hard-coded five columns leaves a one- or two-column
    * hole for everyone else, which is the gap the house card-grid rule exists to
    * prevent. Team counts as two because it spans two from `xl`.
@@ -76,6 +77,8 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
 
   return (
     <div className="space-y-3">
+      {/* A strip, not a card: the grid below is sized to an exact card count. */}
+      <CommitmentsStrip onOpen={() => onOpen("commitments")} />
       <div className={`grid grid-cols-1 gap-3 ${units === 6 ? "sm:max-[1399px]:grid-cols-2" : "sm:grid-cols-2"} ${XL_COLS[units]} ${fillOddRow}`}>
         {showMe ? <MeCard number={num()} onOpen={onOpen} /> : null}
         <LeaveCard number={num()} onOpen={onOpen} />

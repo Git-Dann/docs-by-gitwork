@@ -7,6 +7,7 @@ import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import { summarise, triage } from "./public-scan";
 import { renderReportEmail } from "./report-email";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { ensureBaseRecords } from "@/server/bootstrap";
 
 /**
  * What a visitor gets once they unlock their report on the public scanner: the full
@@ -79,7 +80,13 @@ async function fullScanFor(targetUrl: string, liteScanId: string | null): Promis
 
   let projectName = targetUrl;
   try { projectName = new URL(targetUrl).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
-  const { scan, aiConfig } = await createPulseScanRecord({ projectName, inputType: "URL", inputUrl: targetUrl });
+  // The public Pulse embed is Gitwork's own sales funnel, so its full scans land in Gitwork.
+  const { scan, aiConfig } = await createPulseScanRecord({
+    workspaceId: (await ensureBaseRecords()).workspace.id,
+    projectName,
+    inputType: "URL",
+    inputUrl: targetUrl,
+  });
   if (liteScanId) {
     await prisma.pulseLiteScan.update({ where: { id: liteScanId }, data: { importedScanId: scan.id } }).catch(() => {});
   }

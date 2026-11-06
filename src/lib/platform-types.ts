@@ -16,6 +16,8 @@ export interface PlatformWorkspace {
   modulesRestricted: boolean;
   enabledModules: string[];
   platformAiKeysAllowed: boolean;
+  /** Domains whose people may sign in with Google and join as Developers. */
+  allowedEmailDomains: string[];
 }
 
 export interface PlatformAuditItem {

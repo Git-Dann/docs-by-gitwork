@@ -4,7 +4,6 @@
 
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { resolveForemanConfig } from "./config";
 import { listFindingActions, findingState, visibleFindings, type FindingState } from "./actions";
 import type { ForemanConfig, ForemanFinding, ForemanNarrative, ForemanStats } from "./types";
@@ -95,8 +94,8 @@ function nextNineAm(after: Date): string {
   return d.toISOString();
 }
 
-export async function getForemanStatus(): Promise<ForemanStatus> {
-  const { workspace } = await ensureBaseRecords();
+export async function getForemanStatus(workspaceId: string): Promise<ForemanStatus> {
+  const workspace = { id: workspaceId };
   const ws = await prisma.workspace.findUniqueOrThrow({
     where: { id: workspace.id },
     select: { id: true, foremanConfig: true },
@@ -119,8 +118,8 @@ export async function getForemanStatus(): Promise<ForemanStatus> {
   };
 }
 
-export async function listForemanRuns(limit = 20): Promise<ForemanRunSummary[]> {
-  const { workspace } = await ensureBaseRecords();
+export async function listForemanRuns(workspaceId: string, limit = 20): Promise<ForemanRunSummary[]> {
+  const workspace = { id: workspaceId };
   const rows = await prisma.foremanRun.findMany({
     where: { workspaceId: workspace.id },
     orderBy: { startedAt: "desc" },
@@ -132,8 +131,8 @@ export async function listForemanRuns(limit = 20): Promise<ForemanRunSummary[]> 
 
 /** The latest successful live scan, shaped for the Desk panel — dismissed/muted findings filtered
  *  out so the Desk only shows what's currently actionable. Null before the first run. */
-export async function getForemanReport(): Promise<ForemanReport | null> {
-  const { workspace } = await ensureBaseRecords();
+export async function getForemanReport(workspaceId: string): Promise<ForemanReport | null> {
+  const workspace = { id: workspaceId };
   const run = await prisma.foremanRun.findFirst({
     where: { workspaceId: workspace.id, mode: "scan", status: "succeeded" },
     orderBy: { startedAt: "desc" },
@@ -162,8 +161,8 @@ export interface ForemanFindingsView {
 
 /** All findings from the latest run, each annotated with its resolution state — for the Settings
  *  management UI (bulk dismiss/mute/clear + view what's muted/dismissed). */
-export async function getForemanFindings(): Promise<ForemanFindingsView> {
-  const { workspace } = await ensureBaseRecords();
+export async function getForemanFindings(workspaceId: string): Promise<ForemanFindingsView> {
+  const workspace = { id: workspaceId };
   const run = await prisma.foremanRun.findFirst({
     where: { workspaceId: workspace.id, mode: "scan", status: "succeeded" },
     orderBy: { startedAt: "desc" },
@@ -182,8 +181,8 @@ export async function getForemanFindings(): Promise<ForemanFindingsView> {
 }
 
 /** Merge a partial config over the stored one and persist. Returns the resolved config. */
-export async function updateForemanConfig(patch: Partial<ForemanConfig>): Promise<ForemanConfig> {
-  const { workspace } = await ensureBaseRecords();
+export async function updateForemanConfig(workspaceId: string, patch: Partial<ForemanConfig>): Promise<ForemanConfig> {
+  const workspace = { id: workspaceId };
   const current = resolveForemanConfig(
     (await prisma.workspace.findUniqueOrThrow({ where: { id: workspace.id }, select: { foremanConfig: true } }))
       .foremanConfig,

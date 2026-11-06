@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { ArrowDownTrayIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/format";
 import {
@@ -23,6 +23,7 @@ import {
   sortStaffBy,
   buildOrgTree,
   groupStaff,
+  splitGitworkStaff,
   staffToCsv,
   type EmploymentType,
   type StaffFilter,
@@ -33,6 +34,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useBackstageAccess } from "@/components/backstage/access";
 import { useCreateStaffRecord, useStaffRoster, useUpdateStaffDetails } from "@/hooks/use-staff";
 import { useDocumentSettings, useHrOverview, useSetArchived, useUpdateDocumentSettings } from "@/hooks/use-hr";
 import { STAFF_DOCUMENT_LABEL, STAFF_DOCUMENT_TYPES, type HrDocumentSettings } from "@/lib/hr-documents";
@@ -75,6 +77,7 @@ export function DetailsDialog({
   const [employmentType, setEmploymentType] = useState<EmploymentType | "">(person.employmentType ?? "");
   const [startDate, setStartDate] = useState(person.startDate ?? "");
   const [managerRecordId, setManagerRecordId] = useState(person.managerRecordId ?? "");
+  const [isDeveloper, setIsDeveloper] = useState(person.isDeveloper);
   const [error, setError] = useState<string | null>(null);
   const create = useCreateStaffRecord();
   const update = useUpdateStaffDetails();
@@ -93,6 +96,7 @@ export function DetailsDialog({
       employmentType: employmentType || null,
       startDate: startDate || null,
       managerRecordId: managerRecordId || null,
+      isDeveloper,
     };
     try {
       if (person.recordId) await update.mutateAsync({ recordId: person.recordId, update: details });
@@ -172,6 +176,12 @@ export function DetailsDialog({
               ))}
             </select>
           </label>
+          <DeveloperSwitch
+            checked={isDeveloper || person.hasGithubHandle}
+            locked={person.hasGithubHandle}
+            onChange={setIsDeveloper}
+            className="sm:col-span-2"
+          />
         </div>
         {error ? (
           <p role="alert" className="text-[13px] text-[var(--danger-500)]">
@@ -198,10 +208,48 @@ export function DetailsDialog({
   );
 }
 
+/**
+ * Whether someone is listed under Code → Developers. Separate from their role in Foundry,
+ * which is about access (everyone signs in as Developer). A GitHub handle lists them anyway,
+ * so with one the switch is shown on and can't be turned off here.
+ */
+function DeveloperSwitch({
+  checked,
+  locked = false,
+  onChange,
+  className,
+}: {
+  checked: boolean;
+  locked?: boolean;
+  onChange: (v: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <label className={cn("flex cursor-pointer items-start gap-2.5 rounded-[8px] border border-[var(--border-1)] px-3 py-2.5", locked && "cursor-default", className)}>
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 accent-[var(--brand-600)]"
+        checked={checked}
+        disabled={locked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium text-[var(--text-1)]">Developer</span>
+        <span className="block text-[12px] text-[var(--text-3)]">
+          {locked
+            ? "Listed under Code → Developers because they have a GitHub handle."
+            : "List them under Code → Developers. This is what they do, not what they can open in Foundry."}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function AddPersonDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [jobTitle, setJobTitle] = useState("");
+  const [isDeveloper, setIsDeveloper] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const create = useCreateStaffRecord();
   const field = "block text-[12px] font-medium text-[var(--text-2)]";
@@ -209,7 +257,7 @@ function AddPersonDialog({ onClose }: { onClose: () => void }) {
   const save = async () => {
     setError(null);
     try {
-      await create.mutateAsync({ name, email: email.trim() || null, jobTitle: jobTitle || null });
+      await create.mutateAsync({ name, email: email.trim() || null, jobTitle: jobTitle || null, isDeveloper });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add");
@@ -235,6 +283,7 @@ function AddPersonDialog({ onClose }: { onClose: () => void }) {
           Job title (optional)
           <input className="app-input mt-1 w-full" value={jobTitle} maxLength={80} onChange={(e) => setJobTitle(e.target.value)} />
         </label>
+        <DeveloperSwitch checked={isDeveloper} onChange={setIsDeveloper} />
         {error ? (
           <p role="alert" className="text-[13px] text-[var(--danger-500)]">
             {error}
@@ -572,12 +621,39 @@ export function StaffRoster({
 
   const people = useMemo(() => roster.data?.people ?? [], [roster.data]);
   const shown = useMemo(() => sortStaffBy(filterStaff(people, filter), sort, sort === "startDate" ? "desc" : "asc"), [people, filter, sort]);
-  const groups = useMemo(() => groupStaff(shown), [shown]);
+  // Someone who isn't an Admin (People & office) looks after Gitwork's own people: those
+  // come first, and developers and everyone else fold away underneath. Follows "view as".
+  const { isAdmin: looksAfterEveryone } = useBackstageAccess();
+  const split = useMemo(() => splitGitworkStaff(shown), [shown]);
+  const focused = !looksAfterEveryone && split.gitwork.length > 0 && split.others.length > 0;
+  const groups = useMemo(() => groupStaff(focused ? split.gitwork : shown), [focused, split, shown]);
+  const otherGroups = useMemo(() => (focused ? groupStaff(split.others) : []), [focused, split]);
   const tree = useMemo(() => buildOrgTree(shown), [shown]);
   const filtered = Boolean(filter.q || filter.department || filter.employmentType);
   const archived = view === "archived";
   // The tour points at the cards and the For HR card, so it waits for both to be on screen.
   const tour = useStaffHrTour({ canManageHr, archived, hasPeople: groups.length > 0 && layout === "cards" });
+
+  function renderGroup(g: ReturnType<typeof groupStaff>[number], tourTarget?: string) {
+    return (
+      <div key={g.id} data-tour={tourTarget}>
+        <p className="widget-data-label mb-1 text-[var(--text-4)]">
+          {g.label} <span className="text-[var(--text-4)]">· {g.people.length}</span>
+        </p>
+        <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {g.people.map((p) => (
+            <PersonCard
+              key={p.key}
+              person={p}
+              basePath={basePath}
+              archived={archived}
+              onCreateProfile={canManageCode && !p.recordId ? () => setEditing(p) : undefined}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -705,24 +781,26 @@ export function StaffRoster({
           ) : layout === "org" && !archived ? (
             <OrgChart tree={tree} basePath={basePath} subtitle={subtitleOf} />
           ) : (
-            groups.map((g, gi) => (
-              <div key={g.id} data-tour={gi === 0 ? "staff-people" : undefined}>
-                <p className="widget-data-label mb-1 text-[var(--text-4)]">
-                  {g.label} <span className="text-[var(--text-4)]">· {g.people.length}</span>
-                </p>
-                <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                  {g.people.map((p) => (
-                    <PersonCard
-                      key={p.key}
-                      person={p}
-                      basePath={basePath}
-                      archived={archived}
-                      onCreateProfile={canManageCode && !p.recordId ? () => setEditing(p) : undefined}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))
+            <>
+              {focused ? (
+                <p className="widget-data-label text-[var(--text-4)]">Gitwork · {split.gitwork.length}</p>
+              ) : null}
+              {groups.map((g, gi) => renderGroup(g, gi === 0 ? "staff-people" : undefined))}
+              {focused ? (
+                <details className="group rounded-[10px] border border-[var(--border-2)]" data-staff-others>
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm text-[var(--text-2)] [&::-webkit-details-marker]:hidden">
+                    <span>
+                      Developers and everyone else{" "}
+                      <span className="font-mono text-[12px] text-[var(--text-4)]">· {split.others.length}</span>
+                    </span>
+                    <ChevronDownIcon aria-hidden className="h-4 w-4 shrink-0 text-[var(--text-4)] transition group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-5 border-t border-[var(--border-2)] p-4">
+                    {otherGroups.map((g) => renderGroup(g))}
+                  </div>
+                </details>
+              ) : null}
+            </>
           )}
         </div>
         {editing ? <DetailsDialog person={editing} people={people} onClose={() => setEditing(null)} /> : null}

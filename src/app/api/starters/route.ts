@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { apiOk, fromError } from "@/lib/api-response";
 import { listStarters, createStarter, type StarterType } from "@/server/starters";
 import { starterCreateSchema } from "@/server/validators";
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     const includeArchived = url.searchParams.get("includeArchived") === "true";
     const validTypes: StarterType[] = ["PROMPT", "SKILL", "PLUGIN", "KIT", "COLLECTION"];
     const type = validTypes.includes(typeParam as StarterType) ? (typeParam as StarterType) : undefined;
-    const starters = await listStarters({ type, includeArchived });
+    const starters = await listStarters(await workspaceIdForRequest(request), { type, includeArchived });
     return apiOk({ starters });
   } catch (error) {
     return fromError(error);
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "create starters");
     const body = await request.json();
     const data = starterCreateSchema.parse(body);
-    const starter = await createStarter({
+    const starter = await createStarter(await workspaceIdForRequest(request), {
       name: data.name,
       summary: data.summary,
       description: data.description ?? null,

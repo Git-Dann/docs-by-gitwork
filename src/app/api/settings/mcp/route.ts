@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const user = await requireAuthedUser(req);
-    const state = await getMcpAdminState();
+    const state = await getMcpAdminState(user.workspaceId);
     const connections = await listConnectionsForWorkspace(user);
     return apiOk({ state, connections });
   } catch (e) {

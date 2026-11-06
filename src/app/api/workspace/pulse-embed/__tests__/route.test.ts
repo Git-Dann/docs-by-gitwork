@@ -14,10 +14,15 @@ const audit = vi.fn(async (..._a: unknown[]) => {});
 let stored: unknown = null;
 
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => ({ user: { id: "u1" } })) }));
-vi.mock("@/lib/prisma", () => ({ prisma: { workspace: { update: (a: never) => update(a) } } }));
-vi.mock("@/server/bootstrap", () => ({
-  ensureBaseRecords: vi.fn(async () => ({ workspace: { id: "w1", pulseEmbedEnabled: true, pulseEmbedBookingUrl: null } })),
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    workspace: {
+      update: (a: never) => update(a),
+      findUniqueOrThrow: vi.fn(async () => ({ id: "w1", pulseEmbedEnabled: true, pulseEmbedBookingUrl: null })),
+    },
+  },
 }));
+vi.mock("@/server/workspaces/scope", () => ({ workspaceIdForRequest: vi.fn(async () => "w1") }));
 vi.mock("@/server/audit-log", () => ({ recordAuditEntry: (a: never) => audit(a) }));
 vi.mock("@/lib/encryption", () => ({ encryptNullable: (v: string) => `enc(${v})` }));
 vi.mock("@/server/pulse-embed-workspace", async () => {
@@ -36,6 +41,7 @@ import { GET, PATCH } from "../route";
 import { CHECKS_REGISTRY } from "@/server/checks-registry";
 
 const KEYS = CHECKS_REGISTRY.slice(0, 3).map((c) => c.key);
+const get = () => GET(new Request("https://x.test/api/workspace/pulse-embed"));
 const patch = (body: unknown) =>
   PATCH(new Request("https://x.test/api/workspace/pulse-embed", {
     method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -45,18 +51,18 @@ beforeEach(() => { vi.clearAllMocks(); stored = null; });
 
 describe("GET", () => {
   it("reports no limit by default", async () => {
-    const res = await GET();
+    const res = await get();
     expect((await res.json()).freeCheckKeys).toBeNull();
   });
 
   it("reports the saved set", async () => {
     stored = { keys: KEYS };
-    expect((await (await GET()).json()).freeCheckKeys).toEqual(KEYS);
+    expect((await (await get()).json()).freeCheckKeys).toEqual(KEYS);
   });
 
   it("a legacy bare-array column does NOT silently become a limit", async () => {
     stored = KEYS; // what the retired picker left in the database
-    expect((await (await GET()).json()).freeCheckKeys).toBeNull();
+    expect((await (await get()).json()).freeCheckKeys).toBeNull();
   });
 });
 

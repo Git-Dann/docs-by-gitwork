@@ -17,7 +17,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
 import { signMobileToken } from "@/server/auth/mobile-jwt";
-import { isActiveMember } from "@/server/auth/member-status";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
@@ -77,7 +77,11 @@ export async function GET(request: NextRequest) {
   // Not signed in → bounce through the normal NextAuth sign-in, returning here afterwards.
   if (!email) {
     const signInUrl = new URL("/api/auth/signin", originFrom(request));
-    signInUrl.searchParams.set("callbackUrl", request.url);
+    // Not `request.url`: behind the VPS proxy that is http(s)://0.0.0.0:3000/…, so after Google
+    // sign-in the browser was sent to an address it can't reach and the Mac app never got its
+    // token. Same reason the origin above comes from originFrom (see request-origin.ts).
+    const back = new URL(request.url);
+    signInUrl.searchParams.set("callbackUrl", `${originFrom(request)}${back.pathname}${back.search}`);
     return NextResponse.redirect(signInUrl);
   }
 
@@ -97,11 +101,9 @@ export async function GET(request: NextRequest) {
   // session had not yet been revalidated could exchange it here for a desktop
   // token that outlives the session check entirely. Mirrors `refusedMembership` in
   // src/auth.ts and the mobile callback — `sign-in-paths.test.ts` holds all three.
-  if (dbUser) {
-    const existing = dbUser.memberships[0];
-    if (!existing || !isActiveMember(existing)) {
-      return schemeHandoff("error=revoked", "error");
-    }
+  // An active membership in any workspace (src/server/auth/home-membership.ts).
+  if (dbUser && !(await findHomeMembership(dbUser.id, session.user?.workspaceId ?? null))) {
+    return schemeHandoff("error=revoked", "error");
   }
 
   const isKnownSuperAdmin = KNOWN_SUPER_ADMIN_EMAILS.includes(email);
@@ -144,7 +146,8 @@ export async function GET(request: NextRequest) {
     dbUser.memberships[0].role = "SUPER_ADMIN";
   }
 
-  const membership = dbUser.memberships[0];
+  // Which workspace this token is for: Gitwork for every Gitwork member, else their own.
+  const membership = await findHomeMembership(dbUser.id, session.user?.workspaceId ?? null);
   const role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
   const permissions = membership ? await recomputeMember(membership.id) : [];
 

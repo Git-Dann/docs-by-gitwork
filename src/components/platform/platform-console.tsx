@@ -29,6 +29,8 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { Pager } from "@/components/ui/pager";
 import { SortHeader } from "@/components/ui/sort-header";
+import { AddBusinessDialog } from "@/components/platform/add-business-dialog";
+import { SignInDomains } from "@/components/platform/sign-in-domains";
 
 function Panel({
   number,
@@ -130,6 +132,7 @@ function BusinessesPanel({ onOpen }: { onOpen: (id: string) => void }) {
   const filtered = Boolean(q || query.modules !== "any" || query.ai !== "any");
   const data = list.data;
   const sort = { key: query.sort, dir: query.dir };
+  const [adding, setAdding] = useState(false);
 
   return (
     <Panel
@@ -137,8 +140,16 @@ function BusinessesPanel({ onOpen }: { onOpen: (id: string) => void }) {
       title="Businesses"
       status={data ? (filtered ? `${data.total} match` : `${data.total} on Foundry`) : undefined}
     >
+      <AddBusinessDialog open={adding} onClose={() => setAdding(false)} onOpenBusiness={onOpen} />
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="app-button app-button-primary app-button-sm order-last sm:ml-auto"
+            onClick={() => setAdding(true)}
+          >
+            Add business
+          </button>
           <input
             type="search"
             className="app-input min-w-[200px] flex-1 sm:max-w-xs"
@@ -290,11 +301,12 @@ export function draftProblem(d: Draft): string | null {
   return null;
 }
 
-type Section = "overview" | "modules" | "ai" | "activity";
+type Section = "overview" | "modules" | "ai" | "signin" | "activity";
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "modules", label: "Modules" },
   { id: "ai", label: "AI keys" },
+  { id: "signin", label: "Sign-in" },
   { id: "activity", label: "Activity" },
 ];
 
@@ -507,6 +519,8 @@ function BusinessDialog({ id, onClose }: { id: string; onClose: () => void }) {
                     </span>
                   </label>
                 </section>
+              ) : section === "signin" ? (
+                <SignInDomains workspace={workspace} />
               ) : (
                 <div className="space-y-3">
                   {audit.isPending ? (
@@ -573,7 +587,17 @@ function BusinessDialog({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 /** One line per audit entry: who, which business, what changed. */
-export function describePlatformChange(entry: Pick<PlatformAuditItem, "before" | "after">): string {
+export function describePlatformChange(
+  entry: Pick<PlatformAuditItem, "before" | "after"> & { action?: string },
+): string {
+  const domainsAfter = (entry.after as { allowedEmailDomains?: string[] } | null)?.allowedEmailDomains;
+  if (Array.isArray(domainsAfter)) {
+    return domainsAfter.length ? `set its Google sign-in domains to ${domainsAfter.join(", ")}` : "removed its Google sign-in domains";
+  }
+  if (entry.action === "platform.workspace.created") {
+    const owner = (entry.after as { ownerEmail?: string } | null)?.ownerEmail;
+    return owner ? `created it and invited ${owner} as owner` : "created it";
+  }
   const before = (entry.before ?? {}) as Partial<Draft>;
   const after = (entry.after ?? {}) as Partial<Draft>;
   const parts: string[] = [];

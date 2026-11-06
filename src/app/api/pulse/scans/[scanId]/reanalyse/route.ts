@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan, reanalysePulseScan, requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { getEffectiveUserOrNull, assertCan, canGenerateAi } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
@@ -17,14 +18,15 @@ export async function POST(
     assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "reanalyse");
     await requireScanAccess(request, scanId);
 
-    const existing = await getPulseScan(scanId);
+    const workspaceId = await workspaceIdForRequest(request);
+    const existing = await getPulseScan(scanId, workspaceId);
     if (!existing) return apiError("Scan not found.", 404);
     if (existing.status === "RUNNING") return apiError("Scan is still running.", 409);
 
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
     const context = typeof body.context === "string" ? body.context.trim() : undefined;
 
-    const scan = await reanalysePulseScan(scanId, context || undefined);
+    const scan = await reanalysePulseScan(scanId, workspaceId, context || undefined);
     return apiOk({ scan });
   } catch (error) {
     return fromError(error);

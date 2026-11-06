@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { duplicateLaunchpadTemplate } from "@/server/launchpad-templates";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       "manage Launchpad templates",
     );
     const { id } = await params;
-    const template = await duplicateLaunchpadTemplate(id);
+    const template = await duplicateLaunchpadTemplate(await workspaceIdForRequest(request), id);
     if (!template) return apiError("Template not found", 404);
     return apiOk({ template }, { status: 201 });
   } catch (error) {

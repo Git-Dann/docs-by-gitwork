@@ -12,6 +12,8 @@
  * tested and previewed without sending anything.
  */
 
+import { provisionalNote } from "@/lib/pulse-free-score";
+
 export interface ReportEmailFinding {
   label: string;
   category: string;
@@ -232,8 +234,11 @@ export interface LeadEmailInput {
   business: string | null;
   email: string;
   targetUrl: string;
-  /** The free scan's score. The full report they are sent rescans, so it can differ. */
+  /** The free scan's score (cautious: half marks for what it couldn't judge, free-score.ts).
+   *  The full report they are sent rescans, so it can differ. */
   score: number | null;
+  /** Set when the free scan judged too little for the score to be more than a guide. */
+  provisionalCoverage?: number | null;
   /** Where the scan came from: the embed on gitwork.co.uk, the sales page, … */
   source: string | null;
   /** Foundry's Pulse page, where leads are listed and can be imported. */
@@ -288,9 +293,10 @@ export function renderLeadEmail(input: LeadEmailInput): { subject: string; html:
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
             <td style="vertical-align:top;">
               <div style="font-family:${DISPLAY};font-size:48px;line-height:1;font-weight:700;letter-spacing:-0.03em;color:${SIGNAL};">${input.score ?? "&ndash;"}</div>
-              <div style="padding-top:8px;">${label("Free scan score / 100")}</div>
+              <div style="padding-top:8px;">${label(input.provisionalCoverage != null ? "Free scan score / 100 · provisional" : "Free scan score / 100")}</div>
             </td>
           </tr></table>
+          ${input.provisionalCoverage != null ? `<p style="margin:14px 0 0 0;font-family:${BODY};font-size:13px;line-height:1.55;color:${MUTED};">${esc(provisionalNote(input.provisionalCoverage))}</p>` : ""}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;">
             ${input.name ? row("Name", esc(input.name)) : ""}
             ${input.business ? row("Business", esc(input.business)) : ""}

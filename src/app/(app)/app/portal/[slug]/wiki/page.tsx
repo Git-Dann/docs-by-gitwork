@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { getClientNameBySlug } from "@/server/clients";
 import { pageMetadataTitle } from "@/lib/page-title";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { headers } from "next/headers";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { WikiWorkspace } from "@/components/clients/wiki/wiki-workspace";
 import { notFound } from "next/navigation";
 
@@ -26,8 +27,7 @@ export default async function WikiPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const { workspace } = await ensureBaseRecords();
-  const workspaceId = workspace.id;
+  const workspaceId = await workspaceIdForRequest(new Request("http://foundry.local", { headers: await headers() }));
 
   const client = await prisma.workspaceClient.findUnique({
     where: { workspaceId_slug: { workspaceId, slug } },

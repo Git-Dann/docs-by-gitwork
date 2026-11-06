@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { canViewPulseScan, getPulseScan, deletePulseScan, renamePulseScan } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { pulseScanRenameSchema } from "@/server/validators";
 import { assertCan, canManagePulse, canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
@@ -13,7 +14,8 @@ export async function GET(
 ) {
   try {
     const { scanId } = await params;
-    const scan = await getPulseScan(scanId);
+    const workspaceId = await workspaceIdForRequest(request);
+    const scan = await getPulseScan(scanId, workspaceId);
     if (!scan) {
       return apiError("Scan not found.", 404);
     }
@@ -44,12 +46,13 @@ export async function PATCH(
   try {
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "rename Pulse scans");
     const { scanId } = await params;
-    const existing = await getPulseScan(scanId);
+    const workspaceId = await workspaceIdForRequest(request);
+    const existing = await getPulseScan(scanId, workspaceId);
     if (!existing) {
       return apiError("Scan not found.", 404);
     }
     const { projectName } = pulseScanRenameSchema.parse(await request.json());
-    const scan = await renamePulseScan(scanId, projectName);
+    const scan = await renamePulseScan(scanId, workspaceId, projectName);
     return apiOk({ scan });
   } catch (error) {
     return fromError(error);
@@ -63,11 +66,12 @@ export async function DELETE(
   try {
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "delete Pulse scans");
     const { scanId } = await params;
-    const scan = await getPulseScan(scanId);
+    const workspaceId = await workspaceIdForRequest(request);
+    const scan = await getPulseScan(scanId, workspaceId);
     if (!scan) {
       return apiError("Scan not found.", 404);
     }
-    await deletePulseScan(scanId);
+    await deletePulseScan(scanId, workspaceId);
     return apiOk({ deleted: true });
   } catch (error) {
     return fromError(error);

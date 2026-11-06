@@ -29,6 +29,7 @@ import {
   rejectBackstageLeave,
   reviewBackstageExpense,
   setBackstageMemberPermission,
+  setBackstageAllowance,
   uploadBackstageReceipt,
   type BackstageScope,
 } from "@/lib/api";
@@ -124,6 +125,18 @@ export function useLeaveAllowance(userId?: string) {
     queryKey: QK.allowance(userId),
     queryFn: () => getBackstageAllowance(userId),
     staleTime: 60_000,
+  });
+}
+
+/** Set someone's days per holiday year (null = workspace default). Refreshes Backstage and Staff. */
+export function useSetLeaveAllowance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, days }: { userId: string; days: number | null }) => setBackstageAllowance(userId, days),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["backstage", "allowance"] });
+      void qc.invalidateQueries({ queryKey: ["staff", "activity"] });
+    },
   });
 }
 

@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   createProofAccessToken,
   createProofSlug,
@@ -11,12 +10,13 @@ import {
   serializeProofDocument,
 } from "@/server/proof";
 import { proofCreateSchema } from "@/server/validators";
+import { requestActor, workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const proposalId = request.nextUrl.searchParams.get("proposalId")?.trim();
 
     const documents = await prisma.proofDocument.findMany({
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = proofCreateSchema.parse(await request.json());
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(request);
     const slug = createProofSlug(body.title);
     const accessToken = createProofAccessToken();
     const { shareUrl, tokenUrl } = createProofUrls(originFrom(request), slug, accessToken);

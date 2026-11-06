@@ -7,6 +7,8 @@ import { assignedClientIds } from "@/server/tasks";
 import { pulseScanCreateSchema } from "@/server/validators";
 import { createPulseScanRecord, runAnalysis, listPulseScans } from "@/server/pulse";
 import { getRequestUser } from "@/server/auth/request-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -18,7 +20,7 @@ export async function GET(request: NextRequest) {
     // (preserved). A restricted developer only ever receives their assigned clients' scans.
     const user = await getEffectiveUserOrNull(request);
     const clientIds = user && !canSeeAllClients(user) ? await assignedClientIds(user) : null;
-    const scans = await listPulseScans({
+    const scans = await listPulseScans(await workspaceIdForRequest(request), {
       clientId,
       clientIds,
       // A scoped viewer always sees their own scans, even ones with no client.
@@ -59,6 +61,7 @@ export async function POST(request: NextRequest) {
     const requestUser = getRequestUser(request);
 
     const { scan, aiConfig } = await createPulseScanRecord({
+      workspaceId: await requestWorkspaceId(scanUser),
       projectName: body.projectName,
       inputType: body.inputType,
       inputUrl: body.inputUrl,

@@ -17,9 +17,10 @@ export interface RestoreOutcome {
   reason?: string;
 }
 
-export async function restoreCuratorRun(runId: string): Promise<RestoreOutcome> {
-  const run = await prisma.curatorRun.findUnique({
-    where: { id: runId },
+export async function restoreCuratorRun(workspaceId: string, runId: string): Promise<RestoreOutcome> {
+  // A run in another workspace reads as not found.
+  const run = await prisma.curatorRun.findFirst({
+    where: { id: runId, workspaceId },
     select: { workspaceId: true, transitions: true, mode: true },
   });
   if (!run) return { ok: false, reversed: 0, reason: "Run not found" };
@@ -33,7 +34,7 @@ export async function restoreCuratorRun(runId: string): Promise<RestoreOutcome> 
   for (const t of transitions) {
     // Only revert if the starter is still in the state this run left it in.
     const res = await prisma.starter.updateMany({
-      where: { id: t.target, curatorState: t.to as StarterLifecycleState },
+      where: { id: t.target, workspaceId, curatorState: t.to as StarterLifecycleState },
       data: {
         curatorState: t.from as StarterLifecycleState,
         // Un-hide anything this run archived.

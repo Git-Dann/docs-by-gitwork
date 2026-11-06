@@ -1,5 +1,6 @@
 "use client";
 
+import { describeAiError } from "@/lib/ai-error-words";
 import { Button } from "@/components/ui/button";
 import { AgentPanel } from "./agent-panel";
 import type { ScanView } from "./use-scan-view";
@@ -31,8 +32,8 @@ export function renderTechnicalPanels(v: ScanView) {
             <div className="flex-1 min-w-0">
               {scan.aiError ? (
                 <>
-                  <p className="font-semibold">AI analysis unavailable</p>
-                  <p className="mt-0.5 text-amber-700">{scan.aiError}</p>
+                  <p className="font-semibold">No AI write-up for this scan</p>
+                  <p className="mt-0.5 text-amber-700" title={scan.aiError}>{describeAiError(scan.aiError)}</p>
                   <p className="mt-0.5 text-amber-700">Technical checks and scores above are accurate.</p>
                 </>
               ) : (

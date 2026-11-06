@@ -171,7 +171,7 @@ async function handleRefresh(params: TokenParams) {
   // Re-check the person, not just the token: someone archived, removed, or no longer holding
   // `mcp.connect` must not be handed a fresh pair. Revoke the presented token too, so the
   // connection is dead rather than retried every hour.
-  if (!(await resolveMcpActor(userId))) {
+  if (!(await resolveMcpActor(userId, workspaceId))) {
     await revokeTokenByValue(params.refresh_token);
     return oauthJsonError(
       "invalid_grant",
@@ -207,12 +207,17 @@ async function resolveWorkspaceForRefresh(
   const hash = createHash("sha256").update(refreshToken, "utf8").digest("hex");
   const row = await prisma.oAuthToken.findUnique({
     where: { tokenHash: hash },
-    select: { userId: true },
+    select: { userId: true, oauthClientId: true },
   });
   if (!row) {
     throw new OAuthError("invalid_grant", "Unknown refresh token.");
   }
-  const workspaceId = await workspaceIdForUser(row.userId);
+  // A refresh keeps the workspace the connection was approved in.
+  const connection = await prisma.mcpConnection.findUnique({
+    where: { userId_oauthClientId: { userId: row.userId, oauthClientId: row.oauthClientId } },
+    select: { workspaceId: true },
+  });
+  const workspaceId = connection?.workspaceId ?? (await workspaceIdForUser(row.userId));
   if (!workspaceId) {
     throw new OAuthError("invalid_grant", "User has no workspace membership.");
   }

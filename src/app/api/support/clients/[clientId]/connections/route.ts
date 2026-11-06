@@ -2,15 +2,17 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { listConnections, createConnection } from "@/server/support";
 import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const connections = await listConnections(clientId);
     return apiOk({ connections });
   } catch (error) {
@@ -25,6 +27,7 @@ export async function POST(
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care connections");
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const body = await request.json();
     const connection = await createConnection(clientId, body);
     return apiOk({ connection }, { status: 201 });

@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { decryptScraperConfig } from "@/server/support";
 import { runAnalytics, type AnalyticsConnectionConfig } from "@/server/support-analytics";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,6 +17,7 @@ export async function GET(
 ) {
   try {
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const monthParam = request.nextUrl.searchParams.get("month"); // "YYYY-MM"
     const now = new Date();
     const [yStr, mStr] = (monthParam ?? "").split("-");

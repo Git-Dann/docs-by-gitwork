@@ -14,7 +14,7 @@ import {
   resolveDocumentTokens,
   resolvePulseTokens,
 } from "@/lib/starter-merge-variables";
-import { requestWorkspaceId } from "@/server/workspaces/scope";
+import { requestWorkspaceId, workspaceIdForRequest } from "@/server/workspaces/scope";
 
 // Node runtime — Buffer + server-side GitHub fetch + fflate. Starters is Super-Admin-only (same
 // gate as the other /api/starters routes). Returns a Claude Skill `.zip` (folder + SKILL.md at the
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageStarters, "download starters");
     const { id } = await params;
-    const starter = await getStarter(id);
+    const starter = await getStarter(await workspaceIdForRequest(request), id);
     if (!starter) return apiError("Starter not found", 404);
 
     const files = await assembleStarterFiles(starter);
@@ -41,10 +41,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const documentId = request.nextUrl.searchParams.get("documentId");
     const scanId = request.nextUrl.searchParams.get("scanId");
     if (clientSlug || documentId || scanId) {
+      const workspaceId = await requestWorkspaceId(user);
       const [clientDetail, document, scan] = await Promise.all([
-        clientSlug ? getDerivedClientDetail(await requestWorkspaceId(user), clientSlug) : null,
-        documentId ? prisma.document.findFirst({ where: { id: documentId }, include: proposalInclude }) : null,
-        scanId ? getPulseScan(scanId) : null,
+        clientSlug ? getDerivedClientDetail(workspaceId, clientSlug) : null,
+        documentId ? prisma.document.findFirst({ where: { id: documentId, workspaceId }, include: proposalInclude }) : null,
+        scanId ? getPulseScan(scanId, workspaceId) : null,
       ]);
       let vars: Record<string, string> = {};
       if (clientDetail?.client) vars = { ...vars, ...resolveClientTokens(clientDetail.client) };
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    await recordStarterUsage(starter.id);
+    await recordStarterUsage(await workspaceIdForRequest(request), starter.id);
 
     const zip = zipSync(files);
     const filename = `${starter.slug}.zip`.replace(/[^\w.\-]+/g, "-");

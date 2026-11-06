@@ -4,6 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  boardEnvironments,
+  filterBoardByEnvironment,
   monitorState,
   orderBoard,
   summariseBoard,
@@ -15,6 +17,7 @@ const mon = (over: Partial<BoardMonitor> = {}): BoardMonitor => ({
   id: Math.random().toString(36).slice(2),
   name: "Website",
   target: "https://example.com/",
+  environment: "production",
   status: "UP",
   stale: false,
   alertKind: null,
@@ -112,5 +115,37 @@ describe("the order", () => {
     ]);
     expect(monitored.map((c) => c.slug)).toEqual(["gitwork", "fellas-loaded", "polleniq", "after-desk", "wedge"]);
     expect(unmonitored.map((c) => c.slug)).toEqual(["campfire", "kernel"]);
+  });
+});
+
+describe("environments on the board", () => {
+  it("names the environment when only a non-production service is down", () => {
+    const board = [
+      client("fellas", "Fellas Loaded", [mon({ name: "API", environment: "staging", status: "DOWN" }), mon({ name: "API" })]),
+    ];
+    expect(summariseBoard(board).headline).toBe("1 service down — Fellas Loaded (Staging)");
+  });
+
+  it("says just the client when production is down too", () => {
+    const board = [
+      client("fellas", "Fellas Loaded", [mon({ environment: "staging", status: "DOWN" }), mon({ status: "DOWN" })]),
+    ];
+    expect(summariseBoard(board).headline).toBe("2 services down — Fellas Loaded");
+  });
+
+  it("filters to one environment and drops clients left with nothing", () => {
+    const board = [
+      client("a", "A", [mon({ id: "p" }), mon({ id: "s", environment: "staging" })]),
+      client("b", "B", [mon({ id: "p2" })]),
+    ];
+    const staging = filterBoardByEnvironment(board, "staging");
+    expect(staging.map((c) => c.slug)).toEqual(["a"]);
+    expect(staging[0].monitors.map((m) => m.id)).toEqual(["s"]);
+    expect(filterBoardByEnvironment(board, "all")).toBe(board);
+  });
+
+  it("lists the environments present, production first", () => {
+    const board = [client("a", "A", [mon({ environment: "staging" }), mon(), mon({ environment: "development" })])];
+    expect(boardEnvironments(board)).toEqual(["production", "development", "staging"]);
   });
 });

@@ -1,9 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findSessionMembership } from "@/server/auth/home-membership";
 import { isSuperAdmin } from "@/types/auth";
 import { AppShell } from "@/components/app-shell";
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
@@ -13,18 +11,9 @@ export const dynamic = "force-dynamic";
 export default async function AnalyticsPage() {
   // Resolve role live from the DB (matches the Settings super-admin gate) rather than the JWT.
   const session = await auth();
-  await ensureBaseRecords();
   const sessionUser = session?.user;
-  const member =
-    sessionUser?.id || sessionUser?.email
-      ? await prisma.workspaceMember.findFirst({
-          where: {
-            user: sessionUser.id ? { id: sessionUser.id } : { email: sessionUser.email! },
-            workspace: { slug: DEFAULT_WORKSPACE_SLUG },
-          },
-          select: { role: true },
-        })
-      : null;
+  // The workspace this session is signed in to (src/server/auth/home-membership.ts).
+  const member = await findSessionMembership(sessionUser);
   const role = member?.role ?? sessionUser?.role ?? "";
   if (!isSuperAdmin(role)) notFound();
 

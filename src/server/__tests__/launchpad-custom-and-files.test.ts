@@ -38,6 +38,7 @@ function kitView() {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    workspaceClient: { findUnique: vi.fn(async () => ({ workspaceId: "ws1" })) },
     clientWiki: {
       findUnique: vi.fn(async (args: { where: { id?: string; clientId?: string } }) => {
         if (args.where.clientId) return { id: db.wiki.id };

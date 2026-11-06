@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -10,8 +11,13 @@ export const maxDuration = 30;
 // Body: { config: { imapHost, imapPort, imapSecure, smtpHost, smtpPort, smtpSecure, username, password } }
 // Tries an IMAP login and an SMTP verify, returning per-leg ok/error so the connector form can
 // show instant feedback before saving. Never persists anything.
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ clientId: string }> },
+) {
   try {
+    const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const body = (await request.json().catch(() => ({}))) as {
       config?: {
         imapHost?: string;
