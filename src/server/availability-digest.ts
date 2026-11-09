@@ -6,62 +6,26 @@
 
 import { prisma } from "@/lib/prisma";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
+import {
+  formatAvailabilityDigest,
+  mondayOf,
+  type DigestMode,
+} from "@/lib/availability-digest-format";
 
 const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
 
-const DAY_FMT = new Intl.DateTimeFormat("en-GB", {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
-const DM_FMT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-
-function dayUtc(d = new Date()): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-function addDays(d: Date, n: number): Date {
-  const x = new Date(d);
-  x.setUTCDate(x.getUTCDate() + n);
-  return x;
-}
-// Monday (UTC) of the week containing `d`.
-function mondayOf(d: Date): Date {
-  const offset = (d.getUTCDay() + 6) % 7; // Mon=0 … Sun=6
-  return addDays(dayUtc(d), -offset);
-}
-// First weekday strictly after `d`.
-function nextWorkingDay(d: Date): Date {
-  let x = addDays(d, 1);
-  while (x.getUTCDay() === 0 || x.getUTCDay() === 6) x = addDays(x, 1);
-  return x;
-}
-function wholeDaysInclusive(from: Date, to: Date): number {
-  return Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1;
-}
-
-const LEAVE_LABEL: Record<string, string> = {
-  ANNUAL: "holiday",
-  SICK: "sick leave",
-  UNPAID: "unpaid leave",
-  OTHER: "leave",
-};
-
-function displayName(u: { name: string | null; email: string }): string {
-  return u.name?.trim() ? u.name : u.email;
-}
-
-export type DigestMode = "daily" | "weekly";
-
 // Compose the digest text for a workspace + mode. Returns null when nobody's on leave.
+// The wording lives in src/lib/availability-digest-format.ts (pure and tested).
 export async function buildAvailabilityDigest(
   workspaceId: string,
   mode: DigestMode,
   ref = new Date(),
 ): Promise<string | null> {
-  const today = dayUtc(ref);
-  const rangeStart = mode === "weekly" ? mondayOf(ref) : today;
-  const rangeEnd = mode === "weekly" ? addDays(mondayOf(ref), 6) : today; // Mon–Sun for the week
+  const today = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate()));
+  const monday = mondayOf(today);
+  const rangeStart = mode === "weekly" ? monday : today;
+  // Mon–Fri: the weekly post is about the working week, and says so in its heading.
+  const rangeEnd = mode === "weekly" ? new Date(monday.getTime() + 4 * 86_400_000) : today;
 
   const leave = await prisma.leaveRequest.findMany({
     where: {
@@ -75,29 +39,18 @@ export async function buildAvailabilityDigest(
     orderBy: { startDate: "asc" },
   });
 
-  if (leave.length === 0) return null;
-
-  const lines: string[] = [
-    mode === "weekly"
-      ? `*On leave this week — ${DM_FMT.format(rangeStart)}–${DM_FMT.format(rangeEnd)}*`
-      : `*On leave today — ${DAY_FMT.format(today)}*`,
-    "",
-  ];
-
-  for (const l of leave) {
-    const name = displayName(l.user);
-    const kind = LEAVE_LABEL[l.type] ?? "leave";
-    if (mode === "weekly") {
-      lines.push(`• ${name} — ${kind}, ${DM_FMT.format(l.startDate)}–${DM_FMT.format(l.endDate)}`);
-    } else {
-      const daysLeft = wholeDaysInclusive(today, l.endDate);
-      const back = DAY_FMT.format(nextWorkingDay(l.endDate));
-      const left = daysLeft === 1 ? "last day" : `${daysLeft} days left`;
-      lines.push(`• ${name} — ${kind}, back ${back} (${left})`);
-    }
-  }
-
-  return lines.join("\n");
+  return formatAvailabilityDigest(
+    leave.map((l) => ({
+      name: l.user.name?.trim() ? l.user.name : l.user.email,
+      type: l.type,
+      startDate: l.startDate,
+      endDate: l.endDate,
+      halfDayStart: l.halfDayStart,
+      halfDayEnd: l.halfDayEnd,
+    })),
+    mode,
+    today,
+  );
 }
 
 // Cron entry: post the digest for every workspace that has a digest channel
