@@ -2,12 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { dispatchNotification } from "@/server/notifications";
 import type { Prisma } from "@prisma/client";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   type EffectiveUser,
   ForbiddenError,
   canApproveBackstage,
   canManageExpenses,
+  canReviewExpenses,
 } from "@/server/auth/effective-user";
 import { isAtLeast, normalizeOverrides } from "@/types/auth";
 import { recomputeMember } from "@/server/permissions";
@@ -15,7 +15,7 @@ import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import { isNonWorkingDay, getHolidaysForCountry } from "@/server/backstage-holidays";
 import {
   sendWorkspaceEmail,
-  listBackstageApproverEmails,
+  listExpenseReviewerEmails,
   escapeHtml,
 } from "@/server/email";
 import type {
@@ -34,6 +34,15 @@ import type {
   ExpenseCategory,
 } from "@/types/backstage";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
+import {
+  assertLooksAfterLeaveOf,
+  gitworkUserFilter,
+  leaveApproverUserIds,
+  staffFactsByUser,
+  staffOnlyView,
+} from "@/server/backstage-people";
+import { leaveYearFor } from "@/lib/leave-year";
+import { COUNTS_TO_ALLOWANCE_WHERE, countsToAllowance, defaultCountsToAllowance } from "@/lib/leave-allowance";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -133,6 +142,7 @@ function leaveRowToDTO(row: LeaveRow, countryCode: string): LeaveRequestDTO {
     endDate: toIsoDate(row.endDate),
     halfDayStart: row.halfDayStart,
     halfDayEnd: row.halfDayEnd,
+    countsToAllowance: countsToAllowance(row),
     workingDays: computeWorkingDays(
       row.startDate,
       row.endDate,
@@ -191,7 +201,6 @@ export async function listLeaveRequests(
     cursor?: string;
   } = {},
 ): Promise<LeaveRequestDTO[]> {
-  await ensureBaseRecords();
   const scope = opts.scope ?? "me";
   // Team/all visibility is admins + approvers only. This used to throw for
   // `all` but fall THROUGH for `team` — and because a non-"me" scope drops the
@@ -205,6 +214,8 @@ export async function listLeaveRequests(
 
   const where: Prisma.LeaveRequestWhereInput = { workspaceId: user.workspaceId };
   if (scope === "me") where.userId = user.id;
+  // A staff-only approver (People & office) sees Gitwork staff's leave, not developers'.
+  else if (staffOnlyView(user)) Object.assign(where, await gitworkUserFilter(user));
   if (opts.status) where.status = opts.status;
 
   const rows = await prisma.leaveRequest.findMany({
@@ -247,6 +258,7 @@ export async function getLeaveRequest(
   if (row.userId !== user.id && !canApproveBackstage(user)) {
     throw new ForbiddenError("Cannot view another user's leave");
   }
+  await assertLooksAfterLeaveOf(user, row.userId);
 
   const member = await prisma.workspaceMember.findFirst({
     where: { workspaceId: user.workspaceId, userId: row.userId },
@@ -264,10 +276,10 @@ export async function createLeaveRequest(
     halfDayStart?: boolean;
     halfDayEnd?: boolean;
     reason?: string;
+    countsToAllowance?: boolean;
     userId?: string; // admin-only: file on behalf of another user
   },
 ): Promise<LeaveRequestDTO> {
-  await ensureBaseRecords();
   const targetUserId =
     input.userId && input.userId !== user.id
       ? (canApproveBackstage(user)
@@ -276,6 +288,7 @@ export async function createLeaveRequest(
               throw new ForbiddenError("Cannot file leave for another user");
             })())
       : user.id;
+  await assertLooksAfterLeaveOf(user, targetUserId);
 
   const row = await prisma.leaveRequest.create({
     data: {
@@ -285,6 +298,7 @@ export async function createLeaveRequest(
       startDate: new Date(input.startDate),
       endDate: new Date(input.endDate),
       halfDayStart: input.halfDayStart ?? false,
+      countsToAllowance: input.countsToAllowance ?? defaultCountsToAllowance(input.type),
       halfDayEnd: input.halfDayEnd ?? false,
       reason: input.reason,
       status: "PENDING",
@@ -301,14 +315,16 @@ export async function createLeaveRequest(
   });
   const dto = leaveRowToDTO(row, member?.countryCode ?? "GB");
   // Fire-and-forget notification to approvers. Don't block the request on email failures.
-  void notifyLeaveSubmitted(user.workspaceId, dto, targetUserId).catch((err) =>
+  void notifyLeaveSubmitted(user.workspaceId, dto, targetUserId).catch((err: unknown) =>
     console.error("[backstage] notifyLeaveSubmitted failed", err),
   );
+  // Admins always; a staff-only approver only for a non-developer's leave.
+  const approverIds = await leaveApproverUserIds(user.workspaceId, targetUserId);
   dispatchNotification({
     event: "backstage.leave_submitted",
     workspaceId: user.workspaceId,
     actorId: user.id,
-    target: { kind: "backstageApprovers" },
+    target: { kind: "users", userIds: approverIds },
     title: `${dto.user.name ?? "A teammate"} requested leave`,
     titleForCount: (n) =>
       n === 1
@@ -327,8 +343,11 @@ async function notifyLeaveSubmitted(
   lr: LeaveRequestDTO,
   excludeUserId: string,
 ): Promise<void> {
-  const approvers = await listBackstageApproverEmails(workspaceId, excludeUserId);
-  if (approvers.length === 0) return;
+  const ids = await leaveApproverUserIds(workspaceId, excludeUserId);
+  if (ids.length === 0) return;
+  const approvers = (
+    await prisma.user.findMany({ where: { id: { in: ids } }, select: { email: true } })
+  ).map((u) => u.email);
   const requester = escapeHtml(lr.user.name ?? "A teammate");
   const dates = `${lr.startDate.slice(0, 10)} → ${lr.endDate.slice(0, 10)}`;
   const reason = lr.reason ? `<p>${escapeHtml(lr.reason)}</p>` : "";
@@ -355,6 +374,7 @@ export async function updateLeaveRequest(
     halfDayStart?: boolean;
     halfDayEnd?: boolean;
     reason?: string;
+    countsToAllowance?: boolean;
   },
 ): Promise<LeaveRequestDTO> {
   const existing = await prisma.leaveRequest.findFirst({
@@ -364,6 +384,7 @@ export async function updateLeaveRequest(
   if (existing.userId !== user.id && !canApproveBackstage(user)) {
     throw new ForbiddenError("Cannot edit another user's leave");
   }
+  await assertLooksAfterLeaveOf(user, existing.userId);
   // Owners can only edit a request while it's pending; approvers (admin/HR) can
   // amend anyone's leave at any point — e.g. fixing dates on already-approved leave.
   if (existing.status !== "PENDING" && !canApproveBackstage(user)) {
@@ -377,6 +398,7 @@ export async function updateLeaveRequest(
       ...(input.startDate !== undefined ? { startDate: new Date(input.startDate) } : {}),
       ...(input.endDate !== undefined ? { endDate: new Date(input.endDate) } : {}),
       ...(input.halfDayStart !== undefined ? { halfDayStart: input.halfDayStart } : {}),
+      ...(input.countsToAllowance !== undefined ? { countsToAllowance: input.countsToAllowance } : {}),
       ...(input.halfDayEnd !== undefined ? { halfDayEnd: input.halfDayEnd } : {}),
       ...(input.reason !== undefined ? { reason: input.reason } : {}),
     },
@@ -401,6 +423,7 @@ export async function cancelLeaveRequest(user: EffectiveUser, id: string): Promi
   if (existing.userId !== user.id && !canApproveBackstage(user)) {
     throw new ForbiddenError("Cannot cancel another user's leave");
   }
+  await assertLooksAfterLeaveOf(user, existing.userId);
   if (existing.status === "REJECTED" || existing.status === "CANCELLED") {
     throw new ForbiddenError("Already cancelled or rejected");
   }
@@ -432,6 +455,7 @@ export async function approveLeaveRequest(
     where: { id, workspaceId: user.workspaceId },
   });
   if (!existing) throw new ForbiddenError("Leave request not found");
+  await assertLooksAfterLeaveOf(user, existing.userId);
   // Admins / super-admins may approve their own leave (there's often no one above
   // the founder to sign it off). Non-admin approvers still can't self-approve.
   if (existing.userId === user.id && !isAtLeast(user.role, "ADMIN")) {
@@ -480,6 +504,7 @@ export async function rejectLeaveRequest(
     where: { id, workspaceId: user.workspaceId },
   });
   if (!existing) throw new ForbiddenError("Leave request not found");
+  await assertLooksAfterLeaveOf(user, existing.userId);
   if (existing.userId === user.id) {
     throw new ForbiddenError("Cannot reject your own leave");
   }
@@ -516,9 +541,10 @@ export async function rejectLeaveRequest(
   return leaveRowToDTO(row, member?.countryCode ?? "GB");
 }
 
-// Annual leave entitlement minus approved days used in the current calendar
-// year. Pending days are reported separately and not pre-deducted — a
-// rejection mustn't lock up days.
+// Annual leave entitlement minus approved days used in the person's current holiday
+// year: from the anniversary of their Staff-record start date, or the calendar year
+// when there's no start date (src/lib/leave-year.ts). Pending days are reported
+// separately and not pre-deducted — a rejection mustn't lock up days.
 export async function getLeaveAllowance(
   user: EffectiveUser,
   targetUserId?: string,
@@ -527,10 +553,13 @@ export async function getLeaveAllowance(
   if (userId !== user.id && !canApproveBackstage(user)) {
     throw new ForbiddenError("Cannot view another user's allowance");
   }
+  await assertLooksAfterLeaveOf(user, userId);
 
-  const year = new Date().getUTCFullYear();
-  const yearStart = new Date(Date.UTC(year, 0, 1));
-  const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59));
+  const facts = await staffFactsByUser(user.workspaceId, [userId]);
+  const leaveYear = leaveYearFor(facts.get(userId)?.startDate ?? null);
+  const yearStart = leaveYear.start;
+  // The whole of the last day, so leave ending on it counts.
+  const yearEnd = new Date(leaveYear.end.getTime() + 24 * 60 * 60 * 1000 - 1000);
 
   const [workspace, member, requests] = await Promise.all([
     prisma.workspace.findUnique({
@@ -545,7 +574,8 @@ export async function getLeaveAllowance(
       where: {
         workspaceId: user.workspaceId,
         userId,
-        type: "ANNUAL",
+        // Leave that uses up allowance: Annual by default, or whatever the request says.
+        ...COUNTS_TO_ALLOWANCE_WHERE,
         status: { in: ["APPROVED", "PENDING"] },
         startDate: { lte: yearEnd },
         endDate: { gte: yearStart },
@@ -561,12 +591,13 @@ export async function getLeaveAllowance(
   ]);
 
   const allocated = member?.annualLeaveDays ?? workspace?.defaultAnnualLeaveDays ?? 25;
+  const isDefaultAllowance = member?.annualLeaveDays == null;
   const country = member?.countryCode ?? "GB";
 
   let used = 0;
   let pending = 0;
   for (const r of requests) {
-    // Clamp to current year window
+    // Clamp to the holiday year
     const start = r.startDate < yearStart ? yearStart : r.startDate;
     const end = r.endDate > yearEnd ? yearEnd : r.endDate;
     const days = computeWorkingDays(start, end, r.halfDayStart, r.halfDayEnd, country);
@@ -575,12 +606,53 @@ export async function getLeaveAllowance(
   }
 
   return {
-    year,
+    year: yearStart.getUTCFullYear(),
+    periodStart: yearStart.toISOString().slice(0, 10),
+    periodEnd: leaveYear.end.toISOString().slice(0, 10),
+    fromStartDate: leaveYear.fromStartDate,
+    isDefaultAllowance,
     allocated,
     used,
     pending,
     remaining: Math.max(0, allocated - used),
   };
+}
+
+/**
+ * Whether `user` may change `targetUserId`'s holiday allowance: someone who handles their
+ * leave (an approver who looks after them), never their own unless they're an Admin.
+ */
+export async function canSetLeaveAllowance(user: EffectiveUser, targetUserId: string): Promise<boolean> {
+  if (!canApproveBackstage(user)) return false;
+  if (targetUserId === user.id) return isAtLeast(user.role, "ADMIN");
+  try {
+    await assertLooksAfterLeaveOf(user, targetUserId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Set someone's days per holiday year. `null` puts them back on the workspace default.
+ * There was a column for this from the start and no way to write it, so until Nov 2026
+ * everyone had the workspace's 25.
+ */
+export async function setLeaveAllowanceDays(
+  user: EffectiveUser,
+  targetUserId: string,
+  annualLeaveDays: number | null,
+): Promise<LeaveAllowanceDTO> {
+  if (!(await canSetLeaveAllowance(user, targetUserId))) {
+    throw new ForbiddenError("You can't change this person's holiday allowance");
+  }
+  const member = await prisma.workspaceMember.findFirst({
+    where: { workspaceId: user.workspaceId, userId: targetUserId, ...ACTIVE_MEMBER },
+    select: { id: true },
+  });
+  if (!member) throw new ForbiddenError("Member not found");
+  await prisma.workspaceMember.update({ where: { id: member.id }, data: { annualLeaveDays } });
+  return getLeaveAllowance(user, targetUserId);
 }
 
 // ─── Expenses ────────────────────────────────────────────────────────────
@@ -593,10 +665,9 @@ export async function listExpenses(
     limit?: number;
   } = {},
 ): Promise<ExpenseDTO[]> {
-  await ensureBaseRecords();
   if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const scope = opts.scope ?? "me";
-  if (scope === "all" && !canApproveBackstage(user)) {
+  if (scope === "all" && !canReviewExpenses(user)) {
     throw new ForbiddenError("Cannot view all expenses");
   }
 
@@ -627,7 +698,7 @@ export async function getExpense(user: EffectiveUser, id: string): Promise<Expen
     },
   });
   if (!row) throw new ForbiddenError("Expense not found");
-  if (row.userId !== user.id && !canApproveBackstage(user)) {
+  if (row.userId !== user.id && !canReviewExpenses(user)) {
     throw new ForbiddenError("Cannot view another user's expense");
   }
   return expenseRowToDTO(row);
@@ -645,11 +716,10 @@ export async function createExpense(
     userId?: string;
   },
 ): Promise<ExpenseDTO> {
-  await ensureBaseRecords();
   if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const targetUserId =
     input.userId && input.userId !== user.id
-      ? (canApproveBackstage(user)
+      ? (canReviewExpenses(user)
           ? input.userId
           : (() => {
               throw new ForbiddenError("Cannot file expenses for another user");
@@ -681,7 +751,9 @@ export async function createExpense(
     event: "backstage.expense_submitted",
     workspaceId: user.workspaceId,
     actorId: user.id,
-    target: { kind: "backstageApprovers" },
+    // Only the people who can open the ledger. Leave approvers who can't would land on a
+    // queue that 403s.
+    target: { kind: "permission", permission: "backstage.expenses" },
     title: `${dto.user.name ?? "A teammate"} submitted an expense`,
     titleForCount: (n) =>
       n === 1
@@ -699,7 +771,7 @@ async function notifyExpenseSubmitted(
   ex: ExpenseDTO,
   excludeUserId: string,
 ): Promise<void> {
-  const approvers = await listBackstageApproverEmails(workspaceId, excludeUserId);
+  const approvers = await listExpenseReviewerEmails(workspaceId, excludeUserId);
   if (approvers.length === 0) return;
   const claimant = escapeHtml(ex.user.name ?? "A teammate");
   const vendor = ex.vendor ? ` · ${escapeHtml(ex.vendor)}` : "";
@@ -735,7 +807,7 @@ export async function updateExpense(
     where: { id, workspaceId: user.workspaceId },
   });
   if (!existing) throw new ForbiddenError("Expense not found");
-  if (existing.userId !== user.id && !canApproveBackstage(user)) {
+  if (existing.userId !== user.id && !canReviewExpenses(user)) {
     throw new ForbiddenError("Cannot edit another user's expense");
   }
   if (existing.status !== "SUBMITTED") {
@@ -766,7 +838,7 @@ export async function deleteExpense(user: EffectiveUser, id: string): Promise<vo
     where: { id, workspaceId: user.workspaceId },
   });
   if (!existing) throw new ForbiddenError("Expense not found");
-  if (existing.userId !== user.id && !canApproveBackstage(user)) {
+  if (existing.userId !== user.id && !canReviewExpenses(user)) {
     throw new ForbiddenError("Cannot delete another user's expense");
   }
   if (existing.status !== "SUBMITTED") {
@@ -789,7 +861,7 @@ export async function attachReceipt(
     where: { id: expenseId, workspaceId: user.workspaceId },
   });
   if (!existing) throw new ForbiddenError("Expense not found");
-  if (existing.userId !== user.id && !canApproveBackstage(user)) {
+  if (existing.userId !== user.id && !canReviewExpenses(user)) {
     throw new ForbiddenError("Cannot attach receipt to another user's expense");
   }
 
@@ -839,7 +911,7 @@ export async function getReceiptBytes(
     },
   });
   if (!row) throw new ForbiddenError("Expense not found");
-  if (row.userId !== user.id && !canApproveBackstage(user)) {
+  if (row.userId !== user.id && !canReviewExpenses(user)) {
     throw new ForbiddenError("Cannot view another user's receipt");
   }
   const bytes = row.receiptImage ?? row.receiptThumb;
@@ -860,7 +932,7 @@ export async function reviewExpense(
   note?: string,
 ): Promise<ExpenseDTO> {
   if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
-  if (!canApproveBackstage(user)) throw new ForbiddenError("Approval permission required");
+  if (!canReviewExpenses(user)) throw new ForbiddenError("Expense review permission required");
   const existing = await prisma.expense.findFirst({
     where: { id, workspaceId: user.workspaceId },
   });
@@ -987,19 +1059,21 @@ export async function getStaffingAlerts(
   user: EffectiveUser,
   opts: { windowDays?: number } = {},
 ): Promise<StaffingAlertsResponse> {
-  await ensureBaseRecords();
   const windowDays = opts.windowDays ?? 30;
   const now = new Date();
   const fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const toDate = new Date(fromDate);
   toDate.setUTCDate(toDate.getUTCDate() + windowDays);
 
+  // A staff-only approver (People & office) is shown Gitwork staff, not developers.
+  const onlyGitwork = staffOnlyView(user) ? await gitworkUserFilter(user) : {};
   const [members, approvedLeave] = await Promise.all([
     prisma.workspaceMember.findMany({
       where: {
         ...ACTIVE_MEMBER,
         workspaceId: user.workspaceId,
         user: seedAccountUserWhere(),
+        ...onlyGitwork,
       },
       include: { user: { select: { id: true, name: true, email: true } } },
     }),
@@ -1009,6 +1083,7 @@ export async function getStaffingAlerts(
         status: "APPROVED",
         startDate: { lte: toDate },
         endDate: { gte: fromDate },
+        ...onlyGitwork,
       },
       include: { user: { select: { id: true, name: true } } },
     }),
@@ -1145,7 +1220,6 @@ export async function getCalendarMonth(
   year: number,
   month: number, // 1–12
 ): Promise<CalendarMonth> {
-  await ensureBaseRecords();
 
   if (!Number.isInteger(year) || year < 1900 || year > 2100) {
     throw new Error("year out of range");

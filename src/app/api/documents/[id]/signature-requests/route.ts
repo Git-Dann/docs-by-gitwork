@@ -14,12 +14,14 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { requestActor } from "@/server/workspaces/scope";
 import {
   createSignatureRequest,
   inferSignersFromSections,
   listSignatureRequestsForDocument,
 } from "@/server/signatures";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -39,9 +41,10 @@ const createSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const requests = await listSignatureRequestsForDocument(id);
     return apiOk({ requests });
   } catch (error) {
@@ -52,8 +55,9 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const body = createSchema.parse(await request.json().catch(() => ({})));
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(request);
 
     const document = await prisma.document.findUnique({
       where: { id },

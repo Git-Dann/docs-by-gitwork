@@ -14,6 +14,9 @@
  */
 
 import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
+import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
+import { demoAiAnswersReport, demoSaveAiAnswersConfig, demoStartAiAnswersRun } from "@/lib/demo/demo-ai-answers";
+import { parseAiSearchRange } from "@/lib/ai-search";
 import { RECORDED_NORTHWIND_CHECKS } from "@/lib/demo/demo-pulse-recorded";
 import { RECORDED_CADENZA_CHECKS, RECORDED_CADENZA_CODE_HEALTH, RECORDED_CADENZA_SCORE, RECORDED_CADENZA_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-cadenza";
 import { RECORDED_FAIRWAY_CHECKS, RECORDED_FAIRWAY_SCORE, RECORDED_FAIRWAY_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-fairway";
@@ -54,6 +57,7 @@ import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
+import { resolveDemoCommitments } from "@/lib/demo/demo-commitments";
 import { resolveDemoCandidate, resolveDemoStaff, resolveDemoTeamArchive } from "@/lib/demo/demo-staff";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
@@ -1018,23 +1022,31 @@ const demoWiki: WikiDTO = {
     monitors: [
       {
         id: "mon1", name: "Marketing site", type: "HTTP", target: "https://northwind.co", method: "GET",
-        expectedStatus: 200, keyword: null, degradedMs: 800, enabled: true, intervalMinutes: 5,
+        expectedStatus: 200, keyword: null, degradedMs: 800, enabled: true, intervalMinutes: 5, environment: "production",
         status: "UP", checkedAt: atDays(0), latencyMs: 142, statusCode: 200, error: null,
         uptime: { d1: 100, d7: 99.9, d30: 99.8 }, avgLatencyMs: 150, history: monitorHistory(140), stale: false,
         headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(62), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
       },
       {
         id: "mon2", name: "API", type: "HTTP", target: "https://api.northwind.co/health", method: "GET",
-        expectedStatus: 200, keyword: "ok", degradedMs: 500, enabled: true, intervalMinutes: 5,
+        expectedStatus: 200, keyword: "ok", degradedMs: 500, enabled: true, intervalMinutes: 5, environment: "production",
         status: "UP", checkedAt: atDays(0), latencyMs: 88, statusCode: 200, error: null,
         uptime: { d1: 100, d7: 99.98, d30: 99.9 }, avgLatencyMs: 92, history: monitorHistory(90, [6, 7]), stale: false,
         headerNames: ["Authorization"], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(11), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
       },
       {
         id: "mon3", name: "Web app", type: "HTTP", target: "https://app.northwind.co", method: "GET",
-        expectedStatus: 200, keyword: null, degradedMs: 1200, enabled: true, intervalMinutes: 5,
+        expectedStatus: 200, keyword: null, degradedMs: 1200, enabled: true, intervalMinutes: 5, environment: "production",
         status: "DEGRADED", checkedAt: atDays(0), latencyMs: 1340, statusCode: 200, error: null,
         uptime: { d1: 99.2, d7: 99.5, d30: 99.6 }, avgLatencyMs: 410, history: monitorHistory(300, [0, 1, 2]), stale: false,
+        headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: null, domain: null,
+      },
+      {
+        // Staging, and down while it's redeployed: the team sees it, the client's board never does.
+        id: "mon4", name: "API", type: "HTTP", target: "https://staging-api.northwind.co/health", method: "GET",
+        expectedStatus: 200, keyword: null, degradedMs: null, enabled: true, intervalMinutes: 5, environment: "staging",
+        status: "DOWN", checkedAt: atDays(0), latencyMs: null, statusCode: 502, error: "Unexpected status 502",
+        uptime: { d1: 91.4, d7: 97.8, d30: 98.9 }, avgLatencyMs: 120, history: monitorHistory(120, [0, 1, 2, 3]), stale: false,
         headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: null, domain: null,
       },
     ],
@@ -1104,17 +1116,41 @@ const demoWiki: WikiDTO = {
         id: "cm1",
         name: "Receiver",
         description: "Firmware for the receiver unit — flash via PlatformIO.",
+        // Three versions with real edits between them (a changed function, a new file,
+        // a constant moved into config.h), so Compare has something honest to show.
         versions: [
           {
-            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.", isCurrent: true, createdAt: atDays(-3),
+            // Folder paths (src/…) and four files: the file list, a rename (radio.h moved
+            // into src/ unchanged) and the folding of older versions all show in the demo.
+            id: "cv1d", label: "v1.3.0", notes: "Split the radio driver into src/.\nRetry a failed receive once before sleeping.", isCurrent: true, createdAt: atDays(-1),
             files: [
-              { id: "f1", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n\nvoid setup() {\n  Serial.begin(115200);\n}\n\nvoid loop() {\n  // receive + decode\n}\n" },
-              { id: "f2", filename: "config.h", language: "cpp", content: "#define CHANNEL 7\n#define SLEEP_MS 500\n" },
+              { id: "f5a", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"config.h\"\n#include \"src/radio.h\"\n\nRadio radio(CHANNEL);\n\nvoid setup() {\n  Serial.begin(115200);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p) || radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  /* Sleep between polls to save battery.\n     One retry above covers a missed packet. */\n  esp_sleep_enable_timer_wakeup(SLEEP_MS * 1000ULL);\n  esp_light_sleep_start();\n}\n" },
+              { id: "f5b", filename: "config.h", language: "cpp", content: "#pragma once\n\n#define CHANNEL 7\n#define SLEEP_MS 750\n" },
+              { id: "f5c", filename: "src/radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+              { id: "f5d", filename: "src/radio.cpp", language: "cpp", content: "#include \"radio.h\"\n\nvoid Radio::begin() {\n  // Tune to the configured channel.\n}\n\nbool Radio::receive(Packet& out) {\n  out.count = 0;\n  return false;\n}\n" },
             ],
           },
           {
-            id: "cv1a", label: "v1.1.0", notes: "Initial handover.", isCurrent: false, createdAt: atDays(-30),
-            files: [{ id: "f3", filename: "main.cpp", language: "cpp", content: "// v1.1 receiver\nvoid setup() {}\nvoid loop() {}\n" }],
+            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.\nMove the radio channel into config.h.", isCurrent: false, createdAt: atDays(-3),
+            files: [
+              { id: "f1", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"config.h\"\n#include \"radio.h\"\n\nRadio radio(CHANNEL);\n\nvoid setup() {\n  Serial.begin(115200);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  // Sleep between polls to save battery.\n  esp_sleep_enable_timer_wakeup(SLEEP_MS * 1000ULL);\n  esp_light_sleep_start();\n}\n" },
+              { id: "f2", filename: "config.h", language: "cpp", content: "#pragma once\n\n#define CHANNEL 7\n#define SLEEP_MS 500\n" },
+              { id: "f2b", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+            ],
+          },
+          {
+            id: "cv1a", label: "v1.1.0", notes: "Print each reading over serial.", isCurrent: false, createdAt: atDays(-30),
+            files: [
+              { id: "f3", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"radio.h\"\n\nRadio radio(7);\n\nvoid setup() {\n  Serial.begin(9600);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  delay(500);\n}\n" },
+              { id: "f3b", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+            ],
+          },
+          {
+            id: "cv1c", label: "v1.0.0", notes: "Initial handover.", isCurrent: false, createdAt: atDays(-60),
+            files: [
+              { id: "f3c", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"radio.h\"\n\nRadio radio(7);\n\nvoid setup() {\n  radio.begin();\n}\n\nvoid loop() {\n  Packet p;\n  radio.receive(p);\n  delay(500);\n}\n" },
+              { id: "f3d", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+            ],
           },
         ],
       },
@@ -1725,6 +1761,12 @@ const demoClientDetail: ClientDetailRecord = {
     hasCareClient: true,
     repoUrls: ["https://github.com/northwind/app"],
     devCount: 2,
+    // The faces behind the count. A demo that shows a number with no people
+    // cannot exercise the card's team row, which is the thing being demoed.
+    people: [
+      { id: "u-dev-1", name: "Waqar Ahmed", avatarUrl: null },
+      { id: "u-dev-2", name: "Siân Woolridge", avatarUrl: null },
+    ],
     pulseHealthScore: 86,
     pulseScanId: "scan-northwind",
     health: { level: "green", reasons: ["No overdue tasks", "Pulse health 86"] },
@@ -3975,7 +4017,121 @@ function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
 
 let demoBoardColumns: BoardColumnDef[] = [{ id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" }];
 
+/** Monitors added through the demo's Add monitor popup, by client slug. Merged into the board. */
+const demoAddedMonitors = new Map<string, { name: string; target: string; environment: string }[]>();
+/** Edits made through the Monitors page's Edit popup, by monitor id. Applied over the board. */
+const demoMonitorEdits = new Map<string, { name?: string; target?: string; environment?: string; intervalMinutes?: number }>();
+
 function demoMonitorBoard() {
+  const board = demoMonitorBoardWithAdded();
+  return {
+    ...board,
+    clients: board.clients.map((c) => ({
+      ...c,
+      monitors: c.monitors.map((m) => {
+        const e = demoMonitorEdits.get(m.id);
+        if (!e) return m;
+        return { ...m, name: e.name ?? m.name, target: e.target ?? m.target, environment: e.environment ?? m.environment };
+      }),
+    })),
+  };
+}
+
+/** A board monitor as the wiki route returns it, so the Edit popup has every field to fill in. */
+function demoMonitorDTO(m: ReturnType<typeof demoMonitorBoard>["clients"][number]["monitors"][number]) {
+  const e = demoMonitorEdits.get(m.id);
+  return {
+    id: m.id, name: m.name, type: "HTTP" as const, target: m.target, method: "GET", expectedStatus: null, keyword: null,
+    degradedMs: null, enabled: true, intervalMinutes: e?.intervalMinutes ?? 5, environment: m.environment,
+    status: m.status, checkedAt: m.checkedAt, latencyMs: m.latencyMs, statusCode: m.statusCode, error: m.error,
+    uptime: { d1: m.uptime24h, d7: null, d30: null }, avgLatencyMs: null, history: [], stale: m.stale,
+    heartbeat: null, maintenance: null, ssl: null, domain: null, headerNames: [], hasBody: false, remoteNote: null,
+  };
+}
+
+/** GET /api/clients/[slug]/wiki/monitors on the demo: that client's board monitors, in full. */
+function demoClientMonitors(pathname: string) {
+  const slug = pathname.split("/")[3] ?? "";
+  const client = demoMonitorBoard().clients.find((c) => c.slug === slug);
+  return { enabled: true, monitors: (client?.monitors ?? []).map(demoMonitorDTO), incidents: [] };
+}
+
+/** PATCH /api/clients/[slug]/wiki/monitors/[id]: kept in memory so an edit shows on the board. */
+function demoEditMonitor(pathname: string, body: unknown) {
+  const id = pathname.split("/")[6] ?? "";
+  let parsed: unknown = body;
+  try {
+    if (typeof body === "string") parsed = JSON.parse(body);
+  } catch {
+    parsed = {};
+  }
+  const input = (parsed ?? {}) as { name?: string; target?: string; environment?: string; intervalMinutes?: number };
+  if (input.name !== undefined && !input.name.trim()) return { error: "Give the monitor a name.", __status: 400 };
+  demoMonitorEdits.set(id, {
+    ...demoMonitorEdits.get(id),
+    ...(input.name ? { name: input.name.trim() } : {}),
+    ...(input.target?.trim() ? { target: input.target.trim() } : {}),
+    ...(input.environment ? { environment: input.environment } : {}),
+    ...(typeof input.intervalMinutes === "number" ? { intervalMinutes: input.intervalMinutes } : {}),
+  });
+  const found = demoMonitorBoard().clients.flatMap((c) => c.monitors).find((m) => m.id === id);
+  return found ? demoMonitorDTO(found) : { error: "Monitor not found", __status: 404 };
+}
+
+function demoMonitorBoardWithAdded() {
+  const board = demoMonitorBoardBase();
+  return {
+    ...board,
+    clients: board.clients.map((c) => {
+      const added = demoAddedMonitors.get(c.slug) ?? [];
+      if (!added.length) return c;
+      const base = c.monitors[0] ?? demoMonitorBoardBase().clients[0].monitors[0];
+      return {
+        ...c,
+        monitors: [
+          ...c.monitors,
+          // Just added: not checked yet, which is how a real one reads until its first probe.
+          ...added.map((a, i) => ({
+            ...base,
+            id: `added-${c.slug}-${i}`,
+            name: a.name,
+            target: a.target,
+            environment: a.environment,
+            status: "UNKNOWN",
+            latencyMs: null,
+            statusCode: null,
+            checkedAt: null,
+            uptime24h: null,
+            alertKind: null,
+            downSince: null,
+          })),
+        ],
+      };
+    }),
+  };
+}
+
+/**
+ * Add monitor, from the Monitors page or a wiki — POST /api/clients/[slug]/wiki/monitors. Kept in
+ * memory and shown on the board, so the popup can be driven end to end on /demo/monitors.
+ */
+function demoAddMonitor(pathname: string, body: unknown) {
+  const slug = pathname.split("/")[3] ?? "";
+  let parsed: unknown = body;
+  try {
+    if (typeof body === "string") parsed = JSON.parse(body);
+  } catch {
+    parsed = {};
+  }
+  const input = (parsed ?? {}) as { name?: string; target?: string; type?: string; environment?: string };
+  const name = (input.name ?? "").trim();
+  const target = input.type === "HEARTBEAT" ? `https://foundry.gitwork.co.uk/api/public/heartbeat/demo-${Date.now()}` : (input.target ?? "").trim();
+  if (!name || !target) return { error: "Name and target are required", __status: 400 };
+  demoAddedMonitors.set(slug, [...(demoAddedMonitors.get(slug) ?? []), { name, target, environment: input.environment ?? "production" }]);
+  return { id: `added-${slug}-${Date.now()}`, name, target, type: input.type ?? "HTTP" };
+}
+
+function demoMonitorBoardBase() {
   const now = Date.now();
   const ago = (min: number) => new Date(now - min * 60000).toISOString();
   let n = 0;
@@ -3983,6 +4139,7 @@ function demoMonitorBoard() {
     id: `board-${++n}`,
     name,
     target,
+    environment: "production",
     status: "UP",
     stale: false,
     alertKind: null,
@@ -4031,6 +4188,7 @@ function demoMonitorBoard() {
             uptime24h: 97.2,
           }),
           m("Website", "https://northwind.co/"),
+          m("Staging API", "https://staging-api.northwind.co/health", { environment: "staging", latencyMs: 210 }),
         ],
       },
       {
@@ -4111,6 +4269,17 @@ export function resolveDemoApi(
   // slow, one with nothing monitored, so every state of the board can be seen.
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/board$/.test(pathname)) {
     return demoMonitorBoard();
+  }
+  // The Monitors page (/demo/monitors): the same board, and every client openable.
+  if (pathname === "/api/monitors") return { ...demoMonitorBoard(), openableClientIds: null };
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors$/.test(pathname) && init?.method === "POST") {
+    return demoAddMonitor(pathname, init.body);
+  }
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors$/.test(pathname) && (init?.method ?? "GET") === "GET") {
+    return demoClientMonitors(pathname);
+  }
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/board-\d+$/.test(pathname) && init?.method === "PATCH") {
+    return demoEditMonitor(pathname, init.body);
   }
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/suggestions$/.test(pathname)) {
     return {
@@ -4359,6 +4528,8 @@ export function resolveDemoApi(
   }
 
   // Backstage — calendar only.
+  const commitments = resolveDemoCommitments(pathname, init);
+  if (commitments !== undefined) return commitments;
   if (pathname === "/api/backstage/calendar") return demoCalendarMonth;
   if (pathname === "/api/backstage/calendar/connections") return { selfConnected: false, members: [] };
   if (pathname === "/api/backstage/calendar/team-events") return { events: [] };
@@ -4396,6 +4567,24 @@ export function resolveDemoApi(
   }
   if (pathname === "/api/pulse/stats") return demoPulseStats;
   if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
+  if (pathname === "/api/pulse/ai-search/answers") {
+    if (init?.method === "POST") return demoStartAiAnswersRun();
+    return { report: demoAiAnswersReport() };
+  }
+  if (pathname === "/api/pulse/ai-search/answers/config" && init?.method === "PUT") {
+    let body: unknown = init.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = null;
+      }
+    }
+    return demoSaveAiAnswersConfig(body);
+  }
+  if (pathname === "/api/pulse/ai-search") {
+    return { report: demoAiSearchReport(parseAiSearchRange(search?.get("range")), { refresh: search?.get("refresh") === "1" }) };
+  }
   if (pathname === "/api/pulse/leads") return { leads: demoPulseLeads(Date.now()) };
   {
     const lp = pathname.match(/^\/api\/pulse\/leads\/([^/]+)\/preview$/);

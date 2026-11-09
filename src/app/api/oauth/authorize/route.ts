@@ -250,12 +250,12 @@ export async function POST(request: Request) {
   // Permission gate — the real one. Even if a user reaches this POST directly,
   // they can only mint a code if they hold mcp.connect (Admins by default;
   // Staff/Developers via the matrix). Mirrors the consent screen's check.
-  const actor = await resolveEffectiveUserById(session.user.id);
+  const actor = await resolveEffectiveUserById(session.user.id, session.user.workspaceId ?? null);
   if (!actor || !canConnectMcp(actor)) {
     return redirectWithError(
       v.params.redirectUri,
       "access_denied",
-      "Your Foundry account isn't permitted to connect Claude. Ask an admin to grant the 'Connect Claude (MCP)' permission.",
+      "Your Foundry account doesn't have the 'Connect Claude' permission. An admin can turn it on in Settings → People & access (Access on their name → Platform → Connect Claude).",
       v.params.state,
     );
   }

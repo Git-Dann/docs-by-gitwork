@@ -1,28 +1,21 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import { PASSWORD_LOGIN_ROLES, isPasswordLoginAllowed } from "@/types/auth";
 
 /**
- * Email-and-password sign-in, for guests only.
+ * Email-and-password sign-in.
  *
- * ── Why "guests only" is a rule and not a preference ──────────────────────────
- * Until now `User.passwordHash` was WRITE-ONLY: three routes set it and nothing
- * on earth read it, because Google was the only provider. One of those writers is
- * `POST /api/auth/forgot-password`, which is public and sets ANY user's password
- * on presentation of a single shared `INITIAL_ADMIN_PASSWORD` recovery key.
+ * Who may use it is `isPasswordLoginAllowed` (types/auth.ts): guests in Gitwork's
+ * workspace, and every role in any other business (multi-tenant Phase 3). Gitwork's own
+ * staff stay Google-only.
  *
- * That was harmless while no password could be used to sign in. The moment one
- * can, it becomes a path to a Super Admin account: reset their password with the
- * shared key, then log in as them.
- *
- * So the gate is structural rather than procedural — **a password can only ever
- * authenticate a GUEST**. Resetting a Super Admin's password now gains an attacker
- * nothing, because no provider will accept it. Staff and admins remain Google-only,
- * which also keeps the `@gitwork.co.uk` domain check meaningful for them.
- *
- * ⚠️ Do not relax `PASSWORD_LOGIN_ROLES` to include a staff role without first
- * dealing with that recovery-key route. The two are a pair.
+ * ── Why this used to be "guests only" ─────────────────────────────────────────
+ * `POST /api/auth/forgot-password` used to set ANY user's password on one shared
+ * `INITIAL_ADMIN_PASSWORD` recovery key, so a password that could authenticate an admin
+ * was an account takeover. That route now only sends a single-use link to the account's
+ * own address (src/server/auth/password-reset.ts). ⚠️ Never bring back a reset that
+ * doesn't prove control of the mailbox.
  */
 
 // The rule itself lives in types/auth.ts so a client component can read it without
@@ -45,14 +38,14 @@ export type PasswordLoginResult =
   | { ok: false };
 
 /**
- * Verify an email and password against a GUEST membership of the default workspace.
+ * Verify an email and password against a membership that may use one.
  *
  * Returns the same `{ ok: false }` for every failure — unknown email, wrong
- * password, a real user who is not a guest, a guest with no password set. The
+ * password, a real user who signs in with Google, a guest with no password set. The
  * caller must not distinguish them in what it shows the user either: "unknown
  * email" and "wrong password" told apart is an account-enumeration oracle.
  */
-export async function verifyGuestPassword(
+export async function verifyPassword(
   email: string,
   password: string,
 ): Promise<PasswordLoginResult> {
@@ -69,11 +62,6 @@ export async function verifyGuestPassword(
       email: true,
       name: true,
       passwordHash: true,
-      memberships: {
-        where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        select: { role: true, archivedAt: true },
-        take: 1,
-      },
     },
   });
 
@@ -82,11 +70,13 @@ export async function verifyGuestPassword(
   const matches = await bcrypt.compare(password, hash);
 
   if (!user || !user.passwordHash || !matches) return { ok: false };
-  if (!isPasswordLoginAllowed(user.memberships[0]?.role)) return { ok: false };
-  // An archived guest is refused exactly like a wrong password — same response,
-  // same timing (bcrypt already ran above), so the login form cannot be used to
-  // learn whether an account exists or has been archived.
-  if (user.memberships[0]?.archivedAt) return { ok: false };
+  // Their ACTIVE membership (src/server/auth/home-membership.ts). An archived guest has none,
+  // and is refused exactly like a wrong password — same response, same timing (bcrypt already
+  // ran above), so the login form cannot be used to learn whether an account exists or has
+  // been archived.
+  const membership = await findHomeMembership(user.id);
+  if (!membership) return { ok: false };
+  if (!isPasswordLoginAllowed(membership.role, membership.workspace.slug)) return { ok: false };
 
   return { ok: true, userId: user.id, email: user.email, name: user.name };
 }

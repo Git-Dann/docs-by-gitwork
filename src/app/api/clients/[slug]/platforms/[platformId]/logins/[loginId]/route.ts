@@ -4,6 +4,7 @@ import { updatePlatformLogin, deletePlatformLogin } from "@/server/clients";
 import { platformLoginUpdateSchema } from "@/server/validators";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     assertCan(user, canManageClients, "manage platform logins");
     await assertClientAccessBySlug(user, slug);
     const body = platformLoginUpdateSchema.parse(await request.json());
-    const login = await updatePlatformLogin(slug, platformId, loginId, body);
+    const login = await updatePlatformLogin(await requestWorkspaceId(user), slug, platformId, loginId, body);
     if (!login) return apiError("Login not found", 404);
     return apiOk({ login });
   } catch (error) {
@@ -32,7 +33,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "manage platform logins");
     await assertClientAccessBySlug(user, slug);
-    const ok = await deletePlatformLogin(slug, platformId, loginId);
+    const ok = await deletePlatformLogin(await requestWorkspaceId(user), slug, platformId, loginId);
     if (!ok) return apiError("Login not found", 404);
     return apiOk({ deleted: true });
   } catch (error) {

@@ -42,6 +42,9 @@ interface Invite {
   id: string;
   token: string;
   label: string | null;
+  email?: string | null;
+  role?: string | null;
+  isDeveloper?: boolean;
   status: string;
   createdAt: string;
   invitedBy: { name: string | null; email: string };
@@ -81,6 +84,10 @@ export function TeamSection() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("");
+  const [inviteDeveloper, setInviteDeveloper] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -151,11 +158,23 @@ export function TeamSection() {
     const res = await fetch("/api/team/invites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: label.trim() || undefined }),
+      body: JSON.stringify({
+        label: label.trim() || undefined,
+        email: inviteEmail.trim() || undefined,
+        role: inviteRole || undefined,
+        isDeveloper: inviteDeveloper,
+      }),
     });
     if (res.ok) {
       setLabel("");
+      setInviteEmail("");
+      setInviteRole("");
+      setInviteDeveloper(false);
+      setInviteError(null);
       await load();
+    } else {
+      const json = await res.json().catch(() => null);
+      setInviteError(json?.error ?? "Could not create that invite.");
     }
     setCreating(false);
   }
@@ -267,6 +286,36 @@ export function TeamSection() {
               className="app-input flex-1 min-w-[200px]"
               onKeyDown={(e) => e.key === "Enter" && createInvite()}
             />
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="Only this email can use it (optional)"
+              aria-label="Invite email"
+              className="app-input min-w-[200px] flex-1"
+            />
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+              aria-label="Role they join with"
+              className="app-select w-full sm:w-auto"
+            >
+              <option value="">Joins as Developer</option>
+              {ROLES.filter((r) => r.id !== "DEVELOPER" && canManageRole(sessionRole, r.id)).map((r) => (
+                <option key={r.id} value={r.id}>
+                  Joins as {r.label}
+                </option>
+              ))}
+            </select>
+            <label className="flex w-full items-center gap-2 text-[13px] text-[var(--text-2)] sm:w-auto">
+              <input
+                type="checkbox"
+                checked={inviteDeveloper}
+                onChange={(e) => setInviteDeveloper(e.target.checked)}
+                className="h-4 w-4 accent-[var(--brand-600)]"
+              />
+              They&apos;re a developer
+            </label>
             <button
               onClick={createInvite}
               disabled={creating}
@@ -276,9 +325,16 @@ export function TeamSection() {
             </button>
           </div>
           <p className="mt-2 text-xs text-[var(--text-4)]">
-            Anyone with the link can join with their work Google account. They join as a
-            Developer; change their role in Members.
+            Anyone with the link can join, unless you add an email: then only that address can.
+            Gitwork links are accepted with a work Google account; other businesses set a password.
+            &ldquo;They&apos;re a developer&rdquo; lists them under Code &rarr; Developers when they join. The role
+            above is what they can open in Foundry, not what they do.
           </p>
+          {inviteError ? (
+            <p role="alert" className="mt-2 text-xs text-[var(--danger-500)]">
+              {inviteError}
+            </p>
+          ) : null}
             </>
           ) : (
             <>
@@ -382,6 +438,13 @@ export function TeamSection() {
                       ) : null}
                     </button>
                   )}
+                  {inv.email || inv.role || inv.isDeveloper ? (
+                    <p className="mt-0.5 truncate text-xs text-[var(--text-3)]" title={inv.email ?? undefined}>
+                      {inv.email ? `For ${inv.email}` : "Anyone with the link"}
+                      {inv.role ? ` · joins as ${ROLES.find((r) => r.id === inv.role)?.label ?? inv.role}` : ""}
+                      {inv.isDeveloper ? " · developer" : ""}
+                    </p>
+                  ) : null}
                   <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">
                     {`${baseUrl}/invite/${inv.token}`}
                   </p>

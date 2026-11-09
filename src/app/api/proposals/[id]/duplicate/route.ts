@@ -13,6 +13,7 @@ import {
 } from "@/server/auth/effective-user";
 import { allocateDocumentNumber } from "@/server/documents";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
+import { docsWorkspaceId } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -60,11 +61,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // the server layer — feature-blocks, milestones, backstage, absences). Without it a bare id
     // was enough to clone ANY document in the database: the clone copies the source's sections,
     // costing, parties and signature blocks into a row the caller then owns and can read in full.
-    // An out-of-workspace id now 404s. Identity-less API-key callers have no workspace to scope
-    // to, so they stay unscoped — same position as `POST /api/proposals`, which writes into the
-    // bootstrap/default workspace for exactly that case.
+    // An out-of-workspace id now 404s. An identity-less API-key caller is scoped to Gitwork's
+    // workspace (`docsWorkspaceId`), the workspace the key belongs to and the one
+    // `POST /api/proposals` writes into for exactly that case.
     const existing = await prisma.document.findFirst({
-      where: { id, ...(actor ? { workspaceId: actor.workspaceId } : {}) },
+      where: { id, workspaceId: await docsWorkspaceId(actor) },
       include: proposalInclude,
     });
 

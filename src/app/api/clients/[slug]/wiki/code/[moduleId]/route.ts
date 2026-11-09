@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { createCodeVersion, deleteCodeModule, updateCodeModule } from "@/server/wiki-code";
+import { clientIdForSlug } from "@/server/clients-scope";
 
 const moduleUpdateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -23,19 +22,10 @@ const versionSchema = z.object({
   makeCurrent: z.boolean().optional(),
 });
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string; moduleId: string }> }) {
   try {
     const { slug, moduleId } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const updated = await updateCodeModule(clientId, moduleId, moduleUpdateSchema.parse(await req.json()));
     if (!updated) return apiError("Module not found", 404);
@@ -45,10 +35,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ slug: string; moduleId: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ slug: string; moduleId: string }> }) {
   try {
     const { slug, moduleId } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const ok = await deleteCodeModule(clientId, moduleId);
     if (!ok) return apiError("Module not found", 404);
@@ -62,7 +52,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string; moduleId: string }> }) {
   try {
     const { slug, moduleId } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const version = await createCodeVersion(clientId, moduleId, versionSchema.parse(await req.json()));
     if (!version) return apiError("Module not found", 404);

@@ -37,6 +37,7 @@ import {
   type StaffProfile,
 } from "@/lib/hr";
 import { StaffInputError } from "@/server/staff";
+import { isDeveloperRecord } from "@/server/codeclear-archived";
 import { canRestore } from "@/server/auth/member-status";
 import { canManageRole, isAtLeast } from "@/types/auth";
 import { deleteBlockReason, type StaffLifecycle } from "@/lib/hr";
@@ -54,6 +55,7 @@ const PROFILE_SELECT = {
   email: true,
   avatarUrl: true,
   githubHandle: true,
+  isDeveloper: true,
   jobTitle: true,
   department: true,
   employmentType: true,
@@ -195,7 +197,7 @@ export async function getStaffProfile(user: EffectiveUser, recordId: string): Pr
       record.placements.map((p) => (p.client ? { name: p.client.name, slug: p.client.slug } : { name: p.clientName, slug: null })),
       (record.member && ledBy?.get(record.member.user.id)) || [],
     ),
-    isDeveloper: Boolean(record.githubHandle),
+    isDeveloper: isDeveloperRecord(record),
     relation,
     access,
     employment: access.employment

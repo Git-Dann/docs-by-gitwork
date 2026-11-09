@@ -2,7 +2,6 @@
 // Scoped by client + the caller's client access (mirrors feature-blocks.ts).
 
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
 import { assertClientInScope } from "@/server/tasks";
 import type { MilestoneDTO } from "@/types/tasks";
@@ -28,7 +27,6 @@ function toDTO(row: MilestoneRow): MilestoneDTO {
 }
 
 export async function listMilestones(user: EffectiveUser, clientId: string): Promise<MilestoneDTO[]> {
-  await ensureBaseRecords();
   await assertClientInScope(user, clientId);
   const rows = await prisma.milestone.findMany({
     where: { workspaceId: user.workspaceId, clientId },
@@ -41,7 +39,6 @@ export async function createMilestone(
   user: EffectiveUser,
   input: { clientId: string; name: string; date: string; description?: string; color?: string; clickupId?: string | null },
 ): Promise<MilestoneDTO> {
-  await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
   const row = await prisma.milestone.create({
     data: {

@@ -38,8 +38,11 @@ export interface AgentStatusDTO {
   updatedAt: string;
 }
 
-export function setAgentStatus(sessionId: string, state: AgentState, label?: string): void {
-  store.set(sessionId, { state, label, updatedAt: Date.now() });
+/** Entries are kept per workspace, so one business never sees another's agents. */
+const keyOf = (workspaceId: string, sessionId: string) => `${workspaceId}\u0000${sessionId}`;
+
+export function setAgentStatus(workspaceId: string, sessionId: string, state: AgentState, label?: string): void {
+  store.set(keyOf(workspaceId, sessionId), { state, label, updatedAt: Date.now() });
 }
 
 function pruneExpired(now: number): void {
@@ -48,14 +51,16 @@ function pruneExpired(now: number): void {
   }
 }
 
-/** All live sessions, newest first. */
-export function listAgentStatus(): AgentStatusDTO[] {
+/** This workspace's live sessions, newest first. */
+export function listAgentStatus(workspaceId: string): AgentStatusDTO[] {
   const now = Date.now();
   pruneExpired(now);
+  const prefix = keyOf(workspaceId, "");
   return [...store.entries()]
+    .filter(([key]) => key.startsWith(prefix))
     .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
-    .map(([sessionId, e]) => ({
-      sessionId,
+    .map(([key, e]) => ({
+      sessionId: key.slice(prefix.length),
       state: e.state,
       label: e.label,
       updatedAt: new Date(e.updatedAt).toISOString(),
@@ -66,8 +71,8 @@ export function listAgentStatus(): AgentStatusDTO[] {
  * The single state the deck should show. `needs-you` always wins (it needs the human),
  * then `thinking`/`error`, else the most-recent session's state, else idle.
  */
-export function summaryAgentState(): AgentState {
-  const live = listAgentStatus();
+export function summaryAgentState(workspaceId: string): AgentState {
+  const live = listAgentStatus(workspaceId);
   if (live.length === 0) return "idle";
   if (live.some((a) => a.state === "needs-you")) return "needs-you";
   if (live.some((a) => a.state === "thinking")) return "thinking";

@@ -37,6 +37,7 @@ const createSchema = z
     employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),
     startDate: z.string().max(20).nullable().optional(),
     managerRecordId: z.string().max(64).nullable().optional(),
+    isDeveloper: z.boolean().optional(),
   })
   .strict()
   .refine((v) => v.memberId || v.name?.trim(), { message: "Choose a member or enter a name" });

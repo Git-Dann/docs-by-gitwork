@@ -1,11 +1,21 @@
 import type { Prisma } from "@prisma/client";
+import bcrypt from "bcryptjs";
+import { HOME_WORKSPACE_SLUG } from "@/lib/platform-rules";
 import { prisma } from "@/lib/prisma";
+import {
+  INVITE_REFUSAL_MESSAGE,
+  inviteRefusal,
+  inviteRole,
+  normaliseEmail,
+  type InviteRefusal,
+} from "@/lib/invite-rules";
 import { dispatchNotification } from "@/server/notifications";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { recomputeMember } from "@/server/permissions";
+import { applyInviteDeveloperFlag } from "@/server/staff";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
-import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId, DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
+import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId } from "@/types/auth";
 import {
   ACTIVE_MEMBER,
   ARCHIVE_RETENTION_DAYS,
@@ -19,8 +29,8 @@ export async function getWorkspace() {
   return prisma.workspace.findUniqueOrThrow({ where: { slug: DEFAULT_WORKSPACE_SLUG } });
 }
 
-export async function listMembers() {
-  const workspace = await getWorkspace();
+export async function listMembers(workspaceId: string) {
+  const workspace = { id: workspaceId };
   // includes-archived: this IS the user-management table. It has to see archived
   // members to show them, count down their retention and restore them.
   const rows = await prisma.workspaceMember.findMany({
@@ -92,6 +102,8 @@ export async function listMembers() {
 export interface MemberActor {
   id: string;
   role: string;
+  /** The workspace the actor is acting in. A member of any other workspace reads as not found. */
+  workspaceId: string;
 }
 
 /**
@@ -110,8 +122,8 @@ export interface MemberActor {
  * you cannot archive yourself; and you cannot archive the last ACTIVE Super Admin.
  */
 export async function archiveMember(memberId: string, actor: MemberActor) {
-  const existing = await prisma.workspaceMember.findUnique({
-    where: { id: memberId },
+  const existing = await prisma.workspaceMember.findFirst({
+    where: { id: memberId, workspaceId: actor.workspaceId },
     select: { id: true, workspaceId: true, role: true, userId: true, archivedAt: true },
   });
   if (!existing) return null;
@@ -140,8 +152,8 @@ export async function archiveMember(memberId: string, actor: MemberActor) {
  * job a tidy-up rather than a security control.
  */
 export async function restoreMember(memberId: string, actor: MemberActor) {
-  const existing = await prisma.workspaceMember.findUnique({
-    where: { id: memberId },
+  const existing = await prisma.workspaceMember.findFirst({
+    where: { id: memberId, workspaceId: actor.workspaceId },
     select: { id: true, role: true, archivedAt: true },
   });
   if (!existing) return null;
@@ -174,7 +186,7 @@ export async function restoreMember(memberId: string, actor: MemberActor) {
  * of their own email address for good.
  */
 export async function reinstateMemberByEmail(email: string, role: RoleId, actor: MemberActor) {
-  const workspace = await getWorkspace();
+  const workspace = { id: actor.workspaceId };
   if (!canManageRole(actor.role, role)) {
     throw new ForbiddenError("You can't reinstate someone into a role at or above your own.");
   }
@@ -255,12 +267,17 @@ export interface UpdateMemberInput {
  * Changing a member's role clears their overrides (clean slate for the new role)
  * unless explicit overrides are supplied in the same call.
  */
-export async function updateMember(memberId: string, input: UpdateMemberInput, actorRole: string) {
-  const existing = await prisma.workspaceMember.findUnique({
-    where: { id: memberId },
+export async function updateMember(
+  memberId: string,
+  input: UpdateMemberInput,
+  actor: Pick<MemberActor, "role" | "workspaceId">,
+) {
+  const actorRole = actor.role;
+  const existing = await prisma.workspaceMember.findFirst({
+    where: { id: memberId, workspaceId: actor.workspaceId },
     select: { id: true, workspaceId: true, role: true },
   });
-  if (!existing) throw new Error("Member not found");
+  if (!existing) throw Object.assign(new Error("Member not found"), { status: 404 });
 
   if (!canManageRole(actorRole, existing.role)) {
     throw new ForbiddenError("You can't manage a member at or above your own role.");
@@ -350,14 +367,20 @@ export async function autoAcceptMatchingInvite(userId: string, userName: string 
 
   if (!match) return null;
 
-  return prisma.workspaceInvite.update({
+  const accepted = await prisma.workspaceInvite.update({
     where: { id: match.id },
     data: { status: "ACCEPTED", acceptedById: userId },
   });
+  const member = await prisma.workspaceMember.findUnique({
+    where: { workspaceId_userId: { workspaceId: accepted.workspaceId, userId } },
+    select: { id: true },
+  });
+  await applyInviteDeveloperFlag(accepted, member?.id);
+  return accepted;
 }
 
-export async function listInvites() {
-  const workspace = await getWorkspace();
+export async function listInvites(workspaceId: string) {
+  const workspace = { id: workspaceId };
 
   // An invite's status only ever changes in response to a real action by the recipient:
   // opening /invite/[token] (acceptInvite) or signing in directly with a name that matches
@@ -377,79 +400,174 @@ export async function listInvites() {
   });
 }
 
-export async function createInvite(invitedById: string, label?: string) {
-  const workspace = await getWorkspace();
+/**
+ * An invite link. Optionally addressed to one email and/or granting a role (multi-tenant
+ * Phase 3). ⚠️ The role must be one the inviter may assign (`canManageRole`), or an Admin
+ * could mint a Super Admin invite. No role = DEFAULT_PROVISIONED_ROLE, as before.
+ */
+export async function createInvite(
+  workspaceId: string,
+  invitedById: string,
+  opts: { label?: string | null; email?: string | null; role?: RoleId | null; isDeveloper?: boolean; inviterRole?: string } = {},
+) {
+  if (opts.role && !canManageRole(opts.inviterRole ?? "", opts.role)) {
+    throw new ForbiddenError("You can't invite someone with that role.");
+  }
+  const email = opts.email ? normaliseEmail(opts.email) : null;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw Object.assign(new Error("Enter a valid email, or leave it blank."), { status: 400 });
+  }
   return prisma.workspaceInvite.create({
     data: {
-      workspaceId: workspace.id,
+      workspaceId,
       invitedById,
-      label: label ?? null,
+      label: opts.label?.trim() || null,
+      email,
+      role: opts.role ?? null,
+      isDeveloper: opts.isDeveloper ?? false,
       status: "PENDING",
     },
   });
 }
 
-export async function revokeInvite(inviteId: string) {
+/** An invite in `workspaceId`, or null. Every invite write goes through this first. */
+export async function findInvite(workspaceId: string, inviteId: string) {
+  return prisma.workspaceInvite.findFirst({ where: { id: inviteId, workspaceId } });
+}
+
+export async function revokeInvite(workspaceId: string, inviteId: string) {
+  if (!(await findInvite(workspaceId, inviteId))) return null;
   return prisma.workspaceInvite.update({
     where: { id: inviteId },
     data: { status: "REVOKED" },
   });
 }
 
-export async function deleteInvite(inviteId: string) {
+export async function deleteInvite(workspaceId: string, inviteId: string) {
+  if (!(await findInvite(workspaceId, inviteId))) return null;
   return prisma.workspaceInvite.delete({ where: { id: inviteId } });
 }
 
-export async function updateInviteLabel(inviteId: string, label: string | null) {
+export async function updateInviteLabel(workspaceId: string, inviteId: string, label: string | null) {
+  if (!(await findInvite(workspaceId, inviteId))) return null;
   return prisma.workspaceInvite.update({
     where: { id: inviteId },
     data: { label: label?.trim() || null },
   });
 }
 
-export async function acceptInvite(token: string, userId: string) {
-  const invite = await prisma.workspaceInvite.findUnique({ where: { token } });
-  if (!invite || invite.status !== "PENDING") return null;
-  if (invite.expiresAt && invite.expiresAt < new Date()) return null;
+export type AcceptInviteResult =
+  | { ok: true; workspaceId: string }
+  | { ok: false; reason: InviteRefusal | "not_found" };
 
-  // Ensure the user is a member of this workspace
+/** Tell the workspace's admins someone joined, on a genuine first join only. */
+async function announceJoin(workspaceId: string, userId: string) {
+  const joiner = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  const joinerName = joiner?.name?.trim() || joiner?.email || "A new teammate";
+  dispatchNotification({
+    event: "team.member_added",
+    workspaceId,
+    target: { kind: "admins" },
+    title: `${joinerName} joined the workspace`,
+    actionUrl: "/app/settings/team",
+    groupKey: "team.member_added",
+  });
+}
+
+/**
+ * A signed-in person accepts an invite. An invite addressed to someone can only be accepted
+ * by that address, and grants the invite's role (src/lib/invite-rules.ts). Accepting never
+ * lowers an existing member's role.
+ */
+export async function acceptInvite(token: string, userId: string): Promise<AcceptInviteResult> {
+  const invite = await prisma.workspaceInvite.findUnique({ where: { token } });
+  if (!invite) return { ok: false, reason: "not_found" };
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  const refusal = inviteRefusal(invite, user?.email ?? null);
+  if (refusal) return { ok: false, reason: refusal };
+
   const alreadyMember = await prisma.workspaceMember.findUnique({
     where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId } },
     select: { id: true },
   });
-  await prisma.workspaceMember.upsert({
+  const member = await prisma.workspaceMember.upsert({
     where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId } },
     update: {},
-    create: { workspaceId: invite.workspaceId, userId, role: DEFAULT_PROVISIONED_ROLE, permissions: [] },
+    create: { workspaceId: invite.workspaceId, userId, role: inviteRole(invite), permissions: [] },
   });
-
-  // Only on a genuine first join (not a re-accept) — let admins know.
   if (!alreadyMember) {
-    const joiner = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { name: true, email: true },
-    });
-    const joinerName = joiner?.name?.trim() || joiner?.email || "A new teammate";
-    dispatchNotification({
-      event: "team.member_added",
-      workspaceId: invite.workspaceId,
-      target: { kind: "admins" },
-      title: `${joinerName} joined the workspace`,
-      actionUrl: "/app/settings/team",
-      groupKey: "team.member_added",
-    });
+    await recomputeMember(member.id).catch(() => undefined);
+    await announceJoin(invite.workspaceId, userId);
   }
-
-  return prisma.workspaceInvite.update({
+  await prisma.workspaceInvite.update({
     where: { id: invite.id },
     data: { status: "ACCEPTED", acceptedById: userId },
   });
+  await applyInviteDeveloperFlag(invite, member.id);
+  return { ok: true, workspaceId: invite.workspaceId };
+}
+
+export type PasswordSignupResult =
+  | { ok: true; email: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Accept an invite by creating an account with a password (multi-tenant Phase 3). Only for
+ * businesses other than Gitwork, whose people have no Gitwork Google account; Gitwork's own
+ * invites still go through Google. ⚠️ An address that already has a Foundry account is
+ * refused: setting a password for it here would take that account over.
+ */
+export async function acceptInviteWithPassword(input: {
+  token: string;
+  name: string;
+  email: string;
+  password: string;
+}): Promise<PasswordSignupResult> {
+  const invite = await prisma.workspaceInvite.findUnique({
+    where: { token: input.token },
+    include: { workspace: { select: { slug: true } } },
+  });
+  if (!invite) return { ok: false, status: 404, error: "This invite link isn't valid." };
+  if (invite.workspace.slug === HOME_WORKSPACE_SLUG) {
+    return { ok: false, status: 400, error: "Gitwork invites are accepted with a Gitwork Google account." };
+  }
+  const email = normaliseEmail(input.email);
+  const refusal = inviteRefusal(invite, email);
+  if (refusal) return { ok: false, status: 400, error: INVITE_REFUSAL_MESSAGE[refusal] };
+  if (input.password.length < 8) return { ok: false, status: 400, error: "Use at least 8 characters." };
+
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existing) {
+    return {
+      ok: false,
+      status: 409,
+      error: "That email already has a Foundry account. Sign in first, then open this link again.",
+    };
+  }
+
+  const user = await prisma.user.create({
+    data: {
+      email,
+      name: input.name.trim().slice(0, 120) || email.split("@")[0],
+      passwordHash: await bcrypt.hash(input.password, 12),
+      memberships: { create: { workspaceId: invite.workspaceId, role: inviteRole(invite), permissions: [] } },
+    },
+    select: { id: true, email: true, memberships: { select: { id: true } } },
+  });
+  for (const m of user.memberships) await recomputeMember(m.id).catch(() => undefined);
+  await prisma.workspaceInvite.update({
+    where: { id: invite.id },
+    data: { status: "ACCEPTED", acceptedById: user.id },
+  });
+  await applyInviteDeveloperFlag(invite, user.memberships[0]?.id);
+  await announceJoin(invite.workspaceId, user.id);
+  return { ok: true, email: user.email };
 }
 
 export async function getInviteByToken(token: string) {
   return prisma.workspaceInvite.findUnique({
     where: { token },
-    include: { workspace: { select: { name: true } } },
+    include: { workspace: { select: { name: true, slug: true } } },
   });
 }
 

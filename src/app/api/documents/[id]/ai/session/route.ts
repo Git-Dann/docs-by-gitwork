@@ -17,6 +17,8 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -33,9 +35,10 @@ const putSchema = z.object({
   messages: z.array(messageSchema).max(200),
 });
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const doc = await prisma.document.findUnique({ where: { id }, select: { id: true } });
     if (!doc) return apiError("Document not found", 404);
 
@@ -56,6 +59,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const doc = await prisma.document.findUnique({ where: { id }, select: { id: true } });
     if (!doc) return apiError("Document not found", 404);
 
@@ -82,9 +86,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     await prisma.documentAiSession.deleteMany({ where: { documentId: id } });
     return apiOk({ ok: true });
   } catch (error) {

@@ -12,8 +12,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
   createWikiComparison,
@@ -22,21 +20,13 @@ import {
   setWikiComparisonsEnabled,
 } from "@/server/wiki-comparisons";
 import { comparisonOrderSchema, comparisonSchema } from "@/server/validators";
-
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
+import { clientIdForSlug } from "@/server/clients-scope";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "view comparisons");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await loadWikiComparisons(clientId));
   } catch (err) {
@@ -48,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "add a comparison");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = comparisonSchema.parse(await req.json());
     const comparison = await createWikiComparison(clientId, body);
@@ -65,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage comparisons");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { enabled } = toggleSchema.parse(await req.json());
     await setWikiComparisonsEnabled(clientId, enabled);
@@ -80,7 +70,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "reorder comparisons");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { order } = comparisonOrderSchema.parse(await req.json());
     await reorderWikiComparisons(clientId, order);

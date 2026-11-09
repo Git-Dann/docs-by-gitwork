@@ -18,6 +18,19 @@ export const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
   FREELANCER: "Freelancer",
 };
 
+/**
+ * Who counts as Gitwork's own staff: employed by it or a director of it, and not a developer.
+ * Contractors, freelancers and anyone without a Staff record are "everyone else". Siân (People
+ * & office) looks after these people only — their leave, their HR records (Dan, Nov 2026:
+ * "Hassaan and Syed are not Gitwork"). One rule, used by Staff → People and by
+ * src/server/backstage-people.ts, so the page and her approvals can't disagree.
+ */
+export const GITWORK_EMPLOYMENT_TYPES = ["EMPLOYEE", "DIRECTOR"] as const;
+
+export function isGitworkStaff(p: { employmentType: string | null | undefined; isDeveloper: boolean }): boolean {
+  return !p.isDeveloper && (GITWORK_EMPLOYMENT_TYPES as readonly string[]).includes(p.employmentType ?? "");
+}
+
 export function isEmploymentType(value: unknown): value is EmploymentType {
   return typeof value === "string" && (EMPLOYMENT_TYPES as readonly string[]).includes(value);
 }
@@ -46,8 +59,10 @@ export interface StaffPerson {
   startDate: string | null;
   managerRecordId: string | null;
   managerName: string | null;
-  /** Has a GitHub handle, so a developer profile (scores, analysis) exists. */
+  /** Listed under Code → Developers: marked as one, or has a GitHub handle. */
   isDeveloper: boolean;
+  /** Has a GitHub handle (which lists them as a developer whatever the switch says). */
+  hasGithubHandle: boolean;
   primaryStack: string | null;
   currentClients: StaffClient[];
   /** Set only in the archived view: when they were archived (membership or record). */
@@ -68,6 +83,8 @@ export interface StaffDetailsUpdate {
   employmentType?: EmploymentType | null;
   startDate?: string | null;
   managerRecordId?: string | null;
+  /** Listed under Code → Developers. */
+  isDeveloper?: boolean;
 }
 
 /** Roster order: by name, ignoring case and accents. */
@@ -148,6 +165,7 @@ export function normaliseStaffDetails(input: StaffDetailsUpdate): { ok: true; va
     } else out.startDate = input.startDate;
   }
   if (input.managerRecordId !== undefined) out.managerRecordId = input.managerRecordId || null;
+  if (input.isDeveloper !== undefined) out.isDeveloper = input.isDeveloper === true;
   return { ok: true, value: out };
 }
 
@@ -207,6 +225,18 @@ export function staffGroupOf(p: Pick<StaffPerson, "role">): StaffGroupId {
     default:
       return p.role ? "staff" : "no-login";
   }
+}
+
+/**
+ * For someone who looks after Gitwork's own staff (People & office, Siân): Gitwork's people
+ * first, everyone else apart so it can be folded away. `isGitworkStaff` decides, the same rule
+ * Backstage uses for whose leave she handles.
+ */
+export function splitGitworkStaff(people: StaffPerson[]): { gitwork: StaffPerson[]; others: StaffPerson[] } {
+  const gitwork: StaffPerson[] = [];
+  const others: StaffPerson[] = [];
+  for (const p of people) (isGitworkStaff(p) ? gitwork : others).push(p);
+  return { gitwork, others };
 }
 
 /** People under their headings, in heading order, keeping the order they came in. Empty groups are left out. */

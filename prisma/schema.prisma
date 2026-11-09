@@ -300,6 +300,9 @@ model Workspace {
   /// true for every workspace that existed before the switch (Gitwork). A new business
   /// is created with false, so it only ever spends its own keys. src/server/ai-keys.ts.
   platformAiKeysAllowed       Boolean                    @default(true)
+  /// Email domains whose people may sign in with Google and join this business as Developers
+  /// (multi-tenant Phase 3, src/lib/email-domains.ts). Never a public mail domain, never Gitwork's.
+  allowedEmailDomains         String[]                   @default([])
   anthropicApiKey             String?
   anthropicModel              String?
   aiProvider                  String                     @default("ANTHROPIC")
@@ -370,6 +373,11 @@ model Workspace {
   curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
   foremanConfig               Json? // Foreman settings: { enabled, dueSoonDays, criticalOverdue, staleDoingDays, consolidate }
   dispatchConfig              Json? // Dispatch settings: { enabled, recentDays, maxEvidenceItems, perChannelPerHour, allowExternalChannels }
+  /// AI search (Pulse → AI search): { searchConsoleSite, ga4PropertyId }. Read through
+  /// parseAiSearchConfig (src/lib/ai-search.ts); read with the workspace Google service account.
+  aiSearchConfig              Json?
+  /// Pulse → AI search buyer questions (src/lib/ai-answers.ts). Null = the built-in examples, not yet saved.
+  aiAnswersConfig             Json?
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
@@ -582,6 +590,13 @@ model WorkspaceInvite {
   token        String    @unique @default(cuid())
   label        String?
   status       String    @default("PENDING") // PENDING | ACCEPTED | REVOKED
+  /// When set, only this address may accept (multi-tenant Phase 3: a business owner's invite).
+  email        String?
+  /// The role the person joins with; null = DEFAULT_PROVISIONED_ROLE.
+  role         String?
+  /// They're joining as a developer: accepting gives them a Staff record that's listed
+  /// under Code → Developers.
+  isDeveloper  Boolean   @default(false)
   invitedById  String
   acceptedById String?
   createdAt    DateTime  @default(now())
@@ -1739,6 +1754,9 @@ model WikiMonitor {
   enabled         Boolean            @default(true)
   intervalMinutes Int                @default(5)
   sortOrder       Int                @default(0)
+  /// "production" | "staging" | "development" | "testing" (src/lib/monitor-environment.ts).
+  /// The client only ever sees production; Gitwork sees every environment, labelled.
+  environment     String             @default("production")
   /// Denormalised latest result for fast public reads.
   lastStatus      WikiMonitorStatus  @default(UNKNOWN)
   lastCheckedAt   DateTime?
@@ -1749,6 +1767,9 @@ model WikiMonitor {
   failStreak      Int                @default(0)
   /// First failing check of the current outage — the "down since" in alerts.
   downSince       DateTime?
+  /// When the current run of consecutive failures began. A "down" post waits until this is
+  /// ALERT_AFTER_MS old, so a service back within 5 minutes never reaches Slack (Nov 2026).
+  streakSince     DateTime?
   /// When this outage's DOWN alert went out — the once-per-outage latch; cleared on recovery.
   alertedDownAt   DateTime?
   /// When the watchdog reported this monitor as no longer being checked; cleared by the next check.
@@ -2612,6 +2633,13 @@ model Candidate {
   /// developer. Postgres allows many NULLs under the unique index below. The API
   /// still sends a string ("" = none) so older clients that require it keep working.
   githubHandle         String?
+  /// This person is a developer: they're listed under Code → Developers. Set when they're
+  /// invited as one or by switching it on in their Staff profile. Separate from the
+  /// permission role on purpose: everyone signs in as DEVELOPER (CLAUDE.md §57.6), so the
+  /// role can't say who writes code. Null = never decided (records from before Nov 2026,
+  /// settled once by backfillDeveloperFlags). A record with a GitHub handle counts as a
+  /// developer either way.
+  isDeveloper          Boolean?
   email                String?
   /// The account this Staff record belongs to. Replaces the email match the module
   /// relied on (Candidate.email ↔ User.email), which broke whenever the two differed.
@@ -4279,6 +4307,7 @@ enum AiModule {
   WIKI
   EMBEDDING
   CRM
+  COMMITMENTS
   OTHER
 }
 
@@ -4424,6 +4453,9 @@ model LeaveRequest {
   halfDayStart  Boolean   @default(false)
   halfDayEnd    Boolean   @default(false)
   reason        String?
+  /// Whether it uses up holiday allowance. Null (requests before Nov 2026) = only ANNUAL
+  /// counts. See src/lib/leave-allowance.ts.
+  countsToAllowance Boolean?
   status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
   approvedById  String?
   approvedAt    DateTime?
@@ -6027,4 +6059,171 @@ model StaffDocument {
 
   @@index([workspaceId, recordId])
   @@index([workspaceId, expiresOn])
+}
+
+/// Pulse → AI search: the last sync of one workspace's report for one range (7, 28 or 90
+/// days). Each source in `report` carries when it was last read and, when the latest read
+/// failed, the last good one. Overwritten on every sync; deleted when the properties change,
+/// so figures from a previous property are never shown as this one's.
+model AiSearchSync {
+  /// `${workspaceId}:${range}`
+  id          String   @id
+  workspaceId String
+  range       Int
+  /// AiSearchReport (src/lib/ai-search.ts).
+  report      Json
+  /// When this sync ran.
+  attemptedAt DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
+/// Pulse → AI search: one run of buyer questions put to the AI assistants (src/lib/ai-answers.ts).
+/// The answers are kept so every "named" and "cited" can be checked by reading them.
+model AiAnswerRun {
+  id          String    @id @default(cuid())
+  workspaceId String
+  /// running | done | failed. A "running" row past 30 minutes is read as interrupted.
+  status      String
+  /// manual | weekly
+  trigger     String
+  startedById String?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  /// BuyerQuestion[] and the engines this run set out to ask.
+  questions   Json
+  engines     Json
+  /// AnswerResult[]
+  results     Json
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId, startedAt])
+}
+
+/// A workspace API key (multi-tenant Phase 2). It acts as the member who created it, inside its
+/// own workspace only, re-checked on every request. Only a SHA-256 of the token is stored; the
+/// token itself is shown once. See src/server/api-keys.ts and src/lib/api-key-token.ts.
+model WorkspaceApiKey {
+  id          String    @id
+  workspaceId String
+  createdById String
+  name        String
+  tokenHash   String
+  /// The first characters of the token, so a person can tell their keys apart.
+  preview     String
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId])
+  @@index([tokenHash])
+}
+
+/// A single-use password reset link (multi-tenant Phase 3). Only a SHA-256 of the token
+/// is stored; the link is emailed to the account's own address and expires in an hour.
+/// Loose ids, no relations, no unique constraint (CLAUDE.md §2).
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tokenHash])
+  @@index([userId])
+}
+
+/// A promise one person has made: typed in by hand, or suggested from their own sent Gmail,
+/// Slack messages, Scribe action items or calendar. Suggestions are never acted on and never
+/// become open until the person accepts them. Per-user and private to them. Loose ids.
+/// See src/server/commitments.ts and src/lib/commitments.ts.
+model Commitment {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  title       String
+  notes       String?   @db.Text
+  dueAt       DateTime?
+  /// "suggested" | "open" | "done" | "dismissed"
+  state       String    @default("open")
+  /// "manual" | "gmail" | "slack" | "meeting" | "calendar"
+  source      String    @default("manual")
+  /// Dedupe key for a suggestion (source + message/item id + normalised title).
+  externalId  String?
+  /// Who it was promised to, when known.
+  counterpart String?
+  /// The words it was read from (clipped), the subject/meeting/channel, a link and when.
+  quote       String?   @db.Text
+  evidenceLabel String?
+  evidenceUrl String?
+  evidenceAt  DateTime?
+  reason      String?
+  snoozedUntil DateTime?
+  doneAt      DateTime?
+  /// To-do fields (Foundry for Mac). Loose id of one of the owner's CommitmentLists.
+  listId      String?
+  /// Lowercased, no '#', deduped, at most 20.
+  tags        String[]  @default([])
+  /// 0 none · 1 low · 2 medium · 3 high
+  priority    Int       @default(0)
+  /// The day it's planned for ("when"). Excludes `someday`.
+  startAt     DateTime?
+  /// "This Evening".
+  evening     Boolean   @default(false)
+  someday     Boolean   @default(false)
+  remindAt    DateTime?
+  /// "daily" | "weekdays" | "weekly" | "fortnightly" | "monthly" | "yearly" | "every:N:day|week|month"
+  recurrence  String?
+  /// [{ id, text, done }], at most 100.
+  checklist   Json?
+  orderKey    Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, workspaceId, state])
+  @@index([userId, externalId])
+  @@index([userId, listId])
+}
+
+/// A person's own to-do list (Foundry for Mac). Private to its owner. Deleting one archives it.
+model CommitmentList {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  name        String
+  /// red orange yellow green mint teal cyan blue indigo purple pink brown gray
+  color       String?
+  /// An SF Symbol name.
+  symbol      String?
+  /// Free-text grouping ("Work", "Home").
+  area        String?
+  orderKey    Float     @default(0)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, workspaceId])
+}
+
+/// One row per person per workspace: which sources they let Commitments read, and how the
+/// last read went. Gmail and Slack are opt-in; Scribe and Calendar are on by default.
+model CommitmentSettings {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  userId          String
+  gmailEnabled    Boolean   @default(false)
+  slackEnabled    Boolean   @default(false)
+  meetingsEnabled Boolean   @default(true)
+  calendarEnabled Boolean   @default(true)
+  lastSyncedAt    DateTime?
+  /// Claim so two syncs of one person can't run at once (5-minute TTL).
+  syncStartedAt   DateTime?
+  /// { gmail?: { at, ok, message }, slack?: …, meeting?: …, calendar?: … }
+  sourceStatus    Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([workspaceId, userId])
 }

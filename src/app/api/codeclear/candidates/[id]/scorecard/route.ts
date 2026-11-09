@@ -2,9 +2,9 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { codeClearDetailInclude, serializeCandidateDetails } from "@/server/codeclear";
 import { analysisStateLabel, statusLabel, tierLabel } from "@/types/codeclear";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ function truncate(value: string, maxLength = 110) {
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(_request) };
     const { id } = await context.params;
     const candidate = await prisma.candidate.findFirst({
       where: {

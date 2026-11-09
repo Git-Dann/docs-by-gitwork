@@ -11,6 +11,8 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { sendWorkspaceEmail } from "@/server/email";
 import { renderLeadEmail } from "./report-email";
+import { freeScanScore } from "./free-score";
+import type { PulseScanCheckInput } from "@/types/pulse";
 import { isAtLeast } from "@/types/auth";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
@@ -109,6 +111,12 @@ export async function notifyLeadOfScanResult(leadId: string): Promise<void> {
 async function notifyTeamOfLead(leadId: string): Promise<void> {
   const lead = await prisma.pulseLead.findUnique({ where: { id: leadId } });
   if (!lead) return;
+  // Whether the free score is only a guide: worked out from the scan's own checks.
+  const lite = lead.liteScanId
+    ? await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { checks: true } })
+    : null;
+  const liteChecks = (lite?.checks as PulseScanCheckInput[] | null) ?? [];
+  const free = liteChecks.length > 0 ? freeScanScore(liteChecks) : null;
   const workspace = await prisma.workspace.findFirst({ where: { slug: DEFAULT_WORKSPACE_SLUG }, select: { id: true } });
   if (!workspace) return;
 
@@ -126,6 +134,7 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
     email: lead.email,
     targetUrl: lead.targetUrl,
     score: lead.healthScore,
+    provisionalCoverage: free?.provisional ? free.coverage : null,
     source: lead.source,
     foundryUrl: `${base}/app/pulse`,
     logoUrl: `${base}/email/gitwork-wordmark-ink.png`,

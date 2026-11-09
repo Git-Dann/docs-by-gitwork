@@ -1,6 +1,7 @@
 /**
  * The Platform console's view of every business on Foundry, and the one change it can
- * make so far: which modules a business has, and whether it may use Gitwork's AI keys.
+ * make: which modules a business has, whether it may use Gitwork's AI keys, and creating
+ * a new business with an owner invite.
  *
  * ⚠️ This module reads ACROSS workspaces on purpose. It is the only place that should,
  * and Phase 2 of docs/multi-tenant-roadmap.md adds a sweep that allow-lists this
@@ -20,7 +21,11 @@ import type {
   PlatformWorkspacePage,
   PlatformWorkspaceUpdate,
 } from "@/lib/platform-types";
-import { planWorkspaceUpdate, type PlatformWorkspaceQuery } from "@/lib/platform-rules";
+import { planNewBusiness, planWorkspaceUpdate, type NewBusinessInput, type PlatformWorkspaceQuery } from "@/lib/platform-rules";
+import { DEFAULT_BUSINESS_MODULES } from "@/lib/workspace-modules";
+import { normaliseAllowedDomains } from "@/lib/email-domains";
+import { HOME_WORKSPACE_SLUG, PlatformInputError } from "@/lib/platform-rules";
+import { escapeHtml, sendWorkspaceEmail } from "@/server/email";
 export { PlatformConflictError, PlatformInputError, planWorkspaceUpdate } from "@/lib/platform-rules";
 
 /** Every platform action is recorded under this prefix, in the target workspace's audit log. */
@@ -35,6 +40,7 @@ const WORKSPACE_SELECT = {
   modulesRestricted: true,
   enabledModules: true,
   platformAiKeysAllowed: true,
+  allowedEmailDomains: true,
   _count: { select: { members: { where: { ...ACTIVE_MEMBER } } } },
 } as const satisfies Prisma.WorkspaceSelect;
 
@@ -52,6 +58,7 @@ function toPlatformWorkspace(w: WorkspaceRow): PlatformWorkspace {
     modulesRestricted: w.modulesRestricted,
     enabledModules: w.enabledModules,
     platformAiKeysAllowed: w.platformAiKeysAllowed,
+    allowedEmailDomains: w.allowedEmailDomains,
   };
 }
 
@@ -168,4 +175,111 @@ export async function listPlatformAudit(q: { page: number; pageSize: number; wor
     page,
     pageSize: q.pageSize,
   };
+}
+
+/** How long a new business's owner invite stays usable. */
+export const OWNER_INVITE_TTL_DAYS = 14;
+
+export interface NewBusinessResult {
+  workspace: PlatformWorkspace;
+  inviteUrl: string;
+  emailed: boolean;
+  emailError: string | null;
+}
+
+function appUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL ?? "https://foundry.gitwork.co.uk").replace(/\/+$/, "");
+}
+
+/**
+ * Create a business for a customer (multi-tenant Phase 3, "created by us"). The workspace
+ * gets the default module bundle and only its own AI keys; its owner gets an invite,
+ * addressed to them, that makes them its Super Admin. Nothing is copied from Gitwork.
+ */
+export async function createPlatformBusiness(actorId: string, input: NewBusinessInput): Promise<NewBusinessResult> {
+  const plan = planNewBusiness(input);
+
+  // A free slug: the name's, else the name's with -2, -3 …
+  let slug = plan.slug;
+  for (let n = 2; await prisma.workspace.findUnique({ where: { slug }, select: { id: true } }); n += 1) {
+    slug = `${plan.slug}-${n}`;
+  }
+
+  const workspace = await prisma.workspace.create({
+    data: {
+      name: plan.name,
+      slug,
+      modulesRestricted: true,
+      enabledModules: [...DEFAULT_BUSINESS_MODULES],
+      platformAiKeysAllowed: false,
+    },
+    select: { id: true },
+  });
+  const invite = await prisma.workspaceInvite.create({
+    data: {
+      workspaceId: workspace.id,
+      invitedById: actorId,
+      email: plan.ownerEmail,
+      role: "SUPER_ADMIN",
+      label: plan.ownerName ? `${plan.ownerName} (owner)` : "Owner",
+      status: "PENDING",
+      expiresAt: new Date(Date.now() + OWNER_INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
+    },
+    select: { token: true },
+  });
+  await recordAuditEntry({
+    workspaceId: workspace.id,
+    actorId,
+    action: "platform.workspace.created",
+    target: `workspace.${slug}`,
+    after: { name: plan.name, slug, ownerEmail: plan.ownerEmail, modules: [...DEFAULT_BUSINESS_MODULES] },
+  });
+
+  const inviteUrl = `${appUrl()}/invite/${invite.token}`;
+  const first = plan.ownerName?.split(/\s+/)[0] ?? "there";
+  const sent = await sendWorkspaceEmail({
+    workspaceId: workspace.id,
+    to: plan.ownerEmail,
+    subject: `Your Foundry workspace for ${plan.name} is ready`,
+    text: `Hi ${first},\n\nYour Foundry workspace for ${plan.name} is ready. Use this link to create your account and set a password. It works for ${OWNER_INVITE_TTL_DAYS} days:\n\n${inviteUrl}\n`,
+    html: `<p>Hi ${escapeHtml(first)},</p><p>Your Foundry workspace for ${escapeHtml(plan.name)} is ready. Use this link to create your account and set a password. It works for ${OWNER_INVITE_TTL_DAYS} days:</p><p><a href="${escapeHtml(inviteUrl)}">Create your account</a></p>`,
+  });
+
+  return {
+    workspace: (await getPlatformWorkspace(workspace.id))!,
+    inviteUrl,
+    emailed: sent.ok,
+    emailError: sent.ok ? null : sent.error,
+  };
+}
+
+/**
+ * Set which email domains may sign in to a business with Google (src/lib/email-domains.ts).
+ * A domain another business already lists is refused, so one domain is never two businesses'.
+ */
+export async function setPlatformWorkspaceDomains(actorId: string, workspaceId: string, input: string[]): Promise<PlatformWorkspace> {
+  const current = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { slug: true, allowedEmailDomains: true } });
+  if (!current) throw Object.assign(new Error("Workspace not found"), { status: 404 });
+  if (current.slug === HOME_WORKSPACE_SLUG) throw new PlatformInputError("Gitwork signs in with its own Google client.");
+  const next = normaliseAllowedDomains(input);
+  const taken = await prisma.workspace.findFirst({
+    where: { id: { not: workspaceId }, allowedEmailDomains: { hasSome: next } },
+    select: { name: true, allowedEmailDomains: true },
+  });
+  if (taken) {
+    const clash = next.find((d) => taken.allowedEmailDomains.includes(d));
+    throw new PlatformInputError(`${clash} already signs in to ${taken.name}.`);
+  }
+  if (JSON.stringify(next) !== JSON.stringify(current.allowedEmailDomains)) {
+    await prisma.workspace.update({ where: { id: workspaceId }, data: { allowedEmailDomains: next } });
+    await recordAuditEntry({
+      workspaceId,
+      actorId,
+      action: "platform.workspace.settings_changed",
+      target: `workspace.${current.slug}`,
+      before: { allowedEmailDomains: current.allowedEmailDomains },
+      after: { allowedEmailDomains: next },
+    });
+  }
+  return (await getPlatformWorkspace(workspaceId))!;
 }

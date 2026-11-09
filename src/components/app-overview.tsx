@@ -1,5 +1,6 @@
 "use client";
 
+import { GettingStartedCard } from "@/components/dashboard/getting-started-card";
 import Link from "next/link";
 
 import { useState } from "react";
@@ -11,6 +12,9 @@ import ProposalsWidget from "@/components/dashboard/proposals-widget";
 import ClientsWidget from "@/components/dashboard/clients-widget";
 import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
+import TeamLeaveWidget from "@/components/dashboard/team-leave-widget";
+import HrWidget from "@/components/dashboard/hr-widget";
+import ExpensesWidget from "@/components/dashboard/expenses-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
 import { OnYourDeskCard } from "@/components/dashboard/on-your-desk-card";
 // Below-the-fold, admin-only, and the single heaviest dashboard card (~41KB).
@@ -63,8 +67,10 @@ const TILE_GAP = 12;
 // blank cell — and numbering stays sequential because the parent assigns it.
 const GRID: GridEntry[] = [
   { component: ClientsWidget,   band: "feed",    size: "md", module: "clients" },
-  { component: GmailWidget,     band: "feed",    size: "md", requires: "google" },
-  { component: CalendarWidget,  band: "feed",    size: "md", requires: "google" },
+  // Gmail and Calendar are client-work feeds, so they come with Portal. Someone who runs
+  // the team rather than client work (People & office) doesn't get them (Nov 2026).
+  { component: GmailWidget,     band: "feed",    size: "md", module: "clients", requires: "google" },
+  { component: CalendarWidget,  band: "feed",    size: "md", module: "clients", requires: "google" },
   { component: PulseWidget,     band: "summary", size: "sm", module: "pulse" },
   { component: CareWidget,      band: "summary", size: "sm", module: "support" },
   { component: ProposalsWidget, band: "summary", size: "sm", module: "proposals" },
@@ -72,6 +78,11 @@ const GRID: GridEntry[] = [
   // returns null when no client has a Launchpad — so the tile is absent rather than
   // reporting a healthy-looking 0 for a workspace that has never used the feature.
   { component: LaunchpadWidget, band: "summary", size: "sm", module: "clients", requires: "launchpad" },
+  // For leave approvers and HR. The server scopes both to Gitwork staff for an approver
+  // who isn't an Admin.
+  { component: TeamLeaveWidget, band: "summary", size: "sm", module: "backstage.approve" },
+  { component: ExpensesWidget,  band: "summary", size: "sm", module: "backstage.expenses" },
+  { component: HrWidget,        band: "summary", size: "sm", module: "hr.manage" },
 ];
 
 type NumberedTile = GridEntry & { number: number };
@@ -180,7 +191,7 @@ export function AppOverview() {
   const account = useAccount();
   const clientList = useClientList();
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
-  const { viewAs, effectivePermissions } = useViewAs(isAdmin);
+  const { viewAs, viewAsUser, effectivePermissions } = useViewAs(isAdmin);
   // "On your desk" self-hides on an empty desk; it reports its render state so
   // the dashboard numbering below stays gap-free (declared before any early
   // return to respect the rules of hooks).
@@ -199,21 +210,32 @@ export function AppOverview() {
   // Otherwise it's the preview role/user's permissions array.
   const previewPerms = effectivePermissions; // from useViewAs
   const resolvedPermissions = previewPerms ?? realPermissions;
+  // The role HQ is drawn for. While previewing it's the previewed person's, never yours:
+  // previewing Siân as a Super Admin used to keep the Admin bypass, so cards she can't see
+  // (Agentic workflow, the Analytics and Starters links) appeared in the preview.
+  const viewRole = previewPerms === null ? role : viewAs === "USER" ? viewAsUser?.role ?? "STAFF" : viewAs ?? role;
 
 
   // Someone outside Gitwork: signs in with an email and password, and holds only what
   // a Super Admin switched on for them.
-  const isExternal = isExternalRole(isAdmin && viewAs ? viewAs : role);
+  const isExternal = isExternalRole(viewRole);
 
   // Show developer view when previewing as Developer, or when actually a restricted dev.
-  const isDeveloper = isAdmin
-    ? viewAs === "DEVELOPER"
-    : role === "DEVELOPER" || !realPermissions.includes("seeAllClients");
+  // "Not scoped to every client" only means a developer when they work on clients at all:
+  // someone with no Portal (People & office) is not a developer and gets this grid.
+  // The "view as Staff" preset has Portal without seeAllClients and has always been the
+  // agency grid, so it's excluded.
+  const isDeveloper =
+    viewRole === "DEVELOPER" ||
+    (viewAs !== "STAFF" &&
+      !isAtLeast(viewRole, "ADMIN") &&
+      resolvedPermissions.includes("clients") &&
+      !resolvedPermissions.includes("seeAllClients"));
 
   // Full unrestricted view: real Super Admin (isAdmin, no preview, empty permissions array).
   const showAll = isAdmin && previewPerms === null && realPermissions.length === 0;
 
-  const acct = { role, permissions: resolvedPermissions };
+  const acct = { role: viewRole, permissions: resolvedPermissions };
   const canApprove = showAll || can(acct, "backstage.approve");
   const canSeeTasks = showAll || can(acct, "clients");
   const canSeeSignoff = showAll || can(acct, "proposals");
@@ -291,13 +313,15 @@ export function AppOverview() {
         {/* Super-Admin tools, moved off the sidebar (Aug 2026): neither is a
             product you work in daily, and both were taking a permanent rail row
             for one person. Quiet mono text links. (Deck moved to Settings → Labs, Oct 2026.) */}
-        {isSuperAdmin(role) && workspaceHasModule("analytics", account.data?.workspaceModules) ? (
+        {isSuperAdmin(viewRole) && workspaceHasModule("analytics", account.data?.workspaceModules) ? (
           <StripLink href="/app/analytics" label="Analytics" title="Delivery, output & AI usage" />
         ) : null}
-        {isSuperAdmin(role) && workspaceHasModule("starters", account.data?.workspaceModules) ? (
+        {isSuperAdmin(viewRole) && workspaceHasModule("starters", account.data?.workspaceModules) ? (
           <StripLink href="/app/starters" label="Starters" title="Prompt→Production library" />
         ) : null}
       </div>
+
+      {isEffectiveAdmin ? <GettingStartedCard /> : null}
 
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
           and the DevOps lead's "Daily roll-up". Side-by-side only when both

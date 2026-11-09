@@ -23,7 +23,7 @@
  */
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import {
   type EffectiveUser,
   ForbiddenError,
@@ -185,7 +185,7 @@ async function applyFoldIfNeeded(row: HandoverRow, workspaceId: string): Promise
 
 export async function listHandovers(user: EffectiveUser | null): Promise<HandoverSummaryDTO[]> {
   assertAtLeastAdmin(user);
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: await requestWorkspaceId(user) };
   const rows = await prisma.handover.findMany({
     where: { workspaceId: user?.workspaceId ?? workspace.id },
     include: HANDOVER_INCLUDE,
@@ -197,7 +197,7 @@ export async function listHandovers(user: EffectiveUser | null): Promise<Handove
 
 export async function getHandover(user: EffectiveUser | null, id: string): Promise<HandoverDTO> {
   assertAtLeastAdmin(user);
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: await requestWorkspaceId(user) };
   const workspaceId = user?.workspaceId ?? workspace.id;
   let row = await prisma.handover.findFirst({
     where: { id, workspaceId },
@@ -236,7 +236,7 @@ export async function createHandover(
   input: HandoverInput,
 ): Promise<HandoverSummaryDTO> {
   assertAtLeastAdmin(user);
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: await requestWorkspaceId(user) };
   const workspaceId = user?.workspaceId ?? workspace.id;
   const userId = input.userId ?? user?.id;
   if (!userId) throw new ForbiddenError("Who is this handover for?");
@@ -274,7 +274,7 @@ export async function updateHandover(
   input: Partial<HandoverInput>,
 ): Promise<HandoverSummaryDTO> {
   assertAtLeastAdmin(user);
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: await requestWorkspaceId(user) };
   const workspaceId = user?.workspaceId ?? workspace.id;
   const existing = await prisma.handover.findFirst({
     where: { id, workspaceId },
@@ -313,7 +313,7 @@ export async function updateHandover(
 
 export async function deleteHandover(user: EffectiveUser | null, id: string): Promise<void> {
   assertAtLeastAdmin(user);
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: await requestWorkspaceId(user) };
   const workspaceId = user?.workspaceId ?? workspace.id;
   const existing = await prisma.handover.findFirst({ where: { id, workspaceId }, select: { id: true } });
   if (!existing) throw new NotFoundError("That handover doesn't exist.");
@@ -326,7 +326,7 @@ export async function addHandoverItem(
   input: HandoverItemInput,
 ): Promise<HandoverItemDTO> {
   assertAtLeastAdmin(user);
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: await requestWorkspaceId(user) };
   const workspaceId = user?.workspaceId ?? workspace.id;
   const handover = await prisma.handover.findFirst({
     where: { id: handoverId, workspaceId },
@@ -386,7 +386,7 @@ export async function updateHandoverItem(
   input: Partial<HandoverItemInput>,
 ): Promise<HandoverItemDTO> {
   assertAtLeastAdmin(user);
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: await requestWorkspaceId(user) };
   const workspaceId = user?.workspaceId ?? workspace.id;
   const existing = await prisma.handoverItem.findFirst({
     where: { id: itemId, workspaceId },
@@ -456,7 +456,7 @@ export async function updateHandoverItem(
 
 export async function deleteHandoverItem(user: EffectiveUser | null, itemId: string): Promise<void> {
   assertAtLeastAdmin(user);
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: await requestWorkspaceId(user) };
   const workspaceId = user?.workspaceId ?? workspace.id;
   const existing = await prisma.handoverItem.findFirst({
     where: { id: itemId, workspaceId },

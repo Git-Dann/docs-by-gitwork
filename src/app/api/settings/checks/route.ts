@@ -8,6 +8,7 @@ import {
   canViewCheckConfig,
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canViewCheckConfig, "view Pulse check settings");
-    const checks = await listCheckConfigs();
+    const checks = await listCheckConfigs(await workspaceIdForRequest(req));
     return apiOk(checks);
   } catch (e) {
     return fromError(e);
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(req));
     const body = saveSchema.parse(await req.json());
-    await saveCheckConfig(body);
+    await saveCheckConfig(await workspaceIdForRequest(req), body);
     return apiOk({ ok: true });
   } catch (e) {
     if (e instanceof z.ZodError) return apiError(e.message, 400);

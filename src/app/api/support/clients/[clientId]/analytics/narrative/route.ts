@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { resolveAiConfig, completeText } from "@/server/ai-provider";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import type { AnalyticsReportMetric } from "@/types/support";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,6 +18,7 @@ export async function POST(
 ) {
   try {
     const { clientId } = await params;
+    const workspaceId = await requireSupportClient(request, clientId);
     const body = (await request.json().catch(() => ({}))) as {
       metrics?: AnalyticsReportMetric[];
       periodLabel?: string;
@@ -31,7 +32,7 @@ export async function POST(
     });
 
     const workspace = await prisma.workspace.findFirst({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: workspaceId },
       select: {
         id: true,
         aiProvider: true,

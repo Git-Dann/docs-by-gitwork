@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { createCodeModule, loadWikiCodeHandover, setWikiCodeHandoverEnabled } from "@/server/wiki-code";
+import { clientIdForSlug } from "@/server/clients-scope";
 
 const toggleSchema = z.object({ enabled: z.boolean() });
 const moduleSchema = z.object({
@@ -11,19 +10,10 @@ const moduleSchema = z.object({
   description: z.string().trim().max(2000).optional().nullable(),
 });
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await loadWikiCodeHandover(clientId));
   } catch (err) {
@@ -35,7 +25,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { enabled } = toggleSchema.parse(await req.json());
     await setWikiCodeHandoverEnabled(clientId, enabled);
@@ -48,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await createCodeModule(clientId, moduleSchema.parse(await req.json())), { status: 201 });
   } catch (err) {

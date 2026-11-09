@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { getIndustryBenchmarks, requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export async function GET(
   try {
     const { scanId } = await params;
     await requireScanAccess(request, scanId);
-    const benchmarks = await getIndustryBenchmarks(scanId);
+    const benchmarks = await getIndustryBenchmarks(await workspaceIdForRequest(request), scanId);
     return apiOk({ benchmarks });
   } catch (error) {
     return fromError(error);

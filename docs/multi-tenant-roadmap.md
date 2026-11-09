@@ -14,8 +14,10 @@
 | Staff and Platform polish (paging, popup, validation, seed accounts hidden) | Done, §86.6 and §87 |
 | Phase 2.1 Workspace carried in every token; shadow comparison | Live 29 Oct 2026 (#743), CLAUDE.md §88. Read the counts at `/api/platform/workspace-shadow` |
 | Phase 2.2a Run first-boot setup at server start-up | Done. `runFirstBootSetup()` starts in `src/instrumentation-node.ts` |
-| Phase 2.2b Replace single-workspace lookups, file by file | Not started. A ratchet test stops the count growing |
-| Isolation suite: two businesses, every route, both directions | Done (`npm run test:isolation`, CI job `isolation`). 63 reads and 32 writes cross today; `tests/isolation/known-leaks.json` is the 2.2b worklist. **Empty list = the gate before any other business signs in** |
+| Phase 2.2b Replace single-workspace lookups, file by file | Done outside the sign-in code. Docs, Portal, Team, Pulse/Study, Staff/Hiring, Settings, Care and the server modules all use the caller's workspace (CLAUDE.md §88; Care Nov 2026). The rest is new-account provisioning, the API-key fallback and Gitwork-only paths. Ratchet: `ensureBaseRecords` 62, `DEFAULT_WORKSPACE_SLUG` 38 |
+| Phase 2.3 Sign-in uses the person's own workspace | Done (CLAUDE.md §88). `home-membership.ts` chooses; Gitwork members are unchanged. Then per-workspace API keys (Settings → Developer) and MCP bound to its workspace; the master key no longer goes to browsers. Next: sign-up (Phase 3) |
+| Phase 3 (first slice) Businesses created by us; people sign in with a password | Done (CLAUDE.md §88). Platform console → Add business sends an owner invite; invites accept with a password; reset is an emailed link (the shared recovery key is gone). Then: Team invites with email and role, a workspace switcher, a getting-started card, Google sign-in for a business domain (second client, off until its keys are set), and the iOS password endpoint (app: Git-Dann/foundry-ios#1). Next: a public sign-up page, with billing |
+| Isolation suite: two businesses, every route, both directions | Done (`npm run test:isolation`, CI job `isolation`). Nothing crosses since Care was scoped (Nov 2026), so `tests/isolation/known-leaks.json` is empty and any new crossing fails CI. Empty was the gate before any other business signs in |
 
 ## Context
 

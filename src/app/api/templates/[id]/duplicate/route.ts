@@ -10,7 +10,7 @@ import { randomBytes } from "node:crypto";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { docsWorkspaceId, templateVisibleWhere } from "@/server/documents-scope";
 import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
@@ -19,11 +19,15 @@ interface RouteContext {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "manage templates");
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canManageDocs, "manage templates");
     const { id } = await context.params;
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await docsWorkspaceId(actor);
 
-    const source = await prisma.documentTemplate.findUnique({ where: { id } });
+    // Only a template this workspace can see (its own or a Foundry stock one) can be copied.
+    const source = await prisma.documentTemplate.findFirst({
+      where: { id, ...templateVisibleWhere(workspaceId) },
+    });
     if (!source) return apiError("Template not found", 404);
 
     const slugSuffix = randomBytes(3).toString("hex"); // 6-char ASCII
@@ -34,7 +38,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // is safe to round-trip, so we cast through unknown.
     const duplicate = await prisma.documentTemplate.create({
       data: {
-        workspaceId: workspace.id,
+        workspaceId,
         name: `${source.name} (copy)`,
         slug: newSlug,
         description: source.description,

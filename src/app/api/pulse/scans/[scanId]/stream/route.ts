@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -69,7 +70,8 @@ export async function GET(
     return new Response("Scan not found", { status: 404 });
   }
 
-  const initial = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: SCALAR_SELECT });
+  const workspaceId = await workspaceIdForRequest(request);
+  const initial = await prisma.pulseScan.findFirst({ where: { id: scanId, workspaceId }, select: SCALAR_SELECT });
   if (!initial) return new Response("Scan not found", { status: 404 });
 
   const encoder = new TextEncoder();
@@ -109,8 +111,8 @@ export async function GET(
       async function tick() {
         if (closed) return;
         try {
-          const scan = await prisma.pulseScan.findUnique({
-            where: { id: scanId },
+          const scan = await prisma.pulseScan.findFirst({
+            where: { id: scanId, workspaceId },
             select: { ...SCALAR_SELECT, checks: { orderBy: { sortOrder: "asc" }, select: CHECK_SELECT } },
           });
           if (!scan) { close(); return; }

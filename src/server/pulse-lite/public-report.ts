@@ -7,9 +7,9 @@
  * derive all of them from one function.
  */
 
+import { freeScanScore } from "@/server/pulse-lite/free-score";
 import { prisma } from "@/lib/prisma";
 import { summarise, triage, type PublicTriage, type LiteCategorySummary } from "./public-scan";
-import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { scoreGrade } from "@/lib/badge/pulse-badge";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
@@ -62,7 +62,9 @@ export async function getPublicReport(id: string): Promise<PublicReport | null> 
   const { categories, pass, warn, fail, inconclusive } = summarise(checks);
   // Same function as the internal report, the badge and Provenance. A second
   // formula here is how a public number starts quietly disagreeing with the paid one.
-  const score = checks.length > 0 ? computeScoreBreakdown(checks).finalScore : lite.healthScore;
+  // The free scan's cautious score, as on the widget (free-score.ts).
+  const free = checks.length > 0 ? freeScanScore(checks) : null;
+  const score = free ? free.score : lite.healthScore;
 
   return {
     id: lite.id,

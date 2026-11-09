@@ -1,10 +1,12 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findActiveMembershipIn, findHomeMembership } from "@/server/auth/home-membership";
+import { looksLikeApiKey } from "@/lib/api-key-token";
+import { resolveApiKey } from "@/server/api-keys";
 import { recordWorkspaceShadow } from "@/server/auth/request-workspace";
 import { getRequestUser } from "@/server/auth/request-user";
-import { ACTIVE_MEMBER, isActiveMember } from "@/server/auth/member-status";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import { allowedDocTypes } from "@/lib/templates";
 import type { DocumentType } from "@/types/proposal";
 import {
@@ -91,12 +93,24 @@ export class ForbiddenError extends Error {
 // when no identity can be resolved — route handlers catch via fromError.
 export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
   let userIdOrEmail: { id?: string; email?: string } = {};
-  // The workspace the caller's token names, for the Phase 2 shadow comparison only.
-  // Nothing below is scoped by it (see src/server/auth/request-workspace.ts).
-  let claimedWorkspace: { id: string | null | undefined; via: "session" | "mobile" } = { id: null, via: "session" };
+  // The workspace the caller's token names. Sessions and mobile tokens prefer it
+  // (home-membership.ts); an API key is bound to it.
+  let claimedWorkspace: { id: string | null | undefined; via: "session" | "mobile" | "apikey" } = {
+    id: null,
+    via: "session",
+  };
 
-  const mobileUser = getRequestUser(req);
-  if (mobileUser) {
+  // A workspace API key (src/server/api-keys.ts). Any failure is a REFUSAL: an unusable key must
+  // never become "no identity", which is how the trusted env API_KEY is represented.
+  const authHeader = req.headers.get("authorization");
+  const presented = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+  const mobileUser = looksLikeApiKey(presented) ? null : getRequestUser(req);
+  if (looksLikeApiKey(presented)) {
+    const key = await resolveApiKey(presented);
+    if (!key) throw new RevokedAccessError();
+    userIdOrEmail = { id: key.userId };
+    claimedWorkspace = { id: key.workspaceId, via: "apikey" };
+  } else if (mobileUser) {
     userIdOrEmail = { id: mobileUser.id, email: mobileUser.email };
     claimedWorkspace = { id: mobileUser.workspaceId, via: "mobile" };
   } else {
@@ -119,13 +133,7 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     where: userIdOrEmail.id
       ? { id: userIdOrEmail.id }
       : { email: userIdOrEmail.email! },
-    include: {
-      memberships: {
-        where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        take: 1,
-        include: { workspace: { select: { rolePermissions: true } } },
-      },
-    },
+    select: { id: true, email: true, name: true, avatarUrl: true },
   });
 
   // ⚠️ From here on the caller HAS an identity. Every refusal below is therefore a
@@ -135,15 +143,15 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     // A session or mobile token for a user that no longer exists.
     throw new RevokedAccessError();
   }
-  if (dbUser.memberships.length === 0) {
-    // Removed from the workspace (or a pre-archive removal that deleted the row).
-    throw new RevokedAccessError();
-  }
-
-  const membership = dbUser.memberships[0];
-  if (!isActiveMember(membership)) {
-    // Archived. Checked here, per request, against the database — so it takes
-    // effect on the very next call, including for a session that is still live.
+  // The workspace the token names, while that membership is still active; else Gitwork, else
+  // the oldest active one (src/server/auth/home-membership.ts). Archived rows are never chosen,
+  // and this is read per request, so archiving someone takes effect on their very next call.
+  const membership =
+    claimedWorkspace.via === "apikey" && claimedWorkspace.id
+      ? await findActiveMembershipIn(dbUser.id, claimedWorkspace.id)
+      : await findHomeMembership(dbUser.id, claimedWorkspace.id);
+  if (!membership) {
+    // Removed or archived everywhere (or a pre-archive removal that deleted the row).
     throw new RevokedAccessError();
   }
   // Resolve effective permissions LIVE from the role matrix + this member's
@@ -324,11 +332,20 @@ export function assertCanApproveBackstage(user: EffectiveUser): void {
   }
 }
 
-// Expenses are Super Admin only — submitting, viewing and reviewing reimbursements
-// is restricted to the platform owner. Everyone else's Backstage is leave + holidays
+// Expenses: Super Admins, plus whoever holds `backstage.expenses` (granted per person,
+// never by role; first Siân, Nov 2026). Everyone else's Backstage is leave + holidays
 // + availability only.
 export function canManageExpenses(user: EffectiveUser): boolean {
-  return isSuperAdmin(user.role);
+  return isSuperAdmin(user.role) || user.permissions.includes("backstage.expenses");
+}
+
+/**
+ * May see, edit or decide on someone else's expense. Deliberately its own question, not
+ * `canApproveBackstage`: approving leave and handling money are separate grants, so an
+ * Admin who approves leave does not thereby see the ledger.
+ */
+export function canReviewExpenses(user: EffectiveUser): boolean {
+  return canManageExpenses(user);
 }
 
 /**

@@ -2,15 +2,18 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { listMessages, createMessage } from "@/server/support";
 import { sendReply, type ReplyResult } from "@/server/support-reply";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ clientId: string; convId: string }> },
 ) {
   try {
-    const { convId } = await params;
+    const { clientId, convId } = await params;
+    await requireSupportClient(request, clientId);
+    await requireSupportRow("conversation", convId, clientId);
     const messages = await listMessages(convId);
     return apiOk({ messages });
   } catch (error) {
@@ -24,6 +27,8 @@ export async function POST(
 ) {
   try {
     const { clientId, convId } = await params;
+    await requireSupportClient(request, clientId);
+    await requireSupportRow("conversation", convId, clientId);
     const body = await request.json() as { direction: string; authorLabel: string; body: string };
 
     // Outbound replies are SENT and VERIFIED before the message is persisted. A real

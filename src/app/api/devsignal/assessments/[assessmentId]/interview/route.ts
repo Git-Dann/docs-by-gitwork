@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canManageDevSignal, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordInterview } from "@/server/devsignal/assessment";
 import { devSignalInterviewSchema } from "@/server/validators";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export async function POST(
   try {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageDevSignal, "record a DevSignal interview");
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { assessmentId } = await params;
     const body = devSignalInterviewSchema.parse(await request.json());
     const assessment = await recordInterview(workspace.id, assessmentId, {

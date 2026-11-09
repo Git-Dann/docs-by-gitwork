@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { auth } from "@/auth";
+import { requireTeamAdmin } from "@/server/auth/team-admin";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { isAtLeast, ROLE_IDS } from "@/types/auth";
+import { ROLE_IDS } from "@/types/auth";
+import { archiveMember } from "@/server/team";
+import { recordAuditEntry } from "@/server/audit-log";
 
 const UpdateMemberSchema = z.object({
   name: z.string().min(1).optional(),
@@ -12,28 +13,23 @@ const UpdateMemberSchema = z.object({
   permissions: z.array(z.string()).optional(),
 });
 
-async function requireAdmin() {
-  const session = await auth();
-  if (!session?.user) return null;
-  if (!isAtLeast(session.user.role, "ADMIN")) return null;
-  return session;
-}
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ userId: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return apiError("Forbidden", 403);
-
   try {
+    const actor = await requireTeamAdmin(req);
     const { userId } = await params;
     const body = UpdateMemberSchema.parse(await req.json());
+    const workspace = { id: actor.workspaceId };
 
-    const workspace = await prisma.workspace.findUnique({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+    // Someone in another workspace reads as not found, before anything is written.
+    const target = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: workspace.id, userId } },
+      select: { id: true },
     });
-    if (!workspace) return apiError("Workspace not found", 404);
+    if (!target) return apiError("Member not found", 404);
 
     if (body.name) {
       await prisma.user.update({ where: { id: userId }, data: { name: body.name } });
@@ -63,32 +59,42 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ userId: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return apiError("Forbidden", 403);
-
+  // Archives, never deletes: the User row keeps who did what on tasks, leave and documents
+  // (§57). Same rules as Settings → Team: not yourself, not someone at or above your role,
+  // never the last active Super Admin. Restorable for 30 days.
   try {
+    const actor = await requireTeamAdmin(req);
     const { userId } = await params;
 
-    if (userId === session.user.id) {
+    if (userId === actor.id) {
       return apiError("You cannot remove your own account", 400);
     }
 
-    const workspace = await prisma.workspace.findUnique({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+    const target = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: actor.workspaceId, userId } },
+      select: { id: true },
     });
-    if (!workspace) return apiError("Workspace not found", 404);
+    if (!target) return apiError("Member not found", 404);
 
-    await prisma.workspaceMember.delete({
-      where: { workspaceId_userId: { workspaceId: workspace.id, userId } },
+    const archived = await archiveMember(target.id, actor);
+    if (!archived) return apiError("Member not found", 404);
+
+    await recordAuditEntry({
+      workspaceId: actor.workspaceId,
+      actorId: actor.id,
+      action: "team.member.archived",
+      target: `member:${target.id}`,
+      metadata: { memberId: target.id, userId, via: "DELETE /api/team/[userId]" },
     });
 
-    await prisma.user.delete({ where: { id: userId } });
-
-    return apiOk({ ok: true });
+    return apiOk({ ok: true, archived: true });
   } catch (err) {
+    if (err instanceof Error && err.message.includes("last active Super Admin")) {
+      return apiError(err.message, 400);
+    }
     return fromError(err);
   }
 }

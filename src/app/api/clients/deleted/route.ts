@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { listDeletedClients } from "@/server/clients";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "see deleted clients");
-    return apiOk({ clients: await listDeletedClients() });
+    return apiOk({ clients: await listDeletedClients(await requestWorkspaceId(user)) });
   } catch (error) {
     return fromError(error);
   }

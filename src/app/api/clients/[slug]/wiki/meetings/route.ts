@@ -9,8 +9,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { clientIdForSlug } from "@/server/clients-scope";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
   listShareableMeetings,
@@ -23,19 +22,10 @@ const patchSchema = z.union([
   z.object({ meetingId: z.string().trim().min(1).max(100), shared: z.boolean() }),
 ]);
 
-async function clientIdFor(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the meetings section");
-    const clientId = await clientIdFor((await params).slug);
+    const clientId = await clientIdForSlug((await params).slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk({ meetings: await listShareableMeetings(clientId) });
   } catch (err) {
@@ -46,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the meetings section");
-    const clientId = await clientIdFor((await params).slug);
+    const clientId = await clientIdForSlug((await params).slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = patchSchema.parse(await req.json());
     if ("enabled" in body) {

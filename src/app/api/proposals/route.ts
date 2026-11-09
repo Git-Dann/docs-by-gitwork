@@ -7,6 +7,7 @@ import { resolveDocumentOwnerName, templateOwnerName } from "@/lib/document-owne
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import { allocateDocumentNumber } from "@/server/documents";
 import {
   allowedDocTypesForUser,
@@ -26,6 +27,7 @@ import {
   serializeProposalListItem,
 } from "@/server/proposals";
 import { proposalCreateSchema } from "@/server/validators";
+import { docsWorkspaceId } from "@/server/documents-scope";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +35,6 @@ export async function GET(request: NextRequest) {
     // module; a session alone was enough until a signed-in account existed that does
     // not hold it.
     assertCan(await getEffectiveUserOrNull(request), canViewDocs, "view documents");
-    await ensureBaseRecords();
 
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get("search")?.trim();
@@ -66,6 +67,8 @@ export async function GET(request: NextRequest) {
     const sortDirection = sortDirectionRaw === "asc" ? "asc" : "desc";
 
     const where: Prisma.DocumentWhereInput = {
+      // Only the caller's own workspace's documents (multi-tenant Phase 2.2b).
+      workspaceId: await docsWorkspaceId(user),
       documentType: documentTypeWhere,
       ...(status && status !== "ALL" ? { status: status as DocumentStatus } : {}),
       ...(search
@@ -126,7 +129,8 @@ export async function POST(request: NextRequest) {
     // It's only a last-resort attribution for an unattended API-key call (no session and
     // no mobile JWT → `actor` is null, which assertCan deliberately lets through). Every
     // real caller is attributed to `actor`.
-    const { workspace, user: workspaceOwner, template } = await ensureBaseRecords();
+    const workspace = { id: await requestWorkspaceId(actor) };
+    const { user: workspaceOwner, template } = await ensureBaseRecords();
 
     // Resolve the document type for this new record. Defaults to PROPOSAL so existing callers
     // (the legacy "New document" flow that only knew about proposals) keep working unchanged.

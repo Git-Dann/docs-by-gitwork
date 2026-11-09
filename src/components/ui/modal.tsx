@@ -94,7 +94,11 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
+    // `m-0` is load-bearing. A dialog is often rendered inside a `space-y-*` list, and Tailwind
+    // v4's space-y puts a margin on every child but the last — including this fixed layer, which
+    // then stopped 24px short of the bottom of the window and left the On Your Desk bar undimmed
+    // (Backstage leave form, Nov 2026). space-y's selector has zero specificity, so this wins.
+    <div className="fixed inset-0 z-50 m-0">
       {/* Backdrop + centering layer in one element so taps on the dimmed area dismiss.
           (A separate absolute backdrop underneath a transparent flex layer never received
           the tap — the flex layer sat on top and swallowed it.) Only a click on the layer

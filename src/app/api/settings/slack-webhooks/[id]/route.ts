@@ -4,7 +4,7 @@
  *   PATCH  /api/settings/slack-webhooks/[id]   → enable/disable, change label or event kinds
  *   DELETE /api/settings/slack-webhooks/[id]   → remove the subscription
  *
- * All scoped to the workspace resolved via `ensureBaseRecords()`. A 404 is returned for any id
+ * All scoped to the caller's workspace (`workspaceIdForRequest`). A 404 is returned for any id
  * that belongs to a different workspace, which doubles as a tenant guard.
  */
 
@@ -12,8 +12,8 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -38,7 +38,7 @@ const patchSchema = z.object({
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id } = await context.params;
     const body = patchSchema.parse(await request.json());
 
@@ -78,7 +78,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id } = await context.params;
 
     const existing = await prisma.slackWebhookSubscription.findUnique({ where: { id } });

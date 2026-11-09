@@ -37,6 +37,7 @@ import {
   type IntakeCategory,
 } from "@/lib/wiki-intake-categories";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
+import { clientVisibleIncidents, clientVisibleMonitors } from "@/lib/monitor-environment";
 import { publicIncident } from "@/lib/monitor-incidents";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
@@ -2569,7 +2570,7 @@ function storableMentions(mentions: readonly StoredMention[] | undefined): Prism
  * route named. Returns null when it doesn't, so the route can 404.
  */
 export async function addWikiIntakeComment(
-  slug: string,
+  client: { slug: string; workspaceId: string },
   itemId: string,
   author: { userId: string; name: string; isAdmin?: boolean },
   body: string,
@@ -2580,7 +2581,7 @@ export async function addWikiIntakeComment(
   // Words, a screenshot, or both — a screenshot-only reply is a real reply.
   if (!trimmed && !image) throw new Error("Comment can't be empty.");
   const item = await prisma.clientWikiIntakeItem.findFirst({
-    where: { id: itemId, wiki: { client: { slug } } },
+    where: { id: itemId, wiki: { client: { slug: client.slug, workspaceId: client.workspaceId } } },
     select: { id: true, wikiId: true },
   });
   if (!item) return null;
@@ -2602,8 +2603,9 @@ export async function addWikiIntakeComment(
 }
 
 /** The wiki a client slug owns, if it has one — for the internal mention routes. */
-export async function wikiIdForClientSlug(slug: string): Promise<string | null> {
-  const wiki = await prisma.clientWiki.findFirst({ where: { client: { slug } }, select: { id: true } });
+/** The wiki of the client with this slug in `workspaceId` (slugs are unique per workspace only). */
+export async function wikiIdForClientSlug(slug: string, workspaceId: string): Promise<string | null> {
+  const wiki = await prisma.clientWiki.findFirst({ where: { client: { slug, workspaceId } }, select: { id: true } });
   return wiki?.id ?? null;
 }
 
@@ -2694,7 +2696,7 @@ export class CommentForbiddenError extends Error {
  * public wiki token. Either way the comment must sit on a request in THAT wiki — a
  * comment id from another client 404s rather than being editable through this one.
  */
-export type CommentScope = { slug: string } | { token: string };
+export type CommentScope = { slug: string; workspaceId: string } | { token: string };
 
 /** A screenshot sent in the same request as a new reply. */
 export type ReplyImageInput = { bytes: Buffer; mime: string; filename: string | null };
@@ -2714,7 +2716,7 @@ async function replyImageData(itemId: string, image: ReplyImageInput | null | un
 async function findScopedComment(scope: CommentScope, itemId: string, commentId: string) {
   let wikiWhere: Prisma.ClientWikiIntakeItemWhereInput;
   if ("slug" in scope) {
-    wikiWhere = { wiki: { client: { slug: scope.slug } } };
+    wikiWhere = { wiki: { client: { slug: scope.slug, workspaceId: scope.workspaceId } } };
   } else {
     const wikiId = await resolveWikiIdByPublicToken(scope.token);
     if (!wikiId) return null;
@@ -3394,16 +3396,18 @@ function forPublic(dto: WikiDTO): WikiDTO {
     sheets: forPublicSheets(dto.sheets),
     // Whose Google account reads the folder for the client is ours, not theirs.
     drive: forPublicDrive(dto.drive),
+    // Only PRODUCTION monitors, and their incidents, leave: a staging box being redeployed is
+    // not the client's outage (src/lib/monitor-environment.ts). Removed here, not flagged.
     // A heartbeat's ping URL is its credential — anyone holding it can mark the job healthy.
     // Header names say how a client's API is protected; internal incident notes and who on our
     // team picked an incident up are ours.
     monitors: {
       ...dto.monitors,
-      monitors: dto.monitors.monitors.map((m) => {
+      monitors: clientVisibleMonitors(dto.monitors.monitors).map((m) => {
         const base = { ...m, headerNames: [], hasBody: false };
         return m.heartbeat ? { ...base, target: "", heartbeat: { ...m.heartbeat, pingUrl: null } } : base;
       }),
-      incidents: (dto.monitors.incidents ?? []).map(publicIncident),
+      incidents: clientVisibleIncidents(dto.monitors.incidents ?? [], dto.monitors.monitors).map(publicIncident),
     },
   };
 

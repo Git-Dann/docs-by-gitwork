@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCan, canManageStarters, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { restoreCuratorRun } from "@/server/curator/restore";
 import { curatorRestoreSchema } from "@/server/validators";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "restore a curator run");
     const body = await request.json();
     const { runId } = curatorRestoreSchema.parse(body);
-    const outcome = await restoreCuratorRun(runId);
+    const outcome = await restoreCuratorRun(await workspaceIdForRequest(request), runId);
     if (!outcome.ok) return apiError(outcome.reason ?? "Could not restore run", 400);
     return apiOk({ reversed: outcome.reversed });
   } catch (error) {

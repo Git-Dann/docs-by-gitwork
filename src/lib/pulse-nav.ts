@@ -9,7 +9,7 @@
  * link is not access control. Add a page here and it needs one of those decisions too.
  */
 
-export type PulseNavId = "projects" | "monitors" | "portfolio" | "compare" | "growth";
+export type PulseNavId = "projects" | "monitors" | "portfolio" | "compare" | "growth" | "ai-search";
 
 export interface PulseNavItem {
   id: PulseNavId;
@@ -26,6 +26,7 @@ export const PULSE_NAV_ITEMS: readonly PulseNavItem[] = [
   { id: "portfolio", label: "Portfolio", path: "/portfolio", internal: false },
   { id: "compare", label: "Compare", path: "/compare", internal: false },
   { id: "growth", label: "Growth", path: "/growth", internal: true },
+  { id: "ai-search", label: "AI search", path: "/ai-search", internal: true },
 ];
 
 export const PULSE_APP_BASE = "/app/pulse";

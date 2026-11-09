@@ -32,6 +32,7 @@ const ws = (i: number, over: Partial<PlatformWorkspace> = {}): PlatformWorkspace
   modulesRestricted: i % 2 === 0,
   enabledModules: i % 2 === 0 ? ["clients"] : [],
   platformAiKeysAllowed: i % 3 === 0,
+  allowedEmailDomains: [],
   ...over,
 });
 const many = Array.from({ length: 45 }, (_, i) => ws(i + 1));

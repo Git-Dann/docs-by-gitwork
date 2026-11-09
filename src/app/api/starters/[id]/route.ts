@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getStarter, updateStarter, deleteStarter } from "@/server/starters";
 import { starterUpdateSchema } from "@/server/validators";
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "view starters");
     const { id } = await params;
-    const starter = await getStarter(id);
+    const starter = await getStarter(await workspaceIdForRequest(request), id);
     if (!starter) return apiError("Starter not found", 404);
     return apiOk({ starter });
   } catch (error) {
@@ -28,6 +29,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json();
     const data = starterUpdateSchema.parse(body);
     const starter = await updateStarter(
+      await workspaceIdForRequest(request),
       id,
       {
         ...data,
@@ -47,7 +49,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "delete starters");
     const { id } = await params;
-    const ok = await deleteStarter(id);
+    const ok = await deleteStarter(await workspaceIdForRequest(request), id);
     if (!ok) return apiError("Starter not found", 404);
     return apiOk({ ok: true });
   } catch (error) {

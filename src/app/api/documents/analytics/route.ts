@@ -16,9 +16,9 @@
  */
 
 import { DocumentType } from "@prisma/client";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { canViewAdminDocTypes, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
   getWorkspaceDocumentAnalytics,
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (user && !canViewAdminDocTypes(user)) {
       return apiError("You don't have access to document analytics.", 403);
     }
-    const workspaceId = user?.workspaceId ?? (await ensureBaseRecords()).workspace.id;
+    const workspaceId = await requestWorkspaceId(user);
 
     const sp = request.nextUrl.searchParams;
 

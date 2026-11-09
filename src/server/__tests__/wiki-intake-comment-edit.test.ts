@@ -87,7 +87,7 @@ beforeEach(() => {
 describe("editWikiIntakeComment", () => {
   it("lets the author edit, and stamps editedAt", async () => {
     const out = await editWikiIntakeComment(
-      { slug: "northwind" },
+      { slug: "northwind", workspaceId: "ws-1" },
       "i1",
       "c1",
       { kind: "team", userId: "u-harry", isAdmin: false },
@@ -102,10 +102,10 @@ describe("editWikiIntakeComment", () => {
 
   it("refuses someone who isn't the author — admin included — and writes nothing", async () => {
     await expect(
-      editWikiIntakeComment({ slug: "northwind" }, "i1", "c1", { kind: "team", userId: "u-admin", isAdmin: true }, "x"),
+      editWikiIntakeComment({ slug: "northwind", workspaceId: "ws-1" }, "i1", "c1", { kind: "team", userId: "u-admin", isAdmin: true }, "x"),
     ).rejects.toBeInstanceOf(CommentForbiddenError);
     await expect(
-      editWikiIntakeComment({ slug: "northwind" }, "i1", "c1", null, "x"),
+      editWikiIntakeComment({ slug: "northwind", workspaceId: "ws-1" }, "i1", "c1", null, "x"),
     ).rejects.toBeInstanceOf(CommentForbiddenError);
     expect(db.updates).toHaveLength(0);
   });
@@ -120,14 +120,14 @@ describe("editWikiIntakeComment", () => {
   it("404s (null) for a reply that isn't in this wiki", async () => {
     db.row = null;
     expect(
-      await editWikiIntakeComment({ slug: "other" }, "i1", "c1", { kind: "team", userId: "u-harry", isAdmin: false }, "x"),
+      await editWikiIntakeComment({ slug: "other", workspaceId: "ws-1" }, "i1", "c1", { kind: "team", userId: "u-harry", isAdmin: false }, "x"),
     ).toBeNull();
   });
 });
 
 describe("deleteWikiIntakeComment", () => {
   it("soft-deletes: stamps deletedAt and clears the text, mentions and screenshot", async () => {
-    const out = await deleteWikiIntakeComment({ slug: "northwind" }, "i1", "c1", {
+    const out = await deleteWikiIntakeComment({ slug: "northwind", workspaceId: "ws-1" }, "i1", "c1", {
       kind: "team",
       userId: "u-harry",
       isAdmin: false,
@@ -142,7 +142,7 @@ describe("deleteWikiIntakeComment", () => {
   });
 
   it("lets an admin delete someone else's reply", async () => {
-    const out = await deleteWikiIntakeComment({ slug: "northwind" }, "i1", "c1", {
+    const out = await deleteWikiIntakeComment({ slug: "northwind", workspaceId: "ws-1" }, "i1", "c1", {
       kind: "team",
       userId: "u-admin",
       isAdmin: true,
@@ -152,7 +152,7 @@ describe("deleteWikiIntakeComment", () => {
 
   it("refuses a non-author, non-admin", async () => {
     await expect(
-      deleteWikiIntakeComment({ slug: "northwind" }, "i1", "c1", { kind: "team", userId: "u-sam", isAdmin: false }),
+      deleteWikiIntakeComment({ slug: "northwind", workspaceId: "ws-1" }, "i1", "c1", { kind: "team", userId: "u-sam", isAdmin: false }),
     ).rejects.toBeInstanceOf(CommentForbiddenError);
     expect(db.updates).toHaveLength(0);
   });

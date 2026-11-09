@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { getConversationViewCounts } from "@/server/support";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export async function GET(
 ) {
   try {
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const user = await getEffectiveUserOrNull(request);
     const counts = await getConversationViewCounts(clientId, user?.id);
     return apiOk({ counts });

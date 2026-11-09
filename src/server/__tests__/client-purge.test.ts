@@ -84,7 +84,7 @@ describe("purgeClientRecord", () => {
   it("only purges a client that is already deleted", async () => {
     const { purgeClientRecord } = await import("@/server/clients");
     findFirst.mockResolvedValueOnce(null);
-    expect(await purgeClientRecord("acme", "Acme")).toBe("not_found");
+    expect(await purgeClientRecord("ws1", "acme", "Acme")).toBe("not_found");
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ hidden: true }) }));
     expect(transaction).not.toHaveBeenCalled();
   });
@@ -92,7 +92,7 @@ describe("purgeClientRecord", () => {
   it("refuses when the typed name doesn't match", async () => {
     const { purgeClientRecord } = await import("@/server/clients");
     findFirst.mockResolvedValueOnce({ id: "c1", name: "Acme Ltd" });
-    expect(await purgeClientRecord("acme-ltd", "Acme")).toBe("name_mismatch");
+    expect(await purgeClientRecord("ws1", "acme-ltd", "Acme")).toBe("name_mismatch");
     expect(transaction).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();
   });
@@ -101,7 +101,7 @@ describe("purgeClientRecord", () => {
     const { purgeClientRecord } = await import("@/server/clients");
     findFirst.mockResolvedValueOnce({ id: "c1", name: "Acme Ltd" });
     transaction.mockResolvedValueOnce([]);
-    expect(await purgeClientRecord("acme-ltd", "  acme ltd ")).toBe("purged");
+    expect(await purgeClientRecord("ws1", "acme-ltd", "  acme ltd ")).toBe("purged");
     expect(transaction).toHaveBeenCalledTimes(1);
     const ops = transaction.mock.calls[0][0] as Array<{ op: string; args: unknown }>;
     expect(ops.map((o) => o.op)).toEqual(["wikiLinks", "client"]);
@@ -114,7 +114,7 @@ describe("purgeClientRecord", () => {
     const { purgeClientRecord } = await import("@/server/clients");
     findFirst.mockResolvedValueOnce({ id: "c1", name: "Acme" });
     transaction.mockRejectedValueOnce(new Error("FK violation"));
-    await expect(purgeClientRecord("acme", "Acme")).rejects.toThrow("FK violation");
+    await expect(purgeClientRecord("ws1", "acme", "Acme")).rejects.toThrow("FK violation");
     expect(audit).not.toHaveBeenCalled();
   });
 });

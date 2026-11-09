@@ -13,6 +13,7 @@ import {
   setClientSummaryHidden,
   setClientSummaryNote,
 } from "@/server/client-summary";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 const bodySchema = z.object({
   /** The short line the card shows. Empty string clears it. */
@@ -27,7 +28,9 @@ export async function PATCH(
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
-    assertCan(await getEffectiveUserOrNull(req), canManageClients, "edit the client summary");
+    const user = await getEffectiveUserOrNull(req);
+    assertCan(user, canManageClients, "edit the client summary");
+    const workspaceId = await requestWorkspaceId(user);
     const { clientId } = await params;
     const body = bodySchema.parse(await req.json());
     if (body.note === undefined && body.detail === undefined && body.hidden === undefined) {
@@ -41,8 +44,9 @@ export async function PATCH(
       };
       // ⚠️ Read the current prose first: a PATCH carrying only one field must not
       // clear the other, and the shared stamp is derived from both.
-      const current = await getClientSummaryText(clientId);
+      const current = await getClientSummaryText(workspaceId, clientId);
       found = await setClientSummaryNote(
+        workspaceId,
         clientId,
         {
           ...(body.note !== undefined ? { note: blank(body.note) } : {}),
@@ -52,7 +56,7 @@ export async function PATCH(
       );
     }
     if (found && body.hidden !== undefined) {
-      found = await setClientSummaryHidden(clientId, body.hidden);
+      found = await setClientSummaryHidden(workspaceId, clientId, body.hidden);
     }
     // ⚠️ A write that matched no row is a 404, never a silent 200. The board refetches
     // on success, so reporting ok would show the edit vanishing with no explanation.

@@ -15,7 +15,6 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getDefaultLaunchpadStructure } from "@/lib/launchpad/default-template";
 import {
   normalizeStructure,
@@ -313,7 +312,10 @@ export async function assignLaunchpad(
   input: { templateId?: string; enabledModules?: string[] } = {},
 ): Promise<LaunchpadDTO | null> {
   const wikiId = await wikiIdForClient(clientId);
-  const template = await resolveAssignableTemplate(input.templateId);
+  // The client's own workspace decides which templates it can be assigned.
+  const owner = await prisma.workspaceClient.findUnique({ where: { id: clientId }, select: { workspaceId: true } });
+  if (!owner) return null;
+  const template = await resolveAssignableTemplate(owner.workspaceId, input.templateId);
   const fromTemplate = template
     ? normalizeStructure(template.structure)
     : getDefaultLaunchpadStructure();
@@ -1051,8 +1053,8 @@ export async function computeLaunchpadSummaries(
 }
 
 /** Every client with a live Launchpad, worst first — the HQ widget's list. */
-export async function listLaunchpadSummaries(): Promise<LaunchpadSummary[]> {
-  const { workspace } = await ensureBaseRecords();
+export async function listLaunchpadSummaries(workspaceId: string): Promise<LaunchpadSummary[]> {
+  const workspace = { id: workspaceId };
   const clients = await prisma.workspaceClient.findMany({
     where: { workspaceId: workspace.id, hidden: false, status: { not: "LEAD" } },
     select: { id: true },

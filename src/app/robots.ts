@@ -56,6 +56,7 @@ export default function robots(): MetadataRoute.Robots {
           "/login",
           "/portal/login",
           "/forgot-password",
+          "/reset-password",
           "/oauth/",
           // The embeddable Pulse widget is meant to be framed by gitwork.co.uk, not
           // indexed on its own — /pulse-overview is the page that should rank.

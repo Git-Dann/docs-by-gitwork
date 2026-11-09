@@ -27,7 +27,7 @@ export async function POST(
     const user = await getEffectiveUserOrNull(req);
     assertCan(user, canManageClients, "manage the Launchpad");
     const { slug, itemId } = await params;
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
 
     const upload = await readLaunchpadUpload(req);

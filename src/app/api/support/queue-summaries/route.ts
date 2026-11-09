@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { getClientQueueSummaries } from "@/server/support";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +15,9 @@ export const dynamic = "force-dynamic";
  * Sits at /api/support/queue-summaries rather than under /clients/ so it can never be mistaken for
  * (or shadow) the `[clientId]` dynamic segment.
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const summaries = await getClientQueueSummaries();
+    const summaries = await getClientQueueSummaries(await workspaceIdForRequest(request));
     return apiOk({ summaries });
   } catch (error) {
     return fromError(error);

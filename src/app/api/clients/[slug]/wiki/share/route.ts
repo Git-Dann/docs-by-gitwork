@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { setWikiShare, setWikiSectionShare } from "@/server/wiki";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 // `section` present → per-page share; absent → whole-wiki share.
 const bodySchema = z.object({
@@ -33,8 +33,7 @@ export async function PATCH(
 ) {
   try {
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
-    const workspaceId = workspace.id;
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },

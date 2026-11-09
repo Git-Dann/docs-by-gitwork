@@ -926,6 +926,7 @@ export async function listCodeClearCandidates(
   if (typeof params.scoreMin === "number") query.set("scoreMin", String(params.scoreMin));
   if (typeof params.scoreMax === "number") query.set("scoreMax", String(params.scoreMax));
   if (params.archived) query.set("archived", "1");
+  if (params.missing) query.set("missing", "1");
   const qs = query.toString();
   return apiFetch<CandidateListResponse>(`/api/codeclear/candidates${qs ? `?${qs}` : ""}`);
 }
@@ -1543,6 +1544,46 @@ export async function unsharePulseScan(scanId: string): Promise<{ isShared: bool
     `/api/pulse/scans/${scanId}/share`,
     { method: "DELETE" },
   );
+}
+
+export async function getAiSearchReport(
+  range: number,
+  refresh = false,
+): Promise<{ report: import("@/lib/ai-search").AiSearchReport }> {
+  return apiFetch(`/api/pulse/ai-search?range=${range}${refresh ? "&refresh=1" : ""}`);
+}
+
+export async function getAiAnswersReport(): Promise<{ report: import("@/lib/ai-answers").AiAnswersReport }> {
+  return apiFetch("/api/pulse/ai-search/answers");
+}
+
+export async function startAiAnswersRun(): Promise<{ runId: string; alreadyRunning: boolean }> {
+  return apiFetch("/api/pulse/ai-search/answers", { method: "POST" });
+}
+
+export async function saveAiAnswersConfig(input: {
+  questions: string[];
+  brandNames: string[];
+  domains: string[];
+  engines: string[];
+  autoWeekly: boolean;
+}): Promise<{ config: import("@/lib/ai-answers").AiAnswersConfig }> {
+  return apiFetch("/api/pulse/ai-search/answers/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function saveAiSearchConfig(input: {
+  searchConsoleSite: string;
+  ga4PropertyId: string;
+}): Promise<{ config: import("@/lib/ai-search").AiSearchConfig }> {
+  return apiFetch("/api/pulse/ai-search/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function listPulseLeads(): Promise<{ leads: import("@/server/pulse-lite/leads-admin").PulseLeadView[] }> {
@@ -2780,6 +2821,7 @@ export function createBackstageLeave(data: {
   halfDayStart?: boolean;
   halfDayEnd?: boolean;
   reason?: string;
+  countsToAllowance?: boolean;
   userId?: string;
 }): Promise<LeaveRequestDTO> {
   return apiFetch("/api/backstage/leave", {
@@ -2802,6 +2844,7 @@ export function updateBackstageLeave(
     halfDayStart?: boolean;
     halfDayEnd?: boolean;
     reason?: string;
+    countsToAllowance?: boolean;
   },
 ): Promise<LeaveRequestDTO> {
   return apiFetch(`/api/backstage/leave/${id}`, {
@@ -2889,6 +2932,15 @@ export function reviewBackstageExpense(
 export function getBackstageAllowance(userId?: string): Promise<LeaveAllowanceDTO> {
   const qs = userId ? `?userId=${encodeURIComponent(userId)}` : "";
   return apiFetch(`/api/backstage/allowance${qs}`);
+}
+
+/** Days per holiday year for one person; null puts them back on the workspace default. */
+export function setBackstageAllowance(userId: string, annualLeaveDays: number | null): Promise<LeaveAllowanceDTO> {
+  return apiFetch(`/api/backstage/members/${encodeURIComponent(userId)}/allowance`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ annualLeaveDays }),
+  });
 }
 
 export function getBackstageAlerts(windowDays?: number): Promise<StaffingAlertsResponse> {
@@ -4597,6 +4649,11 @@ export async function createWikiMonitorApi(slug: string, input: MonitorInput): P
   });
 }
 
+/** One client's monitors in full, every field the edit form needs (team only). */
+export async function getWikiMonitorsApi(slug: string): Promise<import("@/server/wiki-monitors").WikiMonitorsSection> {
+  return apiFetch(`/api/clients/${slug}/wiki/monitors`);
+}
+
 export async function updateWikiMonitorApi(
   slug: string,
   id: string,
@@ -5720,5 +5777,63 @@ export function purgeClientApi(slug: string, confirmName: string): Promise<{ pur
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ confirmName }),
+  });
+}
+
+// ─── Commitments (Backstage → Commitments) ───────────────────────────────────
+
+export async function getCommitments(): Promise<import("@/types/commitments").CommitmentsResponse> {
+  return apiFetch("/api/backstage/commitments");
+}
+
+export async function createCommitment(input: {
+  title: string;
+  dueAt?: string | null;
+  notes?: string | null;
+  counterpart?: string | null;
+}): Promise<{ commitment: import("@/types/commitments").CommitmentDTO }> {
+  return apiFetch("/api/backstage/commitments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateCommitment(
+  id: string,
+  input: Partial<{
+    title: string;
+    notes: string | null;
+    dueAt: string | null;
+    counterpart: string | null;
+    state: import("@/lib/commitments").CommitmentState;
+    snoozedUntil: string | null;
+  }>,
+): Promise<{
+  commitment: import("@/types/commitments").CommitmentDTO;
+  next: import("@/types/commitments").CommitmentDTO | null;
+}> {
+  return apiFetch(`/api/backstage/commitments/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteCommitment(id: string): Promise<{ deleted: true }> {
+  return apiFetch(`/api/backstage/commitments/${id}`, { method: "DELETE" });
+}
+
+export async function syncCommitments(): Promise<{ result: import("@/types/commitments").CommitmentSyncResult }> {
+  return apiFetch("/api/backstage/commitments/sync", { method: "POST" });
+}
+
+export async function updateCommitmentSettings(
+  input: Partial<Record<"gmailEnabled" | "slackEnabled" | "meetingsEnabled" | "calendarEnabled", boolean>>,
+): Promise<{ settings: import("@/types/commitments").CommitmentSettingsDTO }> {
+  return apiFetch("/api/backstage/commitments/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   });
 }

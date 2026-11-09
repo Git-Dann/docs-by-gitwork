@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { candidateBulkImportSchema } from "@/server/validators";
 import { isAtLeast } from "@/types/auth";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const session = await requireAdminSession();
     if (!session) return apiError("Forbidden", 403);
 
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const body = candidateBulkImportSchema.parse(await request.json());
 
     // Pre-fetch all existing handles in the workspace so we can dedupe in one

@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getClientSchedule, parseScheduleRange } from "@/server/schedule";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -23,19 +23,19 @@ type RouteContext = {
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(request);
     const { slug } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
 
     const client = await prisma.workspaceClient.findFirst({
-      where: { slug, workspaceId: workspace.id },
+      where: { slug, workspaceId },
       select: { id: true, name: true, slug: true },
     });
     if (!client) return apiError("Client not found.", 404);
 
     const { from, to } = parseScheduleRange(request.nextUrl.searchParams);
     const blocks = await getClientSchedule({
-      workspaceId: workspace.id,
+      workspaceId,
       clientId: client.id,
       from,
       to,

@@ -11,7 +11,6 @@
 // other integration toggles (Google, Slack, email).
 
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { recordAuditEntry } from "@/server/audit-log";
 import { revokeConnection as oauthRevokeConnection } from "@/server/oauth";
 import {
@@ -27,9 +26,9 @@ export type McpAdminState = {
   connectionCount: number;
 };
 
-export async function getMcpAdminState(): Promise<McpAdminState> {
+export async function getMcpAdminState(workspaceId: string): Promise<McpAdminState> {
   const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    where: { id: workspaceId },
     select: { id: true, mcpEnabled: true },
   });
   const connectionCount = await prisma.mcpConnection.count({
@@ -41,12 +40,12 @@ export async function getMcpAdminState(): Promise<McpAdminState> {
 export async function setMcpEnabled(actor: EffectiveUser, enabled: boolean): Promise<McpAdminState> {
   assertSuperAdmin(actor);
   const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    where: { id: actor.workspaceId },
     select: { id: true, mcpEnabled: true },
   });
   if (workspace.mcpEnabled === enabled) {
     // No-op — don't pollute the audit log with non-events.
-    return getMcpAdminState();
+    return getMcpAdminState(actor.workspaceId);
   }
   await prisma.workspace.update({
     where: { id: workspace.id },
@@ -60,7 +59,7 @@ export async function setMcpEnabled(actor: EffectiveUser, enabled: boolean): Pro
     before: { mcpEnabled: workspace.mcpEnabled },
     after: { mcpEnabled: enabled },
   }).catch(() => undefined);
-  return getMcpAdminState();
+  return getMcpAdminState(actor.workspaceId);
 }
 
 // ── shared shape ───────────────────────────────────────────────────────────

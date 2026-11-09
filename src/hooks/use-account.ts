@@ -28,6 +28,8 @@ export interface AccountProfile {
    * See src/lib/workspace-modules.ts.
    */
   workspaceModules?: string[] | null;
+  /** The workspace slug; decides whether a password applies (isPasswordLoginAllowed). */
+  workspaceSlug?: string | null;
   /** Gitwork's platform operators — shows the Platform console. Optional for older caches. */
   isPlatformAdmin?: boolean;
 }

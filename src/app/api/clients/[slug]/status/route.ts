@@ -4,6 +4,7 @@ import { setClientStatus } from "@/server/clients";
 import { clientStatusUpdateSchema } from "@/server/validators";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function POST(
     assertCan(user, canManageClients, "change client status");
     await assertClientAccessBySlug(user, slug);
     const { status, resumeAt, pauseNote } = clientStatusUpdateSchema.parse(await request.json());
-    const client = await setClientStatus(slug, status, user, { resumeAt, pauseNote });
+    const client = await setClientStatus(await requestWorkspaceId(user), slug, status, user, { resumeAt, pauseNote });
     if (!client) return apiError("Client not found", 404);
     return apiOk({ client });
   } catch (error) {

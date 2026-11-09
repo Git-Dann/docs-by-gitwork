@@ -11,6 +11,9 @@ import { useBackstageAccess } from "@/components/backstage/access";
 import { BackstageModal } from "@/components/backstage/modal";
 import { Button } from "@/components/ui/button";
 import type { LeaveRequestDTO, LeaveType } from "@/types/backstage";
+import { defaultCountsToAllowance } from "@/lib/leave-allowance";
+
+const FORM_ID = "backstage-leave-form";
 
 const LEAVE_TYPES: Array<{ value: LeaveType; label: string }> = [
   { value: "ANNUAL", label: "Annual leave" },
@@ -45,6 +48,9 @@ export function LeaveRequestForm({
   const [halfDayStart, setHalfDayStart] = useState(editing?.halfDayStart ?? false);
   const [halfDayEnd, setHalfDayEnd] = useState(editing?.halfDayEnd ?? false);
   const [reason, setReason] = useState(editing?.reason ?? "");
+  const [counts, setCounts] = useState(editing?.countsToAllowance ?? defaultCountsToAllowance(editing?.type ?? "ANNUAL"));
+  // Follows the type until someone ticks or unticks it themselves.
+  const [countsTouched, setCountsTouched] = useState(Boolean(editing));
   const [error, setError] = useState<string | null>(null);
 
   const pending = create.isPending || update.isPending;
@@ -62,7 +68,15 @@ export function LeaveRequestForm({
       if (isEdit && editing) {
         await update.mutateAsync({
           id: editing.id,
-          input: { type, startDate, endDate, halfDayStart, halfDayEnd, reason: reason.trim() || undefined },
+          input: {
+            type,
+            startDate,
+            endDate,
+            halfDayStart,
+            halfDayEnd,
+            reason: reason.trim() || undefined,
+            countsToAllowance: counts,
+          },
         });
       } else {
         await create.mutateAsync({
@@ -72,6 +86,7 @@ export function LeaveRequestForm({
           halfDayStart,
           halfDayEnd,
           reason: reason.trim() || undefined,
+          countsToAllowance: counts,
           // Only send userId when filing on behalf of someone else.
           userId: forUserId && forUserId !== userId ? forUserId : undefined,
         });
@@ -87,8 +102,20 @@ export function LeaveRequestForm({
       eyebrow="Backstage"
       title={isEdit ? "Edit leave" : "New leave request"}
       onClose={onCancel}
+      // Pinned below the fields. It used to sit inside the scroller, so in the fixed-height
+      // dialog it floated wherever the fields ended with empty space under it (Nov 2026).
+      footer={
+        <div className="flex items-center justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="submit" form={FORM_ID} variant="primary" loading={pending}>
+            {isEdit ? "Save changes" : "Submit request"}
+          </Button>
+        </div>
+      }
     >
-      <form onSubmit={handleSubmit}>
+      <form id={FORM_ID} onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 gap-4 px-6 py-5 sm:grid-cols-2">
           {showMemberPicker ? (
             <label className="block sm:col-span-2">
@@ -119,7 +146,11 @@ export function LeaveRequestForm({
             <span className="text-sm font-medium text-[var(--text-2)]">Type</span>
             <select
               value={type}
-              onChange={(e) => setType(e.target.value as LeaveType)}
+              onChange={(e) => {
+                const next = e.target.value as LeaveType;
+                setType(next);
+                if (!countsTouched) setCounts(defaultCountsToAllowance(next));
+              }}
               className="app-input mt-1 block w-full"
             >
               {LEAVE_TYPES.map((t) => (
@@ -180,16 +211,25 @@ export function LeaveRequestForm({
             />
           </label>
 
-          {error ? <p className="text-sm text-red-600 sm:col-span-2">{error}</p> : null}
-        </div>
+          <label className="flex items-start gap-2.5 rounded-[8px] border border-[var(--border-2)] px-3 py-2.5 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={counts}
+              onChange={(e) => {
+                setCounts(e.target.checked);
+                setCountsTouched(true);
+              }}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium text-[var(--text-1)]">Counts towards holiday allowance</span>
+              <span className="block text-xs text-[var(--text-3)]">
+                Untick for a funeral, compassionate leave, or anything agreed outside the allowance.
+              </span>
+            </span>
+          </label>
 
-        <div className="flex items-center justify-end gap-3 border-t border-[var(--border-2)] px-6 py-4">
-          <Button type="button" variant="secondary" onClick={onCancel} disabled={pending}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={pending}>
-            {isEdit ? "Save changes" : "Submit request"}
-          </Button>
+          {error ? <p className="text-sm text-red-600 sm:col-span-2">{error}</p> : null}
         </div>
       </form>
     </BackstageModal>

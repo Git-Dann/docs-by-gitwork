@@ -13,7 +13,6 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
 import { buildStandupCard, type StandupTaskCardInput } from "@/server/slack/blocks";
@@ -29,7 +28,6 @@ export async function POST(
   try {
     const { id: taskId } = await params;
     const user = await requireAuthedUser(_request);
-    await ensureBaseRecords();
 
     const task = await prisma.task.findFirst({
       where: { id: taskId, workspaceId: user.workspaceId },

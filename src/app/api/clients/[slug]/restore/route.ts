@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { restoreClientRecord } from "@/server/clients";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "restore clients");
     const { slug } = await context.params;
-    const restored = await restoreClientRecord(slug, user);
+    const restored = await restoreClientRecord(await requestWorkspaceId(user), slug, user);
     if (!restored) return apiError("No deleted client by that name", 404);
     return apiOk({ restored: true });
   } catch (error) {

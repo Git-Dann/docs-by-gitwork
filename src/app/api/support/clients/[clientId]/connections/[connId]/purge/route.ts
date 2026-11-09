@@ -1,15 +1,18 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ clientId: string; connId: string }> },
 ) {
   try {
     const { clientId, connId } = await params;
+    await requireSupportClient(req, clientId);
+    await requireSupportRow("connection", connId, clientId);
 
     const conn = await prisma.accountConnection.findFirst({
       where: { id: connId, clientId },

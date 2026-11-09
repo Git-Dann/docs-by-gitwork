@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { deleteWikiPage, upsertWikiPage } from "@/server/wiki";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const wikiPageTypeSchema = z.enum([
   "IA_GUIDE",
@@ -35,8 +35,7 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
-    const workspaceId = workspace.id;
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
@@ -57,8 +56,7 @@ export async function DELETE(
 ) {
   try {
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
-    const workspaceId = workspace.id;
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },

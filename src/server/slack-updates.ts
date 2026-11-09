@@ -16,7 +16,6 @@
 
 import { columnNameFor, parseBoardColumns } from "@/lib/tasks/board-columns";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   type EffectiveUser,
   assertCanPublishTaskRollup,
@@ -114,7 +113,6 @@ export async function pushProjectUpdate(
   user: EffectiveUser,
   input: ProjectUpdateInput,
 ): Promise<ProjectUpdateResult> {
-  await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
 
   const saved = await getSlackPushPrefs(user);
@@ -351,7 +349,6 @@ export async function broadcastUpdate(
   input: BroadcastInput,
 ): Promise<BroadcastResult> {
   assertCanPublishTaskRollup(user);
-  await ensureBaseRecords();
 
   // Validate every target is in scope (the lead has seeAllClients, so this just
   // confirms the clients exist in the workspace).

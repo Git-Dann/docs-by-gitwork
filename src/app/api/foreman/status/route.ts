@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { getForemanStatus } from "@/server/foreman/queries";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const status = await getForemanStatus();
+    const status = await getForemanStatus(await workspaceIdForRequest(request));
     return apiOk({ status });
   } catch (error) {
     return fromError(error);

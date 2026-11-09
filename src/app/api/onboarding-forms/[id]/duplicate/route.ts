@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { duplicateOnboardingForm } from "@/server/onboarding-forms";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function POST(
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageClients, "manage onboarding forms");
     const { id } = await params;
-    const form = await duplicateOnboardingForm(id);
+    const form = await duplicateOnboardingForm(await workspaceIdForRequest(request), id);
     if (!form) return apiError("Onboarding form not found", 404);
     return apiOk({ form }, { status: 201 });
   } catch (error) {

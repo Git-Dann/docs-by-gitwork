@@ -476,14 +476,13 @@ export const _internal = { safeEqualHex };
 
 // ── helper: workspace lookup for issuance ──────────────────────────────────
 
-/** Look up the user's primary workspace for the connection row. Single-workspace today. */
+/**
+ * The workspace a NEW connection is approved in: the person's own (home-membership.ts), so
+ * Gitwork for every Gitwork member. Never an archived membership.
+ */
 export async function workspaceIdForUser(userId: string): Promise<string | null> {
-  const membership = await prisma.workspaceMember.findFirst({
-    where: { userId },
-    select: { workspaceId: true },
-    orderBy: { createdAt: "asc" },
-  });
-  return membership?.workspaceId ?? null;
+  const { findHomeMembership } = await import("@/server/auth/home-membership");
+  return (await findHomeMembership(userId))?.workspaceId ?? null;
 }
 
 // ── workspace-level enable gate ────────────────────────────────────────────

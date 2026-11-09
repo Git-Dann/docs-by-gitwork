@@ -1,3 +1,4 @@
+import { hasValidApiKeySignature, looksLikeApiKey } from "@/lib/api-key-token";
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig, SESSION_VERSION } from "@/auth.config";
@@ -309,25 +310,17 @@ export default auth(async (req) => {
       }
     }
 
-    // Set the API session cookie so browser fetches pass the API_KEY check
-    const apiKey = configuredApiKey();
+    // ⚠️ Browsers no longer get the workspace API_KEY in a cookie. That cookie handed every
+    // signed-in person (any role, and in a multi-business Foundry any business) the master key,
+    // readable from their browser's devtools, which acts with no identity: full access. A
+    // session is already enough to call /api (below). Clear any copy a browser still holds.
     const response = NextResponse.next();
-    if (apiKey) {
-      response.cookies.set({
-        name: API_AUTH_COOKIE,
-        value: apiKey,
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: 60 * 60 * 12,
-      });
-    }
+    if (req.cookies.get(API_AUTH_COOKIE)) response.cookies.delete(API_AUTH_COOKIE);
     return response;
   }
 
-  // API routes: validate via either (a) workspace API_KEY, (b) NextAuth web
-  // session cookie, or (c) per-user Foundry mobile JWT issued by
+  // API routes: validate via (a) the env API_KEY or a workspace API key (Bearer only),
+  // (b) the NextAuth web session cookie, or (c) a per-user Foundry mobile JWT issued by
   // /api/auth/mobile-callback.
   if (pathname.startsWith("/api/")) {
     // Strip any incoming x-foundry-user-* headers — defense in depth so clients
@@ -349,13 +342,16 @@ export default auth(async (req) => {
         const bearerToken = authHeader?.startsWith("Bearer ")
           ? authHeader.slice(7).trim()
           : null;
-        const cookieToken = req.cookies.get(API_AUTH_COOKIE)?.value ?? null;
-        const token = bearerToken ?? cookieToken;
-
-        // Accept either the shared workspace API_KEY (web session / legacy iOS)
-        // or a per-user mobile JWT (post Wave-2 iOS).
-        let authorized = token === apiKey;
-        if (!authorized && bearerToken) {
+        // The shared env API_KEY as a Bearer header only (Gitwork's own integrations and crons).
+        // The old browser cookie copy is not accepted any more.
+        let authorized = bearerToken === apiKey;
+        // A workspace API key (src/lib/api-key-token.ts). Only its signature can be checked here;
+        // the route checks it is live and acts as its creator, inside its own workspace only.
+        if (!authorized && looksLikeApiKey(bearerToken)) {
+          const secret = process.env.AUTH_SECRET;
+          authorized = !!secret && (await hasValidApiKeySignature(bearerToken, secret));
+        }
+        if (!authorized && bearerToken && !looksLikeApiKey(bearerToken)) {
           try {
             mobileClaims = await verifyMobileToken(bearerToken);
             authorized = true;
@@ -364,13 +360,8 @@ export default auth(async (req) => {
           }
         }
 
-        // (b) NextAuth web session. The `gitwork_api_session` cookie is minted on
-        // the /app response, but immediately after a Google sign-in the browser
-        // can fire the first /api/* fetch (e.g. /api/account) before that
-        // Set-Cookie has landed — a race that surfaced as a one-off 400/401 that
-        // "fixes itself on refresh". A valid session IS sufficient authorization
-        // (route handlers still enforce their own per-permission gates), so accept
-        // it directly and close the race.
+        // (b) NextAuth web session. A valid session IS sufficient authorization (route
+        // handlers still enforce their own per-permission gates).
         if (!authorized && req.auth?.user) {
           authorized = true;
         }

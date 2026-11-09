@@ -73,13 +73,13 @@ describe("a password sign-in cannot gain privileges", () => {
     // `adminOrAboveCount === 0` promotes whoever signs in first. A guest reaching that
     // would be handed the workspace.
     expect(jwt).toMatch(/isPasswordSignIn/);
-    expect(jwt).toMatch(/!isPasswordSignIn && \(isKnownSuperAdmin/);
+    expect(jwt).toMatch(/!isPasswordSignIn && !isBusinessGoogle && \(isKnownSuperAdmin/);
   });
 
   it("never auto-provisions a member", () => {
-    // The provisioning branch creates a STAFF membership. A password sign-in must bail
-    // before it rather than mint one.
-    const bail = jwt.indexOf("if (!dbUser && isPasswordSignIn) return token;");
+    // The provisioning branch creates a Gitwork membership. A password sign-in, or a
+    // business Google sign-in, must bail before it rather than mint one.
+    const bail = jwt.indexOf("if (!dbUser && (isPasswordSignIn || isBusinessGoogle)) return token;");
     const provision = jwt.indexOf("if (!dbUser) {");
     expect(bail, "the password bail-out is missing").toBeGreaterThan(-1);
     expect(bail, "the bail-out must come BEFORE the provisioning branch").toBeLessThan(provision);
@@ -124,7 +124,9 @@ describe("a guest can change their own password", () => {
     // A JWT is minted at sign-in and outlives a role change, so a member demoted
     // since theirs was issued would still be carrying the old one.
     expect(routeSource).toMatch(/prisma\.user\.findUnique/);
-    expect(routeSource).toMatch(/isPasswordLoginAllowed\(user\.memberships\[0\]\?\.role\)/);
+    // The live membership from the database (src/server/auth/home-membership.ts).
+    expect(routeSource).toMatch(/const membership = await findHomeMembership\(/);
+    expect(routeSource).toMatch(/isPasswordLoginAllowed\(membership\?\.role, membership\?\.workspace\.slug\)/);
     expect(
       /isPasswordLoginAllowed\(session/.test(routeSource),
       "the role must not come from the session",
@@ -138,7 +140,7 @@ describe("a guest can change their own password", () => {
   });
 
   it("only shows the field to an account that can use it", () => {
-    expect(panel).toMatch(/isPasswordLoginAllowed\(profile\?\.role\)/);
+    expect(panel).toMatch(/isPasswordLoginAllowed\(profile\?\.role, profile\?\.workspaceSlug\)/);
   });
 
   it("keeps bcrypt and Prisma out of the client bundle", () => {
@@ -209,7 +211,7 @@ describe("a guest only sees what they were given", () => {
 
   it("hides On Your Desk from a guest", () => {
     expect(read("src/components/app-shell.tsx")).toMatch(
-      /isExternalRole\(account\.data\?\.role\) \? null : <DeskDrawer/,
+      /isExternalRole\(account\.data\.role\) \|\|[\s\S]{0,120}\? null : \(\s*<DeskDrawer/,
     );
   });
 });

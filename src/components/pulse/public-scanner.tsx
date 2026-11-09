@@ -1,5 +1,6 @@
 "use client";
 
+import { provisionalNote } from "@/lib/pulse-free-score";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
 import { CaptureFields, EMPTY_CAPTURE, Honeypot, UNLOCKED_HEADING, captureComplete, deliveryNote, listAreas, unlockCopy, type CaptureValues } from "./capture-fields";
@@ -68,6 +69,9 @@ type View = {
   status: "RUNNING" | "COMPLETED" | "FAILED";
   targetUrl: string;
   healthScore: number | null;
+  /** Too little of the site was judged for the score to be more than a guide. */
+  scoreProvisional?: boolean;
+  scoreCoverage?: number | null;
   techStack: string[];
   totalChecks: number;
   pass: number;
@@ -757,7 +761,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
       : failedScan
         ? (view?.errorMessage ?? "We couldn't complete the scan for that URL.")
         : done
-          ? `Scan complete. Health score ${view?.healthScore ?? "unavailable"} out of 100.`
+          ? `Scan complete. Health score ${view?.healthScore ?? "unavailable"} out of 100${view?.scoreProvisional ? ", provisional" : ""}.`
           : starting
             ? "Starting your scan…"
             : running
@@ -924,6 +928,14 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   <span style={{ color: "#9ca3af", fontWeight: 500 }}>{view.totalChecks} checks</span>
                 </div>
                 {running && <ScanProgress checks={view.totalChecks} />}
+                {done && view.scoreProvisional && view.scoreCoverage != null ? (
+                  <p
+                    data-score-provisional
+                    style={{ margin: "12px auto 0", maxWidth: 460, fontSize: 13, lineHeight: 1.5, color: "#4b5563" }}
+                  >
+                    {provisionalNote(view.scoreCoverage)}
+                  </p>
+                ) : null}
               </div>
 
               {/* Category tiles (fill in live).

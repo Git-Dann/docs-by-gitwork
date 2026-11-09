@@ -65,3 +65,40 @@ export function useUpdatePlatformWorkspace() {
     },
   });
 }
+
+export interface NewBusinessResponse {
+  workspace: PlatformWorkspace;
+  inviteUrl: string;
+  emailed: boolean;
+  emailError: string | null;
+}
+
+/** Create a business and email its owner an invite (Platform admins only). */
+export function useCreatePlatformBusiness() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { name: string; ownerName: string; ownerEmail: string }) =>
+      apiFetch<NewBusinessResponse>("/api/platform/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ROOT }),
+  });
+}
+
+/** Set a business's Google sign-in domains (Platform admins only). */
+export function useSetPlatformDomains() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, domains }: { id: string; domains: string[] }) =>
+      (
+        await apiFetch<{ workspace: PlatformWorkspace }>(`/api/platform/workspaces/${encodeURIComponent(id)}/domains`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domains }),
+        })
+      ).workspace,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ROOT }),
+  });
+}

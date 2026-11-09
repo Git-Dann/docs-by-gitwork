@@ -12,17 +12,17 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { dnsInstructions, isValidHostname, mintVerificationToken } from "@/server/custom-hostname";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const postSchema = z.object({
   hostname: z.string().min(3).max(253),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const ws = await prisma.workspace.findUnique({
       where: { id: workspace.id },
       select: {
@@ -53,7 +53,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const body = postSchema.parse(await request.json());
     const hostname = body.hostname.trim().toLowerCase();
 
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: Request) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     await prisma.workspace.update({
       where: { id: workspace.id },
       data: {

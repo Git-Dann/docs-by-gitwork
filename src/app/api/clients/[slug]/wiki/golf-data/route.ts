@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getGolfDataConsole } from "@/server/golf-data-console";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const maxDuration = 30;
 
@@ -13,14 +13,14 @@ export async function GET(
 ) {
   try {
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);
 
-    const console = await getGolfDataConsole(client.id, workspace.id, {
+    const console = await getGolfDataConsole(client.id, workspaceId, {
       force: req.nextUrl.searchParams.get("refresh") === "1",
     });
     return apiOk(console);

@@ -72,7 +72,7 @@ describe("Pulse nav routes", () => {
   it("hides the internal items from a non-internal viewer", () => {
     expect(visiblePulseNavItems({ internal: false }).map((i) => i.id)).toEqual(["projects", "portfolio", "compare"]);
     expect(visiblePulseNavItems({ internal: true }).map((i) => i.id)).toEqual([
-      "projects", "monitors", "portfolio", "compare", "growth",
+      "projects", "monitors", "portfolio", "compare", "growth", "ai-search",
     ]);
   });
 });
@@ -113,7 +113,7 @@ describe("<PulseNav>", () => {
   it("shows every item to a colleague and marks the current page", () => {
     pathname = "/app/pulse/embed";
     const html = render();
-    expect(labels(html)).toEqual(["Projects", "Monitors", "Portfolio", "Compare", "Growth", "New scan"]);
+    expect(labels(html)).toEqual(["Projects", "Monitors", "Portfolio", "Compare", "Growth", "AI search", "New scan"]);
     expect(html).toMatch(/<a aria-current="page"[^>]*href="\/app\/pulse\/growth"/);
     expect(html.match(/aria-current="page"/g)).toHaveLength(1);
   });

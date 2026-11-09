@@ -11,6 +11,16 @@ import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
 import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
+import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
+import {
+  LIST_AREA_MAX,
+  LIST_COLORS,
+  LIST_NAME_MAX,
+  LIST_SYMBOL_MAX,
+  LIST_SYMBOL_RE,
+  MAX_REORDER_IDS,
+} from "@/lib/commitments";
+import { AI_ANSWER_LIMITS, AI_ENGINE_IDS, normaliseBrandName, normaliseDomain } from "@/lib/ai-answers";
 import type { SheetColumnType } from "@/types/wiki-sheets";
 
 export const documentStatusSchema = z.enum([
@@ -920,6 +930,7 @@ export const leaveRequestInputSchema = z
     halfDayStart: z.boolean().optional().default(false),
     halfDayEnd: z.boolean().optional().default(false),
     reason: z.string().max(500).optional(),
+    countsToAllowance: z.boolean().optional(),
     // Admin-only: file a leave request on behalf of another user
     userId: z.string().cuid().optional(),
   })
@@ -1016,6 +1027,7 @@ export const leaveRequestUpdateSchema = z.object({
   halfDayStart: z.boolean().optional(),
   halfDayEnd: z.boolean().optional(),
   reason: z.string().max(500).optional(),
+  countsToAllowance: z.boolean().optional(),
 });
 
 export const approvalDecisionSchema = z.object({
@@ -2495,3 +2507,126 @@ export const sheetRowsBulkSchema = z.object({
 export const sheetOrderSchema = z.object({
   order: z.array(z.string().min(1).max(64)).max(SHT.maxRows),
 });
+
+// ─── AI search (Pulse → AI search) ───────────────────────────────────────────
+// Blank clears a field. Anything else must be a real property, or it's refused with a sentence.
+export const aiSearchConfigSchema = z
+  .object({
+    searchConsoleSite: z.string().trim().max(300),
+    ga4PropertyId: z.string().trim().max(40),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.searchConsoleSite && !normaliseSearchConsoleSite(v.searchConsoleSite)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["searchConsoleSite"],
+        message: "Use sc-domain:example.com for a domain property, or the full URL (https://example.com/) for a URL-prefix one.",
+      });
+    }
+    if (v.ga4PropertyId && !normaliseGa4PropertyId(v.ga4PropertyId)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ga4PropertyId"],
+        message: "The GA4 property id is the number under Admin → Property details, e.g. 412345678.",
+      });
+    }
+  })
+  .transform((v) => ({
+    searchConsoleSite: v.searchConsoleSite ? normaliseSearchConsoleSite(v.searchConsoleSite) : null,
+    ga4PropertyId: v.ga4PropertyId ? normaliseGa4PropertyId(v.ga4PropertyId) : null,
+  }));
+
+// ─── AI search: buyer questions ──────────────────────────────────────────────
+export const aiAnswersConfigSchema = z
+  .object({
+    questions: z
+      .array(z.string().trim().min(1).max(AI_ANSWER_LIMITS.maxQuestionLength))
+      .min(1, "Add at least one question.")
+      .max(AI_ANSWER_LIMITS.maxQuestions, `Up to ${AI_ANSWER_LIMITS.maxQuestions} questions.`),
+    brandNames: z
+      .array(z.string().trim())
+      .min(1, "Add the name the answers should mention.")
+      .max(AI_ANSWER_LIMITS.maxBrandNames),
+    domains: z.array(z.string().trim()).min(1, "Add the domain the answers should cite.").max(AI_ANSWER_LIMITS.maxDomains),
+    engines: z.array(z.enum(AI_ENGINE_IDS as [string, ...string[]])).min(1, "Pick at least one assistant to ask."),
+    autoWeekly: z.boolean(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    v.brandNames.forEach((b, i) => {
+      if (!normaliseBrandName(b)) ctx.addIssue({ code: "custom", path: ["brandNames", i], message: "A name is 2 to 60 characters." });
+    });
+    v.domains.forEach((d, i) => {
+      if (!normaliseDomain(d)) ctx.addIssue({ code: "custom", path: ["domains", i], message: `"${d}" isn't a domain. Use the form gitwork.co.uk.` });
+    });
+  });
+
+// ── Commitments (Backstage → Commitments, and the Mac app) ──────────────────
+const commitmentDate = z.string().trim().max(40).nullable().optional();
+/** To-do fields (Foundry for Mac). Shapes only: limits and cleaning are in `@/lib/commitments`,
+ *  so the errors read as sentences. `null` clears a field on PATCH; absent leaves it. */
+const commitmentTodoFields = {
+  listId: z.string().trim().min(1).max(64).nullable().optional(),
+  tags: z.array(z.string().max(200)).max(200).nullable().optional(),
+  priority: z.number().int().min(0, "Priority is 0 to 3.").max(3, "Priority is 0 to 3.").optional(),
+  startAt: commitmentDate,
+  evening: z.boolean().optional(),
+  someday: z.boolean().optional(),
+  remindAt: commitmentDate,
+  recurrence: z.string().trim().max(40).nullable().optional(),
+  checklist: z
+    .array(z.object({ id: z.string().max(200).nullable().optional(), text: z.string().max(2000), done: z.boolean().optional() }))
+    .max(1000)
+    .nullable()
+    .optional(),
+  orderKey: z.number().refine(Number.isFinite, "That number isn't valid.").optional(),
+};
+export const commitmentCreateSchema = z.object({
+  title: z.string().trim().min(1, "A commitment needs a title").max(200),
+  notes: z.string().max(4000).nullable().optional(),
+  dueAt: commitmentDate,
+  counterpart: z.string().trim().max(120).nullable().optional(),
+  ...commitmentTodoFields,
+});
+export const commitmentUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    notes: z.string().max(4000).nullable().optional(),
+    dueAt: commitmentDate,
+    counterpart: z.string().trim().max(120).nullable().optional(),
+    state: z.enum(["suggested", "open", "done", "dismissed"]).optional(),
+    snoozedUntil: commitmentDate,
+    ...commitmentTodoFields,
+  })
+  .strict();
+const finiteNumber = z.number().refine(Number.isFinite, "That number isn't valid.");
+const commitmentListFields = {
+  color: z.enum(LIST_COLORS).nullable().optional(),
+  symbol: z
+    .string()
+    .trim()
+    .max(LIST_SYMBOL_MAX)
+    .regex(LIST_SYMBOL_RE, "A list symbol is an SF Symbol name: lowercase letters, digits and dots.")
+    .nullable()
+    .optional(),
+  area: z.string().trim().max(LIST_AREA_MAX).nullable().optional(),
+  orderKey: finiteNumber.optional(),
+};
+export const commitmentListCreateSchema = z
+  .object({ name: z.string().trim().min(1, "A list needs a name").max(LIST_NAME_MAX), ...commitmentListFields })
+  .strict();
+export const commitmentListUpdateSchema = z
+  .object({ name: z.string().trim().min(1, "A list needs a name").max(LIST_NAME_MAX).optional(), ...commitmentListFields })
+  .strict();
+export const commitmentReorderSchema = z
+  .object({ ids: z.array(z.string().trim().min(1).max(64)).max(MAX_REORDER_IDS, `At most ${MAX_REORDER_IDS} to-dos can be reordered at once.`) })
+  .strict();
+export const commitmentSettingsSchema = z
+  .object({
+    gmailEnabled: z.boolean().optional(),
+    slackEnabled: z.boolean().optional(),
+    meetingsEnabled: z.boolean().optional(),
+    calendarEnabled: z.boolean().optional(),
+  })
+  .strict();

@@ -4,8 +4,8 @@ import { applyCommentViewer, getWikiBySlug, updateWikiPlatforms } from "@/server
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { internalCommentViewer } from "@/server/wiki-comment-viewer";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export async function GET(
   req: NextRequest,
@@ -13,8 +13,7 @@ export async function GET(
 ) {
   try {
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
-    const workspaceId = workspace.id;
+    const workspaceId = await workspaceIdForRequest(req);
     const wiki = await getWikiBySlug(slug, workspaceId);
     if (!wiki) return apiError("Client not found", 404);
     // Which replies the caller may edit/delete — an API-key caller (null) gets none.
@@ -35,8 +34,7 @@ export async function PATCH(
 ) {
   try {
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
-    const workspaceId = workspace.id;
+    const workspaceId = await workspaceIdForRequest(req);
 
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },

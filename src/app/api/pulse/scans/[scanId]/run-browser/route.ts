@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan, requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
@@ -16,7 +17,7 @@ export async function POST(
   try {
     const { scanId } = await params;
     await requireScanAccess(request, scanId);
-    const scan = await getPulseScan(scanId);
+    const scan = await getPulseScan(scanId, await workspaceIdForRequest(request));
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Scan must be completed first.", 400);
 
@@ -35,8 +36,8 @@ export async function POST(
     if (!result.insights) return apiError("Browser analysis returned no data. The URL may be unreachable.", 500);
 
     // Merge into agentData preserving existing fields
-    const existing = await prisma.pulseScan.findUnique({
-      where: { id: scanId },
+    const existing = await prisma.pulseScan.findFirst({
+      where: { id: scanId, workspaceId: await workspaceIdForRequest(request) },
       select: { agentData: true },
     });
     const prev = (existing?.agentData as Record<string, unknown> | null) ?? {};

@@ -1,6 +1,7 @@
 "use server";
 
 import { signIn } from "@/auth";
+import { businessGoogleConfigured } from "@/server/auth/business-google";
 
 // Server-side sign-in (Auth.js v5 recommended pattern). The client-side
 // `signIn` from next-auth/react hits the GET /api/auth/signin/google route
@@ -40,4 +41,15 @@ export async function signInWithPassword(
     }
     return { error: "That email and password didn't match an account." };
   }
+}
+
+/** Whether "Google (your business)" is switched on (AUTH_GOOGLE_BUSINESS_*). */
+export async function businessGoogleAvailable(): Promise<boolean> {
+  return businessGoogleConfigured();
+}
+
+/** Google sign-in for people at other businesses (src/server/auth/business-google.ts). */
+export async function signInWithBusinessGoogle(formData: FormData) {
+  const callbackUrl = (formData.get("callbackUrl") as string) || "/app";
+  await signIn("google-business", { redirectTo: callbackUrl });
 }

@@ -12,14 +12,18 @@ import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { revokeSignatureRequest, sendSignatureRequest } from "@/server/signatures";
 import { notifyDocumentEvent } from "@/server/slack-notify";
+import { requireDocumentInWorkspace, requireRowOfDocument } from "@/server/documents-scope";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string; requestId: string }>;
 }
 
-export async function POST(_request: NextRequest, context: RouteContext) {
+export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id, requestId } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
+    await requireRowOfDocument("signatureRequest", requestId, id);
 
     // Freeze a snapshot of the document at send-time so subsequent edits don't change what
     // the signers see. We use the existing proposal serializer because the public signing page
@@ -61,9 +65,11 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const { requestId } = await context.params;
+    const { id, requestId } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
+    await requireRowOfDocument("signatureRequest", requestId, id);
     const revoked = await revokeSignatureRequest(requestId);
     return apiOk({ request: revoked });
   } catch (error) {

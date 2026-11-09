@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan, retryPulseScan, runAnalysis, requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -13,7 +14,7 @@ export async function POST(
   try {
     const { scanId } = await params;
     await requireScanAccess(request, scanId);
-    const existing = await getPulseScan(scanId);
+    const existing = await getPulseScan(scanId, await workspaceIdForRequest(request));
     if (!existing) return apiError("Scan not found.", 404);
     if (existing.status !== "FAILED") return apiError("Only failed scans can be retried.", 400);
 

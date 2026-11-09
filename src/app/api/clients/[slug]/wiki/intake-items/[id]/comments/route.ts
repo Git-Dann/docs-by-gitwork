@@ -20,13 +20,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     if (!input.ok) return input.response;
     const { body, mentionIds, image } = input;
 
-    const wikiId = await wikiIdForClientSlug(slug);
+    const wikiId = await wikiIdForClientSlug(slug, user.workspaceId);
     if (!wikiId) return apiError("Wiki not found", 404);
     const mentions = await resolveMentions(wikiId, "internal", mentionIds ?? []);
     const author = user.name ?? user.email;
 
     const comment = await addWikiIntakeComment(
-      slug,
+      { slug, workspaceId: user.workspaceId },
       id,
       { userId: user.id, name: author, isAdmin: isAtLeast(user.role, "ADMIN") },
       body,

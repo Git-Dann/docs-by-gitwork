@@ -1,7 +1,7 @@
 /**
  * Scheduled jobs run once per workspace, each with its own settings, and none crosses into
- * another business's data or keys (docs/multi-tenant-roadmap.md, Phase 2). Care's jobs are left
- * out on purpose: Care is not offered to other businesses yet.
+ * another business's data or keys (docs/multi-tenant-roadmap.md, Phase 2). Care's jobs have their
+ * own file, care-crons-per-workspace.test.ts.
  *
  * With one workspace (Gitwork today) every job must behave as it did; with two, each is
  * processed with ITS settings. Prisma is mocked: the database-backed proof lives in

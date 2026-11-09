@@ -30,6 +30,9 @@ export type SideIds = {
   featureBlock: string;
   milestone: string;
   document: string;
+  documentChild: string;
+  documentComment: string;
+  documentVersion: string;
   documentToken: string;
   scan: string;
   scanShareToken: string;
@@ -48,6 +51,10 @@ export type SideIds = {
   wikiDocument: string;
   changelog: string;
   platform: string;
+  platformLogin: string;
+  design: string;
+  documentLink: string;
+  courseRequest: string;
   meeting: string;
   candidate: string;
   staffDocument: string;
@@ -84,6 +91,9 @@ export function idsFor(side: Side): SideIds {
     featureBlock: id(side, "block"),
     milestone: id(side, "milestone"),
     document: id(side, "doc"),
+    documentChild: id(side, "doc-child"),
+    documentComment: id(side, "doc-comment"),
+    documentVersion: id(side, "doc-version"),
     documentToken: id(side, "doc-token"),
     scan: id(side, "scan"),
     scanShareToken: id(side, "scan-token"),
@@ -102,6 +112,10 @@ export function idsFor(side: Side): SideIds {
     wikiDocument: id(side, "wiki-doc"),
     changelog: id(side, "changelog"),
     platform: id(side, "platform"),
+    platformLogin: id(side, "platform-login"),
+    design: id(side, "design"),
+    documentLink: id(side, "document-link"),
+    courseRequest: id(side, "course-request"),
     meeting: id(side, "meeting"),
     candidate: id(side, "candidate"),
     staffDocument: id(side, "staff-document"),
@@ -175,6 +189,17 @@ export async function seedSide(db: PrismaClient, side: Side) {
       sections: { create: [{ key: "prose", title: m(side, "section"), sortOrder: 0, data: json({ body: m(side, "section-body") }) }] },
     },
   });
+  // What the document's sub-routes read: a child (relations), a comment and a version. Without
+  // them those routes answer 200 with nothing to leak, which proves nothing.
+  await db.document.create({
+    data: { id: i.documentChild, workspaceId: i.workspace, ownerId: i.user, title: m(side, "document-child"), parentId: i.document },
+  });
+  await db.documentComment.create({
+    data: { id: i.documentComment, documentId: i.document, authorKind: "WORKSPACE", authorName: m(side, "comment-author"), authorUserId: i.user, body: m(side, "document-comment") },
+  });
+  await db.documentVersion.create({
+    data: { id: i.documentVersion, documentId: i.document, version: "v1.0", sectionsSnapshot: json([]), costSnapshot: json([]), timelineSnapshot: json([]), changelog: m(side, "document-version"), createdById: i.user },
+  });
 
   await db.pulseScan.create({
     data: {
@@ -244,6 +269,10 @@ export async function seedSide(db: PrismaClient, side: Side) {
   await db.wikiDocument.create({ data: { id: i.wikiDocument, wikiId: i.wiki, title: m(side, "wiki-document") } });
   await db.clientChangelogEntry.create({ data: { id: i.changelog, wikiId: i.wiki, platform: "WEB", version: "1.0.0", title: m(side, "changelog") } });
   await db.clientPlatform.create({ data: { id: i.platform, clientId: i.client, name: m(side, "platform") } });
+  await db.clientPlatformLogin.create({ data: { id: i.platformLogin, platformId: i.platform, label: m(side, "platform-login") } });
+  await db.clientDesign.create({ data: { id: i.design, clientId: i.client, name: m(side, "design") } });
+  await db.clientDocumentLink.create({ data: { id: i.documentLink, clientId: i.client, name: m(side, "document-link"), url: `https://iso-${side}.test/doc` } });
+  await db.clientCourseRequest.create({ data: { id: i.courseRequest, wikiId: i.wiki, courseName: m(side, "course-request") } });
 
   await db.meeting.create({
     data: { id: i.meeting, workspaceId: i.workspace, clientId: i.client, title: m(side, "meeting"), summary: m(side, "meeting-summary"), actionItems: { create: [{ text: m(side, "action-item") }] } },
@@ -287,7 +316,16 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
     db.taskComment.findMany({ where: { taskId: i.task }, orderBy: { id: "asc" } }),
     db.featureBlock.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.milestone.findMany({ where: ws, orderBy: { id: "asc" } }),
-    db.document.findMany({ where: ws, orderBy: { id: "asc" }, include: { sections: { orderBy: { id: "asc" } } } }),
+    db.document.findMany({
+      where: ws,
+      orderBy: { id: "asc" },
+      include: {
+        sections: { orderBy: { id: "asc" } },
+        comments: { orderBy: { id: "asc" } },
+        versions: { orderBy: { id: "asc" } },
+        signatureRequests: { orderBy: { id: "asc" } },
+      },
+    }),
     db.pulseScan.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.pulseMonitor.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.supportClient.findMany({ where: ws, orderBy: { id: "asc" } }),
@@ -300,7 +338,10 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
     db.wikiMonitorIncident.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" }, include: { updates: { orderBy: { id: "asc" } } } }),
     db.wikiDocument.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
     db.clientChangelogEntry.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
-    db.clientPlatform.findMany({ where: { clientId: i.client }, orderBy: { id: "asc" } }),
+    db.clientPlatform.findMany({ where: { clientId: i.client }, orderBy: { id: "asc" }, include: { logins: { orderBy: { id: "asc" } } } }),
+    db.clientDesign.findMany({ where: { clientId: i.client }, orderBy: { id: "asc" } }),
+    db.clientDocumentLink.findMany({ where: { clientId: i.client }, orderBy: { id: "asc" } }),
+    db.clientCourseRequest.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
     db.meeting.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.candidate.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.staffDocument.findMany({ where: ws, orderBy: { id: "asc" } }),

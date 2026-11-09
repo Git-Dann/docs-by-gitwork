@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { after } from "next/server";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runChannelSync } from "@/server/support-channels";
 import { backfillConversationActivity, repairForwardedIdentities, evaluateWorkflowRules } from "@/server/support";
 import { toSyncContext } from "@/server/support-scraper-config";
@@ -41,33 +40,18 @@ const WORKSPACE_AI_SELECT = {
 export { toSyncContext };
 
 export async function buildSyncContext(connId: string): Promise<SyncContext> {
-  const workspace = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
-    select: {
-      id: true,
-      googleServiceAccountJson: true,
-      googleSubjectEmail: true,
-      googleOAuthRefreshToken: true,
-      aiProvider: true,
-      anthropicApiKey: true,
-      platformAiKeysAllowed: true,
-      anthropicModel: true,
-      openaiApiKey: true,
-      openaiModel: true,
-      geminiApiKey: true,
-      geminiModel: true,
-      localLlmUrl: true,
-      localLlmModel: true,
-    },
-  });
-  if (!workspace) throw new Error("Workspace not found");
-
   const conn = await prisma.accountConnection.findUniqueOrThrow({
     where: { id: connId },
     include: {
       channelTokens: true,
-      client: { select: { id: true, name: true, slug: true } },
+      client: { select: { id: true, name: true, slug: true, workspaceId: true } },
     },
+  });
+
+  // The connection's own workspace, so it syncs with that business's keys and settings.
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: conn.client.workspaceId },
+    select: WORKSPACE_AI_SELECT,
   });
 
   return toSyncContext(conn, workspace);
@@ -117,11 +101,14 @@ export async function syncConnection(ctx: SyncContext): Promise<SyncResult> {
 export async function syncClientConnections(
   clientId: string,
 ): Promise<{ total: number; ingested: number; filtered: number; errors: string[] }> {
-  const workspace = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+  const { workspaceId } = await prisma.supportClient.findUniqueOrThrow({
+    where: { id: clientId },
+    select: { workspaceId: true },
+  });
+  const workspace = await prisma.workspace.findUniqueOrThrow({
+    where: { id: workspaceId },
     select: WORKSPACE_AI_SELECT,
   });
-  if (!workspace) throw new Error("Workspace not found");
 
   const connections = await prisma.accountConnection.findMany({
     where: { health: "CONNECTED", clientId },

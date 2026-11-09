@@ -2,16 +2,16 @@ import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { serializeRateCardPerson } from "@/server/rate-card";
 import { rateCardPersonCreateSchema } from "@/server/validators";
 import { assertAtLeastAdmin, canViewRateCard, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
 
     // Field gate: users without `rateCard.view` get no rate-card people (this also
     // blanks the day-rate options pulled into proposal costing). API_KEY-only → full.
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
     const body = rateCardPersonCreateSchema.parse(await request.json());
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
 
     const person = await prisma.rateCardPerson.create({
       data: {

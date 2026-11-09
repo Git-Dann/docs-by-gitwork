@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { BUILT_IN_PERSONAS, getPersonaById } from "@/config/study-personas";
 import { generateResearchPlan, generateFollowUps } from "@/server/study-agents/researcher";
 import { conductInterview } from "@/server/study-agents/persona";
@@ -117,9 +116,9 @@ function serializeListItem(s: {
 
 // ── Workspace helper ──────────────────────────────────────────────────────────
 
-async function getWorkspace() {
-  const { workspace } = await ensureBaseRecords();
-  return workspace;
+/** The workspace a study lives in. Studies used to read Gitwork's workspace whoever asked. */
+async function getWorkspace(workspaceId: string) {
+  return prisma.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
 }
 
 // Delegate to the shared resolver (single source of truth for defaults) — the returned
@@ -130,8 +129,8 @@ function resolveAiConfig(workspace: Awaited<ReturnType<typeof getWorkspace>>): A
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-export async function listStudies(filters?: { workspaceClientId?: string }): Promise<StudyListItem[]> {
-  const workspace = await getWorkspace();
+export async function listStudies(workspaceId: string, filters?: { workspaceClientId?: string }): Promise<StudyListItem[]> {
+  const workspace = await getWorkspace(workspaceId);
   const studies = await prisma.study.findMany({
     where: {
       workspaceId: workspace.id,
@@ -165,9 +164,10 @@ export async function listStudiesForClient(workspaceClientId: string): Promise<S
   }));
 }
 
-export async function getStudy(studyId: string): Promise<StudyRecord | null> {
-  const record = await prisma.study.findUnique({
-    where: { id: studyId },
+/** A study in `workspaceId`; another business's id reads as null (not found). */
+export async function getStudy(studyId: string, workspaceId: string): Promise<StudyRecord | null> {
+  const record = await prisma.study.findFirst({
+    where: { id: studyId, workspaceId },
     include: {
       plan: { include: { questions: { orderBy: { orderIndex: "asc" } } } },
       sessions: { orderBy: { createdAt: "asc" } },
@@ -219,7 +219,7 @@ export async function getStudy(studyId: string): Promise<StudyRecord | null> {
   };
 }
 
-export async function createStudy(data: {
+export async function createStudy(workspaceId: string, data: {
   title: string;
   problemStatement: string;
   researchGoals: string[];
@@ -228,7 +228,7 @@ export async function createStudy(data: {
   workspaceClientId?: string | null;
   linkedScanId?: string | null;
 }): Promise<StudyRecord> {
-  const workspace = await getWorkspace();
+  const workspace = await getWorkspace(workspaceId);
   // Only honour a linkedScanId that points at a scan in this workspace, so the back-link
   // can't be pointed at another workspace's scan.
   const linkedScanId =
@@ -259,10 +259,10 @@ export async function createStudy(data: {
       data: { linkedStudyId: study.id },
     });
   }
-  return getStudy(study.id) as Promise<StudyRecord>;
+  return getStudy(study.id, workspace.id) as Promise<StudyRecord>;
 }
 
-export async function updateStudy(studyId: string, data: Partial<{
+export async function updateStudy(studyId: string, workspaceId: string, data: Partial<{
   title: string;
   problemStatement: string;
   researchGoals: string[];
@@ -270,7 +270,9 @@ export async function updateStudy(studyId: string, data: Partial<{
   selectedPersonaIds: string[];
   status: string;
   workspaceClientId: string | null;
-}>): Promise<StudyRecord> {
+}>): Promise<StudyRecord | null> {
+  const owned = await prisma.study.count({ where: { id: studyId, workspaceId } });
+  if (!owned) return null;
   await prisma.study.update({
     where: { id: studyId },
     data: {
@@ -283,18 +285,19 @@ export async function updateStudy(studyId: string, data: Partial<{
       ...(data.workspaceClientId !== undefined && { workspaceClientId: data.workspaceClientId }),
     },
   });
-  return getStudy(studyId) as Promise<StudyRecord>;
+  return getStudy(studyId, workspaceId);
 }
 
-export async function deleteStudy(studyId: string): Promise<void> {
-  await prisma.study.delete({ where: { id: studyId } });
+export async function deleteStudy(studyId: string, workspaceId: string): Promise<void> {
+  await prisma.study.deleteMany({ where: { id: studyId, workspaceId } });
 }
 
 // ── Plan ──────────────────────────────────────────────────────────────────────
 
 export async function triggerPlanGeneration(studyId: string): Promise<void> {
-  const workspace = await getWorkspace();
   const study = await prisma.study.findUniqueOrThrow({ where: { id: studyId } });
+  // The study's own workspace and AI keys (the route has already checked it is the caller's).
+  const workspace = await getWorkspace(study.workspaceId);
 
   const aiConfig = resolveAiConfig(workspace);
   if (!aiConfig.apiKey) throw new Error(`No ${aiConfig.provider} API key configured. Add it in Settings → Integrations.`);
@@ -383,14 +386,14 @@ export async function savePlan(
 // ── Study Runner ──────────────────────────────────────────────────────────────
 
 export async function runStudy(studyId: string): Promise<void> {
-  const workspace = await getWorkspace();
-  const aiConfig = resolveAiConfig(workspace);
-  if (!aiConfig.apiKey) throw new Error(`No ${aiConfig.provider} API key configured. Add it in Settings → Integrations.`);
-
   const study = await prisma.study.findUniqueOrThrow({
     where: { id: studyId },
     include: { plan: { include: { questions: { orderBy: { orderIndex: "asc" } } } } },
   });
+  // The study's own workspace and AI keys (the route has already checked it is the caller's).
+  const workspace = await getWorkspace(study.workspaceId);
+  const aiConfig = resolveAiConfig(workspace);
+  if (!aiConfig.apiKey) throw new Error(`No ${aiConfig.provider} API key configured. Add it in Settings → Integrations.`);
 
   if (!study.plan || study.plan.questions.length === 0) {
     throw new Error("Study has no plan questions. Generate and lock a plan first.");

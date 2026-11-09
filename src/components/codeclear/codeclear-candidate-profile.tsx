@@ -118,15 +118,19 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
                   <AvailabilityBadge availability={candidate.availability} />
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-4)]">
-                  <a
-                    href={`https://github.com/${candidate.githubHandle}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 font-mono text-[var(--brand-700)] hover:underline"
-                  >
-                    @{candidate.githubHandle}
-                    <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-                  </a>
+                  {candidate.githubHandle ? (
+                    <a
+                      href={`https://github.com/${candidate.githubHandle}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 font-mono text-[var(--brand-700)] hover:underline"
+                    >
+                      @{candidate.githubHandle}
+                      <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                    </a>
+                  ) : (
+                    <span className="font-mono">No GitHub yet</span>
+                  )}
                   <span>{candidate.primaryStack}</span>
                   {candidate.location ? <span>· {candidate.location}</span> : null}
                   {candidate.timezone ? <span>· {candidate.timezone}</span> : null}

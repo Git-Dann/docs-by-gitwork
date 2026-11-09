@@ -5,6 +5,7 @@ import { sendSmtpEmail } from "@/server/smtp";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { originFrom } from "@/lib/request-origin";
 import { z } from "zod";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 const sendEmailSchema = z.object({
   signerId: z.string().min(1, "signerId is required"),
@@ -18,6 +19,7 @@ export async function POST(
 ) {
   try {
     const { id: documentId } = await params;
+    await requireDocumentInWorkspace(documentId, await getEffectiveUserOrNull(req));
     const body = sendEmailSchema.parse(await req.json());
     const user = await getEffectiveUserOrNull(req);
 

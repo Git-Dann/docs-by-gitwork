@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { loadWikiMonitors, createMonitor, setWikiMonitorsEnabled } from "@/server/wiki-monitors";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
 import { MAX_BODY, headersField } from "@/lib/monitor-request";
+import { clientIdForSlug } from "@/server/clients-scope";
+import { assertMonitorWriter } from "@/server/wiki-monitor-access";
+import { MONITOR_ENVIRONMENT_VALUES } from "@/lib/monitor-environment";
 
 export const maxDuration = 60;
 
@@ -19,6 +20,7 @@ const monitorInputSchema = z.object({
   degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
   enabled: z.boolean().optional(),
+  environment: z.enum(MONITOR_ENVIRONMENT_VALUES).optional(),
   graceMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   /** "Name: value" per line. Blank or null clears; omitted keeps what's saved. */
   requestHeaders: z.string().max(100_000).nullable().optional(),
@@ -30,19 +32,13 @@ const monitorInputSchema = z.object({
 
 const toggleSchema = z.object({ enabled: z.boolean() });
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    // Every field, heartbeat ping URLs included (they're credentials): the same people who may
+    // change the monitors. The client's own copy comes through the wiki DTO, trimmed.
+    await assertMonitorWriter(req, slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await loadWikiMonitors(clientId));
   } catch (err) {
@@ -53,7 +49,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    // Reachable from the Monitors page for any client, so it checks the caller may work on this one.
+    await assertMonitorWriter(req, slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = monitorInputSchema.parse(await req.json());
     const headers = headersField(body.requestHeaders);
@@ -68,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { enabled } = toggleSchema.parse(await req.json());
     await setWikiMonitorsEnabled(clientId, enabled);

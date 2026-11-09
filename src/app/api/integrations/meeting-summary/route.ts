@@ -7,7 +7,6 @@ import OpenAI from "openai";
 import { auth } from "@/auth";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { getSlackBotToken } from "@/server/slack/client";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
@@ -15,6 +14,7 @@ import { lightModelFor, DEFAULT_MODELS } from "@/server/ai-provider";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 import { aiKeyFor } from "@/server/ai-keys";
 import { readSecret } from "@/server/stored-secret";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -52,7 +52,7 @@ function computeInputsHash(input: {
 export async function POST(req: NextRequest) {
   try {
     const body = bodySchema.parse(await req.json());
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(req) } });
 
     // ── Resolve AI config ──────────────────────────────────────────────────────
     const provider = workspace.aiProvider as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";

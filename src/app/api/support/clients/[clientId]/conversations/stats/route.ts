@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getTicketStatsForPeriod } from "@/server/support";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export async function GET(
 ) {
   try {
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const start = request.nextUrl.searchParams.get("start");
     const end = request.nextUrl.searchParams.get("end");
     if (!start || !end) return apiError("start and end query params required", 400);

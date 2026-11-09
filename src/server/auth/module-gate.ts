@@ -106,6 +106,8 @@ export const INTERNAL_ONLY_PREFIXES = [
   // same audience rule at the gate. The nav items are hidden to match (src/lib/pulse-nav.ts).
   "/app/pulse/growth",
   "/app/pulse/monitors",
+  // Pulse → AI search: Gitwork's own Google rankings and AI-assistant visits.
+  "/app/pulse/ai-search",
   // Every client's monitor status, by name. A guest granted the Monitors module would
   // otherwise see the whole client list; the API refuses external roles too.
   "/app/monitors",

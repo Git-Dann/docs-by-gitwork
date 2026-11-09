@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   member: null as null | Record<string, unknown>,
   lastWhere: null as unknown,
   revoked: [] as string[],
+  connectionWorkspace: "w1",
 }));
 
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => null) }));
@@ -20,12 +21,22 @@ vi.mock("@/lib/prisma", () => ({
         state.lastWhere = args.where;
         const m = state.member;
         if (!m) return null;
+        if ("workspaceId" in args.where && args.where.workspaceId !== m.workspaceId) return null;
         // Honour the archived filter the way Postgres would.
         if ("archivedAt" in args.where && args.where.archivedAt === null && m.archivedAt) return null;
         return m;
       }),
+      // findHomeMembership reads every membership for the user and chooses an active one.
+      findMany: vi.fn(async (args: { where: Record<string, unknown> }) => {
+        state.lastWhere = args.where;
+        const m = state.member;
+        return m ? [{ createdAt: new Date(0), ...m, workspace: { slug: "gitwork", ...(m.workspace as object) } }] : [];
+      }),
     },
-    oAuthToken: { findUnique: vi.fn(async () => ({ userId: "u2" })) },
+    user: { findUnique: vi.fn(async () => (state.member ? state.member.user : null)) },
+    oAuthToken: { findUnique: vi.fn(async () => ({ userId: "u2", oauthClientId: "c" })) },
+    // The workspace each connection was approved in.
+    mcpConnection: { findUnique: vi.fn(async () => ({ workspaceId: state.connectionWorkspace, revokedAt: null })) },
   },
 }));
 vi.mock("@/server/oauth", async (orig) => ({
@@ -73,6 +84,7 @@ beforeEach(() => {
   state.member = member();
   state.lastWhere = null;
   state.revoked = [];
+  state.connectionWorkspace = "w1";
 });
 
 describe("every MCP call", () => {
@@ -81,9 +93,17 @@ describe("every MCP call", () => {
     expect(user?.id).toBe("u2");
   });
 
-  it("only looks up an active membership", async () => {
-    await resolveMcpActor("u2");
-    expect(state.lastWhere).toMatchObject({ userId: "u2", archivedAt: null });
+  it("looks up that person's ACTIVE membership in the connection's workspace", async () => {
+    await resolveMcpActor("u2", "w1");
+    expect(state.lastWhere).toMatchObject({ userId: "u2", workspaceId: "w1", archivedAt: null });
+    state.member = member({ archivedAt: new Date() });
+    expect(await resolveMcpActor("u2", "w1")).toBeNull();
+  });
+
+  it("a connection approved in another workspace never resolves here", async () => {
+    // The person is a member of w1; the connection was approved in w2.
+    state.connectionWorkspace = "w2";
+    expect(await validateMcpBearer(bearer())).toBeNull();
   });
 
   it("refuses an archived member", async () => {

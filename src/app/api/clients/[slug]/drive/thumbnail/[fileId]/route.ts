@@ -2,12 +2,12 @@ import { NextRequest } from "next/server";
 import { google } from "googleapis";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { DriveReadError, readThumbnail } from "@/server/client-drive";
 import { driveFolderIdFromUrl, isDriveId } from "@/lib/client-drive";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -23,13 +23,13 @@ type RouteContext = { params: Promise<{ slug: string; fileId: string }> };
  */
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const { slug, fileId } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     if (!isDriveId(fileId)) return apiError("Not a Drive file id", 400);
 
     const client = await prisma.workspaceClient.findFirst({
-      where: { slug, workspaceId: workspace.id },
+      where: { slug, workspaceId },
       select: { googleDriveFolderUrl: true },
     });
     const rootId = driveFolderIdFromUrl(client?.googleDriveFolderUrl);

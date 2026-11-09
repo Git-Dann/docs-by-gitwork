@@ -10,8 +10,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { clientIdForSlug } from "@/server/clients-scope";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
   MetricsConfigError,
@@ -34,19 +33,10 @@ const patchSchema = z.object({
   apiToken: z.string().max(4000).optional(),
 });
 
-async function clientIdFor(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the metrics section");
-    const clientId = await clientIdFor((await params).slug);
+    const clientId = await clientIdForSlug((await params).slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk({ endpoints: await listWikiMetricEndpoints(clientId) });
   } catch (err) {
@@ -57,7 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the metrics section");
-    const clientId = await clientIdFor((await params).slug);
+    const clientId = await clientIdForSlug((await params).slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const patch = patchSchema.parse(await req.json());
     try {
@@ -75,7 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "refresh the metrics section");
-    const clientId = await clientIdFor((await params).slug);
+    const clientId = await clientIdForSlug((await params).slug, req);
     if (!clientId) return apiError("Client not found", 404);
     // A person pressed Refresh now: re-read the running month even if it is fresh, or the
     // button would quietly do nothing for up to an hour.

@@ -665,7 +665,6 @@ async function recordAutomationAudit(
 
 export async function getFoundryAutomation(user: EffectiveUser): Promise<FoundryAutomationResponse> {
   assertCan(user, canManageClients, "view the automation workflow");
-  await ensureBaseRecords();
   const where: Prisma.WorkspaceClientWhereInput = {
     workspaceId: user.workspaceId,
     hidden: false,
@@ -1446,7 +1445,6 @@ export async function createAutomationOnboardingLink(
   input: AutomationOnboardingLinkRequest,
 ): Promise<AutomationOnboardingLinkResult> {
   assertCan(user, canManageClients, "send onboarding links");
-  await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
 
   const client = await prisma.workspaceClient.findFirst({
@@ -1521,7 +1519,6 @@ export async function updateAutomationNudge(
   input: AutomationNudgeUpdateRequest,
 ): Promise<AutomationNudgeUpdateResult> {
   assertCan(user, canManageClients, "update automation nudges");
-  await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
 
   const client = await prisma.workspaceClient.findFirst({
@@ -1574,7 +1571,6 @@ function parseAnchorDate(startDate: string | undefined, fallback: Date): Date {
 
 async function resolveProjectPlanSource(user: EffectiveUser, input: ProjectPlanRequest) {
   assertCan(user, canManageClients, "seed project plans");
-  await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
 
   const client = await prisma.workspaceClient.findFirst({

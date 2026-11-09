@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getStudy, updateStudy, deleteStudy } from "@/server/study";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { assertCan, canManageStudy, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStudy, "view studies");
     const { studyId } = await params;
-    const study = await getStudy(studyId);
+    const study = await getStudy(studyId, await workspaceIdForRequest(request));
     if (!study) return apiError("Study not found", 404);
     return apiOk({ study });
   } catch (error) {
@@ -24,7 +25,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     assertCan(await getEffectiveUserOrNull(request), canManageStudy, "update studies");
     const { studyId } = await params;
     const body = await request.json();
-    const study = await updateStudy(studyId, body);
+    const study = await updateStudy(studyId, await workspaceIdForRequest(request), body);
+    if (!study) return apiError("Study not found", 404);
     return apiOk({ study });
   } catch (error) {
     return fromError(error);
@@ -35,7 +37,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStudy, "delete studies");
     const { studyId } = await params;
-    await deleteStudy(studyId);
+    await deleteStudy(studyId, await workspaceIdForRequest(request));
     return apiOk({ ok: true });
   } catch (error) {
     return fromError(error);

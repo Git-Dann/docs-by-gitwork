@@ -3,8 +3,8 @@
  */
 
 import { NextRequest } from "next/server";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import { apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { deleteSnippet } from "@/server/snippets";
 
@@ -16,7 +16,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageDocs, "delete snippets");
-    const workspaceId = user?.workspaceId ?? (await ensureBaseRecords()).workspace.id;
+    const workspaceId = await requestWorkspaceId(user);
     const { id } = await context.params;
     await deleteSnippet(workspaceId, id);
     return apiOk({ ok: true });

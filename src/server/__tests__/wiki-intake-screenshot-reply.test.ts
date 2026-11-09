@@ -54,7 +54,7 @@ beforeEach(() => {
 
 describe("addWikiIntakeComment", () => {
   it("creates a screenshot-only reply with its image in the same row", async () => {
-    const out = await addWikiIntakeComment("acme", "i1", author, "  ", [{ id: "team:u-1", name: "Sam", kind: "TEAM" }], image);
+    const out = await addWikiIntakeComment({ slug: "acme", workspaceId: "ws-1" }, "i1", author, "  ", [{ id: "team:u-1", name: "Sam", kind: "TEAM" }], image);
     expect(out?.hasImage).toBe(true);
     expect(db.creates).toHaveLength(1);
     expect(db.creates[0].data).toMatchObject({ body: "", mime: "image/png", filename: "shot.png" });
@@ -64,12 +64,12 @@ describe("addWikiIntakeComment", () => {
   });
 
   it("refuses a reply with neither text nor an image, writing nothing", async () => {
-    await expect(addWikiIntakeComment("acme", "i1", author, "   ")).rejects.toThrow(/empty/);
+    await expect(addWikiIntakeComment({ slug: "acme", workspaceId: "ws-1" }, "i1", author, "   ")).rejects.toThrow(/empty/);
     expect(db.creates).toHaveLength(0);
   });
 
   it("writes a text reply with no image columns", async () => {
-    await addWikiIntakeComment("acme", "i1", author, "Fixed");
+    await addWikiIntakeComment({ slug: "acme", workspaceId: "ws-1" }, "i1", author, "Fixed");
     expect(db.creates[0].data.body).toBe("Fixed");
     expect(db.creates[0].data).not.toHaveProperty("image");
   });

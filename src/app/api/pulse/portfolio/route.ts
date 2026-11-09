@@ -3,6 +3,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assignedClientIds } from "@/server/tasks";
 import { getPulsePortfolio } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await getEffectiveUserOrNull(request);
     const clientIds = user && !canSeeAllClients(user) ? await assignedClientIds(user) : null;
-    const portfolio = await getPulsePortfolio({ clientIds });
+    const portfolio = await getPulsePortfolio(await workspaceIdForRequest(request), { clientIds });
     return apiOk({ portfolio });
   } catch (error) {
     return fromError(error);

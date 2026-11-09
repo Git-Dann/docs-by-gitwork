@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { generateSupportReportDocument } from "@/server/support-report-doc";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,6 +17,7 @@ export async function POST(
 ) {
   try {
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const body = (await request.json().catch(() => ({}))) as {
       periodStart?: string;
       periodEnd?: string;

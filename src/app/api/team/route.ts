@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { auth } from "@/auth";
+import { requireTeamAdmin } from "@/server/auth/team-admin";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { isAtLeast, ROLE_IDS } from "@/types/auth";
+import { ROLE_IDS } from "@/types/auth";
 import { recomputeMember } from "@/server/permissions";
 import { isSeedAccountEmail } from "@/server/seed-accounts";
 
@@ -17,19 +16,13 @@ const CreateMemberSchema = z.object({
   permissions: z.array(z.string()).default([]),
 });
 
-async function requireAdmin() {
-  const session = await auth();
-  if (!session?.user) return null;
-  if (!isAtLeast(session.user.role, "ADMIN")) return null;
-  return session;
-}
 
-export async function GET() {
-  const session = await requireAdmin();
-  if (!session) return apiError("Forbidden", 403);
+export async function GET(req: NextRequest) {
+  try {
+  const actor = await requireTeamAdmin(req);
 
   const workspace = await prisma.workspace.findUnique({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    where: { id: actor.workspaceId },
     include: {
       members: {
         include: { user: true },
@@ -57,17 +50,18 @@ export async function GET() {
     }));
 
   return apiOk({ members });
+  } catch (err) {
+    return fromError(err);
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return apiError("Forbidden", 403);
-
   try {
+    const actor = await requireTeamAdmin(req);
     const body = CreateMemberSchema.parse(await req.json());
 
     const workspace = await prisma.workspace.findUnique({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: actor.workspaceId },
     });
     if (!workspace) return apiError("Workspace not found", 404);
 

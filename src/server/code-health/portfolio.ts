@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { byUrgency, summariseRepo, workItemsFor, type PortfolioRepo, type WorkItem } from "@/lib/code-portfolio";
 import type { CodeHealthReport } from "@/types/code-health";
 
@@ -12,6 +11,8 @@ import type { CodeHealthReport } from "@/types/code-health";
  */
 
 export interface PortfolioScope {
+  /** The caller's workspace. */
+  workspaceId: string;
   /** null = unscoped (admin, or trusted API caller). */
   clientIds: string[] | null;
   triggeredByUserId: string | null;
@@ -28,8 +29,7 @@ export interface CodePortfolio {
 const HISTORY_SCANS = 2_000;
 
 export async function loadCodePortfolio(scope: PortfolioScope): Promise<CodePortfolio> {
-  const workspace = await prisma.workspace.findFirst({ where: { slug: DEFAULT_WORKSPACE_SLUG }, select: { id: true } });
-  if (!workspace) return { repos: [], items: [], unmeasured: [] };
+  const workspace = { id: scope.workspaceId };
 
   const scopedByClient = scope.clientIds != null ? { clientId: { in: scope.clientIds.length ? scope.clientIds : ["__none__"] } } : null;
   const scans = await prisma.pulseScan.findMany({
