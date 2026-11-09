@@ -9998,3 +9998,19 @@ the lead arrived thinking they were nearly perfect. Dan: "err on the side of a l
   still records the score from what it saw, so it stays comparable with full scans.
 - **The visitor's own report email is unchanged**: it carries the FULL scan's score, which
   loads the page and matches the PDF it links to.
+
+## 120. Recent Changes (November 2026) — A clearer "who's off" Slack post
+
+The weekday post to the absence channel (`src/server/availability-digest.ts`, cron
+`availability-digest`) was misread: a half day on Wednesday showed on Monday's weekly round-up as
+"Dan Lindsay — leave, 11 Nov–11 Nov", which reads like a whole day off. The wording now lives in
+`src/lib/availability-digest-format.ts` (pure, tested):
+
+- Headings say which week or day: **Who's off this week · Mon 9 – Fri 13 Nov** (Mondays) and
+  **Who's off today · Wed 11 Nov** (Tue–Fri). The weekly post covers Mon–Fri only.
+- One day is written once ("Wed 11 Nov"), and a range doesn't repeat its month.
+- A half day says **½ day**. Inside a longer booking, the half days are named ("½ day on Fri 13 Nov").
+- Longer bookings say when the person is back; the daily post counts working days left (bank
+  holidays aren't known there, so they count).
+- A footer gives the number of people and says it comes from **approved leave in Foundry
+  Backstage**, not anyone's calendar.
