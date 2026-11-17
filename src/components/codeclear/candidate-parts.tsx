@@ -111,14 +111,21 @@ export function candidateToForm(candidate: CodeClearCandidateDetail): CandidateP
   };
 }
 
-/** What Save sends. Blanks become null; the stack list is never empty. */
+/**
+ * What Save sends. Blanks become null; the stack list is never empty. A blank GitHub handle
+ * or main stack is left out, not cleared: a developer may not have them yet (they add them
+ * in Backstage → Me), and that mustn't stop anyone saving the rest, such as their rate.
+ */
 export function formToCandidatePatch(form: CandidateProfileValue) {
+  const handle = form.githubHandle.trim();
+  const stack = form.primaryStack.trim();
+  const stacks = form.techStacks.length ? form.techStacks : stack ? [stack] : [];
   return {
     name: form.name,
-    githubHandle: form.githubHandle,
+    ...(handle ? { githubHandle: handle } : {}),
     email: form.email || null,
-    primaryStack: form.primaryStack,
-    techStacks: form.techStacks.length ? form.techStacks : [form.primaryStack],
+    ...(stack ? { primaryStack: stack } : {}),
+    ...(stacks.length ? { techStacks: stacks } : {}),
     location: form.location || null,
     bio: form.bio || null,
     wikiBio: form.wikiBio || null,
@@ -161,7 +168,7 @@ export function EditDevModal({ candidate, onClose }: { candidate: CodeClearCandi
             onClose();
           }}
           loading={update.isPending}
-          disabled={!form.name.trim() || !form.githubHandle.trim() || !form.primaryStack.trim()}
+          disabled={!form.name.trim()}
         >
           Save
         </Button>
