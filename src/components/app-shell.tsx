@@ -360,17 +360,10 @@ export function AppShell({
         </div>
       </div>
 
-      {/* ── Mobile nav dropdown (drops below header, overlays content) ── */}
+      {/* ── Mobile nav: fills the screen below the top bar. z-50 so it covers the On Your Desk
+          bar (fixed, z-40); a half-height menu over a live page read as two screens at once. ── */}
       {mobileOpen && (
-        <button
-          type="button"
-          aria-label="Close navigation"
-          onClick={() => setMobileOpen(false)}
-          className="absolute inset-0 top-[56px] z-30 bg-[var(--surface-canvas)]/60 backdrop-blur-[1px] lg:hidden"
-        />
-      )}
-      {mobileOpen && (
-        <div className="absolute inset-x-0 top-[56px] z-40 flex max-h-[calc(100dvh-56px)] flex-col overflow-y-auto border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_60%)] shadow-xl lg:hidden">
+        <div className="absolute inset-x-0 bottom-0 top-[56px] z-50 flex flex-col overflow-y-auto overscroll-contain bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_60%)] lg:hidden">
           <div className="px-3 py-4">
             <nav className="space-y-1">
               {primaryNav.map((item) => (

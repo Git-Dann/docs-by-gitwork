@@ -109,7 +109,7 @@ export function MyDeveloperCard({ number }: { number: string }) {
               Add your {missing.join(" and ")} so the team can see your work and put you on the right projects.
             </p>
           ) : null}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className={field}>
               GitHub username
               <input
@@ -173,7 +173,7 @@ export function MyDeveloperCard({ number }: { number: string }) {
           </div>
         </form>
       ) : (
-        <dl className="grid gap-4 sm:grid-cols-2">
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="GitHub">
             {d.githubHandle ? (
               <a href={`https://github.com/${d.githubHandle}`} target="_blank" rel="noreferrer noopener" className="font-mono hover:text-[var(--brand-600)] hover:underline">

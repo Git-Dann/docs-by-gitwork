@@ -88,7 +88,7 @@ export function DeveloperCard({ recordId, number }: { recordId: string; number: 
           </div>
           <ExternalLinks linkedinUrl={c.linkedinUrl} cvUrl={c.cvUrl} portfolioUrl={c.portfolioUrl} />
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex items-end justify-between gap-3">
               <Readout
                 label="Group"

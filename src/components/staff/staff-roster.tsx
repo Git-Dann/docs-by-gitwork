@@ -118,7 +118,7 @@ export function DetailsDialog({
             {person.name} signs in to Foundry but has no Staff profile yet. Saving creates one.
           </p>
         ) : null}
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className={field}>
             Preferred name
             <input className="app-input mt-1 w-full" value={preferredName} maxLength={80} placeholder={person.name} onChange={(e) => setPreferredName(e.target.value)} />
@@ -640,7 +640,7 @@ export function StaffRoster({
         <p className="widget-data-label mb-1 text-[var(--text-4)]">
           {g.label} <span className="text-[var(--text-4)]">· {g.people.length}</span>
         </p>
-        <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {g.people.map((p) => (
             <PersonCard
               key={p.key}
