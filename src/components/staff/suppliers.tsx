@@ -50,7 +50,7 @@ function SupplierDialog({ supplier, onClose }: { supplier: SupplierRecord | null
   return (
     <Modal open onClose={onClose} title={supplier ? `01 // ${supplier.name}` : "01 // ADD A SUPPLIER"} panelClassName="w-full max-w-lg">
       <div className="max-h-[70vh] space-y-4 overflow-y-auto px-5 py-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className={cn(label, "sm:col-span-2")}>
             Company name
             <input className="app-input mt-1 w-full" value={f.name ?? ""} maxLength={120} onChange={(e) => set({ name: e.target.value })} />

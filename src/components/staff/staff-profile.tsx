@@ -114,7 +114,7 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
     >
       {editing ? (
         <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {!showSupplier ? null : suppliers.isSuccess && supplierOptions.length === 0 && !supplierId ? (
               // A one-option dropdown that can only say "not supplied" is no use to anyone.
               <div className={cn(label, "sm:col-span-2")}>
@@ -172,7 +172,7 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
           </div>
         </div>
       ) : (
-        <dl className="grid gap-4 sm:grid-cols-2">
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {showSupplier ? (
               <Field label="Supplied by" className="sm:col-span-2">
                 {e.supplierName ?? "Engaged directly"}
@@ -200,7 +200,7 @@ function ContactsEditor({ contacts, onChange }: { contacts: EmergencyContact[]; 
     <div className="space-y-3">
       <p className="widget-data-label text-[var(--text-4)]">Emergency contacts</p>
       {contacts.map((c, i) => (
-        <div key={i} className="grid gap-2 rounded-[6px] border border-[var(--border-2)] p-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+        <div key={i} className="grid grid-cols-1 gap-2 rounded-[6px] border border-[var(--border-2)] p-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
           <input className="app-input w-full" aria-label={`Contact ${i + 1} name`} placeholder="Name" value={c.name} maxLength={120} onChange={(ev) => set(i, { name: ev.target.value })} />
           <input className="app-input w-full" aria-label={`Contact ${i + 1} relationship`} placeholder="Relationship" value={c.relationship ?? ""} maxLength={60} onChange={(ev) => set(i, { relationship: ev.target.value })} />
           <input className="app-input w-full" aria-label={`Contact ${i + 1} phone`} placeholder="Phone" type="tel" value={c.phone} maxLength={40} onChange={(ev) => set(i, { phone: ev.target.value })} />
@@ -236,7 +236,7 @@ function PersonalForm({ initial, recordId, onDone }: { initial: SensitiveDetails
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className={label}>
           Date of birth
           <DatePicker className="mt-1 w-full" value={d.dateOfBirth ?? ""} max={today()} onChange={(v) => set({ dateOfBirth: v || null })} />
@@ -332,7 +332,7 @@ function PersonalCard({ profile, number, className }: { profile: StaffProfile; n
         <PersonalForm initial={d} recordId={profile.recordId} onDone={() => setEditing(false)} />
       ) : (
         <div className="space-y-4">
-          <dl className="grid gap-4 sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Date of birth">{formatDate(d.dateOfBirth)}</Field>
             <Field label="NI number">
               <span className="font-mono">{formatNiNumber(d.niNumber) ?? "—"}</span>
@@ -812,7 +812,7 @@ export function StaffProfileView({
       {editingDirectory && rosterPerson ? (
         <DetailsDialog inline person={rosterPerson} people={roster.data?.people ?? []} onClose={() => setEditingDirectory(false)} />
       ) : (
-      <dl className="grid gap-4 sm:grid-cols-2">
+      <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {p.preferredName && p.preferredName !== p.name ? <Field label="Legal name">{p.name}</Field> : null}
         <Field label="Email">{p.email ?? "—"}</Field>
         <Field label="Type">{type ?? "—"}</Field>
@@ -894,7 +894,7 @@ export function StaffProfileView({
 
       {/* Two independent columns: the person and their work on the left, what they've done
           and what's private on the right. Reading order matches the numbering. */}
-      <div className="grid items-start gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
         <div className="min-w-0 space-y-5">
           {overview}
           {developer}
