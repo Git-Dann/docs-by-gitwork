@@ -129,6 +129,22 @@ export function useDeleteStaffRecord() {
   });
 }
 
+/** Merge two records that are the same person. Returns the record that was kept. */
+export function useMergeStaffRecords() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ recordId, otherRecordId }: { recordId: string; otherRecordId: string }) =>
+      apiFetch<{ keptId: string; name: string }>(`/api/staff/${encodeURIComponent(recordId)}/merge`, {
+        method: "POST",
+        ...json({ otherRecordId }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["staff"] });
+      void qc.invalidateQueries({ queryKey: ["codeclear"] });
+    },
+  });
+}
+
 export function useStaffActivity(recordId: string) {
   return useQuery({
     queryKey: ["staff", "activity", recordId],

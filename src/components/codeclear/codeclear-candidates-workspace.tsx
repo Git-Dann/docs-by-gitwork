@@ -660,8 +660,8 @@ export function CodeClearCandidatesWorkspace() {
  * (widget-card + widget-header) so the two surfaces feel related.
  *
  * Rate block only renders when the viewer has `code.viewRates` — same
- * gate as the previous table column. Section headers are skipped when
- * only one group has rows.
+ * gate as the previous table column. Section headers always show, so a
+ * filtered list still says which group each developer is in.
  */
 function DevsTable({
   sections,
@@ -687,7 +687,9 @@ function DevsTable({
 }) {
   // Skip empty sections so an empty Off Bench doesn't render a header.
   const nonEmpty = sections.filter((s) => s.rows.length > 0);
-  const showSectionHeaders = nonEmpty.length > 1;
+  // Always named, even when only one group has rows: a filtered list ("missing details")
+  // otherwise gave no hint whether someone was on the Bench or Off Bench (Nov 2026).
+  const showSectionHeaders = nonEmpty.length > 0;
   // Pull the live USD→GBP rate once for the whole list. Cached 12 h
   // client-side; serves USD-only when the FX endpoint is unreachable.
   const fx = useUsdToGbpRate();

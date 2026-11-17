@@ -176,6 +176,7 @@ function demoLifecycle(p: StaffPerson) {
     canArchive: p.role !== "SUPER_ADMIN",
     canDelete: !blocked,
     deleteBlockedReason: blocked,
+    canMerge: true,
   };
 }
 
@@ -366,7 +367,7 @@ function resolveDemoHr(pathname: string, method: string, body: Record<string, un
     return { ok: true };
   }
   if (pathname === "/api/staff/hr-overview") return demoHrOverview();
-  const m = pathname.match(/^\/api\/staff\/([^/]+)(?:\/(employment|personal|access-log|archive|activity))?$/);
+  const m = pathname.match(/^\/api\/staff\/([^/]+)(?:\/(employment|personal|access-log|archive|activity|merge))?$/);
   if (!m) return undefined;
   const recordId = decodeURIComponent(m[1]);
   const p = people.find((x) => x.recordId === recordId);
@@ -379,6 +380,20 @@ function resolveDemoHr(pathname: string, method: string, body: Record<string, un
   }
   if (!m[2]) return method === "GET" ? demoProfile(p) : undefined;
   if (m[2] === "activity") return demoActivity(p);
+  if (m[2] === "merge" && method === "POST") {
+    // The demo keeps the page's record and folds the other into it (the real rule keeps the
+    // older one; demo people carry no creation date).
+    const other = people.find((x) => x.recordId === body.otherRecordId);
+    if (!other || other === p) return { error: "Pick a different person to merge with.", __status: 400 };
+    if (p.memberId && other.memberId) {
+      return { error: `${p.name} and ${other.name} sign in with different accounts, so they aren't the same person in Foundry.`, __status: 400 };
+    }
+    if (!p.memberId && other.memberId) Object.assign(p, { memberId: other.memberId, name: other.name, email: other.email, role: other.role, key: other.key });
+    const seen = new Set(p.currentClients.map((c) => c.slug));
+    p.currentClients = [...p.currentClients, ...other.currentClients.filter((c) => !seen.has(c.slug))];
+    people.splice(people.indexOf(other), 1);
+    return { keptId: p.recordId, name: p.name };
+  }
   if (m[2] === "archive" && method === "POST") {
     if (p.memberId) return { error: "They sign in to Foundry, so they're archived on their login.", __status: 400 };
     p.archivedAt = body.archived === false ? null : new Date().toISOString();

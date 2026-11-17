@@ -62,7 +62,14 @@ describe("the developer list filter", () => {
   it("excludes archived developers by default", () => {
     const w = buildCandidateWhere("w1", params({}), ["tom@gitwork.co.uk"]);
     expect(w.AND).toContainEqual({
-      NOT: { OR: [{ email: { equals: "tom@gitwork.co.uk", mode: "insensitive" } }] },
+      OR: [{ email: null }, { NOT: { OR: [{ email: { equals: "tom@gitwork.co.uk", mode: "insensitive" } }] } }],
+    });
+  });
+
+  it("keeps records with no email on the active roster (SQL NOT on a NULL email is never true)", () => {
+    // Hassaan's old card had no email and vanished from Developers and Staff → People (Nov 2026).
+    expect(activeDeveloperWhere(["tom@gitwork.co.uk"])).toEqual({
+      OR: [{ email: null }, { NOT: { OR: [{ email: { equals: "tom@gitwork.co.uk", mode: "insensitive" } }] } }],
     });
   });
 

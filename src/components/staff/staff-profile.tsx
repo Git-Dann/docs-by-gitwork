@@ -42,6 +42,7 @@ import { formatLeaveYear } from "@/lib/leave-year";
 import {
   useAccessLog,
   useDeleteStaffRecord,
+  useMergeStaffRecords,
   useSetArchived,
   useStaffActivity,
   useStaffPersonal,
@@ -427,11 +428,13 @@ function AccessLogCard({ recordId, number, className }: { recordId: string; numb
 function PersonActions({ profile, basePath }: { profile: StaffProfile; basePath: string }) {
   const router = useRouter();
   const l = profile.lifecycle;
-  const [confirm, setConfirm] = useState<"archive" | "delete" | null>(null);
+  const [confirm, setConfirm] = useState<"archive" | "delete" | "merge" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const setArchived = useSetArchived();
   const remove = useDeleteStaffRecord();
   const busy = setArchived.isPending || remove.isPending;
+
+  if (confirm === "merge") return <MergePanel profile={profile} basePath={basePath} onCancel={() => setConfirm(null)} />;
 
   const run = async () => {
     setError(null);
@@ -487,6 +490,11 @@ function PersonActions({ profile, basePath }: { profile: StaffProfile; basePath:
           Archive
         </button>
       ) : null}
+      {l.canMerge && !l.archived ? (
+        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setConfirm("merge")}>
+          Same person as…
+        </button>
+      ) : null}
       {l.canDelete ? (
         <button type="button" className="app-button app-button-tertiary app-button-sm text-[var(--danger-500)]" onClick={() => setConfirm("delete")}>
           Delete
@@ -497,6 +505,74 @@ function PersonActions({ profile, basePath }: { profile: StaffProfile; basePath:
           {error}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * "Same person as…": fold another record into this one (src/lib/staff-merge.ts). For a
+ * person who ended up with two records, typically an old developer card with no email and
+ * the record made for their login. The server keeps the older record and moves everything.
+ */
+function MergePanel({ profile, basePath, onCancel }: { profile: StaffProfile; basePath: string; onCancel: () => void }) {
+  const router = useRouter();
+  const roster = useStaffRoster();
+  const merge = useMergeStaffRecords();
+  const [otherId, setOtherId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const others = (roster.data?.people ?? [])
+    .filter((p): p is StaffPerson & { recordId: string } => Boolean(p.recordId) && p.recordId !== profile.recordId)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const run = async () => {
+    setError(null);
+    try {
+      const { keptId } = await merge.mutateAsync({ recordId: profile.recordId, otherRecordId: otherId });
+      onCancel();
+      if (keptId !== profile.recordId) router.replace(`${basePath}/${keptId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
+  };
+
+  return (
+    <div className="flex w-full max-w-md flex-col items-stretch gap-2 sm:items-end sm:text-right" data-merge-panel>
+      <label htmlFor="merge-other" className="text-[13px] text-[var(--text-2)]">
+        Which record is also {profile.name}?
+      </label>
+      <select
+        id="merge-other"
+        className="app-select app-select-compact w-full sm:w-72"
+        value={otherId}
+        onChange={(e) => setOtherId(e.target.value)}
+        disabled={merge.isPending}
+      >
+        <option value="">Choose a person</option>
+        {others.map((p) => (
+          <option key={p.recordId} value={p.recordId}>
+            {p.name}
+            {p.memberId ? "" : " (no login)"}
+            {p.email ? ` · ${p.email}` : ""}
+          </option>
+        ))}
+      </select>
+      <p className="text-[12px] text-[var(--text-3)]">
+        They become one record. Placements, notes, documents and developer history all move across, and anything
+        filled in on either is kept. This can&apos;t be undone.
+      </p>
+      {error ? (
+        <p role="alert" className="text-[13px] text-[var(--danger-500)]">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex gap-2 sm:justify-end">
+        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={onCancel} disabled={merge.isPending}>
+          Cancel
+        </button>
+        <button type="button" className="app-button app-button-primary app-button-sm" onClick={() => void run()} disabled={!otherId || merge.isPending}>
+          {merge.isPending ? "Merging…" : "Merge"}
+        </button>
+      </div>
     </div>
   );
 }

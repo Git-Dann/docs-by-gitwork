@@ -39,6 +39,7 @@ export type AuditAction =
   | "staff.record.archived"
   | "staff.record.restored"
   | "staff.record.deleted"
+  | "staff.record.merged"
   // Integrations
   | "integration.google.connected"
   | "integration.google.disconnected"

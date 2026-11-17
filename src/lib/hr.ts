@@ -410,6 +410,8 @@ export interface StaffLifecycle {
   canDelete: boolean;
   /** Why Delete isn't offered, in words; null when it is. */
   deleteBlockedReason: string | null;
+  /** Can merge this record with another that is the same person (src/lib/staff-merge.ts). */
+  canMerge: boolean;
 }
 
 /**

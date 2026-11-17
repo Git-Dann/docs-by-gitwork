@@ -42,9 +42,16 @@ function emailMatches(emails: string[]): Prisma.CandidateWhereInput[] {
   return emails.map((e) => ({ email: { equals: e, mode: "insensitive" } }));
 }
 
-/** Developers on the active roster — everyone whose person has NOT left. */
+/**
+ * Developers on the active roster — everyone whose person has NOT left.
+ *
+ * ⚠️ A record with no email must be matched explicitly. In SQL `NOT (email = 'x')` is NULL,
+ * not true, when email is NULL, so a bare NOT hid every no-email record from Developers and
+ * Staff → People. That is how Hassaan's old card (no email, nine placements) vanished and
+ * he was given a second record (Nov 2026).
+ */
 export function activeDeveloperWhere(emails: string[]): Prisma.CandidateWhereInput {
-  return emails.length ? { NOT: { OR: emailMatches(emails) } } : {};
+  return emails.length ? { OR: [{ email: null }, { NOT: { OR: emailMatches(emails) } }] } : {};
 }
 
 /**

@@ -41,6 +41,7 @@ import { isDeveloperRecord } from "@/server/codeclear-archived";
 import { canRestore } from "@/server/auth/member-status";
 import { canManageRole, isAtLeast } from "@/types/auth";
 import { deleteBlockReason, type StaffLifecycle } from "@/lib/hr";
+import { mergePlan, mergedFields } from "@/lib/staff-merge";
 
 const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 const toDate = (v: string | null) => (v ? new Date(`${v}T00:00:00Z`) : null);
@@ -154,6 +155,7 @@ export function lifecycleFor(user: EffectiveUser, record: ProfileRecord, relatio
     canArchive,
     canDelete: canManageCode(user) && !blocked,
     deleteBlockedReason: blocked,
+    canMerge: canMergeRecords(user),
   };
 }
 
@@ -244,6 +246,76 @@ export async function deleteRecord(user: EffectiveUser, recordId: string): Promi
     prisma.candidate.delete({ where: { id: record.id } }),
   ]);
   return { name: record.name };
+}
+
+/**
+ * Who may merge two records into one: anyone who manages Staff and is an Admin or holds
+ * HR, because a merge moves documents and personal details as well as developer history.
+ */
+export function canMergeRecords(user: EffectiveUser): boolean {
+  return canManageCode(user) && (isAtLeast(user.role, "ADMIN") || canManageHr(user));
+}
+
+/**
+ * Merge two Staff records that are the same person (src/lib/staff-merge.ts). The older
+ * record is kept; everything attached to the other (placements, notes, activity, GitHub
+ * analysis, checks, assessments, documents, personal details, the HR access log, anyone
+ * it manages) moves onto it, the fields it lacks are filled from the other, and the other
+ * is deleted. All in one transaction, so a failure leaves both records as they were.
+ */
+export async function mergeRecords(
+  user: EffectiveUser,
+  recordId: string,
+  otherRecordId: string,
+): Promise<{ keptId: string; name: string }> {
+  if (!canMergeRecords(user)) throw new ForbiddenError("You don't have permission to merge people");
+  const [a, b] = await Promise.all(
+    [recordId, otherRecordId].map((id) =>
+      prisma.candidate.findFirst({ where: { id, workspaceId: user.workspaceId, origin: { not: "EXTERNAL" } } }),
+    ),
+  );
+  if (!a || !b) throw notFound();
+  const [sensA, sensB, scores, drafts] = await Promise.all([
+    prisma.staffSensitive.findUnique({ where: { recordId: a.id }, select: { id: true } }),
+    prisma.staffSensitive.findUnique({ where: { recordId: b.id }, select: { id: true } }),
+    prisma.codeClearScore.findMany({ where: { candidateId: { in: [a.id, b.id] } }, select: { candidateId: true } }),
+    prisma.codeClearScoreDraft.findMany({ where: { candidateId: { in: [a.id, b.id] } }, select: { candidateId: true } }),
+  ]);
+  const plan = mergePlan(
+    { ...a, hasPersonalDetails: Boolean(sensA) },
+    { ...b, hasPersonalDetails: Boolean(sensB) },
+  );
+  if (!plan.ok) throw new StaffInputError(plan.error);
+  const keep = plan.keepId === a.id ? a : b;
+  const drop = plan.keepId === a.id ? b : a;
+  const keepHas = (rows: { candidateId: string }[]) => rows.some((r) => r.candidateId === keep.id);
+  const fields = mergedFields(keep, drop) as Prisma.CandidateUncheckedUpdateInput;
+  const move = { where: { candidateId: drop.id }, data: { candidateId: keep.id } };
+  const moveRecord = { where: { workspaceId: user.workspaceId, recordId: drop.id }, data: { recordId: keep.id } };
+
+  await prisma.$transaction([
+    prisma.placement.updateMany(move),
+    prisma.note.updateMany(move),
+    prisma.activityLog.updateMany(move),
+    prisma.gitHubAnalysisRun.updateMany(move),
+    prisma.codeClearCheck.updateMany(move),
+    prisma.devSignalAssessment.updateMany(move),
+    prisma.devSignalDataRequest.updateMany(move),
+    prisma.devSignalStageResult.updateMany(move),
+    prisma.devSignalOutcomeLink.updateMany(move),
+    prisma.devSignalAuditEvent.updateMany(move),
+    // One score and one draft per record: the kept record's own wins.
+    keepHas(scores) ? prisma.codeClearScore.deleteMany({ where: { candidateId: drop.id } }) : prisma.codeClearScore.updateMany(move),
+    keepHas(drafts) ? prisma.codeClearScoreDraft.deleteMany({ where: { candidateId: drop.id } }) : prisma.codeClearScoreDraft.updateMany(move),
+    prisma.staffSensitive.updateMany(moveRecord),
+    prisma.staffDocument.updateMany(moveRecord),
+    prisma.hrAccessLog.updateMany(moveRecord),
+    prisma.candidate.updateMany({ where: { workspaceId: user.workspaceId, managerId: drop.id }, data: { managerId: keep.id } }),
+    // Deleted before the kept record takes its GitHub handle: (workspaceId, githubHandle) is unique.
+    prisma.candidate.delete({ where: { id: drop.id } }),
+    prisma.candidate.update({ where: { id: keep.id }, data: fields }),
+  ]);
+  return { keptId: keep.id, name: typeof fields.name === "string" ? fields.name : keep.name };
 }
 
 export async function updateEmployment(user: EffectiveUser, recordId: string, input: EmploymentUpdate): Promise<void> {

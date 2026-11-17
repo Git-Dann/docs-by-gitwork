@@ -10014,3 +10014,30 @@ The weekday post to the absence channel (`src/server/availability-digest.ts`, cr
   holidays aren't known there, so they count).
 - A footer gives the number of people and says it comes from **approved leave in Foundry
   Backstage**, not anyone's calendar.
+
+## 121. Recent Changes (November 2026) — Two Staff records for one person: "Same person as…"
+
+Hassaan showed twice in Staff: his old developer card ("Hassaan", @hassaan, nine placements,
+a rate, **no email**) and the record made for his login ("Hassaan Bin Sajjad").
+
+- **Why the old card vanished.** `activeDeveloperWhere` (`src/server/codeclear-archived.ts`)
+  was `NOT { OR: [email matches] }`. In SQL that is NULL, not true, for a NULL email, so every
+  record with no email dropped out of Developers and Staff → People. With the card hidden and
+  unlinkable (`linkStaffRecords` links by email), "Create profile" made a second record. The
+  filter now has an explicit `{ email: null }` branch, with a test. ⚠️ Any new `NOT` on a
+  nullable column needs the same.
+- **"Same person as…"** on a profile (`MergePanel`, `POST /api/staff/[id]/merge`,
+  `mergeRecords` in `src/server/hr/profile.ts`, rules in `src/lib/staff-merge.ts`). Needs Staff
+  manage plus Admin or `hr.manage`. The **older** record is kept (its id is the one placements
+  and links use). Everything on the other moves onto it: placements, notes, activity, GitHub
+  analysis, checks, DevSignal rows, documents, personal details, the HR access log, anyone it
+  manages. Blank fields are filled from the other; the login's name wins over an old card's.
+  Refused for two different logins, two different GitHub handles, or personal details on both.
+  One transaction; the other record is deleted before the kept one takes its GitHub handle,
+  because `(workspaceId, githubHandle)` is unique. Audited as `staff.record.merged`.
+- **Edit developer saves without a GitHub handle or main stack.** It used to disable Save, so
+  a new developer's rate couldn't be entered until they'd filled those in. A blank handle or
+  stack is now left out of the save, never cleared.
+- **The Developers list always names its groups** (Bench / Off Bench), even when a filter
+  leaves one group. The "missing details" view showed Abdullah Farooq with no group heading,
+  so it wasn't clear he was already on the Bench.
