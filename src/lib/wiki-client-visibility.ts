@@ -77,11 +77,6 @@ export function clientVisibleSections(wiki: WikiDTO): WikiSection[] {
     ...(wiki.comparisons.enabled && wiki.comparisons.comparisons.some(isPublishableComparison)
       ? (["comparisons"] as const)
       : []),
-    // Sheets needs a sheet with columns. Enabled-and-empty would invite the client to a grid
-    // with nothing in it — and the server already sends nothing while the section is off.
-    ...(wiki.sheets.enabled && wiki.sheets.sheets.some((s) => s.columns.length > 0)
-      ? (["sheets"] as const)
-      : []),
     // The Board needs at least one card. Enabled-and-empty would show the client a board of
     // empty columns, which reads as "nothing is planned".
     ...(wiki.board.enabled && wiki.board.lanes.some((l) => l.total.cards + l.total.other > 0)

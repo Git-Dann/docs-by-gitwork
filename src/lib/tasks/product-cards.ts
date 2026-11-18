@@ -36,6 +36,9 @@ export const TIER_LABELS: Record<Tier, string> = {
 
 export const PRODUCT_CARD_LIMITS = { area: 80, estimateHours: 10_000 } as const;
 
+/** The longest a board list name may be (`Task.boardList`, CLAUDE.md §127). */
+export const BOARD_LIST_MAX = 80;
+
 export function isItemType(v: unknown): v is ItemType {
   return typeof v === "string" && (ITEM_TYPES as readonly string[]).includes(v);
 }

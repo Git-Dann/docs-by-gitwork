@@ -53,7 +53,6 @@ import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
 import { loadWikiCosts } from "./wiki-costs";
 import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
 import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
-import { EMPTY_SHEETS, forPublicSheets, loadWikiSheets } from "./wiki-sheets";
 import { EMPTY_BOARD, forPublicBoard, loadWikiBoard, scopeBoardToSection } from "./wiki-board";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { clientVisibleSections } from "@/lib/wiki-client-visibility";
@@ -65,7 +64,6 @@ import { forPublicDrive, loadWikiDrive } from "./wiki-drive";
 import { EMPTY_DRIVE, type WikiDriveSection } from "@/lib/client-drive";
 import type { WikiEstimatesSection } from "@/types/wiki-estimates";
 import type { WikiComparisonsSection } from "@/types/wiki-comparisons";
-import type { WikiSheetsSection } from "@/types/wiki-sheets";
 import type { WikiBoardSection } from "@/types/wiki-board";
 import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
@@ -454,12 +452,10 @@ export interface WikiDTO {
    */
   comparisons: WikiComparisonsSection;
   /**
-   * Sheets — client-editable spreadsheets whose rows can be sent to the task board. Each
-   * row's board stage is derived from its task at read (src/lib/wiki-sheets.ts), never
-   * stored. The client's copy (`forPublicSheets`) drops deleted rows and assignee names,
-   * and is empty while the section is off.
+   * Retired (CLAUDE.md §127): Sheets is no longer a section — its rows became Board cards.
+   * Always empty. Kept on the wire so an app build that still decodes the field doesn't fail.
    */
-  sheets: WikiSheetsSection;
+  sheets: RetiredSheetsSection;
   /**
    * Board — the client's product cards on the team's task board, grouped by release
    * (src/server/wiki-board.ts). The client can move, add and sign off cards. Only loaded while
@@ -637,6 +633,13 @@ function serializeWikiIntakeItem(item: {
     comments: (item.comments ?? []).map((c) => serializeWikiIntakeComment(c)),
   };
 }
+
+/** The retired Sheets section, as it still appears on the wire (CLAUDE.md §127). */
+export interface RetiredSheetsSection {
+  enabled: false;
+  sheets: never[];
+}
+const RETIRED_SHEETS: RetiredSheetsSection = { enabled: false, sheets: [] };
 
 /**
  * Read the board column of every task a request has been promoted to, in one query.
@@ -1156,7 +1159,6 @@ async function buildDTO(
     costs,
     estimates,
     comparisons,
-    sheets,
     board,
     support,
     standups,
@@ -1208,7 +1210,6 @@ async function buildDTO(
     }),
     settle("estimates", () => loadWikiEstimates(wiki.clientId), EMPTY_ESTIMATES),
     settle("comparisons", () => loadWikiComparisons(wiki.clientId), EMPTY_COMPARISONS),
-    settle("sheets", () => loadWikiSheets(wiki.clientId), EMPTY_SHEETS),
     settle("board", () => loadWikiBoard(wiki.clientId), EMPTY_BOARD),
     settle("support", () => loadWikiSupport(wiki.clientId), {
       enabled: false,
@@ -1293,7 +1294,7 @@ async function buildDTO(
     costs,
     estimates,
     comparisons,
-    sheets,
+    sheets: RETIRED_SHEETS,
     board,
     deliveryEnabled: wiki.deliveryEnabled ?? false,
     roundupEnabled: wiki.roundupEnabled ?? false,
@@ -3364,7 +3365,6 @@ const SHAREABLE_SECTIONS = [
   "costs",
   "estimates",
   "comparisons",
-  "sheets",
   "board",
   "roundup",
   "delivery",
@@ -3447,9 +3447,7 @@ function forPublic(dto: WikiDTO): WikiDTO {
     comparisons: dto.comparisons.enabled
       ? { enabled: true, comparisons: dto.comparisons.comparisons.filter(isPublishableComparison) }
       : { enabled: false, comparisons: [] },
-    // Deleted rows and who on our team holds each task stay on the server; nothing at all
-    // leaves while the section is off.
-    sheets: forPublicSheets(dto.sheets),
+    sheets: RETIRED_SHEETS,
     // The board is built from an allow-list of client-safe fields; nothing leaves while it's off.
     board: forPublicBoard(dto.board),
     // Whose Google account reads the folder for the client is ours, not theirs.
@@ -3471,7 +3469,7 @@ function forPublic(dto: WikiDTO): WikiDTO {
 
   // ⚠️ Computed on the TRIMMED copy, never on `dto`. The predicates read the very
   // arrays this function filters — `metrics.metrics.length`,
-  // `comparisons.comparisons`, `sheets.sheets` — so computing it first would list a
+  // `comparisons.comparisons` — so computing it first would list a
   // section whose content has since been removed from the client's copy, which is
   // exactly the blank page the predicates exist to prevent.
   //

@@ -64,7 +64,7 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 71 tools", tools.length === 71, `got ${tools.length}`);
+    check("returns 58 tools", tools.length === 58, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
@@ -95,21 +95,6 @@ console.log("tools/list");
       "add_comparison_rows",
       "set_comparison_cells",
       "delete_comparison",
-      "list_sheets",
-      "get_sheet",
-      "create_sheet",
-      "update_sheet",
-      "add_sheet_columns",
-      "update_sheet_column",
-      "remove_sheet_column",
-      "add_sheet_rows",
-      "update_sheet_rows",
-      "reorder_sheet_rows",
-      "get_sheet_upload_link",
-      "upload_sheet_image",
-      "delete_sheet_rows",
-      "send_sheet_rows_to_board",
-      "delete_sheet",
       "enable_wiki_section",
       "list_wiki",
       "get_wiki_page",
@@ -121,6 +106,8 @@ console.log("tools/list");
       "create_task",
       "list_releases",
       "create_release",
+      "sheets_to_board_plan",
+      "sheets_to_board_apply",
       "forge_import_plan",
       "forge_import_apply",
       "update_task",

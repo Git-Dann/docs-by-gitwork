@@ -16,7 +16,6 @@ import { WikiCostsSection } from "./wiki-costs-section";
 import { WikiEstimatesSection } from "./wiki-estimates-section";
 import { isPlannable } from "@/lib/wiki-estimates";
 import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
-import { WikiSheetsSectionView } from "./wiki-sheets-section";
 import { WikiBoardSectionView } from "./wiki-board-section";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { WikiRoundupSection } from "./wiki-roundup-section";
@@ -67,7 +66,6 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   costs: "Running costs",
   estimates: "Estimates",
   comparisons: "Comparisons",
-  sheets: "Sheets",
   board: "Board",
   roundup: "RoundUp",
   delivery: "Delivery",
@@ -263,15 +261,6 @@ export function WikiPublicView({
     }
     if (activeSection === "board") {
       return <WikiBoardSectionView section={wiki.board} target={{ mode: "public", token }} audience="client" />;
-    }
-    if (activeSection === "sheets") {
-      return (
-        <WikiSheetsSectionView
-          slug={wiki.clientSlug}
-          token={token}
-          section={{ ...wiki.sheets, sheets: wiki.sheets.sheets.filter((s) => s.columns.length > 0) }}
-          mode="public"        />
-      );
     }
     if (activeSection === "comparisons") {
       return (

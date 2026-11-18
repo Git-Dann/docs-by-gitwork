@@ -39,7 +39,8 @@ interface DirectoryEntry extends MentionPerson {
 export type MentionAudience = "internal" | "public" | "clientTeam";
 
 /*
- * "clientTeam" = the Sheets person picker on the team's side (§73.1): the active team
+ * "clientTeam" = a person picker on the team's side (written for Sheets, §73.1; kept for the Board's
+ * Table view, §127): the active team
  * members who can actually SEE this client — Super Admins, `seeAllClients` holders, people
  * assigned to it, and developers placed on it in Code — plus the client's own people. A
  * person picked into a sheet should be someone who can open it.
@@ -139,7 +140,7 @@ async function directory(
 }
 
 /**
- * The Sheets person directory (§73.1) — the same people, the same opaque ids, as the
+ * The person directory for a table's person column (written for Sheets §73.1, kept for §127) — the same people, the same opaque ids, as the
  * @mention picker. "team" is the team's side of a client (`clientTeam`), "client" the
  * restricted list the client's own page sees (`public`). Carries emails, so it is SERVER
  * ONLY: the routes send `sheetPeopleForBrowser`, never this.

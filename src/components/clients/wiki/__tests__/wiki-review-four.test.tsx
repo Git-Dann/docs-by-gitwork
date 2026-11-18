@@ -96,7 +96,7 @@ describe("doc pages: one Docs entry, tabs between them", () => {
 });
 
 describe("the phone picker", () => {
-  const long: WikiSection[] = ["dashboard", "timeline", "delivery", "intake", "launchpad", "metrics", "sheets", "platforms", "changelog", "settings"];
+  const long: WikiSection[] = ["dashboard", "timeline", "delivery", "intake", "launchpad", "board", "metrics", "platforms", "changelog", "settings"];
 
   it("groups a long list under the sidebar's headings, Dashboard first and Settings last", () => {
     const host = mount(<WikiMobileNav sections={long} active="dashboard" titles={TITLES} onSelect={() => {}} />);
@@ -131,14 +131,14 @@ describe("the phone picker", () => {
         active="dashboard"
         titles={TITLES}
         onSelect={() => {}}
-        emptySections={["sheets"]}
+        emptySections={["board"]}
         addable={[{ section: "runbook", label: "Runbook" }]}
         onAdd={(s) => (added = s)}
       />,
     );
     act(() => (host.querySelector("button") as HTMLButtonElement).click());
-    const sheets = [...host.querySelectorAll('[role="menuitem"]')].find((b) => b.textContent?.startsWith("SHEETS"));
-    expect(sheets?.textContent).toContain("EMPTY");
+    const board = [...host.querySelectorAll('[role="menuitem"]')].find((b) => b.textContent?.startsWith("BOARD"));
+    expect(board?.textContent).toContain("EMPTY");
     const add = [...host.querySelectorAll("button")].find((b) => b.textContent === "Add New") as HTMLButtonElement;
     act(() => add.click());
     act(() => ([...host.querySelectorAll('[role="menuitem"]')].find((b) => b.textContent?.startsWith("Runbook")) as HTMLButtonElement).click());

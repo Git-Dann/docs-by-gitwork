@@ -11,7 +11,6 @@ import { normalizeGithubRepo } from "@/lib/github";
 import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
-import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
 import { BOARD_LIMITS, CLIENT_CARD_TYPES, FEEDBACK_KINDS } from "@/lib/wiki-board";
 import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
 import {
@@ -23,7 +22,6 @@ import {
   MAX_REORDER_IDS,
 } from "@/lib/commitments";
 import { AI_ANSWER_LIMITS, AI_ENGINE_IDS, normaliseBrandName, normaliseDomain } from "@/lib/ai-answers";
-import type { SheetColumnType } from "@/types/wiki-sheets";
 
 export const documentStatusSchema = z.enum([
   "DRAFT",
@@ -1113,6 +1111,8 @@ const cardFields = {
   area: z.string().trim().max(80, "Keep the area under 80 characters").nullable().optional(),
   estimateHours: z.number().min(0).max(10_000).nullable().optional(),
   externalRef: z.string().trim().max(120).nullable().optional(),
+  /** A named list on the client's board (CLAUDE.md §127). "" or null takes the card out of it. */
+  boardList: z.string().trim().max(80, "Keep the list name under 80 characters").nullable().optional(),
   productCardId: z.union([z.string().cuid(), z.literal("")]).nullable().optional(),
 };
 
@@ -2466,122 +2466,6 @@ export type ComparisonInput = z.infer<typeof comparisonSchema>;
 
 export const comparisonOrderSchema = z.object({
   order: z.array(z.string().min(1).max(64)).max(CMP.maxTables),
-});
-
-// ─── Wiki: Sheets ──────────────────────────────────────────────────────────────
-// Limits and value types come from SHEET_LIMITS / coerceCellValue in src/lib/wiki-sheets.ts,
-// shared with the grid and the MCP tools. These schemas check SHAPE; each cell value is
-// coerced (and refused with a sentence) per column type on the server.
-
-const sheetColumnTypeSchema = z.enum(
-  COLUMN_TYPES as readonly [SheetColumnType, ...SheetColumnType[]],
-);
-// A picked person (id checked against the directory on the server, §73.1) and a media
-// list (each URL re-checked by the safe-link rule) are the two non-scalar shapes.
-const sheetPersonValueSchema = z
-  .object({
-    id: z.string().max(100),
-    name: z.string().max(SHT.maxPerson),
-    kind: z.enum(["TEAM", "CLIENT"]),
-  })
-  .strict();
-const sheetMediaValueSchema = z
-  .array(
-    z.union([
-      z.string().max(SHT.maxLink),
-      z.object({ url: z.string().max(SHT.maxLink), title: z.string().max(200).optional() }).strict(),
-    ]),
-  )
-  .max(SHT.maxMedia);
-const sheetCellValueSchema = z.union([
-  z.string().max(SHT.maxLongText),
-  z.number(),
-  z.boolean(),
-  z.null(),
-  sheetPersonValueSchema,
-  sheetMediaValueSchema,
-]);
-const sheetCellsSchema = z.record(z.string().max(80), sheetCellValueSchema);
-
-export const sheetColumnInputSchema = z.object({
-  id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid column id").optional(),
-  title: z.string().trim().min(1, "Every column needs a title").max(SHT.maxColumnTitle),
-  type: sheetColumnTypeSchema.optional(),
-  options: z.array(z.string().trim().max(SHT.maxOption)).max(SHT.maxOptions).optional(),
-  width: z.number().int().min(SHT.minWidth).max(SHT.maxWidth).optional(),
-  clientEditable: z.boolean().optional(),
-});
-
-const sheetPermissionFields = {
-  clientCanEdit: z.boolean().optional(),
-  clientCanAddRows: z.boolean().optional(),
-  clientCanSendToBoard: z.boolean().optional(),
-};
-
-export const sheetCreateSchema = z.object({
-  title: z.string().trim().min(1, "Give the sheet a title").max(SHT.maxTitle),
-  description: z.string().trim().max(SHT.maxDescription).nullable().optional(),
-  columns: z
-    .array(sheetColumnInputSchema)
-    .max(SHT.maxColumns, `A sheet can have at most ${SHT.maxColumns} columns`),
-  titleColumnId: z.string().max(64).nullable().optional(),
-  rows: z.array(sheetCellsSchema).max(SHT.maxBatch).optional(),
-  ...sheetPermissionFields,
-});
-
-export const sheetUpdateSchema = z.object({
-  title: z.string().trim().min(1).max(SHT.maxTitle).optional(),
-  description: z.string().trim().max(SHT.maxDescription).nullable().optional(),
-  titleColumnId: z.string().max(64).nullable().optional(),
-  ...sheetPermissionFields,
-});
-
-export const sheetColumnPatchSchema = z.object({
-  title: z.string().trim().min(1).max(SHT.maxColumnTitle).optional(),
-  type: sheetColumnTypeSchema.optional(),
-  options: z.array(z.string().trim().max(SHT.maxOption)).max(SHT.maxOptions).optional(),
-  width: z.number().int().min(SHT.minWidth).max(SHT.maxWidth).nullable().optional(),
-  clientEditable: z.boolean().optional(),
-  position: z.number().int().min(0).max(SHT.maxColumns).optional(),
-});
-
-export const sheetAddColumnsSchema = z.object({
-  columns: z.array(sheetColumnInputSchema).min(1).max(SHT.maxColumns),
-});
-
-export const sheetAddRowsSchema = z.object({
-  rows: z.array(sheetCellsSchema).min(1).max(SHT.maxBatch),
-});
-
-/**
- * A CLIENT's cell edit. `.strict()` on purpose: a client's resizes are local to their own
- * browser (§73.1), so a `height` (or anything else) in the body is refused with a 400, not
- * quietly dropped.
- */
-export const sheetCellPatchSchema = z
-  .object({
-    cells: sheetCellsSchema,
-  })
-  .strict();
-
-/** The TEAM's row edit: cells, the row's height (null = auto), or both. */
-export const sheetRowPatchSchema = z
-  .object({
-    cells: sheetCellsSchema.optional(),
-    height: z.number().int().min(SHT.minRowHeight).max(SHT.maxRowHeight).nullable().optional(),
-  })
-  .strict()
-  .refine((b) => b.cells !== undefined || b.height !== undefined, "Nothing to change.");
-
-export const sheetRowsBulkSchema = z.object({
-  action: z.enum(["delete", "restore", "send"]),
-  rowIds: z.array(z.string().min(1).max(64)).min(1).max(SHT.maxBatch),
-  featureBlockId: z.string().max(64).nullable().optional(),
-  releaseId: z.string().max(64).nullable().optional(),
-});
-
-export const sheetOrderSchema = z.object({
-  order: z.array(z.string().min(1).max(64)).max(SHT.maxRows),
 });
 
 // ─── AI search (Pulse → AI search) ───────────────────────────────────────────
