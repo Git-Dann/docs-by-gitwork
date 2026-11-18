@@ -385,6 +385,16 @@ const TOOLS: Tool[] = [
     examples: ["Add release v2.1.0 'Q1 Social' to Big Wedge, 5–19 January.", "Put the onboarding task in v2.1.0."],
   },
   {
+    name: "forge_import_plan",
+    blurb: "Dry run of importing a client's plan from their planning tool (Big Wedge's Forge board). Writes nothing. Admins only.",
+    examples: ["Show me the dry run of Big Wedge's import.", "What would the Wedge import create?"],
+  },
+  {
+    name: "forge_import_apply",
+    blurb: "Run that import once its dry run has been approved. Only creates and links; never deletes or moves a task. Admins only.",
+    examples: ["Run the Big Wedge import with these decisions."],
+  },
+  {
     name: "list_members",
     blurb:
       "List Gitwork workspace members. Useful for finding the user id Claude needs when assigning tasks.",

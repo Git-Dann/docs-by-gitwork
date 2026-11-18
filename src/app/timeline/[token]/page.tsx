@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getPublicTimeline } from "@/server/client-timeline";
-import { GanttChart, type GanttBlock } from "@/components/tasks/gantt-chart";
+import type { GanttBlock } from "@/components/tasks/gantt-chart";
+import { PublicTimelineGantt } from "@/components/tasks/public-timeline-gantt";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export default async function PublicTimelinePage({
   const timeline = await getPublicTimeline(token);
   if (!timeline) notFound();
 
-  const blocks: GanttBlock[] = timeline.blocks.map((b) => ({
+  const toGantt = (b: (typeof timeline.blocks)[number]): GanttBlock => ({
     id: b.id,
     name: b.name,
     startDate: b.startDate,
@@ -33,7 +34,10 @@ export default async function PublicTimelinePage({
     progress: b.progress,
     tasks: b.tasks,
     statusCounts: b.statusCounts,
-  }));
+    docUrl: b.docUrl ?? null,
+  });
+  const blocks: GanttBlock[] = timeline.blocks.map(toGantt);
+  const releases: GanttBlock[] = (timeline.releases ?? []).map(toGantt);
 
   const overall =
     blocks.length === 0
@@ -61,8 +65,7 @@ export default async function PublicTimelinePage({
           </p>
         </header>
 
-        {/* Client-facing share — no internal "behind schedule" slip overlay. */}
-        <GanttChart blocks={blocks} slippage={false} emptyHint="The timeline will appear here once work is scheduled." />
+        <PublicTimelineGantt blocks={blocks} releases={releases} />
 
         <footer className="mt-8 flex items-center justify-center gap-1.5 text-xs text-[var(--text-4)]">
           {/* eslint-disable-next-line @next/next/no-img-element */}

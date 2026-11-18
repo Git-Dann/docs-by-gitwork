@@ -5000,6 +5000,11 @@ model ClientRelease {
   startDate   DateTime?
   endDate     DateTime?
   orderKey    Float           @default(0)
+  /// Where this release came from in an outside planning tool ("forge:<id>"). The importer's
+  /// key, so a re-run never makes a second copy. Indexed, NOT unique (CLAUDE.md §2).
+  externalRef String?
+  /// The release document (http(s) only), e.g. Big Wedge's release doc. Client-safe.
+  docUrl      String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -5008,6 +5013,7 @@ model ClientRelease {
 
   @@index([clientId])
   @@index([workspaceId, clientId])
+  @@index([clientId, externalRef])
 }
 
 /// A single-date timeline marker (separate from feature-block bars). Renders as

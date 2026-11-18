@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/format";
+import { safeReleaseDocUrl } from "@/lib/tasks/releases";
 import { GANTT_SCALE_LABELS, TASK_STATUS_LABELS, type GanttScale, type TaskStatus } from "@/types/tasks";
 
 export type GanttBlock = {
@@ -34,6 +35,8 @@ export type GanttBlock = {
    *  fill. Every caller (internal Tasks Gantt, wiki Timeline, public /timeline share)
    *  supplies this now, so the client sees the same breakdown as the team. */
   statusCounts?: Record<TaskStatus, number>;
+  /** Releases only: the release document, shown as "Release doc ↗" under the name. */
+  docUrl?: string | null;
 };
 
 export type GanttMilestone = {
@@ -600,6 +603,16 @@ export function GanttChart({
                               {b.progress}% · {b.tasks.length} task{b.tasks.length === 1 ? "" : "s"}
                               {!showDue ? ` · ${dueFmt}` : ""}
                             </p>
+                            {safeReleaseDocUrl(b.docUrl) ? (
+                              <a
+                                href={safeReleaseDocUrl(b.docUrl)!}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-0.5 inline-block text-[11px] text-[var(--brand-700)] hover:underline"
+                              >
+                                Release doc ↗
+                              </a>
+                            ) : null}
                           </div>
                         </div>
                         {isOpen && shown.length > 0 ? (

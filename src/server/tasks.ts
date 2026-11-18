@@ -11,6 +11,7 @@ import { bytesForPrisma } from "@/lib/prisma-bytes";
 import {
   type EffectiveUser,
   ForbiddenError,
+  NotFoundError,
   canSeeAllClients,
 } from "@/server/auth/effective-user";
 import { placementClientIds } from "@/server/client-assignments";
@@ -553,6 +554,45 @@ export async function listTasks(
   return tasks.map(taskListDTO);
 }
 
+/**
+ * A product card's dev tasks, and the tasks that could be linked to it, read from the server.
+ *
+ * The drawer used to read both from the board's cached list, which leaves out archived tasks and
+ * done tasks older than 90 days. A card's history is exactly those, so a card that was delivered
+ * months ago showed "No dev tasks linked" (Nov 2026). `linked` includes every linked task,
+ * archived or not; `candidates` are live top-level dev tasks with no card yet.
+ */
+export async function listCardLinks(
+  user: EffectiveUser,
+  cardId: string,
+): Promise<{ linked: TaskDTO[]; candidates: TaskDTO[] }> {
+  const card = await prisma.task.findFirst({
+    where: { id: cardId, workspaceId: user.workspaceId },
+    select: { id: true, clientId: true, itemType: true },
+  });
+  // 404, not 403: the lookup is already limited to the caller's workspace, so "no such task" is
+  // the true answer, and 403 would confirm an id exists. A task on a client the caller can't
+  // reach is still refused by assertClientInScope.
+  if (!card) throw new NotFoundError("Task not found");
+  await assertClientInScope(user, card.clientId);
+  if (!card.itemType) return { linked: [], candidates: [] };
+  const scope = { workspaceId: user.workspaceId, clientId: card.clientId };
+  const [linked, candidates] = await Promise.all([
+    prisma.task.findMany({
+      where: { ...scope, productCardId: card.id },
+      orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { updatedAt: "desc" }],
+      include: taskInclude,
+    }),
+    prisma.task.findMany({
+      where: { ...scope, itemType: null, productCardId: null, archivedAt: null, parentId: null, id: { not: card.id } },
+      orderBy: { updatedAt: "desc" },
+      take: 500,
+      include: taskInclude,
+    }),
+  ]);
+  return { linked: linked.map(taskRowToDTO), candidates: candidates.map(taskRowToDTO) };
+}
+
 export async function getTask(user: EffectiveUser, id: string): Promise<TaskDetailDTO> {
   const row = await prisma.task.findFirst({
     where: { id, workspaceId: user.workspaceId },
@@ -927,6 +967,7 @@ export async function importTasks(
     priority?: TaskPriority;
     assigneeIds?: string[];
     featureBlockId?: string | null;
+    releaseId?: string | null;
     dueDate?: string | null;
   }>,
 ): Promise<{ created: number; skipped: number }> {
@@ -942,6 +983,18 @@ export async function importTasks(
             select: { id: true },
           })
         ).map((b) => b.id)
+      : [],
+  );
+  // Releases the same way: one that isn't this client's is dropped, never written.
+  const releaseIds = [...new Set(rows.map((r) => r.releaseId).filter((x): x is string => !!x))];
+  const validReleases = new Set(
+    releaseIds.length
+      ? (
+          await prisma.clientRelease.findMany({
+            where: { id: { in: releaseIds }, workspaceId: user.workspaceId, clientId },
+            select: { id: true },
+          })
+        ).map((r) => r.id)
       : [],
   );
   const assigneeIds = [...new Set(rows.flatMap((r) => r.assigneeIds ?? []))];
@@ -975,6 +1028,7 @@ export async function importTasks(
         clientId,
         createdById: user.id,
         featureBlockId: fbId,
+        releaseId: r.releaseId && validReleases.has(r.releaseId) ? r.releaseId : null,
         title: title.slice(0, 200),
         description: r.description ? r.description.slice(0, 10000) : null,
         status,
@@ -1443,6 +1497,10 @@ export async function autoArchiveDoneTasks(olderThanDays = 30): Promise<{ archiv
     where: {
       status: "DONE",
       archivedAt: null,
+      // Never a product card (§124): a card is the client's record of what their product does, and
+      // Live Features is a column they read. Archiving it after 30 days would empty that column
+      // overnight. Cards are archived by a person, or not at all.
+      itemType: null,
       // Completed >N days ago — OR, for imported/legacy done tasks that never got
       // a completedAt (bulk-imported as DONE), untouched for >N days. Without the
       // second clause those dateless done tasks never archive and pile up on the

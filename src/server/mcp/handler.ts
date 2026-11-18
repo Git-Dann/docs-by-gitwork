@@ -129,6 +129,9 @@ import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { resolveDocumentOwnerName, templateOwnerName } from "@/lib/document-owner";
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
 import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
+import { forgeApplyBodySchema, forgePlanBodySchema } from "@/lib/forge-import/schemas";
+import { renderForgePlanMarkdown } from "@/lib/forge-import/report";
+import { applyForgeImport, planForgeImport } from "@/server/forge-import";
 import {
   getDefaultAssetPayload,
   getDefaultCostsPayload,
@@ -2485,6 +2488,91 @@ const TOOLS: ToolDef[] = [
         endDate: parsed.endDate ?? null,
       });
       return textResult(created, `Added release ${releaseLabel(created)} to ${c.name}.`);
+    },
+  },
+  {
+    name: "forge_import_plan",
+    description:
+      "Dry run of importing a client's product plan from their planning tool (Big Wedge's Forge board) into their Foundry board. " +
+      "Writes nothing. Returns the counts, the items waiting for a decision (with suggested matching tasks) and a readable report. " +
+      "Admins only. Pass `decisions` to see how the plan changes with them.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (e.g. 'wedge')." },
+        feedUrl: { type: "string", description: "Optional https feed address. Defaults to Big Wedge's." },
+        decisions: {
+          type: "array",
+          description: "Optional review decisions: { forgeId, decision } where decision is a task id, 'create' or 'skip'.",
+          items: {
+            type: "object",
+            properties: { forgeId: { type: "string" }, decision: { type: "string" } },
+            required: ["forgeId", "decision"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      if (!isAtLeast(user.role, "ADMIN")) throw new ForbiddenError("Only an Admin can import a client's plan.");
+      const parsed = forgePlanBodySchema.extend({ client: z.string().trim().min(1) }).parse(args);
+      const c = await resolveClient(user, parsed.client);
+      const plan = await planForgeImport({ workspaceId: user.workspaceId, clientId: c.id, feedUrl: parsed.feedUrl, decisions: parsed.decisions });
+      const review = plan.items
+        .filter((i) => i.action === "review")
+        .map((i) => ({ forgeId: i.forgeId, type: i.forgeType, title: i.title, stage: i.stage, reason: i.reason, candidates: i.candidates }));
+      const k = plan.counts;
+      return textResult(
+        { counts: k, missingColumns: plan.missingColumns, review, report: renderForgePlanMarkdown(plan, { generatedAt: new Date().toISOString().slice(0, 10) }) },
+        `Dry run for ${c.name}: ${k.considered} items. ${k.create} new cards, ${k.link} existing tasks become cards, ${k.devLinks} dev tasks linked, ` +
+          `${k.alreadyImported} already imported, ${k.review} waiting for a decision.` +
+          (plan.missingColumns.length ? ` Missing board columns: ${plan.missingColumns.join(", ")}.` : ""),
+      );
+    },
+  },
+  {
+    name: "forge_import_apply",
+    description:
+      "Run the import a forge_import_plan dry run described, for a client. Only creates cards and releases, links dev tasks to cards " +
+      "and fills empty fields; never deletes, archives or moves a task, and a re-run does only what's left. Admins only. " +
+      "`approvedReviewLinks` is required (it may be empty): the decision for each item that was waiting, as { forgeId, decision } " +
+      "where decision is a task id, 'create' or 'skip'. Items with no decision stay waiting and aren't imported.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (e.g. 'wedge')." },
+        feedUrl: { type: "string", description: "Optional https feed address. Defaults to Big Wedge's." },
+        approvedReviewLinks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { forgeId: { type: "string" }, decision: { type: "string" } },
+            required: ["forgeId", "decision"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["client", "approvedReviewLinks"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      if (!isAtLeast(user.role, "ADMIN")) throw new ForbiddenError("Only an Admin can import a client's plan.");
+      const parsed = forgeApplyBodySchema.extend({ client: z.string().trim().min(1) }).parse(args);
+      const c = await resolveClient(user, parsed.client);
+      const result = await applyForgeImport({
+        workspaceId: user.workspaceId,
+        clientId: c.id,
+        actorId: user.id,
+        feedUrl: parsed.feedUrl,
+        approvedReviewLinks: parsed.approvedReviewLinks,
+      });
+      return textResult(
+        result,
+        `Imported into ${c.name}: ${result.created} new cards, ${result.linked} existing tasks became cards, ${result.devLinked} dev tasks linked, ` +
+          `${result.releasesCreated} releases added, ${result.filled} cards filled in. ${result.pendingReview} still waiting for a decision.`,
+      );
     },
   },
   {

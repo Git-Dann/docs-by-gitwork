@@ -6,7 +6,7 @@
  * design-system `shareToken`).
  */
 
-import { releaseLabel, releaseProgress, releaseSpan, releaseStatusCounts, sortReleases } from "@/lib/tasks/releases";
+import { releaseLabel, releaseProgress, releaseSpan, releaseStatusCounts, safeReleaseDocUrl, sortReleases } from "@/lib/tasks/releases";
 import { publicTeamAvatarUrl } from "@/lib/wiki-team-avatar";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
@@ -252,6 +252,8 @@ export interface WikiTimelineBlock {
   statusCounts: Record<TaskStatus, number>;
   /** True when the dates are estimated from task due dates rather than set on the block. */
   estimated: boolean;
+  /** Releases only: the release document (the client's own doc, so client-safe). */
+  docUrl?: string | null;
 }
 
 /** The client-safe grain: what, whether, and when. Never who or how urgent. */
@@ -977,6 +979,7 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
           startedAt: t.startedAt?.toISOString() ?? null,
         })),
         statusCounts: releaseStatusCounts(r.tasks),
+        docUrl: safeReleaseDocUrl(r.docUrl),
       };
     })
     .filter((b): b is WikiTimelineBlock => b !== null);

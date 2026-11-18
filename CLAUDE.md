@@ -10112,7 +10112,52 @@ and two more on the board. Both levels now live on one board.
 - **A task in a release counts as planned** (plan health, My Day "From the plan", Foreman
   PLAN_DRIFT), not only one in a category.
 
-## 125. Recent Changes (November 2026) — The client's Board: move, add and sign off cards in their wiki
+## 125. Recent Changes (November 2026) — Importing a client's plan from their planning tool
+
+Big Wedge plans in a WordPress "Forge" board that publishes the whole plan as public JSON
+(`https://ops.bigwedgegolf.com/wp-json/forge/v1/items`: features, sub-items, bugs, feedback,
+releases). `src/lib/forge-import/` (pure) and `src/server/forge-import.ts` import it onto the Wedge
+board as product cards (§124). Admin-only: `POST /api/clients/[slug]/forge-import/plan` (dry run)
+and `/apply`, and MCP `forge_import_plan` / `forge_import_apply`. Audited as
+`tasks.forge_import.applied`.
+
+- **The dry run writes nothing.** Apply is ONE transaction under a per-client advisory lock
+  (`pg_try_advisory_xact_lock`): a second apply while one runs gets 409, planning happens after the
+  lock is held, and a failure part-way leaves the board as it was. Each card carries `externalRef`
+  "forge:<id>" and is never imported twice; so does each release (`ClientRelease.externalRef`).
+- **A fill never overwrites.** Each field is written in its own `updateMany` with "still empty" in
+  the WHERE, so a value the team set meanwhile wins, and each field is filled at most once
+  (`metadata.forge.filled`), so a value the team CLEARED stays cleared. A team task is never moved
+  into a column; only a card the importer makes is placed.
+- **A sub-item waits for its feature's card** (`waiting` in the plan) rather than being made
+  top-level, and hangs one level deep (under its feature card's parent if that card is a subtask).
+- **Feed values are hostile input:** looked up as own properties only (`"constructor"` can't hit a
+  built-in), strings capped at parse time (`FEED_LIMITS`, titles 500 and flagged), and a match that
+  only works with a platform tag stripped ("Bag Management - iOS") goes to review.
+- **Release docs are kept** (`ClientRelease.docUrl`, http(s) only via `safeReleaseDocUrl`): editable
+  in the Releases dialog and shown as "Release doc ↗" on the internal, wiki and public timelines.
+- **Only an exact title match is acted on** (`src/lib/forge-import/match.ts`, a port of the
+  hand-checked comparison, incl. difflib's ratio). A live, top-level team task becomes the card;
+  an archived task or a subtask stays where it is and is linked to a new card. Anything looser, or
+  not one-to-one, waits in the review list for a decision (a task id, `create` or `skip`).
+- ⚠️ **Apply never deletes, archives, reparents, renames or re-statuses a team task**, and every
+  update is `updateMany` scoped to the client. A linked task keeps its own status; the dry run says
+  where Big Wedge's stage differs.
+- **Stages → columns** (`stages.ts`): the importer only references Wedge's columns by name and
+  refuses to run until all eleven exist. ⚠️ There is no "In Review" column: a board column may not
+  repeat a status's own name, so that stage is the In Review status lane.
+- **Product cards are no longer auto-archived** after 30 days done (`autoArchiveDoneTasks`), or
+  Live Features would empty overnight.
+- **The real-data test** (`plan-real-data.test.ts`) runs only with `FORGE_FIXTURES_DIR` set. The
+  repo is public, so the client's plan and our task list are never committed as fixtures.
+- `scripts/forge-import-report.ts` renders a plan as the markdown summary that gets approved.
+
+Same change: releases in the CSV import and Sheets "send to board" (validated to the client, team
+only), releases on the public `/timeline/[token]` link with the Categories | Releases switch, and a
+card's dev tasks read from the server (`GET /api/tasks/[id]/linked`, archived included) instead of
+the board's cached list.
+
+## 126. Recent Changes (November 2026) — The client's Board: move, add and sign off cards in their wiki
 
 A client-wiki section, **Board** (id `board`, `ClientWiki.boardEnabled`, additive): the client's
 product cards on the team's own task board, in the client's columns (default columns included,
