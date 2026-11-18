@@ -110,6 +110,7 @@ function card(id: string, over: Partial<WikiBoardCard> = {}): WikiBoardCard {
     description: null,
     subtasks: [],
     images: [],
+    removedImages: [],
     stageHistory: [],
     doneAt: null,
     estimateHours: null,

@@ -114,8 +114,8 @@ describe("moves and deletes", () => {
     expect(boardActionQuotaBreach("move", { hour: 199, day: 0 })).toBeNull();
     expect(boardActionQuotaBreach("move", { hour: 200, day: 0 })).toMatch(/200 moves in an hour/);
     expect(boardActionQuotaBreach("delete", { hour: 29, day: 29 })).toBeNull();
-    expect(boardActionQuotaBreach("delete", { hour: 30, day: 30 })).toMatch(/30 deleted cards in an hour/);
-    expect(boardActionQuotaBreach("delete", { hour: 0, day: 100 })).toMatch(/100 deleted cards today/);
+    expect(boardActionQuotaBreach("delete", { hour: 30, day: 30 })).toMatch(/30 removals \(cards and screenshots\) in an hour/);
+    expect(boardActionQuotaBreach("delete", { hour: 0, day: 100 })).toMatch(/100 removals \(cards and screenshots\) today/);
   });
 });
 

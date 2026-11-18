@@ -275,6 +275,15 @@ for (const [id, list] of [
 ] as const) {
   demoBoardTasks.find((t) => t.id === id)!.boardList = list;
 }
+// Two sub-items under "Saved searches", so the card popup opens and edits them (§126.4).
+for (const [id, title, status] of [
+  ["c1a", "Name a saved search", "DONE"],
+  ["c1b", "Email me when a saved search has new results", "BACKLOG"],
+] as const) {
+  const sub = mkTask({ id, release: REL.v140, title, clientSlug: "northwind", status, unassigned: true, card: { itemType: "subitem", area: "Search & discovery" } });
+  sub.parentId = "c1";
+  demoBoardTasks.push(sub);
+}
 // Which dev tasks deliver which card.
 for (const [devId, cardId] of [["t13", "c1"], ["t14", "c1"], ["t19", "c1"], ["t20", "c2"]] as const) {
   const card = demoBoardTasks.find((t) => t.id === cardId)!;
@@ -4288,6 +4297,8 @@ let demoBoardEnabled = true;
 let demoBoardShowAllTasks = false;
 /** Demo screenshots on cards. A path rather than an attachment id: the demo has no database to serve one from. */
 const demoBoardImages = new Map<string, string[]>([["c1", ["/demo/board-screenshot.png"]]]);
+/** Screenshots taken off a card, kept for the team's Restore, as the server keeps them. */
+const demoRemovedImages = new Map<string, WikiBoardCard["removedImages"]>();
 
 /** The demo's client feedback, per task. Seeded so the thread and the sign-off chips show. */
 const demoBoardFeedback = new Map<string, WikiBoardFeedback[]>([
@@ -4353,8 +4364,14 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
     description: isCard || addedByClient ? t.description : null,
     subtasks: demoBoardTasks
       .filter((s) => s.parentId === t.id && !s.archivedAt)
-      .map((s) => ({ title: s.title, done: s.status === "DONE" })),
+      .map((s) => ({
+        id: s.id,
+        title: s.title,
+        done: s.status === "DONE",
+        isItem: s.itemType === "subitem" && !t.parentId && t.itemType === "feature",
+      })),
     images: isCard || addedByClient ? (demoBoardImages.get(t.id) ?? []) : [],
+    removedImages: isCard || addedByClient ? (demoRemovedImages.get(t.id) ?? []) : [],
     stageHistory: isCard ? demoStageHistory(t) : [],
     doneAt: (isCard || addedByClient) && t.status === "DONE" ? t.completedAt : null,
     dependsOn: (Array.isArray(t.metadata?.dependsOn) ? (t.metadata!.dependsOn as string[]) : []).flatMap((id) => {
@@ -4559,20 +4576,50 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
     return { card: demoBoardCard(parent ?? task, demoBoardColumns) };
   }
   const one =
-    /^\/api\/wiki\/[^/]+\/board\/tasks\/([^/]+)(\/images)?$/.exec(pathname) ??
-    /^\/api\/clients\/[^/]+\/wiki\/board\/cards\/([^/]+)(\/images|\/restore)?$/.exec(pathname);
+    /^\/api\/wiki\/[^/]+\/board\/tasks\/([^/]+)(\/images(?:\/([^/]+))?)?$/.exec(pathname) ??
+    /^\/api\/clients\/[^/]+\/wiki\/board\/cards\/([^/]+)(\/images(?:\/([^/]+)(\/restore)?)?|\/restore)?$/.exec(pathname);
   if (one) {
     const task = demoBoardTasks.find((t) => t.id === one[1]);
     if (!task) return { error: "Not found", __status: 404 };
     const actable = isProductCard(task) || Boolean(task.metadata && "createdByClient" in task.metadata);
     if (!team && !actable) return { error: "Not found", __status: 404 };
+    // The same rule as the server (`assertAddressable`): a child task is only addressed when it is a
+    // product sub-item under a feature card.
+    const parent = task.parentId ? demoBoardTasks.find((t) => t.id === task.parentId) : undefined;
+    if (task.parentId && (task.itemType !== "subitem" || parent?.itemType !== "feature" || parent.archivedAt)) {
+      return { error: "Not found", __status: 404 };
+    }
     if (one[2] === "/restore" && method === "POST") {
       task.archivedAt = null;
       if (task.metadata) delete task.metadata.deletedFromBoard;
       demoRecordChange(task.id, true, `${who} restored this card.`);
-      return { card: demoBoardCard(task, demoBoardColumns) };
+      return { card: demoBoardCard(parent ?? task, demoBoardColumns) };
     }
     if (task.archivedAt) return { error: "Not found", __status: 404 };
+    if (method === "GET" && !one[2]) return { card: demoBoardCard(task, demoBoardColumns) };
+    if (one[3] && method === "DELETE") {
+      const image = decodeURIComponent(one[3]);
+      const list = demoBoardImages.get(task.id) ?? [];
+      if (!list.includes(image)) return { error: "That screenshot isn't on this card any more.", __status: 404 };
+      demoBoardImages.set(task.id, list.filter((i) => i !== image));
+      // Kept, not deleted, as on the server: the team can put it back.
+      demoRemovedImages.set(task.id, [
+        ...(demoRemovedImages.get(task.id) ?? []),
+        { id: image, removedAt: new Date().toISOString(), removedByName: who },
+      ]);
+      demoRecordChange(task.id, team, `${who} removed a screenshot.`);
+      return { card: demoBoardCard(task, demoBoardColumns) };
+    }
+    if (one[3] && one[4] && method === "POST") {
+      if (!team) return { error: "Not found", __status: 404 };
+      const image = decodeURIComponent(one[3]);
+      const removed = demoRemovedImages.get(task.id) ?? [];
+      if (!removed.some((r) => r.id === image)) return { error: "That screenshot isn't waiting to be put back.", __status: 404 };
+      demoRemovedImages.set(task.id, removed.filter((r) => r.id !== image));
+      demoBoardImages.set(task.id, [...(demoBoardImages.get(task.id) ?? []), image]);
+      demoRecordChange(task.id, team, `${who} put a removed screenshot back.`);
+      return { card: demoBoardCard(task, demoBoardColumns) };
+    }
     if (one[2] === "/images" && method === "POST") {
       // The demo has no database: an uploaded image is shown from the browser's own copy.
       const form = init?.body instanceof FormData ? init.body : null;
@@ -4591,6 +4638,9 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
     if (method === "PATCH") {
       const body = bodyOf(init);
       if ("assignees" in body || "assigneeId" in body) return { error: "Unrecognized key: assignees", __status: 400 };
+      if (task.parentId && typeof body.itemType === "string" && body.itemType !== task.itemType) {
+        return { error: "A sub-item stays a sub-item. Add a new card if this should stand on its own.", __status: 400 };
+      }
       const before = demoCardFields(task);
       if (typeof body.title === "string") task.title = body.title.trim() || task.title;
       if (typeof body.itemType === "string") task.itemType = body.itemType;

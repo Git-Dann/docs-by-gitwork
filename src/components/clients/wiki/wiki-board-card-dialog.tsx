@@ -12,6 +12,11 @@
  * rules apply field by field: the client never sets who works on a card, and a team dev task's
  * fields are edited on the task board, not here. Below `md` it is one column, with the properties
  * folded under the title, as a full-height sheet.
+ *
+ * A feature card's sub-items open in the SAME popup (§126.4): "‹ Feature / Sub-item" in the header,
+ * Back returns to the feature without closing. A sub-item is read and saved through the same card
+ * routes (the server addresses a product sub-item under a live feature card, nothing else), and the
+ * feature is re-read after each change so its list stays right on the board.
  */
 
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -32,6 +37,7 @@ import { Markdown } from "@/lib/markdown";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { CardProgressChip, ItemTypeChip, PreviousValues, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
 import { InlineText, PickCell, PRIORITY_TONE } from "@/components/clients/wiki/board-pick";
 import { BOARD_LIST_MAX, ITEM_TYPE_LABELS, TIERS, TIER_LABELS } from "@/lib/tasks/product-cards";
@@ -48,6 +54,8 @@ import {
 import {
   CARD_IMAGE_TYPES,
   addCardLink,
+  addedSubItemId,
+  indexAfterRemoval,
   cardActivity,
   cardEditing,
   linkLabel,
@@ -58,6 +66,10 @@ import {
   addBoardCardApi,
   boardImageUrl,
   deleteBoardCardApi,
+  moveBoardCardApi,
+  readBoardCardApi,
+  removeBoardImageApi,
+  restoreBoardImageApi,
   updateBoardCardApi,
   uploadBoardImagesApi,
   useBoardFeedback,
@@ -93,7 +105,7 @@ function formFromCard(card: WikiBoardCard): BoardCardForm {
   const { body, links } = splitCardDescription(card.description);
   return {
     title: card.title,
-    itemType: card.itemType === "bug" || card.itemType === "feedback" ? card.itemType : "feature",
+    itemType: card.itemType === "bug" || card.itemType === "feedback" || card.itemType === "subitem" ? card.itemType : "feature",
     laneKey: card.laneKey,
     parentId: null,
     releaseId: card.release?.id ?? null,
@@ -140,10 +152,152 @@ interface Props {
   onClose: () => void;
 }
 
+/**
+ * The popup, and which card it shows: the card it was opened on, or one of that feature's
+ * sub-items. One Modal for both, so stepping into a sub-item and Back never closes and reopens it.
+ */
 export function WikiBoardCardDialog(props: Props) {
-  const { mode, card, section, target, audience, previewing, addLanes, cards, onClose } = props;
+  const { card, target, onClose } = props;
   const toast = useToast();
   const titleId = useId();
+  const [sub, setSub] = useState<{ id: string; card: WikiBoardCard | null; error: string | null } | null>(null);
+  // Opening another card (a dependency, say) leaves the sub-item.
+  useEffect(() => setSub(null), [card?.id]);
+
+  async function openSub(id: string) {
+    setSub({ id, card: null, error: null });
+    try {
+      const found = await readBoardCardApi(target, id);
+      setSub((s) => (s && s.id === id ? { ...s, card: found } : s));
+    } catch (err) {
+      setSub((s) => (s && s.id === id ? { ...s, error: err instanceof Error ? err.message : "Couldn't open the sub-item." } : s));
+    }
+  }
+  /** The feature, read again after a change to one of its sub-items, so the board shows it right. */
+  async function refreshParent() {
+    if (!card) return;
+    try {
+      props.onSaved(await readBoardCardApi(target, card.id));
+    } catch {
+      // The board refetches on its own; a missed re-read only delays the list.
+    }
+  }
+  async function moveSub(current: WikiBoardCard, lane: WikiBoardLane) {
+    try {
+      await moveBoardCardApi(target, current, lane, current.orderKey);
+      const moved = await readBoardCardApi(target, current.id);
+      setSub((s) => (s && s.id === current.id ? { ...s, card: moved } : s));
+      void refreshParent();
+    } catch (err) {
+      toast.error("Couldn't move the sub-item", err instanceof Error ? err.message : "Please try again.");
+    }
+  }
+
+  const back = () => setSub(null);
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      labelledById={titleId}
+      panelClassName="app-dialog-fixed w-full max-w-[960px] max-sm:fixed max-sm:inset-0 max-sm:mt-0 max-sm:h-auto max-sm:max-h-none max-sm:min-h-0 max-sm:max-w-none max-sm:rounded-none"
+    >
+      {sub && card ? (
+        sub.card ? (
+          <CardDialogBody
+            key={sub.id}
+            {...props}
+            mode="card"
+            card={sub.card}
+            titleId={titleId}
+            parent={{ title: card.title, onBack: back }}
+            onSaved={(saved) => {
+              setSub((s) => (s && s.id === saved.id ? { ...s, card: saved } : s));
+              void refreshParent();
+            }}
+            onMove={(current, lane) => void moveSub(current, lane)}
+            onDeleted={() => {
+              setSub(null);
+              toast.success("Sub-item deleted", props.audience === "client" ? "Gitwork can put it back if needed." : "It's in the deleted list below the board.");
+              void refreshParent();
+            }}
+          />
+        ) : (
+          <SubItemPending titleId={titleId} parentTitle={card.title} error={sub.error} onBack={back} onClose={onClose} />
+        )
+      ) : (
+        <CardDialogBody key={card?.id ?? "add"} {...props} titleId={titleId} onOpenSubItem={(id) => void openSub(id)} />
+      )}
+    </Modal>
+  );
+}
+
+/** While a sub-item loads (or if it can't): the same header and frame, so nothing jumps. */
+function SubItemPending({
+  titleId,
+  parentTitle,
+  error,
+  onBack,
+  onClose,
+}: {
+  titleId: string;
+  parentTitle: string;
+  error: string | null;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <div className="widget-header shrink-0" data-card-dialog-header>
+        <span className="flex min-w-0 items-center gap-2">
+          <BackCrumb title={parentTitle} onBack={onBack} />
+          <span id={titleId} className="widget-header-label min-w-0 truncate">
+            Sub-item
+          </span>
+        </span>
+        <button type="button" onClick={onClose} className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-1)]" aria-label="Close">
+          <XMarkIcon className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center px-5 text-[13px]" role="status">
+        {error ? <span className="text-red-700">{error}</span> : <span className="text-[var(--text-4)]">Opening the sub-item…</span>}
+      </div>
+    </>
+  );
+}
+
+/** "‹ Saved searches /" before a sub-item's own readout: back to the feature, without closing. */
+function BackCrumb({ title, onBack }: { title: string; onBack: () => void }) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex min-w-0 max-w-[45%] shrink items-center gap-1 rounded-[4px] text-[11px] font-medium text-[var(--brand-600)] hover:underline"
+        title={`Back to ${title}`}
+        data-card-back
+      >
+        <ChevronLeftIcon className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{title}</span>
+      </button>
+      <span className="text-[var(--text-4)]" aria-hidden>
+        /
+      </span>
+    </>
+  );
+}
+
+interface BodyProps extends Omit<Props, "onMove"> {
+  titleId: string;
+  onMove: (card: WikiBoardCard, lane: WikiBoardLane) => void;
+  /** Set when this is a sub-item, opened from its feature card. */
+  parent?: { title: string; onBack: () => void };
+  /** Open one of this card's sub-items in the same popup. */
+  onOpenSubItem?: (id: string) => void;
+}
+
+function CardDialogBody(props: BodyProps) {
+  const { mode, card, section, target, audience, previewing, addLanes, cards, onClose, titleId, parent } = props;
+  const toast = useToast();
   const isAdd = mode === "add" || !card;
 
   // ---- The card's values: a draft while adding, the saved card (changed in place) when open. ----
@@ -235,7 +389,9 @@ export function WikiBoardCardDialog(props: Props) {
 
   // ---- Screenshots ----
   const existingImages = isAdd ? 0 : (local?.images.length ?? 0);
-  const imagesAllowed = editing.fields && values.itemType !== "subitem";
+  // A sub-item being ADDED can't take screenshots (the add answers with its feature card, not the
+  // new sub-item); an open sub-item can.
+  const imagesAllowed = editing.fields && (values.itemType !== "subitem" || !isAdd);
   const [imageError, setImageError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   async function takeImages(picked: File[]) {
@@ -264,6 +420,78 @@ export function WikiBoardCardDialog(props: Props) {
   }
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
   useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+
+  // Taking a screenshot off: asked in place, on the thumbnail or in the lightbox.
+  const [confirmImage, setConfirmImage] = useState<string | null>(null);
+  const [removingImage, setRemovingImage] = useState<string | null>(null);
+  async function removeImage(img: string): Promise<boolean> {
+    if (!local) return false;
+    setRemovingImage(img);
+    setImageError(null);
+    try {
+      const saved = await removeBoardImageApi(target, local.id, img);
+      setLocal(saved);
+      props.onSaved(saved);
+      void feedback.refetch();
+      setConfirmImage(null);
+      return true;
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "Couldn't remove the screenshot. Please try again.");
+      return false;
+    } finally {
+      setRemovingImage(null);
+    }
+  }
+
+  // Putting a removed screenshot back: the team, on its own wiki, with Manage clients (the route
+  // asks for the same). The client never sees what was removed.
+  const { canManageClients } = usePermissions();
+  const canRestoreImages = audience === "team" && !previewing && target.mode === "internal" && canManageClients;
+  // Taking one off: the client on cards it may change; the team with Manage clients (the route asks
+  // for the same, like deleting a card).
+  const mayRemoveImages = editing.fields && (audience === "client" || canManageClients);
+  const [restoringImage, setRestoringImage] = useState<string | null>(null);
+  async function restoreImage(img: string) {
+    if (!local || target.mode !== "internal") return;
+    setRestoringImage(img);
+    setImageError(null);
+    try {
+      const saved = await restoreBoardImageApi(target.slug, local.id, img);
+      setLocal(saved);
+      props.onSaved(saved);
+      void feedback.refetch();
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "Couldn't put the screenshot back. Please try again.");
+    } finally {
+      setRestoringImage(null);
+    }
+  }
+
+  // ---- Sub-items (a feature card's, opened in this same popup) ----
+  const [subDraft, setSubDraft] = useState("");
+  const [subAdding, setSubAdding] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
+  const subLane = addLanes[0]?.key ?? "";
+  const canAddSubItem = Boolean(!isAdd && !parent && local?.itemType === "feature" && editing.fields && subLane && props.onOpenSubItem);
+  async function addSubItem() {
+    const title = subDraft.trim();
+    if (!local || !title || subAdding) return;
+    setSubAdding(true);
+    setSubError(null);
+    const before = new Set(local.subtasks.flatMap((s) => (s.id ? [s.id] : [])));
+    try {
+      const saved = await addBoardCardApi(target, { ...EMPTY_CARD_FORM, title, itemType: "subitem", parentId: local.id, laneKey: subLane });
+      setLocal(saved);
+      props.onSaved(saved);
+      setSubDraft("");
+      const created = addedSubItemId(before, saved);
+      if (created) props.onOpenSubItem?.(created);
+    } catch (err) {
+      setSubError(err instanceof Error ? err.message : "Couldn't add the sub-item. Please try again.");
+    } finally {
+      setSubAdding(false);
+    }
+  }
 
   // ---- Adding ----
   async function add() {
@@ -334,14 +562,10 @@ export function WikiBoardCardDialog(props: Props) {
   );
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      labelledById={titleId}
-      panelClassName="app-dialog-fixed w-full max-w-[960px] max-sm:fixed max-sm:inset-0 max-sm:mt-0 max-sm:h-auto max-sm:max-h-none max-sm:min-h-0 max-sm:max-w-none max-sm:rounded-none"
-    >
+    <>
       <div className="widget-header shrink-0" data-card-dialog-header>
         <span className="flex min-w-0 items-center gap-2">
+          {parent ? <BackCrumb title={parent.title} onBack={parent.onBack} /> : null}
           {isAdd ? null : <ItemTypeChip itemType={local?.itemType ?? null} />}
           {local?.signOff ? <SignOffChip signOff={local.signOff} /> : null}
           <span id={titleId} className="widget-header-label min-w-0 truncate" title={readout || undefined}>
@@ -400,21 +624,57 @@ export function WikiBoardCardDialog(props: Props) {
               <Block label="Screenshots">
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4" data-card-images>
                   {(local && !isAdd ? local.images : []).map((img, i) => (
-                    <button
-                      key={img}
-                      type="button"
-                      onClick={() => setLightbox(i)}
-                      className="block overflow-hidden rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] hover:border-[var(--border-1)]"
-                      title="View the image"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={boardImageUrl(target, local!.id, img, true)}
-                        alt={`Image ${i + 1} on ${local!.title}`}
-                        loading="lazy"
-                        className="aspect-[4/3] w-full object-cover"
-                      />
-                    </button>
+                    <span key={img} className="group/img relative block" data-card-image>
+                      <button
+                        type="button"
+                        onClick={() => setLightbox(i)}
+                        className="block w-full overflow-hidden rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] hover:border-[var(--border-1)]"
+                        title="View the image"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={boardImageUrl(target, local!.id, img, true)}
+                          alt={`Image ${i + 1} on ${local!.title}`}
+                          loading="lazy"
+                          className="aspect-[4/3] w-full object-cover"
+                        />
+                      </button>
+                      {mayRemoveImages && confirmImage !== img ? (
+                        <button
+                          type="button"
+                          className="absolute right-1 top-1 rounded-[4px] bg-[var(--surface-0)] p-0.5 text-[var(--text-3)] opacity-100 shadow-sm hover:text-red-700 focus:opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100"
+                          aria-label={`Remove image ${i + 1}`}
+                          title="Remove this screenshot"
+                          onClick={() => setConfirmImage(img)}
+                          data-card-image-remove
+                        >
+                          <XMarkIcon className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                      {confirmImage === img ? (
+                        <span
+                          className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 rounded-[6px] border border-red-200 bg-[var(--surface-0)]/95 px-1 text-center"
+                          role="group"
+                          aria-label="Remove this screenshot?"
+                          data-card-image-confirm
+                        >
+                          <span className="text-[11px] font-medium text-red-800">Remove it?</span>
+                          <span className="flex gap-1">
+                            <button
+                              type="button"
+                              className="app-button app-button-danger app-button-sm px-2 text-[11px]"
+                              disabled={removingImage === img}
+                              onClick={() => void removeImage(img)}
+                            >
+                              {removingImage === img ? "Removing…" : "Remove"}
+                            </button>
+                            <button type="button" className="app-button app-button-secondary app-button-sm px-2 text-[11px]" onClick={() => setConfirmImage(null)}>
+                              Keep
+                            </button>
+                          </span>
+                        </span>
+                      ) : null}
+                    </span>
                   ))}
                   {isAdd
                     ? files.map((f, i) => (
@@ -457,12 +717,37 @@ export function WikiBoardCardDialog(props: Props) {
                   ) : null}
                 </div>
                 {imageError ? <p className="mt-1.5 text-[12px] text-red-700">{imageError}</p> : null}
+                {canRestoreImages && local && !isAdd && local.removedImages.length > 0 ? (
+                  <details className="mt-2 text-[12px]" data-card-removed-images>
+                    <summary className="cursor-pointer text-[var(--text-3)] hover:text-[var(--text-1)]">
+                      Removed screenshots ({local.removedImages.length})
+                    </summary>
+                    <ul className="mt-1.5 space-y-1">
+                      {local.removedImages.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-2 rounded-[6px] border border-[var(--border-2)] px-2 py-1.5">
+                          <span className="min-w-0 truncate text-[var(--text-3)]" title={`Removed by ${r.removedByName ?? "someone"}`}>
+                            Removed by {r.removedByName ?? "someone"} · {formatDay(r.removedAt)}
+                          </span>
+                          <button
+                            type="button"
+                            className="app-button app-button-secondary app-button-sm shrink-0 px-2 text-[11px]"
+                            disabled={restoringImage === r.id}
+                            onClick={() => void restoreImage(r.id)}
+                            data-card-image-restore
+                          >
+                            {restoringImage === r.id ? "Restoring…" : "Restore"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
                 {imagesAllowed ? (
                   <p className="mt-1 text-[11px] text-[var(--text-4)]">PNG, JPEG, GIF or WebP, up to 10 MB each, {BOARD_LIMITS.images} a card.</p>
                 ) : null}
               </Block>
-            ) : values.itemType === "subitem" ? (
-              <p className="text-[12px] text-[var(--text-4)]">Add screenshots on the feature card itself.</p>
+            ) : values.itemType === "subitem" && isAdd ? (
+              <p className="text-[12px] text-[var(--text-4)]">Add screenshots once the sub-item is open.</p>
             ) : null}
 
             <LinksField
@@ -471,16 +756,69 @@ export function WikiBoardCardDialog(props: Props) {
               onChange={(next) => (isAdd ? setForm((f) => ({ ...f, links: next })) : change("links", next, "links"))}
             />
 
-            {local && !isAdd && local.subtasks.length ? (
+            {local && !isAdd && !parent && (local.subtasks.length || canAddSubItem) ? (
               <Block label="Sub-items">
-                <ul className="space-y-1">
-                  {local.subtasks.map((s, i) => (
-                    <li key={i} className="flex items-center gap-2 text-[13px] text-[var(--text-2)]">
+                <ul className="space-y-0.5" data-card-subitems>
+                  {local.subtasks.map((s, i) => {
+                    const dot = (
                       <span className={cn("h-3 w-3 shrink-0 rounded-full border", s.done ? "border-emerald-500 bg-emerald-500" : "border-[var(--border-1)]")} />
-                      <span className={cn(s.done && "text-[var(--text-4)] line-through")}>{s.title}</span>
-                    </li>
-                  ))}
+                    );
+                    const label = <span className={cn("min-w-0 flex-1 truncate", s.done && "text-[var(--text-4)] line-through")}>{s.title}</span>;
+                    return (
+                      <li key={s.id ?? `item-${i}`}>
+                        {s.isItem && s.id && props.onOpenSubItem ? (
+                          <button
+                            type="button"
+                            onClick={() => props.onOpenSubItem?.(s.id!)}
+                            className="flex w-full items-center gap-2 rounded-[4px] px-1 py-1 text-left text-[13px] text-[var(--text-2)] hover:bg-[var(--surface-2)]"
+                            title={`Open “${s.title}”`}
+                            data-card-subitem
+                          >
+                            {dot}
+                            {label}
+                            <ChevronRightIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-2 px-1 py-1 text-[13px] text-[var(--text-2)]" title={s.title}>
+                            {dot}
+                            {label}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
+                {canAddSubItem ? (
+                  <div className="mt-1 flex items-center gap-1.5 px-1">
+                    <PlusIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
+                    <input
+                      className="h-8 min-w-0 flex-1 bg-transparent text-[16px] text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:outline-none sm:text-[13px]"
+                      value={subDraft}
+                      maxLength={BOARD_LIMITS.title}
+                      placeholder="Add a sub-item"
+                      aria-label="Add a sub-item"
+                      disabled={subAdding}
+                      onChange={(e) => setSubDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void addSubItem();
+                        }
+                        if (e.key === "Escape" && subDraft) {
+                          e.stopPropagation();
+                          setSubDraft("");
+                        }
+                      }}
+                      data-card-subitem-add
+                    />
+                    {subDraft.trim() ? (
+                      <button type="button" className="app-button app-button-secondary app-button-sm" disabled={subAdding} onClick={() => void addSubItem()}>
+                        {subAdding ? "Adding…" : "Add"}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {subError ? <p className="mt-1 px-1 text-[12px] text-red-700">{subError}</p> : null}
               </Block>
             ) : null}
 
@@ -540,6 +878,14 @@ export function WikiBoardCardDialog(props: Props) {
             index={lightbox}
             onIndex={setLightbox}
             onClose={() => setLightbox(null)}
+            onRemove={
+              mayRemoveImages
+                ? async (img) => {
+                    const remaining = local.images.length - 1;
+                    if (await removeImage(img)) setLightbox(indexAfterRemoval(lightbox, remaining));
+                  }
+                : undefined
+            }
           />
         ) : null}
       </div>
@@ -599,7 +945,7 @@ export function WikiBoardCardDialog(props: Props) {
           </>
         )}
       </div>
-    </Modal>
+    </>
   );
 }
 
@@ -867,7 +1213,7 @@ function Properties({
   return (
     <dl className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-1 gap-y-0.5" data-card-properties>
       <Row label="Type">
-        {ro ? (
+        {ro || (!isAdd && values.itemType === "subitem") ? (
           card?.itemType ? <span className="flex h-8 items-center px-2"><ItemTypeChip itemType={card.itemType} /></span> : text("Task")
         ) : (
           <PickCell
@@ -1217,14 +1563,21 @@ function Lightbox({
   index,
   onIndex,
   onClose,
+  onRemove,
 }: {
   target: BoardTarget;
   card: WikiBoardCard;
   index: number;
   onIndex: (i: number) => void;
   onClose: () => void;
+  /** Take this image off the card. Absent when the viewer can't. */
+  onRemove?: (img: string) => Promise<void>;
 }) {
   const count = card.images.length;
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  // A different image is a fresh question.
+  useEffect(() => setConfirming(false), [index]);
   useEffect(() => {
     // Capture, so this Escape closes the image and never reaches the dialog's own Escape.
     function onKey(e: KeyboardEvent) {
@@ -1246,6 +1599,36 @@ function Lightbox({
           {index + 1} / {count}
         </span>
         <span className="flex items-center gap-3">
+          {onRemove ? (
+            confirming ? (
+              <span className="flex items-center gap-2" role="group" aria-label="Remove this screenshot?" data-card-lightbox-confirm>
+                <span className="text-white">Remove it?</span>
+                <button
+                  type="button"
+                  className="rounded-[4px] bg-red-600 px-2 py-0.5 text-white hover:bg-red-700 disabled:opacity-60"
+                  disabled={removing}
+                  onClick={async () => {
+                    setRemoving(true);
+                    try {
+                      await onRemove(img);
+                    } finally {
+                      setRemoving(false);
+                      setConfirming(false);
+                    }
+                  }}
+                >
+                  {removing ? "Removing…" : "Remove"}
+                </button>
+                <button type="button" className="hover:text-white" onClick={() => setConfirming(false)}>
+                  Keep
+                </button>
+              </span>
+            ) : (
+              <button type="button" className="hover:text-white" onClick={() => setConfirming(true)} data-card-lightbox-remove>
+                Remove
+              </button>
+            )
+          ) : null}
           <a href={boardImageUrl(target, card.id, img, false)} target="_blank" rel="noopener noreferrer" className="hover:text-white">
             Open original
           </a>

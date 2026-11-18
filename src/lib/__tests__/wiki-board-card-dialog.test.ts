@@ -3,7 +3,7 @@
  * card, how its activity is ordered, and which links and images it takes.
  */
 import { describe, expect, it } from "vitest";
-import { addCardLink, cardActivity, cardEditing, linkLabel, pickCardImages, showsPeople } from "@/lib/wiki-board-card-dialog";
+import { addCardLink, addedSubItemId, cardActivity, cardEditing, indexAfterRemoval, linkLabel, pickCardImages, showsPeople } from "@/lib/wiki-board-card-dialog";
 import { BOARD_LIMITS } from "@/lib/wiki-board";
 import type { WikiBoardFeedback } from "@/types/wiki-board";
 
@@ -104,5 +104,24 @@ describe("picking images for a card", () => {
   it("counts what the card has and what's already queued against its room", () => {
     expect(pickCardImages(BOARD_LIMITS.images - 1, 0, [png("a.png")]).ok).toBe(true);
     expect(pickCardImages(BOARD_LIMITS.images - 1, 1, [png("a.png")]).ok).toBe(false);
+  });
+});
+
+describe("which sub-item an add created", () => {
+  const sub = (id: string, isItem = true) => ({ id, title: id, done: false, isItem });
+  it("is the product sub-item that wasn't in the list before", () => {
+    expect(addedSubItemId(new Set(["a"]), { subtasks: [sub("a"), sub("b")] })).toBe("b");
+  });
+  it("never a team checklist item, and null when nothing new shows", () => {
+    expect(addedSubItemId(new Set(["a"]), { subtasks: [sub("a"), sub("k", false)] })).toBeNull();
+    expect(addedSubItemId(new Set(["a"]), { subtasks: [sub("a")] })).toBeNull();
+  });
+});
+
+describe("the lightbox after a screenshot is removed", () => {
+  it("stays in place, steps back from the end, and closes when none are left", () => {
+    expect(indexAfterRemoval(1, 3)).toBe(1);
+    expect(indexAfterRemoval(3, 3)).toBe(2);
+    expect(indexAfterRemoval(0, 0)).toBeNull();
   });
 });

@@ -4920,6 +4920,10 @@ model TaskAttachment {
   mime         String
   filename     String?
   createdAt    DateTime @default(now())
+  /// Removed from the card (client or team, from the wiki Board). Kept so the team can put it
+  /// back: every reader skips a removed row. The bytes stay; nothing purges them (§126.4).
+  removedAt     DateTime?
+  removedByName String?
 
   task       Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
   uploadedBy User? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
