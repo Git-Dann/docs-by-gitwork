@@ -58,6 +58,7 @@ function card(id: string, over: Partial<WikiBoardCard> = {}): WikiBoardCard {
     subtasks: [],
     images: [],
     stageHistory: [],
+    doneAt: null,
     dependsOn: [],
     isCard: true,
     addedByClient: false,
@@ -290,6 +291,8 @@ describe("this viewer's choices", () => {
     });
     expect(parseBoardPrefs(JSON.stringify({ view: "spreadsheet", groupBy: "people", sort: { key: "secret", dir: "up" } }))).toEqual({});
     expect(parseBoardPrefs("not json")).toEqual({});
+    // The Schedule replaced the Calendar (§128): a remembered Calendar opens the Schedule.
+    expect(parseBoardPrefs(JSON.stringify({ view: "calendar" }))).toEqual({ view: "schedule" });
     expect(parseBoardPrefs(null)).toEqual({});
   });
 });

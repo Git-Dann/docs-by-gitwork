@@ -57,10 +57,11 @@ import type {
   WikiBoardCard,
   WikiBoardDeletedCard,
   WikiBoardFeedback,
+  WikiBoardKeyDate,
   WikiBoardSection,
 } from "@/types/wiki-board";
 
-export const EMPTY_BOARD: WikiBoardSection = { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] };
+export const EMPTY_BOARD: WikiBoardSection = { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [], keyDates: [] };
 
 /** A write the board refuses, with a sentence the client can act on. */
 export class BoardError extends Error {
@@ -202,6 +203,11 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     subtasks: row.subtasks.map((s) => ({ title: s.title, done: s.status === "DONE" })),
     images: ctx.images.get(row.id) ?? [],
     stageHistory: stageHistoryOf(row.metadata),
+    // When it was finished, for the Schedule's log. The client's own cards only: a dev task's
+    // dates are the team's.
+    doneAt: status === "DONE" && clientMayActOn({ isCard, addedByClient: addedByClient(row.metadata) })
+      ? (row.completedAt?.toISOString() ?? null)
+      : null,
     dependsOn: dependsOnIds(row.metadata)
       .filter((id) => ctx.titles.has(id))
       .map((id) => ({ id, title: ctx.titles.get(id)! })),
@@ -315,8 +321,26 @@ export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection>
     })),
     completedAt,
   });
-  const deleted = await listDeletedBoardCards(clientId);
-  return { ...laid, showAllTasks: wiki.boardShowAllTasks, deleted: deleted.cards, deletedTotal: deleted.total };
+  const [deleted, keyDates] = await Promise.all([listDeletedBoardCards(clientId), loadBoardKeyDates(clientId)]);
+  return { ...laid, showAllTasks: wiki.boardShowAllTasks, keyDates, deleted: deleted.cards, deletedTotal: deleted.total };
+}
+
+/** The most key dates the Schedule carries for one client. */
+export const KEY_DATES_MAX = 500;
+
+/** The client's live key dates, oldest first (src/server/wiki-board-key-dates.ts writes them). */
+export async function loadBoardKeyDates(clientId: string): Promise<WikiBoardKeyDate[]> {
+  const rows = await prisma.wikiBoardKeyDate.findMany({
+    where: { clientId, archivedAt: null },
+    orderBy: [{ date: "asc" }, { title: "asc" }],
+    take: KEY_DATES_MAX,
+    select: { id: true, title: true, date: true, note: true, externalRef: true },
+  });
+  return rows.map(keyDateDTO);
+}
+
+export function keyDateDTO(row: { id: string; title: string; date: Date; note: string | null; externalRef: string | null }): WikiBoardKeyDate {
+  return { id: row.id, title: row.title, date: row.date.toISOString().slice(0, 10), note: row.note, imported: Boolean(row.externalRef) };
 }
 
 /**
@@ -376,6 +400,9 @@ export function forPublicBoard(section: WikiBoardSection): WikiBoardSection {
     showAllTasks: section.showAllTasks,
     releases: section.releases,
     areas: section.areas,
+    // Copied field by field, like the cards: a field added later stays on the server until
+    // someone decides the client should see it.
+    keyDates: (section.keyDates ?? []).map((k) => ({ id: k.id, title: k.title, date: k.date, note: k.note, imported: k.imported })),
     lanes: section.lanes.map((l) => ({
       key: l.key,
       label: l.label,
@@ -424,6 +451,7 @@ function publicCard(c: WikiBoardCard, visible: ReadonlySet<string>): WikiBoardCa
     subtasks: c.subtasks,
     images: c.images,
     stageHistory: c.stageHistory,
+    doneAt: c.doneAt,
     dependsOn: c.dependsOn.filter((d) => visible.has(d.id)),
     isCard: c.isCard,
     addedByClient: c.addedByClient,
@@ -455,6 +483,7 @@ function titleOnlyCard(c: WikiBoardCard): WikiBoardCard {
     subtasks: [],
     images: [],
     stageHistory: [],
+    doneAt: null,
     dependsOn: [],
     isCard: false,
     addedByClient: false,
@@ -502,7 +531,7 @@ async function loadOwnTask(clientId: string, taskId: string) {
 }
 
 /** A client user, as opposed to a Gitwork team member writing on the client's page. */
-function isClientWriter(writer: BoardWriter): boolean {
+export function isClientWriter(writer: BoardWriter): boolean {
   return Boolean(writer.wikiUserId) || !writer.userId;
 }
 
@@ -515,7 +544,7 @@ type Tx = Prisma.TransactionClient;
  * `pg_advisory_xact_lock` returns void, so it goes through `$executeRaw` (see
  * void-advisory-lock.test.ts).
  */
-async function withBoardLock<T>(writer: BoardWriter, fn: (tx: Tx) => Promise<T>): Promise<T> {
+export async function withBoardLock<T>(writer: BoardWriter, fn: (tx: Tx) => Promise<T>): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
       if (isClientWriter(writer)) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`board-write:${writer.wikiId}`}))`;

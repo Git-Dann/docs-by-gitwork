@@ -49,7 +49,7 @@ import { Markdown } from "@/lib/markdown";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { WikiBoardTimeline } from "@/components/clients/wiki/wiki-board-timeline";
-import { WikiBoardCalendar } from "@/components/clients/wiki/wiki-board-calendar";
+import { WikiBoardSchedule } from "@/components/clients/wiki/wiki-board-schedule";
 import { useToast } from "@/components/ui/toast";
 import { CardProgressChip, ItemTypeChip, PreviousValues, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
 import { BOARD_LIST_MAX, ITEM_TYPE_LABELS, TIERS, TIER_LABELS, isItemType } from "@/lib/tasks/product-cards";
@@ -160,7 +160,7 @@ export function WikiBoardSectionView({
   const [adding, setAdding] = useState<string | null>(null); // lane key, or "" for the toolbar
   const [phoneLane, setPhoneLane] = useState<string>(section.lanes[0]?.key ?? "");
   // The same cards four ways: columns (the Board), rows (the Table), releases over time (the
-  // Timeline), or by date (the Calendar). The view, the table's grouping and its sort are this
+  // Timeline), or by week (the Schedule). The view, the table's grouping and its sort are this
   // viewer's own, remembered per board in their browser.
   const boardKey = target.mode === "internal" ? `team:${target.slug}` : `link:${target.token.slice(0, 16)}`;
   const [view, setViewState] = useState<BoardView>("board");
@@ -284,7 +284,7 @@ export function WikiBoardSectionView({
               { value: "board", label: "Board" },
               { value: "table", label: "Table" },
               { value: "timeline", label: "Timeline" },
-              { value: "calendar", label: "Calendar" },
+              { value: "schedule", label: "Schedule" },
             ]}
           />
           <div className="flex w-full min-w-0 items-center gap-2 sm:ml-auto sm:w-auto">
@@ -349,8 +349,23 @@ export function WikiBoardSectionView({
         {view === "timeline" ? (
           <WikiBoardTimeline cards={visible} releases={section.releases} readOnly={readOnly} onOpen={setOpenId} />
         ) : null}
-        {view === "calendar" ? (
-          <WikiBoardCalendar cards={visible} releases={section.releases} readOnly={readOnly} onOpen={setOpenId} />
+        {view === "schedule" ? (
+          <WikiBoardSchedule
+            cards={visible}
+            releases={section.releases}
+            keyDates={section.keyDates ?? []}
+            target={target}
+            readOnly={readOnly}
+            // A date is a card edit: the client's own cards on their link, any card the team may
+            // edit on the internal wiki (never a dev task's fields, as in the Table). Not while the
+            // team previews the client's view.
+            canEditCard={(c) => mode !== "client" && clientMayActOn(c) && (audience === "client" || target.mode === "internal")}
+            canEditKeyDates={mode !== "client" && (audience === "client" || target.mode === "internal")}
+            canDeleteKeyDates={mode !== "client" && (audience === "client" ? target.mode === "public" : target.mode === "internal")}
+            onOpen={setOpenId}
+            onPlace={place}
+            refresh={refresh}
+          />
         ) : null}
         {view === "table" ? (
           <WikiBoardTable

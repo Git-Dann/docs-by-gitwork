@@ -81,5 +81,5 @@ export function layoutBoard(input: {
   );
   // Whether the client sees the team's dev tasks too is the wiki's setting, applied by the
   // loader; the layout itself is the same either way.
-  return { enabled: true, showAllTasks: false, lanes, releases, areas };
+  return { enabled: true, showAllTasks: false, lanes, releases, areas, keyDates: [] };
 }

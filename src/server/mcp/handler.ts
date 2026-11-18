@@ -2575,7 +2575,7 @@ const TOOLS: ToolDef[] = [
       return textResult(
         result,
         `Imported into ${c.name}: ${result.created} new cards, ${result.linked} existing tasks became cards, ${result.devLinked} dev tasks linked, ` +
-          `${result.releasesCreated} releases added, ${result.filled} cards filled in. ${result.pendingReview} still waiting for a decision.`,
+          `${result.releasesCreated} releases added, ${result.keyDatesCreated} key dates added, ${result.filled} cards filled in. ${result.pendingReview} still waiting for a decision.`,
       );
     },
   },

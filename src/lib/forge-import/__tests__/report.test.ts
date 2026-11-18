@@ -18,7 +18,7 @@ const t0 = (id: string, title: string): BoardTask => ({
 
 describe("the dry-run report", () => {
   const plan = buildForgePlan({
-    feed: { items: [it0("1", "Rate Course"), it0("2", "Targeted Notification"), it0("3", "Blind | Shot", "triage")], releases: [], skipped: 0 },
+    feed: { items: [it0("1", "Rate Course"), it0("2", "Targeted Notification"), it0("3", "Blind | Shot", "triage")], releases: [], keyDates: [], skipped: 0 },
     tasks: [t0("a", "Rate Course"), t0("b", "Targeted Notifications")],
     releases: [],
     columns,
@@ -41,7 +41,7 @@ describe("the dry-run report", () => {
   });
 
   it("warns loudly when the board is missing a column", () => {
-    const missing = buildForgePlan({ feed: { items: [], releases: [], skipped: 0 }, tasks: [], releases: [], columns: [] });
+    const missing = buildForgePlan({ feed: { items: [], releases: [], keyDates: [], skipped: 0 }, tasks: [], releases: [], columns: [] });
     expect(renderForgePlanMarkdown(missing)).toContain("⛔ Board columns missing");
   });
 });

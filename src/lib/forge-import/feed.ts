@@ -7,6 +7,7 @@
  */
 
 import { RELEASE_LIMITS } from "@/lib/tasks/releases";
+import { KEY_DATE_LIMITS } from "@/lib/wiki-board-key-dates";
 
 export type ForgeItemType = "feature" | "subitem" | "bug" | "feedback";
 
@@ -73,9 +74,19 @@ export interface ForgeRelease {
   docUrl: string | null;
 }
 
+/** A dated event on the planning tool's calendar ("companyDates": content drops, events). */
+export interface ForgeKeyDate {
+  id: string;
+  title: string;
+  /** YYYY-MM-DD, or null when the feed's date is unusable. */
+  date: string | null;
+}
+
 export interface ForgeFeed {
   items: ForgeItem[];
   releases: ForgeRelease[];
+  /** The planning tool's own calendar dates, for the Board's Schedule (key dates). */
+  keyDates: ForgeKeyDate[];
   /** Items with no id or no title, by type. */
   skipped: number;
 }
@@ -211,5 +222,14 @@ export function parseForgeFeed(raw: unknown): ForgeFeed {
       docUrl: (releaseLinks.find((l) => /\bdoc/i.test(l.label)) ?? releaseLinks[0])?.url ?? null,
     });
   }
-  return { items, releases, skipped };
+  const keyDates: ForgeKeyDate[] = [];
+  for (const entry of (Array.isArray(root.companyDates) ? root.companyDates : []).slice(0, FEED_LIMITS.listLength)) {
+    if (!entry || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const id = capped(e.id, FEED_LIMITS.id);
+    const title = capped(e.title, KEY_DATE_LIMITS.title);
+    if (!id || !title) continue;
+    keyDates.push({ id, title, date: isoDate(e.date) });
+  }
+  return { items, releases, keyDates, skipped };
 }

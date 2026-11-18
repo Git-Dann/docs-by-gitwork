@@ -93,7 +93,7 @@ describe("reading Big Wedge's Forge feed", () => {
   });
 
   it("returns an empty feed for nonsense rather than throwing", () => {
-    expect(parseForgeFeed(null)).toEqual({ items: [], releases: [], skipped: 0 });
-    expect(parseForgeFeed([1, 2])).toEqual({ items: [], releases: [], skipped: 0 });
+    expect(parseForgeFeed(null)).toEqual({ items: [], releases: [], keyDates: [], skipped: 0 });
+    expect(parseForgeFeed([1, 2])).toEqual({ items: [], releases: [], keyDates: [], skipped: 0 });
   });
 });

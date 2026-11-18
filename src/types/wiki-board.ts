@@ -48,6 +48,11 @@ export interface WikiBoardCard {
    */
   stageHistory: Array<{ label: string; date: string }>;
   /**
+   * When the card was finished (`task.completedAt`), for the Schedule's "what happened" log.
+   * Cards the client may act on only; null for a dev task and anything not done.
+   */
+  doneAt: string | null;
+  /**
    * Other cards on this board this one depends on (`task.metadata.dependsOn`), with their titles.
    * The client's copy keeps only cards the client can see.
    */
@@ -109,12 +114,28 @@ export interface WikiBoardSection {
   /** Product areas in use, for the filter. */
   areas: string[];
   /**
+   * The client's key dates (content drops, launches, events) for the Schedule, oldest first.
+   * Client-facing: both copies carry them.
+   */
+  keyDates: WikiBoardKeyDate[];
+  /**
    * TEAM copy only: cards the client deleted (soft), newest first, so the team can put one back.
    * Never sent to the client.
    */
   deleted?: WikiBoardDeletedCard[];
   /** TEAM copy only: how many deleted cards there are in all, when `deleted` holds only the newest. */
   deletedTotal?: number;
+}
+
+/** A dated event on the client's Schedule that isn't a card: a content drop, a launch, an event. */
+export interface WikiBoardKeyDate {
+  id: string;
+  title: string;
+  /** YYYY-MM-DD */
+  date: string;
+  note: string | null;
+  /** Imported from the client's planning tool (it can still be edited or deleted here). */
+  imported: boolean;
 }
 
 export interface WikiBoardDeletedCard {

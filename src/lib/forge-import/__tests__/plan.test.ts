@@ -49,7 +49,7 @@ const columns: BoardColumnDef[] = Object.values(FORGE_STAGES)
   .filter((p) => p.column)
   .map((p, i) => ({ id: `col_${String(i).padStart(6, "0")}`, name: p.column!, stage: p.status }));
 
-const feed = (items: ForgeItem[], releases: ForgeFeed["releases"] = []): ForgeFeed => ({ items, releases, skipped: 0 });
+const feed = (items: ForgeItem[], releases: ForgeFeed["releases"] = []): ForgeFeed => ({ items, releases, keyDates: [], skipped: 0 });
 const plan = (items: ForgeItem[], tasks: BoardTask[] = [], extra: Partial<Parameters<typeof buildForgePlan>[0]> = {}) =>
   buildForgePlan({ feed: feed(items), tasks, releases: [], columns, ...extra });
 const one = (p: ReturnType<typeof plan>, id: string) => p.items.find((i) => i.forgeId === id)!;
