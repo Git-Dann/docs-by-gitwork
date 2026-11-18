@@ -10121,9 +10121,21 @@ board as product cards (§124). Admin-only: `POST /api/clients/[slug]/forge-impo
 and `/apply`, and MCP `forge_import_plan` / `forge_import_apply`. Audited as
 `tasks.forge_import.applied`.
 
-- **The dry run writes nothing.** Apply re-plans against the live board first, so a re-run or a
-  crash half-way only does what's left. Each card carries `externalRef` "forge:<id>" and is never
-  imported twice; on a re-run it only gets fields that are still empty.
+- **The dry run writes nothing.** Apply is ONE transaction under a per-client advisory lock
+  (`pg_try_advisory_xact_lock`): a second apply while one runs gets 409, planning happens after the
+  lock is held, and a failure part-way leaves the board as it was. Each card carries `externalRef`
+  "forge:<id>" and is never imported twice; so does each release (`ClientRelease.externalRef`).
+- **A fill never overwrites.** Each field is written in its own `updateMany` with "still empty" in
+  the WHERE, so a value the team set meanwhile wins, and each field is filled at most once
+  (`metadata.forge.filled`), so a value the team CLEARED stays cleared. A team task is never moved
+  into a column; only a card the importer makes is placed.
+- **A sub-item waits for its feature's card** (`waiting` in the plan) rather than being made
+  top-level, and hangs one level deep (under its feature card's parent if that card is a subtask).
+- **Feed values are hostile input:** looked up as own properties only (`"constructor"` can't hit a
+  built-in), strings capped at parse time (`FEED_LIMITS`, titles 500 and flagged), and a match that
+  only works with a platform tag stripped ("Bag Management - iOS") goes to review.
+- **Release docs are kept** (`ClientRelease.docUrl`, http(s) only via `safeReleaseDocUrl`): editable
+  in the Releases dialog and shown as "Release doc ↗" on the internal, wiki and public timelines.
 - **Only an exact title match is acted on** (`src/lib/forge-import/match.ts`, a port of the
   hand-checked comparison, incl. difflib's ratio). A live, top-level team task becomes the card;
   an archived task or a subtask stays where it is and is linked to a new card. Anything looser, or
