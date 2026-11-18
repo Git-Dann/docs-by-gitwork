@@ -480,11 +480,11 @@ export function WikiDashboard({
         );
       }
       case "monitors": {
-        const M: Record<string, { label: string; color: string }> = {
-          UP: { label: "All systems operational", color: "#059669" },
-          DEGRADED: { label: "Some systems degraded", color: "#b45309" },
-          DOWN: { label: "Service disruption", color: "#e11d48" },
-          UNKNOWN: { label: "Monitoring pending", color: "#6b7280" },
+        const M: Record<string, { label: string; color: string; tone: string }> = {
+          UP: { label: "All systems operational", color: "#059669", tone: "text-emerald-700" },
+          DEGRADED: { label: "Some systems degraded", color: "#b45309", tone: "text-amber-700" },
+          DOWN: { label: "Service disruption", color: "#e11d48", tone: "text-red-700" },
+          UNKNOWN: { label: "Monitoring pending", color: "#6b7280", tone: "text-[var(--text-3)]" },
         };
         const meta = M[worstMonitor ?? "UNKNOWN"];
         const up = activeMonitors.filter((m) => m.status === "UP").length;
@@ -492,7 +492,8 @@ export function WikiDashboard({
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: meta.color }} />
-              <span className="text-[14px] font-semibold" style={{ color: meta.color }}>
+              {/* Text uses the palette classes that flip in dark mode; the dot keeps the hue. */}
+              <span className={`text-[14px] font-semibold ${meta.tone}`}>
                 {meta.label}
               </span>
             </div>
@@ -966,7 +967,7 @@ export function WikiDashboard({
             {(wiki.productTeam.length > 0 || wiki.team.length > 0) && (
               <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
                 <span
-                  className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/35"
+                  className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/60"
                   style={{ fontFamily: MONO }}
                 >
                   Team · {teamCount}
@@ -1105,7 +1106,7 @@ function WikiFooter({ clientName, facts }: { clientName: string; facts: FooterFa
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <p
-            className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45"
+            className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/65"
             style={{ fontFamily: MONO }}
           >
             Knowledge Wiki
@@ -1123,7 +1124,7 @@ function WikiFooter({ clientName, facts }: { clientName: string; facts: FooterFa
             {facts.map((f) => (
               <div key={f.label} className="flex items-baseline gap-2">
                 <dt
-                  className="text-[10px] uppercase tracking-[0.12em] text-white/45"
+                  className="text-[10px] uppercase tracking-[0.12em] text-white/65"
                   style={{ fontFamily: MONO }}
                 >
                   {f.label}
@@ -1163,7 +1164,7 @@ function WikiFooter({ clientName, facts }: { clientName: string; facts: FooterFa
         </p>
       </div>
       <p
-        className="mt-3 text-[10px] leading-relaxed tracking-[0.04em] text-white/35"
+        className="mt-3 text-[10px] leading-relaxed tracking-[0.04em] text-white/60"
         style={{ fontFamily: MONO }}
       >
         {companyDisclosureLine()}
@@ -1247,7 +1248,7 @@ function TeamStack({ label, members }: { label: string; members: WikiDTO["team"]
   return (
     <div className="flex items-center gap-2">
       <span
-        className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/40"
+        className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/60"
         style={{ fontFamily: MONO }}
       >
         {label}

@@ -2,7 +2,7 @@
 /**
  * Clipping audit — finds UI that is on the page but cannot be seen.
  *
- *   node scripts/audit-clipping.mjs <url> [url...] [--viewports=1440x900,390x844]
+ *   node scripts/audit-clipping.mjs <url> [url...] [--viewports=1440x900,390x844] [--theme=dark|light]
  *   node scripts/audit-clipping.mjs http://localhost:3000/ --json
  *
  * Written because "I opened the UI and it was cut off" kept being found by hand.
@@ -55,11 +55,21 @@ const args = process.argv.slice(2)
 const asJson = args.includes('--json')
 const urls = args.filter((a) => !a.startsWith('--'))
 const vpArg = args.find((a) => a.startsWith('--viewports='))
+// --theme=dark|light renders each page in that mode: the OS preference is emulated and Foundry's
+// own stored mode (gitwork.theme.v1) is set before any script runs, so the anti-flash script
+// paints it on first load. Pages that are forced light (client deliverables, sign-in) stay light.
+const THEME = args.find((a) => a.startsWith('--theme='))?.split('=')[1] ?? null
+if (THEME && THEME !== 'dark' && THEME !== 'light') { console.error('--theme must be dark or light'); process.exit(2) }
+/** Put a fresh context into the chosen theme. Exported so a harness driving states can do the same. */
+export async function applyTheme(ctx, theme = THEME) {
+  if (!theme) return
+  await ctx.addInitScript((t) => { try { localStorage.setItem('gitwork.theme.v1', t) } catch {} }, theme)
+}
 const VIEWPORTS = (vpArg ? vpArg.split('=')[1].split(',') : ['390x844', '768x1024', '1280x620', '1440x900'])
   .map((v) => v.split('x').map(Number))
 
 if (isCli && !urls.length && !args.includes('--self-test')) {
-  console.error('usage: node scripts/audit-clipping.mjs <url> [url...] [--viewports=WxH,...] [--json]')
+  console.error('usage: node scripts/audit-clipping.mjs <url> [url...] [--viewports=WxH,...] [--theme=dark|light] [--json]')
   console.error('       node scripts/audit-clipping.mjs --self-test')
   process.exit(2)
 }
@@ -398,7 +408,8 @@ if (args.includes('--self-test')) {
 
 for (const url of urls) {
   for (const [width, height] of VIEWPORTS) {
-    const ctx = await browser.newContext({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900 })
+    const ctx = await browser.newContext({ viewport: { width, height }, isMobile: width < 900, hasTouch: width < 900, colorScheme: THEME ?? undefined })
+    await applyTheme(ctx)
     const page = await ctx.newPage()
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
