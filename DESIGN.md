@@ -1094,6 +1094,7 @@ The full token and component reference lives with its source, in `Git-Dann/canva
 - Don't use DM Serif Display for body text or UI labels — stats and hero only
 - Don't put drop shadows on dashboard widget cards — flat + hairline border is the system
 - Don't use pure white (`#FFFFFF`) as the page canvas — use `{colors.canvas}` (`#FAFAF9`)
+- Don't put a coloured stroke down one side of a card (`border-l-[3px]` and the like) to say what it is — a chip or badge carries type and state. Dan has ruled the side stroke out as AI-looking decoration (Nov 2026); cards keep one even hairline border
 
 ---
 

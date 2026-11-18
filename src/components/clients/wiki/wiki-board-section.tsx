@@ -60,7 +60,8 @@ import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/types/tasks";
 import type { WikiBoardCard, WikiBoardLane, WikiBoardSection } from "@/types/wiki-board";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
-type ShowMode = "cards" | "all";
+/** Cards only, everything, or (team only) exactly what the client sees on their wiki. */
+type ShowMode = "cards" | "all" | "client";
 
 function formatDay(iso: string | null): string | null {
   if (!iso) return null;
@@ -121,7 +122,7 @@ export function WikiBoardSectionView({
   const hasCards = cards.some((c) => c.isCard);
   const hasOther = cards.some((c) => !c.isCard);
   const [show, setShow] = useState<ShowMode>(hasCards ? "cards" : "all");
-  const mode: ShowMode = hasCards ? show : "all";
+  const mode: ShowMode = show === "client" && audience === "team" ? "client" : hasCards ? (show === "client" ? "cards" : show) : "all";
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
   const [release, setRelease] = useState("");
@@ -131,13 +132,19 @@ export function WikiBoardSectionView({
   const [phoneLane, setPhoneLane] = useState<string>(section.lanes[0]?.key ?? "");
 
   const visible = useMemo(() => {
-    let list = mode === "cards" ? cards.filter((c) => c.isCard) : cards;
+    let list =
+      mode === "cards"
+        ? cards.filter((c) => c.isCard)
+        : mode === "client"
+          ? // What the client's copy carries: their cards, plus dev tasks only while the team shows them.
+            cards.filter((c) => clientMayActOn(c) || section.showAllTasks)
+          : cards;
     if (type) list = list.filter((c) => (type === "dev" ? !c.isCard : c.itemType === type));
     if (release) list = list.filter((c) => (release === "none" ? !c.release : c.release?.id === release));
     if (area) list = list.filter((c) => c.area === area);
     if (q.trim()) list = fuzzySearch(list, q, (c) => [c.title, c.area, c.release?.label]);
     return list;
-  }, [cards, mode, type, release, area, q]);
+  }, [cards, mode, type, release, area, q, section.showAllTasks]);
 
   const filtered = Boolean(q.trim() || type || release || area);
   const addLanes = section.lanes.filter((l) => l.canAdd);
@@ -238,7 +245,23 @@ export function WikiBoardSectionView({
             </select>
           ) : null}
           <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto">
-            {hasCards && hasOther ? (
+            {audience === "team" ? (
+              <Segmented
+                label="Show"
+                className="h-9"
+                value={mode}
+                onChange={setShow}
+                options={[
+                  ...(hasCards && hasOther
+                    ? [
+                        { value: "cards" as const, label: "Cards" },
+                        { value: "all" as const, label: "Everything" },
+                      ]
+                    : []),
+                  { value: "client" as const, label: "Client\u2019s view" },
+                ]}
+              />
+            ) : hasCards && hasOther ? (
               <Segmented
                 label="Show"
                 className="h-9"
@@ -255,9 +278,6 @@ export function WikiBoardSectionView({
                 <PlusIcon className="h-4 w-4" /> Add card
               </button>
             ) : null}
-            {audience === "team" && target.mode === "internal" ? (
-              <ShowAllTasksSwitch slug={target.slug} on={section.showAllTasks} onChanged={refresh} />
-            ) : null}
             {audience === "team" && tasksHref ? (
               <Link href={tasksHref} className="app-button app-button-secondary app-button-sm h-9">
                 Add on the task board
@@ -265,6 +285,9 @@ export function WikiBoardSectionView({
             ) : null}
           </div>
         </div>
+        {audience === "team" && target.mode === "internal" ? (
+          <ClientSeesSetting slug={target.slug} on={section.showAllTasks} onChanged={refresh} previewing={mode === "client"} onPreview={() => setShow("client")} />
+        ) : null}
         {audience === "client" ? (
           <p className="text-[12px] text-[var(--text-3)]">
             <span className="hidden sm:inline">Drag cards between columns. </span>
@@ -286,11 +309,12 @@ export function WikiBoardSectionView({
                     visible.filter((c) => c.laneKey === lane.key),
                     section,
                   )}
-                  hidden={mode === "cards" ? lane.hidden.cards : lane.hidden.cards + lane.hidden.other}
+                  hidden={mode === "cards" || (mode === "client" && !section.showAllTasks) ? lane.hidden.cards : lane.hidden.cards + lane.hidden.other}
                   canAdd={audience === "client" && lane.canAdd}
                   onAdd={() => setAdding(lane.key)}
                   onOpen={setOpenId}
                   audience={audience}
+                  asClient={mode === "client"}
                 />
               ))}
             </div>
@@ -373,11 +397,14 @@ function Lane({
   onAdd,
   onOpen,
   audience,
+  asClient = false,
 }: {
   lane: WikiBoardLane;
   groups: ViewGroup[];
   hidden: number;
   canAdd: boolean;
+  /** The team previewing the client's view: dev tasks render read-only, as the client sees them. */
+  asClient?: boolean;
   onAdd: () => void;
   onOpen: (id: string) => void;
   audience: "client" | "team";
@@ -421,7 +448,7 @@ function Lane({
             <GroupHeading group={g} />
             {g.cards.map((c) =>
               // The team's own dev tasks are shown to the client read-only: not draggable, not openable.
-              audience === "client" && !clientMayActOn(c) ? (
+              (audience === "client" || asClient) && !clientMayActOn(c) ? (
                 <CardFace key={c.id} card={c} onOpen={() => onOpen(c.id)} readOnly />
               ) : (
                 <DraggableCard key={c.id} card={c} onOpen={() => onOpen(c.id)} />
@@ -471,7 +498,6 @@ function DraggableCard({ card, onOpen }: { card: WikiBoardCard; onOpen: () => vo
 }
 
 function CardFace({ card, onOpen, readOnly = false }: { card: WikiBoardCard; onOpen: () => void; readOnly?: boolean }) {
-  const bug = card.itemType === "bug";
   const Tag = readOnly ? "div" : "button";
   return (
     <Tag
@@ -479,9 +505,9 @@ function CardFace({ card, onOpen, readOnly = false }: { card: WikiBoardCard; onO
       data-board-card={card.id}
       data-board-readonly={readOnly ? "" : undefined}
       className={cn(
-        "block w-full rounded-[8px] border border-l-[3px] bg-[var(--surface-0)] p-2.5 text-left shadow-[var(--shadow-xs)] transition-colors hover:border-[var(--border-1)]",
-        bug ? "border-l-red-500" : card.isCard ? "border-l-[var(--brand-500)]" : "border-l-[var(--border-1)]",
-        "border-[var(--border-2)]",
+        // One even border. The type chip (Bug in red) says what the card is; a coloured stroke
+        // down one side is decoration Dan has ruled out (Nov 2026).
+        "block w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-2.5 text-left shadow-[var(--shadow-xs)] transition-colors hover:border-[var(--border-1)]",
       )}
     >
       <span className="flex flex-wrap items-center gap-1">
@@ -511,31 +537,53 @@ function CardFace({ card, onOpen, readOnly = false }: { card: WikiBoardCard; onO
 }
 
 /**
- * The team's switch: whether the client also sees the team's own dev tasks. Off by default; on,
- * the client sees each one's title, column and who's on it, read-only, and nothing else.
+ * What the client sees, set by the team. It changes the CLIENT's wiki only, so it says so, and
+ * offers the preview: a checkbox whose effect the team can't see on their own screen read as
+ * broken (Dan, Nov 2026).
  */
-function ShowAllTasksSwitch({ slug, on, onChanged }: { slug: string; on: boolean; onChanged: () => void }) {
+function ClientSeesSetting({
+  slug,
+  on,
+  onChanged,
+  previewing,
+  onPreview,
+}: {
+  slug: string;
+  on: boolean;
+  onChanged: () => void;
+  previewing: boolean;
+  onPreview: () => void;
+}) {
   const set = useSetWikiBoardShowAllTasks(slug);
   const toast = useToast();
   return (
-    <label
-      className="inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-[6px] border border-[var(--border-2)] px-2.5 text-[12px] text-[var(--text-2)]"
-      title="Off: the client sees their product cards and the cards they added. On: they also see your dev tasks as titles only, and can't move or comment on them."
-    >
-      <input
-        type="checkbox"
-        className="h-4 w-4 accent-[var(--brand-500)]"
-        checked={on}
-        disabled={set.isPending}
-        onChange={(e) =>
-          set.mutate(e.target.checked, {
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-[12px] text-[var(--text-2)]">
+      <span className="widget-data-label text-[var(--text-4)]">Client sees</span>
+      <Segmented
+        label="What the client sees"
+        value={on ? "all" : "cards"}
+        onChange={(v) =>
+          set.mutate(v === "all", {
             onSuccess: onChanged,
             onError: (err) => toast.error("Couldn't change that", err instanceof Error ? err.message : "Please try again."),
           })
         }
+        options={[
+          { value: "cards", label: "Their cards only" },
+          { value: "all", label: "Cards and dev task titles" },
+        ]}
       />
-      Show the client all tasks (titles only)
-    </label>
+      <span className="min-w-0 flex-1">
+        {on
+          ? "Your dev tasks show on their board as titles only. They can't open, move or comment on them."
+          : "Your dev tasks stay hidden from them."}{" "}
+        {previewing ? null : (
+          <button type="button" className="font-medium text-[var(--brand-600)] hover:underline" onClick={onPreview}>
+            See their view
+          </button>
+        )}
+      </span>
+    </div>
   );
 }
 

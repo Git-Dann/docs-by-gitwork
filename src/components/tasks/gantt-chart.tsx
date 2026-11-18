@@ -402,7 +402,7 @@ export function GanttChart({
 
       {/* Status legend — only when bars are coloured by status composition (internal view). */}
       {blocks.some((b) => b.statusCounts) ? (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 pb-2 text-[11px] text-[var(--text-4)]">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 pb-2.5 pt-3 text-[11px] text-[var(--text-4)]">
           <span className="uppercase tracking-[1px]" style={{ fontFamily: "var(--font-mono)" }}>
             Status
           </span>
