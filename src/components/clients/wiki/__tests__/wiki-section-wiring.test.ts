@@ -371,7 +371,10 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     "app/api/wiki/[token]/board/tasks/route.ts",
     "app/api/wiki/[token]/board/tasks/[taskId]/move/route.ts",
     "app/api/wiki/[token]/board/tasks/[taskId]/feedback/route.ts",
+    "app/api/wiki/[token]/board/tasks/[taskId]/route.ts",
   ];
+  /** Multipart writes: the form is read only after the writer and rate limit. */
+  const uploadRoutes = ["app/api/wiki/[token]/board/tasks/[taskId]/images/route.ts"];
   /** Read-only: a card's image. Same access check as the writes, but no body and nothing written. */
   const readRoutes = ["app/api/wiki/[token]/board/tasks/[taskId]/images/[attachmentId]/route.ts"];
 
@@ -390,10 +393,44 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     expect(src.indexOf("assertBoardWriteRate(")).toBeLessThan(src.indexOf("await req.json()"));
   });
 
+  it.each(uploadRoutes)("%s resolves the writer + rate-limits before reading the upload", (rel) => {
+    const src = read(rel);
+    expect(src.indexOf("resolveBoardWriter(req, token)")).toBeGreaterThan(-1);
+    expect(src.indexOf("assertBoardWriteRate(req)")).toBeLessThan(src.indexOf("readBoardImageForm(req)"));
+    expect(src.indexOf("resolveBoardWriter(")).toBeLessThan(src.indexOf("readBoardImageForm(req)"));
+  });
+
+  it("only a signed-in client user deletes from the client's link; the team deletes in Foundry", () => {
+    const src = read("app/api/wiki/[token]/board/tasks/[taskId]/route.ts");
+    const del = src.slice(src.indexOf("export async function DELETE"));
+    expect(del).toContain("if (!access.writer.wikiUserId)");
+    expect(del.indexOf("if (!access.writer.wikiUserId)")).toBeLessThan(del.indexOf("deleteBoardCard("));
+  });
+
+  it("every internal card route resolves the team writer; delete and restore need Manage clients", () => {
+    const dir = join(ROOT, "app/api/clients/[slug]/wiki/board/cards");
+    const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
+    expect(files.length).toBe(4);
+    for (const f of files) {
+      const src = readFileSync(join(dir, f), "utf8");
+      const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];
+      const gates = src.match(/await resolveInternalBoardWriter\(req, slug, "(write|manage)"\)/g) ?? [];
+      expect(gates.length, `${f}: every handler must resolve the team writer`).toBe(handlers.length);
+    }
+    const one = read("app/api/clients/[slug]/wiki/board/cards/[taskId]/route.ts");
+    expect(one.slice(one.indexOf("export async function DELETE"))).toContain('resolveInternalBoardWriter(req, slug, "manage")');
+    expect(read("app/api/clients/[slug]/wiki/board/cards/[taskId]/restore/route.ts")).toContain('resolveInternalBoardWriter(req, slug, "manage")');
+    const access = read("server/wiki-board-access.ts");
+    const fn = access.slice(access.indexOf("export async function resolveInternalBoardWriter"));
+    expect(fn).toContain("requireAuthedUser(req)");
+    expect(fn).toContain("assertCan(user, canManageClients");
+    expect(fn).toContain("assertClientInScope(user, client.id)");
+  });
+
   it("every handler under the board's token routes resolves the writer first", () => {
     const dir = join(ROOT, "app/api/wiki/[token]/board");
     const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
-    expect(files.length).toBe(routes.length + readRoutes.length);
+    expect(files.length).toBe(routes.length + readRoutes.length + uploadRoutes.length);
     for (const f of files) {
       const src = readFileSync(join(dir, f), "utf8");
       const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];

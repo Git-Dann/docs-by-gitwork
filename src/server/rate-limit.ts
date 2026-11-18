@@ -44,9 +44,21 @@ export async function assertWithinRateLimit(params: {
   }
 }
 
-/** Best-effort client IP from standard proxy headers (Vercel sets these). */
+/**
+ * The client's IP, for rate-limit buckets. Trusts only what our own proxy wrote:
+ *
+ * - `X-Real-IP` first. nginx sets it to `$remote_addr` on every request
+ *   (deploy/nginx/foundry.conf), overwriting anything the client sent; Vercel sets it too.
+ * - Otherwise the RIGHTMOST `X-Forwarded-For` hop. nginx appends the connecting address to
+ *   whatever the client sent (`$proxy_add_x_forwarded_for`), so the first entry is the client's
+ *   own claim. Keying on it let a script pick a fresh bucket per request.
+ */
 export function clientIpFrom(headers: Headers): string | null {
-  const xff = headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return headers.get("x-real-ip");
+  const real = headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  const hops = (headers.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
+  return hops.at(-1) ?? null;
 }

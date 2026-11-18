@@ -5,10 +5,11 @@
  * in their own columns, grouped by release, as on the planning site Big Wedge used before.
  *
  * One component for both audiences, so they can never disagree about where a card is:
- *   - "client": the wiki link. Drag between columns (never into or out of Done), add cards to
- *     the early columns, leave feedback, approve or ask for changes.
- *   - "team":   the internal wiki. Drag anywhere, reply to feedback. New cards are added on the
- *     task board, where the team works.
+ *   - "client": the wiki link. Full control of their cards (Dan, Nov 2026): add, edit every
+ *     field, move anywhere including Live, delete, add screenshots, leave feedback, approve or
+ *     ask for changes. The one thing they can't do is choose who works on a card.
+ *   - "team":   the internal wiki. The same, plus reply to feedback, choose what the client sees,
+ *     preview it, and restore a card that was deleted.
  *
  * Every column scrolls inside one frame with its header (.widget-card is overflow: hidden, so a
  * wide child without its own scroller would be cut off, §45.2). On a phone the columns become a
@@ -16,7 +17,7 @@
  */
 
 import { useEffect, useId, useMemo, useState } from "react";
-import Link from "next/link";
+import { Menu, MenuButton, MenuItem, MenuItems, Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import {
   DndContext,
   KeyboardSensor,
@@ -28,7 +29,20 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { ChatBubbleLeftEllipsisIcon, PlusIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowUturnLeftIcon,
+  ChatBubbleLeftEllipsisIcon,
+  CheckIcon,
+  EllipsisHorizontalIcon,
+  EyeIcon,
+  FunnelIcon,
+  PencilSquareIcon,
+  PhotoIcon,
+  PlusIcon,
+  TrashIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
+import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import { cn } from "@/lib/format";
 import { fuzzySearch } from "@/lib/fuzzy-search";
 import { Markdown } from "@/lib/markdown";
@@ -37,33 +51,39 @@ import { Segmented } from "@/components/ui/segmented";
 import { WikiBoardTimeline } from "@/components/clients/wiki/wiki-board-timeline";
 import { WikiBoardCalendar } from "@/components/clients/wiki/wiki-board-calendar";
 import { useToast } from "@/components/ui/toast";
-import { CardProgressChip, ItemTypeChip, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
-import { ITEM_TYPE_LABELS, isItemType } from "@/lib/tasks/product-cards";
+import { CardProgressChip, ItemTypeChip, PreviousValues, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
+import { ITEM_TYPE_LABELS, TIERS, TIER_LABELS, isItemType } from "@/lib/tasks/product-cards";
+import { splitCardDescription, uploadBatches } from "@/lib/wiki-board-edit";
 import { safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { groupByRelease } from "@/lib/wiki-board-layout";
 import {
+  BOARD_EDIT_TYPES,
   BOARD_LIMITS,
   CLIENT_CARD_TYPES,
   clientMayActOn,
-  clientMoveRefusal,
   feedbackRefusal,
   type FeedbackKind,
 } from "@/lib/wiki-board";
 import {
   addBoardCardApi,
+  deleteBoardCardApi,
   moveBoardCardApi,
+  restoreBoardCardApi,
+  updateBoardCardApi,
+  uploadBoardImagesApi,
   useBoardFeedback,
   useBoardRefresh,
   useSendBoardFeedback,
   useSetWikiBoardShowAllTasks,
   boardImageUrl,
+  type BoardCardForm,
   type BoardTarget,
 } from "@/hooks/use-wiki-board";
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/types/tasks";
-import type { WikiBoardCard, WikiBoardLane, WikiBoardSection } from "@/types/wiki-board";
+import type { WikiBoardCard, WikiBoardDeletedCard, WikiBoardLane, WikiBoardSection } from "@/types/wiki-board";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
-/** Cards only, everything, or (team only) exactly what the client sees on their wiki. */
+/** Cards only, everything, or (team only, previewing) exactly what the client sees on their wiki. */
 type ShowMode = "cards" | "all" | "client";
 
 function formatDay(iso: string | null): string | null {
@@ -104,12 +124,14 @@ export function WikiBoardSectionView({
   section,
   target,
   audience,
-  tasksHref,
+  clientName,
 }: {
   section: WikiBoardSection;
   target: BoardTarget;
   audience: "client" | "team";
-  /** Team only: the client's task board, where new cards are added. */
+  /** The client's name, for the team's "Previewing <name>'s view" strip. */
+  clientName?: string;
+  /** No longer used: the team adds cards here now. Kept so an old caller still compiles. */
   tasksHref?: string;
 }) {
   const toast = useToast();
@@ -124,8 +146,10 @@ export function WikiBoardSectionView({
 
   const hasCards = cards.some((c) => c.isCard);
   const hasOther = cards.some((c) => !c.isCard);
-  const [show, setShow] = useState<ShowMode>(hasCards ? "cards" : "all");
-  const mode: ShowMode = show === "client" && audience === "team" ? "client" : hasCards ? (show === "client" ? "cards" : show) : "all";
+  const [show, setShow] = useState<"cards" | "all">(hasCards ? "cards" : "all");
+  // The team looking at exactly what the client sees on their wiki.
+  const [previewing, setPreviewing] = useState(false);
+  const mode: ShowMode = audience === "team" && previewing ? "client" : hasCards ? show : "all";
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
   const [release, setRelease] = useState("");
@@ -154,6 +178,10 @@ export function WikiBoardSectionView({
 
   const filtered = Boolean(q.trim() || type || release || area);
   const addLanes = section.lanes.filter((l) => l.canAdd);
+  // The client adds on their link; the team adds from the internal wiki (its own card routes).
+  const canAdd = addLanes.length > 0 && (audience === "client" || target.mode === "internal");
+  // A card may be edited, or deleted, by whoever may act on it here.
+  const actable = (c: WikiBoardCard) => audience === "team" || clientMayActOn(c);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -164,11 +192,6 @@ export function WikiBoardSectionView({
     if (card.laneKey === lane.key) return;
     if (audience === "client" && !clientMayActOn(card)) {
       toast.error("Can't move that card", "This is one of Gitwork's own tasks, shown so you can see where it is.");
-      return;
-    }
-    const refusal = audience === "client" ? clientMoveRefusal(card.status, lane.stage) : null;
-    if (refusal) {
-      toast.error("Can't move that card", refusal);
       return;
     }
     const inLane = cards.filter((c) => c.laneKey === lane.key);
@@ -192,9 +215,16 @@ export function WikiBoardSectionView({
     if (card && lane) void move(card, lane);
   }
 
+  /** Put a card the server just returned in place: replace it, or add it if it's new. */
+  function place(card: WikiBoardCard) {
+    setCards((list) => (list.some((c) => c.id === card.id) ? list.map((c) => (c.id === card.id ? card : c)) : [...list, card]));
+  }
+
   const open = openId ? cards.find((c) => c.id === openId) ?? null : null;
   const waiting = cards.filter((c) => c.isCard && c.status === "IN_REVIEW" && !c.signOff).length;
   const approved = cards.filter((c) => c.signOff === "approved").length;
+  const filterCount = [type, release, area].filter(Boolean).length + (mode === "all" && hasCards && hasOther ? 1 : 0);
+  const readOnly = (c: WikiBoardCard) => (audience === "client" || mode === "client") && !clientMayActOn(c);
 
   return (
     <section className="widget-card">
@@ -209,125 +239,85 @@ export function WikiBoardSectionView({
           {approved} approved
         </span>
       </div>
-      <div className="widget-body space-y-4">
-        <Segmented
-          label="View"
-          className="h-9"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "board", label: "Board" },
-            { value: "timeline", label: "Timeline" },
-            { value: "calendar", label: "Calendar" },
-          ]}
-        />
-        {/* Toolbar: narrowing down on the left, actions on the right; wraps on a phone. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search cards…"
-            aria-label="Search cards"
-            className="app-input h-9 min-w-[200px] flex-1 text-[16px] sm:text-sm"
+      <div className="widget-body space-y-3">
+        {/* One toolbar: the view on the left, finding and adding on the right. On a phone the
+            view takes the first line and the rest the second; nothing is cut off. */}
+        <div className="flex flex-wrap items-center gap-2" data-board-toolbar>
+          <Segmented
+            label="View"
+            className="h-9 shrink-0"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "board", label: "Board" },
+              { value: "timeline", label: "Timeline" },
+              { value: "calendar", label: "Calendar" },
+            ]}
           />
-          <select className="app-select h-9 w-full min-w-0 sm:w-auto" aria-label="Type" value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="">All types</option>
-            {(["feature", "subitem", "bug", "feedback"] as const).map((t) => (
-              <option key={t} value={t}>
-                {ITEM_TYPE_LABELS[t]}
-              </option>
-            ))}
-            {mode === "all" && hasOther ? <option value="dev">Dev tasks</option> : null}
-          </select>
-          {section.releases.length ? (
-            <select className="app-select h-9 w-full min-w-0 sm:w-auto" aria-label="Release" value={release} onChange={(e) => setRelease(e.target.value)}>
-              <option value="">All releases</option>
-              {section.releases.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-              <option value="none">No release</option>
-            </select>
-          ) : null}
-          {section.areas.length ? (
-            <select className="app-select h-9 w-full min-w-0 sm:w-auto" aria-label="Area" value={area} onChange={(e) => setArea(e.target.value)}>
-              <option value="">All areas</option>
-              {section.areas.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto">
-            {audience === "team" ? (
-              <Segmented
-                label="Show"
-                className="h-9"
-                value={mode}
-                onChange={setShow}
-                options={[
-                  ...(hasCards && hasOther
-                    ? [
-                        { value: "cards" as const, label: "Cards" },
-                        { value: "all" as const, label: "Everything" },
-                      ]
-                    : []),
-                  { value: "client" as const, label: "Client\u2019s view" },
-                ]}
-              />
-            ) : hasCards && hasOther ? (
-              <Segmented
-                label="Show"
-                className="h-9"
-                value={mode}
-                onChange={setShow}
-                options={[
-                  { value: "cards", label: "Cards" },
-                  { value: "all", label: "Everything" },
-                ]}
+          <div className="flex w-full min-w-0 items-center gap-2 sm:ml-auto sm:w-auto">
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search cards…"
+              aria-label="Search cards"
+              className="app-input h-9 min-w-0 flex-1 text-[16px] sm:w-[220px] sm:flex-none sm:text-sm"
+            />
+            <BoardFilters
+              count={filterCount}
+              section={section}
+              type={type}
+              setType={setType}
+              release={release}
+              setRelease={setRelease}
+              area={area}
+              setArea={setArea}
+              show={hasCards && hasOther && mode !== "client" ? show : null}
+              setShow={setShow}
+              devOption={mode === "all" && hasOther}
+            />
+            {audience === "team" && target.mode === "internal" ? (
+              <ClientViewMenu
+                slug={target.slug}
+                on={section.showAllTasks}
+                onChanged={refresh}
+                previewing={mode === "client"}
+                onPreview={setPreviewing}
               />
             ) : null}
-            {audience === "client" && addLanes.length ? (
-              <button type="button" className="app-button app-button-primary app-button-sm h-9" onClick={() => setAdding("")}>
-                <PlusIcon className="h-4 w-4" /> Add card
+            {canAdd ? (
+              <button
+                type="button"
+                className="app-button app-button-primary app-button-sm h-9 shrink-0"
+                onClick={() => setAdding("")}
+                aria-label="Add card"
+                data-board-add
+              >
+                <PlusIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">Add card</span>
               </button>
-            ) : null}
-            {audience === "team" && tasksHref ? (
-              <Link href={tasksHref} className="app-button app-button-secondary app-button-sm h-9">
-                Add on the task board
-              </Link>
             ) : null}
           </div>
         </div>
-        {audience === "team" && target.mode === "internal" ? (
-          <ClientSeesSetting slug={target.slug} on={section.showAllTasks} onChanged={refresh} previewing={mode === "client"} onPreview={() => setShow("client")} />
+        {mode === "client" ? (
+          <div
+            className="flex items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--brand-50)] px-3 py-1.5 text-[12px] text-[var(--text-2)]"
+            data-board-preview
+          >
+            <EyeIcon className="h-4 w-4 shrink-0 text-[var(--brand-600)]" />
+            <span className="min-w-0 flex-1 truncate" title={`Previewing ${clientName ?? "the client"}'s view`}>
+              Previewing {clientName ? `${clientName}’s` : "the client’s"} view
+            </span>
+            <button type="button" className="shrink-0 font-medium text-[var(--brand-600)] hover:underline" onClick={() => setPreviewing(false)}>
+              Exit
+            </button>
+          </div>
         ) : null}
         {view === "timeline" ? (
-          <WikiBoardTimeline
-            cards={visible}
-            releases={section.releases}
-            readOnly={(c) => (audience === "client" || mode === "client") && !clientMayActOn(c)}
-            onOpen={setOpenId}
-          />
+          <WikiBoardTimeline cards={visible} releases={section.releases} readOnly={readOnly} onOpen={setOpenId} />
         ) : null}
         {view === "calendar" ? (
-          <WikiBoardCalendar
-            cards={visible}
-            releases={section.releases}
-            readOnly={(c) => (audience === "client" || mode === "client") && !clientMayActOn(c)}
-            onOpen={setOpenId}
-          />
-        ) : null}
-        {view === "board" && audience === "client" ? (
-          <p className="text-[12px] text-[var(--text-3)]">
-            <span className="hidden sm:inline">Drag cards between columns. </span>
-            <span className="sm:hidden">Open a card to move it to another column. </span>
-            Only Gitwork moves a card into Live or out of it: approve a card, or say what needs changing, from the card
-            itself.
-          </p>
+          <WikiBoardCalendar cards={visible} releases={section.releases} readOnly={readOnly} onOpen={setOpenId} />
         ) : null}
 
         <DndContext id={dndId} sensors={sensors} onDragEnd={onDragEnd}>
@@ -343,7 +333,7 @@ export function WikiBoardSectionView({
                     section,
                   )}
                   hidden={mode === "cards" || (mode === "client" && !section.showAllTasks) ? lane.hidden.cards : lane.hidden.cards + lane.hidden.other}
-                  canAdd={audience === "client" && lane.canAdd}
+                  canAdd={canAdd && lane.canAdd}
                   onAdd={() => setAdding(lane.key)}
                   onOpen={setOpenId}
                   audience={audience}
@@ -391,34 +381,301 @@ export function WikiBoardSectionView({
             );
           })()}
         </div>
+
+        {audience === "team" && target.mode === "internal" && section.deleted?.length ? (
+          <DeletedCards slug={target.slug} cards={section.deleted} total={section.deletedTotal ?? section.deleted.length} onRestored={(card) => { place(card); refresh(); }} />
+        ) : null}
       </div>
 
       {open ? (
         <CardDetail
           card={open}
-          lanes={section.lanes}
+          cards={cards}
+          section={section}
           target={target}
           audience={audience}
+          canEdit={actable(open)}
+          canDelete={actable(open) && (audience === "client" ? target.mode === "public" : target.mode === "internal")}
           onMove={(lane) => void move(open, lane)}
+          onOpenCard={setOpenId}
+          onSaved={(card) => {
+            place(card);
+            refresh();
+          }}
+          onDeleted={() => {
+            setCards((list) => list.filter((c) => c.id !== open.id));
+            setOpenId(null);
+            toast.success("Card deleted", audience === "client" ? "Gitwork has been told, and can put it back if needed." : "It's in the deleted list below the board.");
+            refresh();
+          }}
           onClose={() => setOpenId(null)}
         />
       ) : null}
-      {adding !== null && target.mode === "public" ? (
-        <AddCardDialog
-          token={target.token}
-          lanes={addLanes}
-          releases={section.releases}
-          initialLane={adding || addLanes[0]?.key || ""}
-          onClose={() => setAdding(null)}
-          onAdded={(card) => {
-            setCards((list) => [...list, card]);
-            setAdding(null);
-            toast.success("Card added", "Gitwork has been told.");
-            refresh();
-          }}
-        />
+      {adding !== null && canAdd ? (
+        <Modal open onClose={() => setAdding(null)} title="Add a card" panelClassName="app-dialog-fixed w-full max-w-2xl">
+          <CardForm
+            mode="add"
+            target={target}
+            audience={audience}
+            section={section}
+            cards={cards}
+            lanes={addLanes}
+            initial={{ ...EMPTY_FORM, laneKey: adding || addLanes[0]?.key || "" }}
+            onCancel={() => setAdding(null)}
+            onSaved={(card) => {
+              place(card);
+              setAdding(null);
+              toast.success("Card added", audience === "client" ? "Gitwork has been told." : undefined);
+              refresh();
+            }}
+          />
+        </Modal>
       ) : null}
     </section>
+  );
+}
+
+/** Type, release and area (and, where there are both, cards or everything), in one anchored popover. */
+function BoardFilters({
+  count,
+  section,
+  type,
+  setType,
+  release,
+  setRelease,
+  area,
+  setArea,
+  show,
+  setShow,
+  devOption,
+}: {
+  count: number;
+  section: WikiBoardSection;
+  type: string;
+  setType: (v: string) => void;
+  release: string;
+  setRelease: (v: string) => void;
+  area: string;
+  setArea: (v: string) => void;
+  /** Null when there's no choice to make (only cards, or only dev tasks, or previewing). */
+  show: "cards" | "all" | null;
+  setShow: (v: "cards" | "all") => void;
+  devOption: boolean;
+}) {
+  return (
+    <Popover className="relative shrink-0">
+      <PopoverButton
+        className="app-button app-button-secondary app-button-sm h-9"
+        aria-label={count ? `Filters, ${count} on` : "Filters"}
+        data-board-filters
+      >
+        <FunnelIcon className="h-4 w-4" />
+        <span className="hidden sm:inline">Filters</span>
+        {count ? (
+          <span className="rounded-[4px] bg-[var(--brand-600)] px-1.5 text-[10px] font-semibold text-white" style={MONO}>
+            {count}
+          </span>
+        ) : null}
+      </PopoverButton>
+      <PopoverPanel
+        anchor={{ to: "bottom end", gap: 6 }}
+        className={cn(menuPanel, "w-[280px] max-w-[calc(100vw-2rem)] space-y-3 p-3")}
+        data-board-filters-panel
+      >
+        {show ? (
+          <div>
+            <span className="widget-data-label block text-[var(--text-4)]">Show</span>
+            <Segmented
+              label="Show"
+              className="mt-1"
+              value={show}
+              onChange={setShow}
+              options={[
+                { value: "cards", label: "Cards" },
+                { value: "all", label: "Everything" },
+              ]}
+            />
+          </div>
+        ) : null}
+        <label className="block">
+          <span className="widget-data-label text-[var(--text-4)]">Type</span>
+          <select className="app-select mt-1 h-9 w-full text-[16px] sm:text-sm" value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="">All types</option>
+            {(["feature", "subitem", "bug", "feedback"] as const).map((t) => (
+              <option key={t} value={t}>
+                {ITEM_TYPE_LABELS[t]}
+              </option>
+            ))}
+            {devOption ? <option value="dev">Dev tasks</option> : null}
+          </select>
+        </label>
+        {section.releases.length ? (
+          <label className="block">
+            <span className="widget-data-label text-[var(--text-4)]">Release</span>
+            <select className="app-select mt-1 h-9 w-full text-[16px] sm:text-sm" value={release} onChange={(e) => setRelease(e.target.value)}>
+              <option value="">All releases</option>
+              {section.releases.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+              <option value="none">No release</option>
+            </select>
+          </label>
+        ) : null}
+        {section.areas.length ? (
+          <label className="block">
+            <span className="widget-data-label text-[var(--text-4)]">Area</span>
+            <select className="app-select mt-1 h-9 w-full text-[16px] sm:text-sm" value={area} onChange={(e) => setArea(e.target.value)}>
+              <option value="">All areas</option>
+              {section.areas.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {type || release || area ? (
+          <button
+            type="button"
+            className="text-[12px] font-medium text-[var(--brand-600)] hover:underline"
+            onClick={() => {
+              setType("");
+              setRelease("");
+              setArea("");
+            }}
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </PopoverPanel>
+    </Popover>
+  );
+}
+
+/**
+ * The team's client-view menu: what the client sees on their wiki (the same setting as before),
+ * and a preview of exactly that. It changes the CLIENT's wiki only, which is why the preview sits
+ * right beside it: a setting whose effect the team can't see on their own screen read as broken.
+ */
+function ClientViewMenu({
+  slug,
+  on,
+  onChanged,
+  previewing,
+  onPreview,
+}: {
+  slug: string;
+  on: boolean;
+  onChanged: () => void;
+  previewing: boolean;
+  onPreview: (on: boolean) => void;
+}) {
+  const set = useSetWikiBoardShowAllTasks(slug);
+  const toast = useToast();
+  const choose = (all: boolean) => {
+    if (all === on) return;
+    set.mutate(all, {
+      onSuccess: onChanged,
+      onError: (err) => toast.error("Couldn't change that", err instanceof Error ? err.message : "Please try again."),
+    });
+  };
+  return (
+    <Menu as="div" className="relative shrink-0">
+      <MenuButton className="app-button app-button-secondary app-button-sm h-9 w-9 px-0" aria-label="Client view" title="Client view" data-board-client-menu>
+        <EllipsisHorizontalIcon className="h-4 w-4" />
+      </MenuButton>
+      <MenuItems anchor="bottom end" className={cn(menuPanel, "w-[280px] max-w-[calc(100vw-2rem)]")}>
+        <p className="px-2.5 pb-1 pt-1 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]" style={MONO}>
+          Client sees
+        </p>
+        {[
+          { all: false, label: "Their cards only", hint: "Your dev tasks stay hidden from them." },
+          { all: true, label: "Cards and dev task titles", hint: "Titles only. They can't open, move or comment on them." },
+        ].map((o) => (
+          <MenuItem key={String(o.all)}>
+            <button type="button" className={cn(menuItem, "items-start gap-2")} onClick={() => choose(o.all)}>
+              <span className="mt-0.5 h-3.5 w-3.5 shrink-0">
+                {o.all === on ? <CheckIcon className="h-3.5 w-3.5 text-[var(--brand-600)]" /> : null}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[var(--text-1)]">{o.label}</span>
+                <span className="block text-[11px] text-[var(--text-4)]">{o.hint}</span>
+              </span>
+            </button>
+          </MenuItem>
+        ))}
+        <div className="my-1 border-t border-[var(--border-2)]" />
+        <MenuItem>
+          <button type="button" className={cn(menuItem, "gap-2")} onClick={() => onPreview(!previewing)}>
+            <EyeIcon className="h-4 w-4 shrink-0" />
+            {previewing ? "Exit preview" : "Preview as client"}
+          </button>
+        </MenuItem>
+      </MenuItems>
+    </Menu>
+  );
+}
+
+/** Cards deleted from the board, newest first, with Restore. Team only, never on the client's page. */
+function DeletedCards({
+  slug,
+  cards,
+  total,
+  onRestored,
+}: {
+  slug: string;
+  cards: WikiBoardDeletedCard[];
+  /** Every deleted card; `cards` may hold only the newest. */
+  total: number;
+  onRestored: (card: WikiBoardCard) => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  return (
+    <details className="rounded-[8px] border border-[var(--border-2)]" data-board-deleted>
+      <summary className="cursor-pointer px-3 py-2 text-[12px] text-[var(--text-2)]">
+        Deleted from the board <span className="text-[var(--text-4)]" style={MONO}>({total})</span>
+      </summary>
+      {total > cards.length ? (
+        <p className="border-t border-[var(--border-2)] px-3 py-2 text-[12px] text-[var(--text-3)]">
+          Showing the newest {cards.length.toLocaleString("en-GB")} of {total.toLocaleString("en-GB")}.
+        </p>
+      ) : null}
+      <ul className="max-h-[360px] divide-y divide-[var(--border-2)] overflow-y-auto border-t border-[var(--border-2)]">
+        {cards.map((c) => (
+          <li key={c.id} className="flex items-center gap-3 px-3 py-2">
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] text-[var(--text-1)]" title={c.title}>
+                {c.title}
+              </span>
+              <span className="block text-[11px] text-[var(--text-4)]" style={MONO}>
+                {c.deletedBy} · {formatDay(c.deletedAt)}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="app-button app-button-secondary app-button-sm shrink-0"
+              disabled={busy === c.id}
+              onClick={async () => {
+                setBusy(c.id);
+                try {
+                  onRestored(await restoreBoardCardApi(slug, c.id));
+                  toast.success("Card restored");
+                } catch (err) {
+                  toast.error("Couldn't restore it", err instanceof Error ? err.message : "Please try again.");
+                } finally {
+                  setBusy(null);
+                }
+              }}
+            >
+              <ArrowUturnLeftIcon className="h-3.5 w-3.5" /> Restore
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -570,77 +827,47 @@ function CardFace({ card, onOpen, readOnly = false }: { card: WikiBoardCard; onO
   );
 }
 
-/**
- * What the client sees, set by the team. It changes the CLIENT's wiki only, so it says so, and
- * offers the preview: a checkbox whose effect the team can't see on their own screen read as
- * broken (Dan, Nov 2026).
- */
-function ClientSeesSetting({
-  slug,
-  on,
-  onChanged,
-  previewing,
-  onPreview,
-}: {
-  slug: string;
-  on: boolean;
-  onChanged: () => void;
-  previewing: boolean;
-  onPreview: () => void;
-}) {
-  const set = useSetWikiBoardShowAllTasks(slug);
-  const toast = useToast();
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-[12px] text-[var(--text-2)]">
-      <span className="widget-data-label text-[var(--text-4)]">Client sees</span>
-      <Segmented
-        label="What the client sees"
-        value={on ? "all" : "cards"}
-        onChange={(v) =>
-          set.mutate(v === "all", {
-            onSuccess: onChanged,
-            onError: (err) => toast.error("Couldn't change that", err instanceof Error ? err.message : "Please try again."),
-          })
-        }
-        options={[
-          { value: "cards", label: "Their cards only" },
-          { value: "all", label: "Cards and dev task titles" },
-        ]}
-      />
-      <span className="min-w-0 flex-1">
-        {on
-          ? "Your dev tasks show on their board as titles only. They can't open, move or comment on them."
-          : "Your dev tasks stay hidden from them."}{" "}
-        {previewing ? null : (
-          <button type="button" className="font-medium text-[var(--brand-600)] hover:underline" onClick={onPreview}>
-            See their view
-          </button>
-        )}
-      </span>
-    </div>
-  );
-}
-
 function CardDetail({
   card,
-  lanes,
+  cards,
+  section,
   target,
   audience,
+  canEdit,
+  canDelete,
   onMove,
+  onOpenCard,
+  onSaved,
+  onDeleted,
   onClose,
 }: {
   card: WikiBoardCard;
-  lanes: WikiBoardLane[];
+  cards: WikiBoardCard[];
+  section: WikiBoardSection;
   target: BoardTarget;
   audience: "client" | "team";
+  canEdit: boolean;
+  canDelete: boolean;
   onMove: (lane: WikiBoardLane) => void;
+  onOpenCard: (id: string) => void;
+  onSaved: (card: WikiBoardCard) => void;
+  onDeleted: () => void;
   onClose: () => void;
 }) {
+  const lanes = section.lanes;
   const feedback = useBoardFeedback(target, card.id);
   const send = useSendBoardFeedback(target, card.id);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const lane = lanes.find((l) => l.key === card.laneKey);
+  // Opening another card (a "depends on" link) starts it fresh, not half-way through an edit.
+  useEffect(() => {
+    setEditing(false);
+    setConfirmDelete(false);
+  }, [card.id]);
 
   async function submit(kind: FeedbackKind) {
     const refusal = feedbackRefusal(kind, body);
@@ -657,22 +884,104 @@ function CardDetail({
     }
   }
 
+  async function remove() {
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteBoardCardApi(target, card.id);
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't delete the card. Please try again.");
+      setDeleting(false);
+    }
+  }
+
+  const title = isItemType(card.itemType) ? ITEM_TYPE_LABELS[card.itemType] : "Task";
+  if (editing) {
+    return (
+      <Modal open onClose={onClose} title={`Edit ${title.toLowerCase()}`} panelClassName="app-dialog-fixed w-full max-w-2xl">
+        <CardForm
+          mode="edit"
+          target={target}
+          audience={audience}
+          section={section}
+          cards={cards}
+          lanes={lanes}
+          card={card}
+          initial={formFromCard(card)}
+          onCancel={() => setEditing(false)}
+          onSaved={(next) => {
+            onSaved(next);
+            setEditing(false);
+            // The edit wrote an entry in the thread: show it.
+            void feedback.refetch();
+          }}
+        />
+      </Modal>
+    );
+  }
+
+  const meta = [
+    card.release?.label,
+    card.area,
+    TASK_PRIORITY_LABELS[card.priority as TaskPriority],
+    card.estimateHours !== null ? `${card.estimateHours}h estimate` : null,
+    card.dueDate ? `Due ${formatDay(card.dueDate)}` : null,
+    card.people.join(", "),
+  ].filter(Boolean);
+
   return (
-    <Modal open onClose={onClose} title={isItemType(card.itemType) ? ITEM_TYPE_LABELS[card.itemType] : "Task"} panelClassName="app-dialog-fixed w-full max-w-4xl">
+    <Modal open onClose={onClose} title={title} panelClassName="app-dialog-fixed w-full max-w-4xl">
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,340px)]">
         <div className="min-h-0 space-y-4 overflow-y-auto p-5">
           <div>
-            <span className="flex flex-wrap items-center gap-1">
-              <ItemTypeChip itemType={card.itemType} />
-              <TierChip tier={card.tier} />
-              <SignOffChip signOff={card.signOff} />
-              <CardProgressChip progress={card.progress} />
-            </span>
+            <div className="flex flex-wrap items-start gap-2">
+              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                <ItemTypeChip itemType={card.itemType} />
+                <TierChip tier={card.tier} />
+                <SignOffChip signOff={card.signOff} />
+                <CardProgressChip progress={card.progress} />
+              </span>
+              {canEdit ? (
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setEditing(true)} data-board-edit>
+                    <PencilSquareIcon className="h-3.5 w-3.5" /> Edit
+                  </button>
+                  {canDelete ? (
+                    <button
+                      type="button"
+                      className="app-button app-button-secondary app-button-sm text-red-700"
+                      onClick={() => setConfirmDelete(true)}
+                      aria-label="Delete card"
+                      title="Delete card"
+                      data-board-delete
+                    >
+                      <TrashIcon className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
+            {confirmDelete ? (
+              <div className="mt-3 rounded-[8px] border border-red-200 bg-red-50 p-3 text-[13px] text-red-800" data-board-delete-confirm>
+                <p>
+                  Delete &ldquo;{card.title}&rdquo;? It comes off the board.{" "}
+                  {audience === "client" ? "Gitwork can put it back if you need it." : "You can restore it from the deleted list."}
+                  {card.progress ? " Its dev tasks aren’t deleted, just unlinked." : ""}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" className="app-button app-button-danger app-button-sm" disabled={deleting} onClick={() => void remove()}>
+                    {deleting ? "Deleting…" : "Delete card"}
+                  </button>
+                  <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setConfirmDelete(false)}>
+                    Keep it
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <h2 className="mt-2 text-[18px] font-semibold leading-snug text-[var(--text-1)]">{card.title}</h2>
             <p className="mt-1 text-[12px] text-[var(--text-3)]" style={MONO}>
-              {[card.release?.label, card.area, TASK_PRIORITY_LABELS[card.priority as TaskPriority], card.people.join(", ")]
-                .filter(Boolean)
-                .join(" · ")}
+              {meta.join(" · ")}
             </p>
           </div>
           <label className="block">
@@ -685,15 +994,11 @@ function CardDetail({
                 if (next) onMove(next);
               }}
             >
-              {lanes.map((l) => {
-                const refused = audience === "client" ? clientMoveRefusal(card.status, l.stage) : null;
-                return (
-                  <option key={l.key} value={l.key} disabled={Boolean(refused) && l.key !== card.laneKey}>
-                    {l.label}
-                    {refused && l.key !== card.laneKey ? " (Gitwork only)" : ""}
-                  </option>
-                );
-              })}
+              {lanes.map((l) => (
+                <option key={l.key} value={l.key}>
+                  {l.label}
+                </option>
+              ))}
             </select>
             {lane ? null : <span className="text-[12px] text-[var(--text-4)]">This card&apos;s column was removed.</span>}
           </label>
@@ -704,6 +1009,20 @@ function CardDetail({
           ) : (
             <p className="text-[13px] text-[var(--text-4)]">No description.</p>
           )}
+          {card.dependsOn.length ? (
+            <div>
+              <p className="widget-data-label text-[var(--text-4)]">Depends on</p>
+              <ul className="mt-1 space-y-1">
+                {card.dependsOn.map((d) => (
+                  <li key={d.id}>
+                    <button type="button" className="text-left text-[13px] font-medium text-[var(--brand-600)] hover:underline" onClick={() => onOpenCard(d.id)}>
+                      {d.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {card.images.length ? (
             <div>
               <p className="widget-data-label text-[var(--text-4)]">Images</p>
@@ -764,20 +1083,31 @@ function CardDetail({
             {feedback.isLoading ? <p className="text-[13px] text-[var(--text-4)]">Loading…</p> : null}
             {feedback.data?.feedback.length === 0 ? (
               <p className="text-[13px] text-[var(--text-4)]">
-                {audience === "client" ? "No feedback yet. Say what you think, approve it, or ask for changes." : "The client hasn\u2019t said anything on this card yet."}
+                {audience === "client" ? "No feedback yet. Say what you think, approve it, or ask for changes." : "The client hasn’t said anything on this card yet."}
               </p>
             ) : null}
-            {feedback.data?.feedback.map((f) => (
-              <div key={f.id} className="text-[13px]">
-                <p className="text-[11px] text-[var(--text-4)]" style={MONO}>
-                  {f.side === "team" ? "GITWORK" : "CLIENT"} · {f.authorName} · {formatDay(f.createdAt)}
-                </p>
-                {f.kind !== "comment" ? (
-                  <SignOffChip signOff={f.kind} className="mt-1" />
-                ) : null}
-                {f.body ? <p className="mt-1 whitespace-pre-wrap text-[var(--text-2)]">{f.body}</p> : null}
-              </div>
-            ))}
+            {feedback.data?.feedback.map((f) =>
+              f.kind === "change" ? (
+                // A record of an edit, written by the board: one quiet line.
+                <div key={f.id} className="text-[12px] text-[var(--text-3)]" data-board-change>
+                  <p>
+                    <span className="text-[11px] text-[var(--text-4)]" style={MONO}>
+                      {formatDay(f.createdAt)} ·{" "}
+                    </span>
+                    {f.body}
+                  </p>
+                  <PreviousValues previous={f.previous} />
+                </div>
+              ) : (
+                <div key={f.id} className="text-[13px]">
+                  <p className="text-[11px] text-[var(--text-4)]" style={MONO}>
+                    {f.side === "team" ? "GITWORK" : "CLIENT"} · {f.authorName} · {formatDay(f.createdAt)}
+                  </p>
+                  {f.kind !== "comment" ? <SignOffChip signOff={f.kind} className="mt-1" /> : null}
+                  {f.body ? <p className="mt-1 whitespace-pre-wrap text-[var(--text-2)]">{f.body}</p> : null}
+                </div>
+              ),
+            )}
             {feedback.isError ? <p className="text-[13px] text-red-700">Couldn&apos;t load the feedback.</p> : null}
           </div>
           <div className="shrink-0 space-y-2 border-t border-[var(--border-2)] p-4">
@@ -813,103 +1143,224 @@ function CardDetail({
   );
 }
 
-function AddCardDialog({
-  token,
+const EMPTY_FORM: BoardCardForm = {
+  title: "",
+  itemType: "feature",
+  laneKey: "",
+  parentId: null,
+  releaseId: null,
+  tier: null,
+  area: null,
+  priority: "MEDIUM",
+  estimateHours: null,
+  dueDate: null,
+  description: "",
+  links: [],
+  dependsOn: [],
+};
+
+/** A card's current fields, as the edit form starts from them. Links come back out of the description. */
+function formFromCard(card: WikiBoardCard): BoardCardForm {
+  const { body, links } = splitCardDescription(card.description);
+  return {
+    title: card.title,
+    itemType: card.itemType === "bug" || card.itemType === "feedback" ? card.itemType : "feature",
+    laneKey: card.laneKey,
+    parentId: null,
+    releaseId: card.release?.id ?? null,
+    tier: card.tier,
+    area: card.area,
+    priority: card.priority,
+    estimateHours: card.estimateHours,
+    dueDate: card.dueDate ? card.dueDate.slice(0, 10) : null,
+    description: body,
+    links,
+    dependsOn: card.dependsOn.map((d) => d.id),
+  };
+}
+
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+/**
+ * Add a card, or edit one: every field the client's own planning board had, except who works on
+ * it. Screenshots are added once the card is saved, against the card's own image route.
+ */
+function CardForm({
+  mode,
+  target,
+  audience,
+  section,
+  cards,
   lanes,
-  releases,
-  initialLane,
-  onClose,
-  onAdded,
+  card,
+  initial,
+  onCancel,
+  onSaved,
 }: {
-  token: string;
+  mode: "add" | "edit";
+  target: BoardTarget;
+  audience: "client" | "team";
+  section: WikiBoardSection;
+  cards: WikiBoardCard[];
   lanes: WikiBoardLane[];
-  releases: WikiBoardSection["releases"];
-  initialLane: string;
-  onClose: () => void;
-  onAdded: (card: WikiBoardCard) => void;
+  card?: WikiBoardCard;
+  initial: BoardCardForm;
+  onCancel: () => void;
+  onSaved: (card: WikiBoardCard) => void;
 }) {
-  const [itemType, setItemType] = useState<(typeof CLIENT_CARD_TYPES)[number]>("feature");
-  const [title, setTitle] = useState("");
-  const [laneKey, setLaneKey] = useState(initialLane);
-  const [releaseId, setReleaseId] = useState("");
-  const [priority, setPriority] = useState<TaskPriority>("MEDIUM");
-  const [description, setDescription] = useState("");
-  const [links, setLinks] = useState("");
+  const toast = useToast();
+  const [form, setForm] = useState<BoardCardForm>(initial);
+  const [links, setLinks] = useState(initial.links.join("\n"));
+  const [estimate, setEstimate] = useState(initial.estimateHours === null ? "" : String(initial.estimateHours));
+  const [files, setFiles] = useState<File[]>([]);
+  const [depQuery, setDepQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const set = <K extends keyof BoardCardForm>(k: K, v: BoardCardForm[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const subItem = form.itemType === "subitem";
+  // The cards a card may depend on, or a sub-item go under: what this person can see, not this one.
+  const mayPick = cards.filter((c) => c.id !== card?.id && (audience === "team" || clientMayActOn(c)));
+  const features = mayPick.filter((c) => c.itemType === "feature");
+  const depChoices = depQuery.trim() ? fuzzySearch(mayPick, depQuery, (c) => [c.title]) : mayPick;
+  const existingImages = card?.images.length ?? 0;
+  const types = mode === "add" ? CLIENT_CARD_TYPES : BOARD_EDIT_TYPES;
 
   async function save() {
-    if (!title.trim()) {
-      setError("Give the card a title.");
-      return;
-    }
+    if (!form.title.trim()) return setError("Give the card a title.");
+    if (subItem && !form.parentId) return setError("Pick the feature this sub-item belongs to.");
     const list = links.split(/\s+/).map((l) => l.trim()).filter(Boolean);
     const bad = list.find((l) => !safeLaunchpadLink(l));
-    if (bad) {
-      setError(`"${bad}" isn't a web link. Links need to start with https://`);
-      return;
+    if (bad) return setError(`“${bad}” isn't a web link. Links need to start with https://`);
+    if (list.length > BOARD_LIMITS.links) return setError(`Up to ${BOARD_LIMITS.links} links.`);
+    const est = estimate.trim() === "" ? null : Number(estimate);
+    if (est !== null && (!Number.isFinite(est) || est < 0 || est > BOARD_LIMITS.estimateHours)) {
+      return setError(`The estimate is a number of hours from 0 to ${BOARD_LIMITS.estimateHours}.`);
     }
-    if (list.length > BOARD_LIMITS.links) {
-      setError(`Up to ${BOARD_LIMITS.links} links.`);
-      return;
-    }
+    if (existingImages + files.length > BOARD_LIMITS.images) return setError(`A card holds up to ${BOARD_LIMITS.images} images.`);
+    const wrong = files.find((f) => !IMAGE_TYPES.includes(f.type) || f.size > BOARD_LIMITS.imageBytes);
+    if (wrong) return setError(`“${wrong.name}” isn't a PNG, JPEG, GIF or WebP image under 10 MB.`);
+    const next: BoardCardForm = { ...form, title: form.title.trim(), links: list, estimateHours: est };
     setSaving(true);
     setError(null);
     try {
-      onAdded(
-        await addBoardCardApi(token, {
-          title: title.trim(),
-          itemType,
-          laneKey,
-          releaseId: releaseId || null,
-          priority,
-          description,
-          links: list,
-        }),
-      );
+      let saved: WikiBoardCard;
+      if (mode === "add") {
+        saved = await addBoardCardApi(target, next);
+      } else {
+        // Only what changed goes up, so the thread records what was really edited.
+        const patch: Record<string, unknown> = {};
+        for (const k of ["title", "itemType", "releaseId", "tier", "area", "priority", "estimateHours", "dueDate", "description", "links", "dependsOn"] as const) {
+          if (JSON.stringify(next[k] ?? null) !== JSON.stringify(initial[k] ?? null)) patch[k] = k === "area" ? next.area?.trim() || null : next[k];
+        }
+        saved = Object.keys(patch).length ? await updateBoardCardApi(target, card!.id, patch) : card!;
+      }
+      if (files.length && !subItem) {
+        try {
+          // nginx refuses a body over 25 MB, so a big selection goes up in several requests.
+          for (const batch of uploadBatches(files)) saved = await uploadBoardImagesApi(target, saved.id, batch);
+        } catch (err) {
+          toast.error("The card is saved, but the images weren't", err instanceof Error ? err.message : "Please try adding them again.");
+        }
+      }
+      onSaved(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't add the card. Please try again.");
+      setError(err instanceof Error ? err.message : "Couldn't save the card. Please try again.");
       setSaving(false);
     }
   }
 
+  const field = "app-input mt-1 h-10 w-full text-[16px] sm:text-sm";
+  const select = "app-select mt-1 h-10 w-full text-[16px] sm:text-sm";
   return (
-    <Modal open onClose={onClose} title="Add a card" panelClassName="app-dialog-fixed w-full max-w-lg">
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+    <>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5" data-board-card-form>
         <div>
-          <span className="widget-data-label text-[var(--text-4)]">Type</span>
+          <span className="widget-data-label block text-[var(--text-4)]">Type</span>
           <Segmented
             label="Type"
-            className="mt-1"
-            value={itemType}
-            onChange={setItemType}
-            options={CLIENT_CARD_TYPES.map((t) => ({ value: t, label: ITEM_TYPE_LABELS[t] }))}
+            className="mt-1 flex w-full flex-wrap sm:inline-flex sm:w-auto"
+            value={form.itemType}
+            onChange={(v) => set("itemType", v)}
+            options={types.map((t) => ({ value: t, label: ITEM_TYPE_LABELS[t] }))}
           />
         </div>
+        {subItem ? (
+          <label className="block">
+            <span className="widget-data-label text-[var(--text-4)]">Feature it belongs to</span>
+            <select className={select} value={form.parentId ?? ""} onChange={(e) => set("parentId", e.target.value || null)}>
+              <option value="">{features.length ? "Choose a feature card" : "No feature cards yet"}</option>
+              {features.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label className="block">
           <span className="widget-data-label text-[var(--text-4)]">Title</span>
           <input
-            className="app-input mt-1 h-10 w-full text-[16px] sm:text-sm"
-            value={title}
+            className={field}
+            value={form.title}
             maxLength={BOARD_LIMITS.title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={itemType === "bug" ? "What's going wrong?" : "What should it do?"}
+            onChange={(e) => set("title", e.target.value)}
+            placeholder={form.itemType === "bug" ? "What's going wrong?" : "What should it do?"}
           />
         </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {mode === "add" ? (
+            <label className="block">
+              <span className="widget-data-label text-[var(--text-4)]">Column</span>
+              <select className={select} value={form.laneKey} onChange={(e) => set("laneKey", e.target.value)}>
+                {lanes.map((l) => (
+                  <option key={l.key} value={l.key}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className="block">
-            <span className="widget-data-label text-[var(--text-4)]">Column</span>
-            <select className="app-select mt-1 h-10 w-full text-[16px] sm:text-sm" value={laneKey} onChange={(e) => setLaneKey(e.target.value)}>
-              {lanes.map((l) => (
-                <option key={l.key} value={l.key}>
-                  {l.label}
+            <span className="widget-data-label text-[var(--text-4)]">Release</span>
+            <select className={select} value={form.releaseId ?? ""} onChange={(e) => set("releaseId", e.target.value || null)}>
+              <option value="">No release yet</option>
+              {section.releases.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
                 </option>
               ))}
             </select>
           </label>
           <label className="block">
+            <span className="widget-data-label text-[var(--text-4)]">Tier</span>
+            <select className={select} value={form.tier ?? ""} onChange={(e) => set("tier", e.target.value || null)}>
+              <option value="">No tier</option>
+              {TIERS.map((t) => (
+                <option key={t} value={t}>
+                  {TIER_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="widget-data-label text-[var(--text-4)]">Area</span>
+            <input
+              className={field}
+              list="board-areas"
+              value={form.area ?? ""}
+              maxLength={BOARD_LIMITS.area}
+              onChange={(e) => set("area", e.target.value)}
+              placeholder="Choose or type a new one"
+            />
+            <datalist id="board-areas">
+              {section.areas.map((a) => (
+                <option key={a} value={a} />
+              ))}
+            </datalist>
+          </label>
+          <label className="block">
             <span className="widget-data-label text-[var(--text-4)]">Priority</span>
-            <select className="app-select mt-1 h-10 w-full text-[16px] sm:text-sm" value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>
+            <select className={select} value={form.priority} onChange={(e) => set("priority", e.target.value as TaskPriority)}>
               {(["LOW", "MEDIUM", "HIGH"] as const).map((p) => (
                 <option key={p} value={p}>
                   {TASK_PRIORITY_LABELS[p]}
@@ -917,28 +1368,32 @@ function AddCardDialog({
               ))}
             </select>
           </label>
-        </div>
-        {releases.length ? (
           <label className="block">
-            <span className="widget-data-label text-[var(--text-4)]">Release</span>
-            <select className="app-select mt-1 h-10 w-full text-[16px] sm:text-sm" value={releaseId} onChange={(e) => setReleaseId(e.target.value)}>
-              <option value="">No release yet</option>
-              {releases.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
+            <span className="widget-data-label text-[var(--text-4)]">Estimate (hours)</span>
+            <input
+              className={field}
+              type="number"
+              inputMode="decimal"
+              min={0}
+              max={BOARD_LIMITS.estimateHours}
+              step={0.5}
+              value={estimate}
+              onChange={(e) => setEstimate(e.target.value)}
+            />
           </label>
-        ) : null}
+          <label className="block">
+            <span className="widget-data-label text-[var(--text-4)]">Due date</span>
+            <input className={field} type="date" value={form.dueDate ?? ""} onChange={(e) => set("dueDate", e.target.value || null)} />
+          </label>
+        </div>
         <label className="block">
           <span className="widget-data-label text-[var(--text-4)]">Description</span>
           <textarea
             className="app-input mt-1 w-full resize-y px-3 py-2 text-[16px] sm:text-sm"
             rows={4}
-            value={description}
+            value={form.description}
             maxLength={BOARD_LIMITS.description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => set("description", e.target.value)}
           />
         </label>
         <label className="block">
@@ -951,16 +1406,105 @@ function AddCardDialog({
             placeholder="https://"
           />
         </label>
+        {mayPick.length ? (
+          <div>
+            <span className="widget-data-label text-[var(--text-4)]">Depends on</span>
+            {form.dependsOn.length ? (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {form.dependsOn.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className="inline-flex max-w-full items-center gap-1 rounded-[4px] bg-[var(--surface-1)] px-2 py-0.5 text-[12px] text-[var(--text-2)] hover:bg-[var(--surface-2)]"
+                    onClick={() => set("dependsOn", form.dependsOn.filter((d) => d !== id))}
+                    title="Remove"
+                  >
+                    <span className="truncate">{cards.find((c) => c.id === id)?.title ?? "A card"}</span>
+                    <XMarkIcon className="h-3 w-3 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <input
+              className="app-input mt-1.5 h-9 w-full text-[16px] sm:text-sm"
+              type="search"
+              value={depQuery}
+              onChange={(e) => setDepQuery(e.target.value)}
+              placeholder="Find a card it depends on…"
+              aria-label="Find a card it depends on"
+            />
+            <ul className="mt-1 max-h-[140px] overflow-y-auto rounded-[6px] border border-[var(--border-2)]">
+              {depChoices.slice(0, 50).map((c) => {
+                const on = form.dependsOn.includes(c.id);
+                return (
+                  <li key={c.id}>
+                    <label className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[13px] text-[var(--text-2)] hover:bg-[var(--surface-1)]">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        disabled={!on && form.dependsOn.length >= BOARD_LIMITS.dependsOn}
+                        onChange={() => set("dependsOn", on ? form.dependsOn.filter((d) => d !== c.id) : [...form.dependsOn, c.id])}
+                      />
+                      <span className="min-w-0 truncate" title={c.title}>
+                        {c.title}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
+        {subItem ? (
+          <p className="text-[12px] text-[var(--text-4)]">Add screenshots on the feature card itself.</p>
+        ) : (
+          <div>
+            <span className="widget-data-label text-[var(--text-4)]">Screenshots</span>
+            <p className="text-[12px] text-[var(--text-4)]">
+              PNG, JPEG, GIF or WebP, up to 10 MB and 40 megapixels each, and {BOARD_LIMITS.images} a card
+              {existingImages ? ` (this card has ${existingImages})` : ""}.
+            </p>
+            <label className="app-button app-button-secondary app-button-sm mt-1.5 inline-flex cursor-pointer">
+              <PhotoIcon className="h-4 w-4" /> Choose images
+              <input
+                type="file"
+                accept={IMAGE_TYPES.join(",")}
+                multiple
+                className="sr-only"
+                data-board-file
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files ?? []);
+                  setFiles((f) => [...f, ...picked].slice(0, BOARD_LIMITS.images));
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {files.length ? (
+              <ul className="mt-1.5 space-y-1">
+                {files.map((f, i) => (
+                  <li key={`${f.name}-${i}`} className="flex items-center gap-2 text-[12px] text-[var(--text-2)]">
+                    <span className="min-w-0 flex-1 truncate" title={f.name}>
+                      {f.name}
+                    </span>
+                    <button type="button" className="shrink-0 text-[var(--text-4)] hover:text-[var(--text-1)]" aria-label={`Remove ${f.name}`} onClick={() => setFiles((list) => list.filter((_, j) => j !== i))}>
+                      <XMarkIcon className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        )}
       </div>
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-2)] px-5 py-3">
-        {error ? <p className="mr-auto text-[12px] text-red-700">{error}</p> : null}
-        <button type="button" className="app-button app-button-secondary app-button-md" onClick={onClose}>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border-2)] px-5 py-3">
+        {error ? <p className="mr-auto min-w-0 text-[12px] text-red-700">{error}</p> : null}
+        <button type="button" className="app-button app-button-secondary app-button-md" onClick={onCancel}>
           Cancel
         </button>
         <button type="button" className="app-button app-button-primary app-button-md" disabled={saving} onClick={() => void save()}>
-          {saving ? "Adding…" : "Add card"}
+          {saving ? "Saving…" : mode === "add" ? "Add card" : "Save changes"}
         </button>
       </div>
-    </Modal>
+    </>
   );
 }

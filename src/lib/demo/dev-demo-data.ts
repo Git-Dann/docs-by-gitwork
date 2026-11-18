@@ -20,14 +20,14 @@ import { layoutBoard } from "@/lib/wiki-board-layout";
 import {
   cardDescription,
   clientCanAddToStage,
-  clientMoveRefusal,
   deriveSignOff,
   feedbackRefusal,
   isClientCardType,
   isFeedbackKind,
   shortPersonName,
 } from "@/lib/wiki-board";
-import type { WikiBoardCard, WikiBoardFeedback, WikiBoardSection } from "@/types/wiki-board";
+import type { WikiBoardCard, WikiBoardDeletedCard, WikiBoardFeedback, WikiBoardSection } from "@/types/wiki-board";
+import { changeSentence, describeCardChanges, imagesSentence, splitCardDescription, type CardFields } from "@/lib/wiki-board-edit";
 import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
 import { demoAiAnswersReport, demoSaveAiAnswersConfig, demoStartAiAnswersRun } from "@/lib/demo/demo-ai-answers";
 import { parseAiSearchRange } from "@/lib/ai-search";
@@ -4260,6 +4260,7 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
     tier: t.tier,
     area: t.area,
     priority: t.priority,
+    estimateHours: isCard || addedByClient ? t.estimateHours : null,
     status: t.status,
     laneKey: laneKeyFor(t, cols),
     orderKey: t.orderKey,
@@ -4271,9 +4272,15 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
     feedbackCount: entries.length,
     // Same rule as the server (`descriptionsFor`): a dev task's description never reaches the board.
     description: isCard || addedByClient ? t.description : null,
-    subtasks: [],
+    subtasks: demoBoardTasks
+      .filter((s) => s.parentId === t.id && !s.archivedAt)
+      .map((s) => ({ title: s.title, done: s.status === "DONE" })),
     images: isCard || addedByClient ? (demoBoardImages.get(t.id) ?? []) : [],
     stageHistory: isCard ? [{ label: "Scoping", date: "2026-05-18" }, { label: "Future Idea", date: "2026-05-21" }] : [],
+    dependsOn: (Array.isArray(t.metadata?.dependsOn) ? (t.metadata!.dependsOn as string[]) : []).flatMap((id) => {
+      const dep = demoBoardTasks.find((d) => d.id === id && !d.archivedAt);
+      return dep ? [{ id, title: dep.title }] : [];
+    }),
     isCard,
     addedByClient,
     updatedAt: t.updatedAt,
@@ -4296,7 +4303,50 @@ function demoBoardSection(): WikiBoardSection {
     releases,
     completedAt: new Map(tasks.map((t) => [t.id, t.completedAt])),
   });
-  return { ...laid, showAllTasks: demoBoardShowAllTasks };
+  return { ...laid, showAllTasks: demoBoardShowAllTasks, deleted: demoDeletedCards() };
+}
+
+/** Cards deleted from the demo board, for the team's Restore list. */
+function demoDeletedCards(): WikiBoardDeletedCard[] {
+  return demoBoardTasks
+    .filter((t) => t.archivedAt && t.metadata && "deletedFromBoard" in t.metadata)
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      itemType: t.itemType,
+      deletedBy: String((t.metadata!.deletedFromBoard as { name?: string }).name ?? "Someone"),
+      deletedAt: t.archivedAt!,
+    }));
+}
+
+function demoCardFields(t: TaskDTO): CardFields {
+  const { body, links } = splitCardDescription(t.description);
+  return {
+    title: t.title,
+    itemType: t.itemType,
+    tier: t.tier,
+    area: t.area,
+    priority: t.priority,
+    estimateHours: t.estimateHours,
+    dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
+    releaseId: t.release?.id ?? null,
+    description: body || null,
+    links,
+    dependsOn: Array.isArray(t.metadata?.dependsOn) ? (t.metadata!.dependsOn as string[]) : [],
+  };
+}
+
+/** A change entry in the demo thread, written the same way as the server's. */
+function demoRecordChange(id: string, team: boolean, body: string) {
+  const entry: WikiBoardFeedback = {
+    id: `chg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    kind: "change",
+    body,
+    authorName: team ? DEV.name : "Priya Shah",
+    side: team ? "team" : "client",
+    createdAt: new Date().toISOString(),
+  };
+  demoBoardFeedback.set(id, [...(demoBoardFeedback.get(id) ?? []), entry]);
 }
 
 function bodyOf(init?: { body?: unknown }): Record<string, unknown> {
@@ -4343,20 +4393,22 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
     const body = bodyOf(init);
     const lane = boardLanes(demoBoardColumns).find((l) => l.key === body.laneKey);
     if (!task || !lane) return { error: "Not found", __status: 404 };
-    const refusal = clientMoveRefusal(task.status, lane.stage);
-    if (refusal) return { error: refusal, __status: 403 };
     task.status = lane.stage;
     task.boardColumnId = lane.columnId;
     if (typeof body.orderKey === "number") task.orderKey = body.orderKey;
     return { card: demoBoardCard(task, demoBoardColumns) };
   }
-  if (/^\/api\/wiki\/[^/]+\/board\/tasks$/.test(pathname) && method === "POST") {
+  const team = pathname.startsWith("/api/clients/");
+  const who = team ? DEV.name : "Priya Shah";
+  if ((/^\/api\/wiki\/[^/]+\/board\/tasks$/.test(pathname) || /^\/api\/clients\/[^/]+\/wiki\/board\/cards$/.test(pathname)) && method === "POST") {
     const body = bodyOf(init);
     const lane = boardLanes(demoBoardColumns).find((l) => l.key === body.laneKey);
     if (!lane || !clientCanAddToStage(lane.stage)) return { error: "New cards go in an early column.", __status: 403 };
     if (!isClientCardType(body.itemType) || typeof body.title !== "string" || !body.title.trim()) {
       return { error: "Give the card a title.", __status: 400 };
     }
+    const parent = body.itemType === "subitem" ? demoBoardTasks.find((t) => t.id === body.parentId && t.itemType === "feature" && !t.parentId) : undefined;
+    if (body.itemType === "subitem" && !parent) return { error: "Pick the feature this sub-item belongs to.", __status: 400 };
     const release = typeof body.releaseId === "string" ? demoReleases.find((r) => r.id === body.releaseId) : undefined;
     const task = mkTask({
       id: `cc-${Date.now()}`,
@@ -4371,12 +4423,83 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
         typeof body.description === "string" ? body.description : null,
         Array.isArray(body.links) ? (body.links as string[]) : [],
       ) ?? undefined,
-      card: { itemType: body.itemType },
+      card: {
+        itemType: body.itemType,
+        tier: typeof body.tier === "string" ? body.tier : undefined,
+        area: typeof body.area === "string" ? body.area : undefined,
+        estimateHours: typeof body.estimateHours === "number" ? body.estimateHours : undefined,
+      },
     });
     task.boardColumnId = lane.columnId;
-    task.metadata = { createdByClient: { name: "Priya Shah" } };
+    task.dueDate = typeof body.dueDate === "string" ? `${body.dueDate.slice(0, 10)}T12:00:00.000Z` : null;
+    task.parentId = parent?.id ?? null;
+    task.metadata = {
+      ...(team ? {} : { createdByClient: { name: who } }),
+      ...(Array.isArray(body.dependsOn) && body.dependsOn.length ? { dependsOn: body.dependsOn } : {}),
+    };
     demoBoardTasks.push(task);
-    return { card: demoBoardCard(task, demoBoardColumns) };
+    return { card: demoBoardCard(parent ?? task, demoBoardColumns) };
+  }
+  const one =
+    /^\/api\/wiki\/[^/]+\/board\/tasks\/([^/]+)(\/images)?$/.exec(pathname) ??
+    /^\/api\/clients\/[^/]+\/wiki\/board\/cards\/([^/]+)(\/images|\/restore)?$/.exec(pathname);
+  if (one) {
+    const task = demoBoardTasks.find((t) => t.id === one[1]);
+    if (!task) return { error: "Not found", __status: 404 };
+    const actable = isProductCard(task) || Boolean(task.metadata && "createdByClient" in task.metadata);
+    if (!team && !actable) return { error: "Not found", __status: 404 };
+    if (one[2] === "/restore" && method === "POST") {
+      task.archivedAt = null;
+      if (task.metadata) delete task.metadata.deletedFromBoard;
+      demoRecordChange(task.id, true, `${who} restored this card.`);
+      return { card: demoBoardCard(task, demoBoardColumns) };
+    }
+    if (task.archivedAt) return { error: "Not found", __status: 404 };
+    if (one[2] === "/images" && method === "POST") {
+      // The demo has no database: an uploaded image is shown from the browser's own copy.
+      const form = init?.body instanceof FormData ? init.body : null;
+      const files = (form?.getAll("file") ?? []).filter((f): f is File => f instanceof File);
+      if (!files.length) return { error: "Choose an image to add.", __status: 400 };
+      demoBoardImages.set(task.id, [...(demoBoardImages.get(task.id) ?? []), ...files.map((f) => URL.createObjectURL(f))]);
+      demoRecordChange(task.id, team, imagesSentence(who, files.length));
+      return { card: demoBoardCard(task, demoBoardColumns) };
+    }
+    if (method === "DELETE") {
+      task.archivedAt = new Date().toISOString();
+      task.metadata = { ...(task.metadata ?? {}), deletedFromBoard: { name: who, at: task.archivedAt } };
+      demoRecordChange(task.id, team, `${who} deleted this card.`);
+      return { deleted: task.id };
+    }
+    if (method === "PATCH") {
+      const body = bodyOf(init);
+      if ("assignees" in body || "assigneeId" in body) return { error: "Unrecognized key: assignees", __status: 400 };
+      const before = demoCardFields(task);
+      if (typeof body.title === "string") task.title = body.title.trim() || task.title;
+      if (typeof body.itemType === "string") task.itemType = body.itemType;
+      if ("tier" in body) task.tier = (body.tier as string | null) ?? null;
+      if ("area" in body) task.area = (body.area as string | null) ?? null;
+      if (typeof body.priority === "string") task.priority = body.priority as TaskDTO["priority"];
+      if ("estimateHours" in body) task.estimateHours = (body.estimateHours as number | null) ?? null;
+      if ("dueDate" in body) task.dueDate = typeof body.dueDate === "string" ? `${body.dueDate.slice(0, 10)}T12:00:00.000Z` : null;
+      if ("releaseId" in body) {
+        const r = demoReleases.find((x) => x.id === body.releaseId);
+        task.release = r ? { id: r.id, version: r.version, name: r.name } : null;
+      }
+      if ("description" in body || "links" in body) {
+        task.description =
+          cardDescription(
+            "description" in body ? ((body.description as string | null) ?? null) : before.description,
+            "links" in body ? ((body.links as string[]) ?? []) : before.links,
+          ) ?? "";
+      }
+      if (Array.isArray(body.dependsOn)) task.metadata = { ...(task.metadata ?? {}), dependsOn: body.dependsOn };
+      const phrases = describeCardChanges(before, demoCardFields(task), (id) => {
+        const r = demoReleases.find((x) => x.id === id);
+        return r ? releaseLabel(r) : null;
+      });
+      if (phrases.length) demoRecordChange(task.id, team, changeSentence(who, phrases));
+      return { card: demoBoardCard(task, demoBoardColumns) };
+    }
   }
   return undefined;
 }

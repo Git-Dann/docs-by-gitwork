@@ -10,9 +10,10 @@
  *   - Sign-off is DERIVED from the latest Approved / Changes needed entry, never stored on the
  *     task. A later "Changes needed" therefore replaces an earlier "Approved" with no flag to
  *     forget to clear, and a plain comment never changes it.
- *   - The client can move a card between any lanes EXCEPT into or out of Done. Marking work
- *     live, or reopening it, is the team's decision: it drives standups, Foreman and the
- *     client's own Delivery figures.
+ *   - The client has full control of their cards (Dan, Nov 2026): move them anywhere, Done
+ *     included, edit every field, delete them. The ONE thing they can never do is choose who
+ *     works on a card: assignees are the team's (src/server/validators.ts `boardCardEditSchema`
+ *     is .strict() and has no assignee field). The team's own dev tasks stay the team's.
  *   - The client adds cards only to the early lanes (Backlog and To do stages), so a card they
  *     add is always something waiting to be looked at, never work claimed to be in progress.
  */
@@ -26,19 +27,37 @@ export function isFeedbackKind(v: unknown): v is FeedbackKind {
   return typeof v === "string" && (FEEDBACK_KINDS as readonly string[]).includes(v);
 }
 
-/** The item types a client may create from the board. Sub-items come from the team. */
-export const CLIENT_CARD_TYPES = ["feature", "bug", "feedback"] as const;
+/** The item types a card can be created as from the board. A sub-item needs a parent feature card. */
+export const CLIENT_CARD_TYPES = ["feature", "subitem", "bug", "feedback"] as const;
 export type ClientCardType = (typeof CLIENT_CARD_TYPES)[number];
 
 export function isClientCardType(v: unknown): v is ClientCardType {
   return typeof v === "string" && (CLIENT_CARD_TYPES as readonly string[]).includes(v);
 }
 
+/** What a top-level card can be changed to. A sub-item lives inside its feature card, not on the board. */
+export const BOARD_EDIT_TYPES = ["feature", "bug", "feedback"] as const;
+export type BoardEditType = (typeof BOARD_EDIT_TYPES)[number];
+
 export const BOARD_LIMITS = {
   title: 200,
   description: 10_000,
   feedback: 4_000,
   links: 10,
+  area: 80,
+  estimateHours: 1_000,
+  /** Cards one card can depend on. */
+  dependsOn: 20,
+  /** Screenshots on one card. */
+  images: 10,
+  imageBytes: 10 * 1024 * 1024,
+  /**
+   * One upload request. nginx refuses bodies over 25 MB (deploy/nginx/foundry.conf), so the form
+   * sends larger selections in several requests, each under this.
+   */
+  uploadRequestBytes: 24 * 1024 * 1024,
+  /** Width × height an uploaded image may declare. Above this it isn't decoded at all. */
+  imagePixels: 40_000_000,
   /** Done lanes show the newest this-many cards, then "+N more". */
   doneLaneCards: 50,
 } as const;
@@ -67,17 +86,6 @@ export const SIGN_OFF_LABELS: Record<Exclude<SignOff, null>, string> = {
 /** Lanes a client may add a card to: the early stages, where new work waits to be looked at. */
 export function clientCanAddToStage(stage: TaskStatus): boolean {
   return stage === "BACKLOG" || stage === "TODO";
-}
-
-/**
- * Why a client can't make this move, as a sentence, or null when they can. Anything touching
- * Done is the team's call, including rearranging live cards: a live card isn't the client's to
- * move, it's the record of what shipped.
- */
-export function clientMoveRefusal(from: TaskStatus, to: TaskStatus): string | null {
-  if (from === "DONE") return "This card is live. Leave feedback on it and Gitwork will reopen it if needed.";
-  if (to === "DONE") return "Only Gitwork can mark a card as live. Leave feedback or approve it instead.";
-  return null;
 }
 
 /**

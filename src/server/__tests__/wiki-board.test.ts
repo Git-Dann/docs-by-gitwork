@@ -42,8 +42,8 @@ function matches(row: Row, where: Row | undefined): boolean {
   });
 }
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma: Record<string, unknown> = {
     clientWiki: {
       findFirst: vi.fn(async ({ where }: { where: Row }) => db.wikis.find((w) => matches(w, where)) ?? null),
       findUnique: vi.fn(async ({ where }: { where: Row }) => db.wikis.find((w) => w.id === where.id) ?? null),
@@ -80,8 +80,11 @@ vi.mock("@/lib/prisma", () => ({
       }),
       findMany: vi.fn(async () => []),
     },
-  },
-}));
+    $executeRaw: vi.fn(async () => 1),
+  };
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma));
+  return { prisma };
+});
 vi.mock("@/server/notifications", () => ({ dispatchNotification: spies.dispatch }));
 vi.mock("@/server/tasks", () => ({ moveTaskForClient: spies.move, assertClientInScope: spies.inScope }));
 vi.mock("@/server/mcp/auth", () => ({ resolveEffectiveUserById: spies.member }));
@@ -89,7 +92,10 @@ vi.mock("@/server/wiki-board-limit", () => ({
   assertWithinBoardCardQuota: spies.cardQuota,
   assertWithinBoardFeedbackQuota: spies.feedbackQuota,
   countClientCards: spies.countCards,
+  consumeBoardQuota: vi.fn(async () => undefined),
+  pruneBoardQuota: vi.fn(),
   shouldNotifyBoardCards: (last: Date | null) => !last,
+  shouldNotifyCardChange: () => false,
 }));
 vi.mock("@/server/wiki-access", () => ({
   wikiAccessCookieName: (id: string) => `wiki_access_${id}`,
@@ -98,7 +104,7 @@ vi.mock("@/server/wiki-access", () => ({
 vi.mock("@/auth", () => ({ auth: spies.staff }));
 vi.mock("@/server/rate-limit", () => ({ assertWithinRateLimit: vi.fn(async () => undefined), clientIpFrom: () => "1.2.3.4" }));
 
-import { resolveBoardWriter } from "../wiki-board-access";
+import { readBoardImageForm, resolveBoardWriter } from "../wiki-board-access";
 import {
   addBoardFeedback,
   createBoardCard,
@@ -230,9 +236,9 @@ describe("moving a card", () => {
     expect(spies.move).not.toHaveBeenCalled();
   });
 
-  it("a client can't move a card into Done", async () => {
-    await expect(moveBoardCard(client, "t1", { laneKey: "DONE", orderKey: 1 })).rejects.toMatchObject({ status: 403 });
-    expect(spies.move).not.toHaveBeenCalled();
+  it("a client can move a card into Done (Dan, Nov 2026)", async () => {
+    await moveBoardCard(client, "t1", { laneKey: "DONE", orderKey: 1 }).catch(() => undefined);
+    expect(spies.move).toHaveBeenCalledWith("t1", expect.objectContaining({ status: "DONE" }));
   });
 
   it("a column that isn't on the board is a 409", async () => {
@@ -256,9 +262,9 @@ describe("moving a card", () => {
     expect(spies.move).toHaveBeenCalled();
   });
 
-  it("a client can't move a live card, even within Done", async () => {
-    await expect(moveBoardCard(client, "t6", { laneKey: "TODO", orderKey: 1 })).rejects.toMatchObject({ status: 403 });
-    expect(spies.move).not.toHaveBeenCalled();
+  it("a client can move a live card back out of Done", async () => {
+    await moveBoardCard(client, "t6", { laneKey: "TODO", orderKey: 1 }).catch(() => undefined);
+    expect(spies.move).toHaveBeenCalledWith("t6", expect.objectContaining({ status: "TODO", expect: { clientId: "c1", fromStatus: "DONE" } }));
   });
 
   it("a client can't move the team's dev task: it's a 404, like a task that isn't there", async () => {
@@ -412,6 +418,8 @@ function card(over: Partial<WikiBoardCard>): WikiBoardCard {
     subtasks: [],
     images: [],
     stageHistory: [],
+    estimateHours: null,
+    dependsOn: [],
     isCard: false,
     addedByClient: false,
     updatedAt: "2026-11-18T00:00:00.000Z",
@@ -496,5 +504,31 @@ describe("a link for one section", () => {
 
   it("the whole-wiki link carries it", () => {
     expect(scopeBoardToSection(dto, null).board.lanes).toHaveLength(1);
+  });
+});
+
+describe("an upload's size is checked before its body is read", () => {
+  const upload = (length: string | null) => {
+    const formData = vi.fn(async () => new FormData());
+    const headers = new Headers(length === null ? {} : { "content-length": length });
+    return { req: { headers, formData } as unknown as Request, formData };
+  };
+
+  it("refuses a body over the request limit without reading it", async () => {
+    const { req, formData } = upload(String(30 * 1024 * 1024));
+    await expect(readBoardImageForm(req)).rejects.toMatchObject({ status: 413 });
+    expect(formData).not.toHaveBeenCalled();
+  });
+
+  it("refuses a body that doesn't say how big it is", async () => {
+    const { req, formData } = upload(null);
+    await expect(readBoardImageForm(req)).rejects.toMatchObject({ status: 411 });
+    expect(formData).not.toHaveBeenCalled();
+  });
+
+  it("reads one within the limit", async () => {
+    const { req, formData } = upload(String(5 * 1024 * 1024));
+    await expect(readBoardImageForm(req)).rejects.toMatchObject({ status: 400 }); // empty form: no file
+    expect(formData).toHaveBeenCalled();
   });
 });

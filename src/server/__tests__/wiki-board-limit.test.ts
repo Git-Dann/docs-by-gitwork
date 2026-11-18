@@ -4,7 +4,14 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-const counts = vi.hoisted(() => ({ cards: [0, 0], feedback: 0, sql: [] as string[] }));
+const counts = vi.hoisted(() => ({
+  cards: [0, 0],
+  feedback: 0,
+  edits: 0,
+  uploads: [0, 0],
+  sql: [] as string[],
+  feedbackWhere: [] as Array<Record<string, unknown>>,
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
@@ -15,7 +22,14 @@ vi.mock("@/lib/prisma", () => ({
       count: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         // Only the client's own feedback counts: the team's replies (authorUserId set) never do.
         expect(where.authorUserId).toBeNull();
-        return counts.feedback;
+        counts.feedbackWhere.push(where);
+        return where.kind === "change" ? counts.edits : counts.feedback;
+      }),
+    },
+    rateLimitHit: {
+      count: vi.fn(async ({ where }: { where: { bucket: string } }) => {
+        expect(where.bucket).toBe("board:upload:w1");
+        return counts.uploads.shift() ?? 0;
       }),
     },
   },
@@ -25,9 +39,14 @@ import {
   assertWithinBoardCardQuota,
   assertWithinBoardFeedbackQuota,
   BOARD_QUOTA,
+  boardActionQuotaBreach,
+  consumeBoardQuota,
   boardCardQuotaBreach,
+  boardEditQuotaBreach,
   boardFeedbackQuotaBreach,
+  boardUploadQuotaBreach,
   shouldNotifyBoardCards,
+  shouldNotifyCardChange,
 } from "../wiki-board-limit";
 
 describe("the board's limits", () => {
@@ -64,5 +83,77 @@ describe("the board's limits", () => {
     await expect(assertWithinBoardFeedbackQuota("w1")).rejects.toMatchObject({ status: 429 });
     counts.feedback = 3;
     await expect(assertWithinBoardFeedbackQuota("w1")).resolves.toBeUndefined();
+  });
+});
+
+describe("how much the client can change on their Board", () => {
+  it("allows 120 edits an hour per wiki, then says why it stopped", () => {
+    expect(BOARD_QUOTA.editsPerHour).toBe(120);
+    expect(boardEditQuotaBreach(119)).toBeNull();
+    expect(boardEditQuotaBreach(120)).toMatch(/more than 120 changes in an hour/);
+  });
+
+  it("allows 50 screenshots an hour and 200 a day per wiki, counting what's being added", () => {
+    expect(boardUploadQuotaBreach({ hour: 49, day: 49 }, 1)).toBeNull();
+    expect(boardUploadQuotaBreach({ hour: 49, day: 49 }, 2)).toMatch(/50 screenshots in an hour/);
+    expect(boardUploadQuotaBreach({ hour: 0, day: 199 }, 1)).toBeNull();
+    expect(boardUploadQuotaBreach({ hour: 0, day: 199 }, 2)).toMatch(/200 screenshots today/);
+  });
+
+  it("tells the team about a card's edits once per 10 minutes", () => {
+    const now = new Date("2026-11-18T12:00:00Z");
+    expect(shouldNotifyCardChange(null, now)).toBe(true);
+    expect(shouldNotifyCardChange(new Date(now.getTime() - 9 * 60_000), now)).toBe(false);
+    expect(shouldNotifyCardChange(new Date(now.getTime() - 10 * 60_000), now)).toBe(true);
+  });
+});
+
+describe("moves and deletes", () => {
+  it("allows 200 moves an hour, and 30 deletes an hour / 100 a day, per wiki", () => {
+    expect(BOARD_QUOTA).toMatchObject({ movesPerHour: 200, deletesPerHour: 30, deletesPerDay: 100 });
+    expect(boardActionQuotaBreach("move", { hour: 199, day: 0 })).toBeNull();
+    expect(boardActionQuotaBreach("move", { hour: 200, day: 0 })).toMatch(/200 moves in an hour/);
+    expect(boardActionQuotaBreach("delete", { hour: 29, day: 29 })).toBeNull();
+    expect(boardActionQuotaBreach("delete", { hour: 30, day: 30 })).toMatch(/30 deleted cards in an hour/);
+    expect(boardActionQuotaBreach("delete", { hour: 0, day: 100 })).toMatch(/100 deleted cards today/);
+  });
+});
+
+describe("taking the quota", () => {
+  function fakeDb(hits: Record<string, number>) {
+    const created: string[] = [];
+    return {
+      created,
+      db: {
+        rateLimitHit: {
+          count: vi.fn(async ({ where }: { where: { bucket: string } }) => hits[where.bucket] ?? 0),
+          createMany: vi.fn(async ({ data }: { data: Array<{ bucket: string }> }) => {
+            created.push(...data.map((d) => d.bucket));
+            return { count: data.length };
+          }),
+        },
+      } as never,
+    };
+  }
+
+  it("records one hit per thing, in this wiki's bucket for that action", async () => {
+    const { db, created } = fakeDb({});
+    await consumeBoardQuota(db, "w1", "upload", 3);
+    await consumeBoardQuota(db, "w1", "delete");
+    expect(created).toEqual(["board:upload:w1", "board:upload:w1", "board:upload:w1", "board:delete:w1"]);
+  });
+
+  it("over the limit it throws a 429 and records nothing", async () => {
+    const { db, created } = fakeDb({ "board:edit:w1": 120 });
+    await expect(consumeBoardQuota(db, "w1", "edit")).rejects.toMatchObject({ status: 429 });
+    const up = fakeDb({ "board:upload:w1": 49 });
+    await expect(consumeBoardQuota(up.db, "w1", "upload", 2)).rejects.toMatchObject({ status: 429 });
+    expect(created).toEqual([]);
+    expect(up.created).toEqual([]);
+  });
+
+  it("another wiki's hits don't count", async () => {
+    const { db } = fakeDb({ "board:move:w2": 500 });
+    await expect(consumeBoardQuota(db, "w1", "move")).resolves.toBeUndefined();
   });
 });

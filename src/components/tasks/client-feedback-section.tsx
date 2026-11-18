@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { SignOffChip } from "@/components/tasks/product-card-parts";
+import { PreviousValues, SignOffChip } from "@/components/tasks/product-card-parts";
 import { useBoardFeedback, useSendBoardFeedback } from "@/hooks/use-wiki-board";
 import { BOARD_LIMITS } from "@/lib/wiki-board";
 import type { TaskDTO } from "@/types/tasks";
@@ -58,8 +58,11 @@ export function ClientFeedbackSection({ task, alwaysShow }: { task: TaskDTO; alw
                 {f.side === "team" ? "GITWORK" : "CLIENT"} · {f.authorName} ·{" "}
                 {new Date(f.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
               </p>
-              {f.kind !== "comment" ? <SignOffChip signOff={f.kind} className="mt-1" /> : null}
-              {f.body ? <p className="mt-1 whitespace-pre-wrap text-[var(--text-2)]">{f.body}</p> : null}
+              {f.kind === "approved" || f.kind === "changes_requested" ? <SignOffChip signOff={f.kind} className="mt-1" /> : null}
+              {f.body ? (
+                <p className={f.kind === "change" ? "mt-1 text-[12px] italic text-[var(--text-3)]" : "mt-1 whitespace-pre-wrap text-[var(--text-2)]"}>{f.body}</p>
+              ) : null}
+              {f.kind === "change" ? <PreviousValues previous={f.previous} /> : null}
             </li>
           ))}
         </ul>

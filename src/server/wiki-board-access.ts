@@ -28,7 +28,10 @@ import { resolveWikiAccessUser, wikiAccessCookieName } from "@/server/wiki-acces
 import { assertWithinRateLimit, clientIpFrom } from "@/server/rate-limit";
 import { resolveEffectiveUserById } from "@/server/mcp/auth";
 import { assertClientInScope } from "@/server/tasks";
-import type { BoardWriter } from "@/server/wiki-board";
+import { BoardError, type BoardWriter } from "@/server/wiki-board";
+import { assertCan, canManageClients, ForbiddenError, requireAuthedUser } from "@/server/auth/effective-user";
+import { isAtLeast } from "@/types/auth";
+import { BOARD_LIMITS } from "@/lib/wiki-board";
 
 export type BoardAccessFailure = "not_found" | "unauthorized" | "section_disabled" | "wrong_section";
 
@@ -130,3 +133,69 @@ export function boardAccessError(reason: BoardAccessFailure): { message: string;
       return { message: "Not found", status: 404 };
   }
 }
+
+/**
+ * The team on the INTERNAL wiki, adding, editing, deleting or restoring cards on a client's Board
+ * (`/api/clients/[slug]/wiki/board/cards/**`). A signed-in member (never the API key alone): a
+ * developer or above who can open this client may add and edit; deleting and restoring also need
+ * 'Manage clients'. Every card the request names is then checked against this client.
+ */
+export async function resolveInternalBoardWriter(
+  req: Request,
+  slug: string,
+  scope: "write" | "manage",
+): Promise<BoardWriter> {
+  const user = await requireAuthedUser(req);
+  if (scope === "manage") assertCan(user, canManageClients, "delete or restore cards on the Board");
+  else if (!isAtLeast(user.role, "DEVELOPER")) throw new ForbiddenError("You don't have permission to change the Board.");
+  const client = await prisma.workspaceClient.findUnique({
+    where: { workspaceId_slug: { workspaceId: user.workspaceId, slug } },
+    select: { id: true, slug: true, wiki: { select: { id: true } } },
+  });
+  if (!client) throw new BoardError("Client not found", 404);
+  await assertClientInScope(user, client.id);
+  if (!client.wiki) throw new BoardError("This client has no wiki yet.", 409);
+  return {
+    wikiId: client.wiki.id,
+    clientId: client.id,
+    clientSlug: client.slug,
+    name: user.name?.trim() || user.email || "Gitwork",
+    wikiUserId: null,
+    userId: user.id,
+  };
+}
+
+/**
+ * The screenshots in a multipart upload (`file` fields). The request's declared size is checked
+ * BEFORE the body is read: `formData()` buffers the whole body, so a size checked afterwards
+ * protects nothing. nginx refuses anything over 25 MB anyway; this refuses over
+ * `uploadRequestBytes` (plus room for the form's own framing) with a sentence instead of a 413.
+ * Each file's size is checked next, and its bytes in `addBoardCardImages`.
+ */
+export async function readBoardImageForm(req: Request): Promise<Array<{ name: string; bytes: Uint8Array }>> {
+  const declared = Number(req.headers.get("content-length") ?? "");
+  if (!Number.isFinite(declared) || declared <= 0) {
+    throw new BoardError("Send the images as a form upload.", 411);
+  }
+  if (declared > BOARD_LIMITS.uploadRequestBytes + UPLOAD_FORM_OVERHEAD) {
+    throw new BoardError(
+      `That's more than ${BOARD_LIMITS.uploadRequestBytes / 1024 / 1024} MB in one go. Add the images in smaller batches.`,
+      413,
+    );
+  }
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    throw new BoardError("Send the images as a form upload.", 400);
+  }
+  const files = form.getAll("file").filter((f): f is File => typeof f === "object" && f !== null && "arrayBuffer" in f);
+  if (!files.length) throw new BoardError("Choose an image to add.", 400);
+  if (files.length > BOARD_LIMITS.images) throw new BoardError(`Add up to ${BOARD_LIMITS.images} images at a time.`, 400);
+  const tooBig = files.find((f) => f.size > BOARD_LIMITS.imageBytes);
+  if (tooBig) throw new BoardError(`“${tooBig.name || "That image"}” is over 10 MB.`, 400);
+  return Promise.all(files.map(async (f) => ({ name: f.name || "image", bytes: new Uint8Array(await f.arrayBuffer()) })));
+}
+
+/** Multipart boundaries and part headers on top of the files themselves. */
+const UPLOAD_FORM_OVERHEAD = 64 * 1024;
