@@ -30,7 +30,7 @@ import {
   useDeleteTask,
   useAddTaskComment,
   useCreateTask,
-  useTasks,
+  useCardLinks,
 } from "@/hooks/use-tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDTO, type TaskDetailDTO, type TaskStatus } from "@/types/tasks";
 import { TaskAvatar, AssigneeStack } from "@/components/tasks/task-avatar";
@@ -273,17 +273,17 @@ function ScribeSourcePanel({ task }: { task: TaskDetailDTO }) {
 /**
  * On a product card: the dev tasks that deliver it (CLAUDE.md §124). Linking never moves a dev
  * task. It stays on the board, assigned as it was; it just points at this card. Read from the
- * board's own cached list, so it shows what the board shows (archived dev tasks are left out).
+ * server (useCardLinks), not the board's cached list: that list leaves out archived and old done
+ * tasks, which are most of a delivered card's history.
  */
 function DevTasksSection({ card }: { card: TaskDetailDTO }) {
-  const board = useTasks({ clientId: card.client.id });
+  const links = useCardLinks(card.id);
   const update = useUpdateTask();
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const all = board.data ?? [];
-  const linked = all.filter((t) => t.productCard?.id === card.id);
-  // Candidates: this client's dev tasks (not cards) not already delivering something.
-  const candidates = all.filter((t) => !t.itemType && !t.productCard && t.id !== card.id && !t.archivedAt);
+  const linked = links.data?.linked ?? [];
+  // Live dev tasks on this client with no card yet.
+  const candidates = links.data?.candidates ?? [];
 
   async function setLink(taskId: string, productCardId: string | null) {
     setError(null);

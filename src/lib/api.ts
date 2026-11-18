@@ -3105,6 +3105,11 @@ export function listTasks(opts: {
   return apiFetch(`/api/tasks${qs ? `?${qs}` : ""}`);
 }
 
+/** A product card's linked dev tasks (archived included) and the tasks that could be linked. */
+export function getCardLinks(id: string): Promise<{ linked: TaskDTO[]; candidates: TaskDTO[] }> {
+  return apiFetch(`/api/tasks/${encodeURIComponent(id)}/linked`);
+}
+
 export function getTask(id: string): Promise<TaskDetailDTO> {
   return apiFetch(`/api/tasks/${id}`);
 }

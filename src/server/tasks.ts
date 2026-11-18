@@ -536,6 +536,42 @@ export async function listTasks(
   return tasks.map(taskListDTO);
 }
 
+/**
+ * A product card's dev tasks, and the tasks that could be linked to it, read from the server.
+ *
+ * The drawer used to read both from the board's cached list, which leaves out archived tasks and
+ * done tasks older than 90 days. A card's history is exactly those, so a card that was delivered
+ * months ago showed "No dev tasks linked" (Nov 2026). `linked` includes every linked task,
+ * archived or not; `candidates` are live top-level dev tasks with no card yet.
+ */
+export async function listCardLinks(
+  user: EffectiveUser,
+  cardId: string,
+): Promise<{ linked: TaskDTO[]; candidates: TaskDTO[] }> {
+  const card = await prisma.task.findFirst({
+    where: { id: cardId, workspaceId: user.workspaceId },
+    select: { id: true, clientId: true, itemType: true },
+  });
+  if (!card) throw new ForbiddenError("Task not found");
+  await assertClientInScope(user, card.clientId);
+  if (!card.itemType) return { linked: [], candidates: [] };
+  const scope = { workspaceId: user.workspaceId, clientId: card.clientId };
+  const [linked, candidates] = await Promise.all([
+    prisma.task.findMany({
+      where: { ...scope, productCardId: card.id },
+      orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { updatedAt: "desc" }],
+      include: taskInclude,
+    }),
+    prisma.task.findMany({
+      where: { ...scope, itemType: null, productCardId: null, archivedAt: null, parentId: null, id: { not: card.id } },
+      orderBy: { updatedAt: "desc" },
+      take: 500,
+      include: taskInclude,
+    }),
+  ]);
+  return { linked: linked.map(taskRowToDTO), candidates: candidates.map(taskRowToDTO) };
+}
+
 export async function getTask(user: EffectiveUser, id: string): Promise<TaskDetailDTO> {
   const row = await prisma.task.findFirst({
     where: { id, workspaceId: user.workspaceId },

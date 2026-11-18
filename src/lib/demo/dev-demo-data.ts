@@ -271,6 +271,17 @@ function demoTasksWithCards(): TaskDTO[] {
  * card links and default columns can be tried for real. Refuses a bad card link like the server.
  */
 function demoTaskApi(pathname: string, init?: { method?: string; body?: unknown }): unknown {
+  // A card's linked dev tasks and link candidates, the same rule as listCardLinks.
+  const linkedMatch = pathname.match(/^\/api\/tasks\/([^/]+)\/linked$/);
+  if (linkedMatch) {
+    const all = demoTasksWithCards();
+    const card = all.find((t) => t.id === linkedMatch[1]);
+    if (!card || !card.itemType) return { linked: [], candidates: [] };
+    return {
+      linked: all.filter((t) => t.productCard?.id === card.id),
+      candidates: all.filter((t) => !t.itemType && !t.productCard && !t.archivedAt && !t.parentId && t.id !== card.id && t.client.id === card.client.id),
+    };
+  }
   const m = pathname.match(/^\/api\/tasks\/([^/]+)(\/move)?$/);
   if (!m) return { ok: true };
   const task = demoBoardTasks.find((t) => t.id === m[1]);
