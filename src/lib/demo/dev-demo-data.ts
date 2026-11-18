@@ -26,7 +26,7 @@ import {
   isFeedbackKind,
   shortPersonName,
 } from "@/lib/wiki-board";
-import type { WikiBoardCard, WikiBoardDeletedCard, WikiBoardFeedback, WikiBoardSection } from "@/types/wiki-board";
+import type { WikiBoardCard, WikiBoardDeletedCard, WikiBoardFeedback, WikiBoardKeyDate, WikiBoardSection } from "@/types/wiki-board";
 import { changeSentence, describeCardChanges, imagesSentence, splitCardDescription, type CardFields } from "@/lib/wiki-board-edit";
 import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
 import { demoAiAnswersReport, demoSaveAiAnswersConfig, demoStartAiAnswersRun } from "@/lib/demo/demo-ai-answers";
@@ -1626,7 +1626,7 @@ const demoWiki: WikiDTO = {
    */
   comparisons: { enabled: true, comparisons: demoComparisons },
   sheets: { enabled: false, sheets: [] },
-  board: { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] },
+  board: { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [], keyDates: [] },
   estimates: {
     enabled: true,
     estimates: [
@@ -4258,6 +4258,25 @@ const demoBoardFeedback = new Map<string, WikiBoardFeedback[]>([
   ],
 ]);
 
+/** The demo's key dates on the Schedule (src/server/wiki-board-key-dates.ts), in memory. */
+let demoKeyDates: WikiBoardKeyDate[] = [
+  { id: "kd-1", title: "Customer webinar: search tips", date: atDays(-4).slice(0, 10), note: null, imported: false },
+  { id: "kd-2", title: "Spring newsletter goes out", date: atDays(5).slice(0, 10), note: "Feature the saved searches.", imported: true },
+  { id: "kd-3", title: "App Store feature pitch", date: atDays(16).slice(0, 10), note: null, imported: false },
+  { id: "kd-4", title: "SaaS North trade show", date: atDays(38).slice(0, 10), note: null, imported: true },
+];
+
+/**
+ * The stages a demo card went through, as the client's planning tool would have recorded them:
+ * relative to today, so the Schedule's "What happened" always has recent weeks to show.
+ */
+function demoStageHistory(t: TaskDTO): WikiBoardCard["stageHistory"] {
+  const day = (n: number) => atDays(n).slice(0, 10);
+  if (t.status === "DONE") return [{ label: "Triage", date: day(-24) }, { label: "In Development", date: day(-10) }];
+  if (t.status === "DOING" || t.status === "IN_REVIEW") return [{ label: "Triage", date: day(-17) }, { label: "In Development", date: day(-6) }];
+  return [{ label: "Triage", date: day(-12) }];
+}
+
 function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
   const release = t.release ? demoReleases.find((r) => r.id === t.release!.id) : undefined;
   const entries = demoBoardFeedback.get(t.id) ?? [];
@@ -4287,7 +4306,8 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
       .filter((s) => s.parentId === t.id && !s.archivedAt)
       .map((s) => ({ title: s.title, done: s.status === "DONE" })),
     images: isCard || addedByClient ? (demoBoardImages.get(t.id) ?? []) : [],
-    stageHistory: isCard ? [{ label: "Scoping", date: "2026-05-18" }, { label: "Future Idea", date: "2026-05-21" }] : [],
+    stageHistory: isCard ? demoStageHistory(t) : [],
+    doneAt: (isCard || addedByClient) && t.status === "DONE" ? t.completedAt : null,
     dependsOn: (Array.isArray(t.metadata?.dependsOn) ? (t.metadata!.dependsOn as string[]) : []).flatMap((id) => {
       const dep = demoBoardTasks.find((d) => d.id === id && !d.archivedAt);
       return dep ? [{ id, title: dep.title }] : [];
@@ -4300,7 +4320,7 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
 
 /** Northwind's board, built from the in-memory task list with the same layout as the server. */
 function demoBoardSection(): WikiBoardSection {
-  if (!demoBoardEnabled) return { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] };
+  if (!demoBoardEnabled) return { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [], keyDates: [] };
   const tasks = demoTasksWithCards().filter((t) => t.client.slug === "northwind" && !t.parentId && !t.archivedAt);
   const releases = sortReleases(demoReleases).map((r) => ({
     id: r.id,
@@ -4314,7 +4334,12 @@ function demoBoardSection(): WikiBoardSection {
     releases,
     completedAt: new Map(tasks.map((t) => [t.id, t.completedAt])),
   });
-  return { ...laid, showAllTasks: demoBoardShowAllTasks, deleted: demoDeletedCards() };
+  return {
+    ...laid,
+    showAllTasks: demoBoardShowAllTasks,
+    keyDates: [...demoKeyDates].sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)),
+    deleted: demoDeletedCards(),
+  };
 }
 
 /** Cards deleted from the demo board, for the team's Restore list. */
@@ -4398,6 +4423,37 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
       return { entry };
     }
     return { feedback: demoBoardFeedback.get(id) ?? [] };
+  }
+  // Key dates on the Schedule: added, edited and deleted in memory, like the cards.
+  if (/^\/api\/(wiki\/[^/]+\/board|clients\/[^/]+\/wiki\/board)\/key-dates$/.test(pathname) && method === "POST") {
+    const body = bodyOf(init);
+    if (typeof body.title !== "string" || !body.title.trim()) return { error: "Give the date a title.", __status: 400 };
+    if (typeof body.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) return { error: "Pick a date.", __status: 400 };
+    const keyDate: WikiBoardKeyDate = {
+      id: `kd-${Date.now()}`,
+      title: body.title.trim().slice(0, 120),
+      date: body.date,
+      note: typeof body.note === "string" && body.note.trim() ? body.note.trim() : null,
+      imported: false,
+    };
+    demoKeyDates.push(keyDate);
+    return { keyDate };
+  }
+  const keyDateOne = /^\/api\/(?:wiki\/[^/]+\/board|clients\/[^/]+\/wiki\/board)\/key-dates\/([^/]+)$/.exec(pathname);
+  if (keyDateOne) {
+    const found = demoKeyDates.find((k) => k.id === keyDateOne[1]);
+    if (!found) return { error: "Not found", __status: 404 };
+    if (method === "DELETE") {
+      demoKeyDates = demoKeyDates.filter((k) => k.id !== found.id);
+      return { deleted: found.id };
+    }
+    if (method === "PATCH") {
+      const body = bodyOf(init);
+      if (typeof body.title === "string" && body.title.trim()) found.title = body.title.trim().slice(0, 120);
+      if (typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) found.date = body.date;
+      if ("note" in body) found.note = typeof body.note === "string" && body.note.trim() ? body.note.trim() : null;
+      return { keyDate: found };
+    }
   }
   const move = /^\/api\/wiki\/[^/]+\/board\/tasks\/([^/]+)\/move$/.exec(pathname);
   if (move && method === "POST") {

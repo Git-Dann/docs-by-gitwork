@@ -1,3 +1,4 @@
+import { KEY_DATE_LIMITS, isRealDay } from "@/lib/wiki-board-key-dates";
 import { z } from "zod";
 import { RELEASE_LIMITS, safeReleaseDocUrl } from "@/lib/tasks/releases";
 import {
@@ -2664,6 +2665,21 @@ export const boardFeedbackSchema = z
     body: z.string().max(BOARD_LIMITS.feedback).nullish(),
   })
   .strict();
+
+/**
+ * A key date on the Board's Schedule (a content drop, a launch, an event). `.strict()`, like the
+ * cards: anything else is a 400. Limits in `KEY_DATE_LIMITS` (src/lib/wiki-board-key-dates.ts).
+ */
+const keyDateFields = {
+  title: z.string().trim().min(1, "Give the date a title.").max(KEY_DATE_LIMITS.title),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date.").refine(isRealDay, "Pick a real date."),
+  note: z.string().trim().max(KEY_DATE_LIMITS.note).nullish(),
+};
+export const boardKeyDateCreateSchema = z.object(keyDateFields).strict();
+export const boardKeyDatePatchSchema = z
+  .object({ title: keyDateFields.title.optional(), date: keyDateFields.date.optional(), note: keyDateFields.note })
+  .strict()
+  .refine((b) => Object.keys(b).length > 0, "Nothing to change");
 
 /** The team's reply on a card's client feedback thread: comments only. */
 export const teamFeedbackSchema = z

@@ -20,3 +20,11 @@ export const forgeApplyBodySchema = z
     approvedReviewLinks: z.array(forgeDecisionSchema).max(500),
   })
   .strict();
+
+/** The one-off import of the planning tool's calendar as the Schedule's key dates: a dry run unless `apply`. */
+export const forgeKeyDatesBodySchema = z
+  .object({
+    feedUrl: z.string().trim().url().max(500).optional(),
+    apply: z.boolean().optional(),
+  })
+  .strict();

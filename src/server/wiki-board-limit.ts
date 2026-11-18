@@ -29,6 +29,9 @@ export const BOARD_QUOTA = {
   /** Cards deleted, per wiki. Deleting is restorable, but a burst of it is a mess for the team to put back. */
   deletesPerHour: 30,
   deletesPerDay: 100,
+  /** Key dates on the Schedule added, edited or deleted, per wiki. */
+  keyDatesPerHour: 60,
+  keyDatesPerDay: 300,
   /** The team hears about a client's edits to one card at most once in this window. */
   changeNotifyWindowMs: 10 * 60 * 1000,
   /** The team hears about new client cards at most once in this window, with a count. */
@@ -68,13 +71,14 @@ export function boardFeedbackQuotaBreach(hour: number): string | null {
  * move, a delete, or a screenshot (one hit per file). Counted and recorded together, inside the
  * board's per-wiki lock (`consumeBoardQuota`), so parallel requests can't all pass the same count.
  */
-export type BoardAction = "edit" | "move" | "delete" | "upload";
+export type BoardAction = "edit" | "move" | "delete" | "upload" | "keyDate";
 
 const ACTION_LIMITS: Record<BoardAction, { hour: number; day: number | null; noun: [string, string] }> = {
   edit: { hour: BOARD_QUOTA.editsPerHour, day: null, noun: ["change", "changes"] },
   move: { hour: BOARD_QUOTA.movesPerHour, day: null, noun: ["move", "moves"] },
   delete: { hour: BOARD_QUOTA.deletesPerHour, day: BOARD_QUOTA.deletesPerDay, noun: ["deleted card", "deleted cards"] },
   upload: { hour: BOARD_QUOTA.uploadsPerHour, day: BOARD_QUOTA.uploadsPerDay, noun: ["screenshot", "screenshots"] },
+  keyDate: { hour: BOARD_QUOTA.keyDatesPerHour, day: BOARD_QUOTA.keyDatesPerDay, noun: ["key date change", "key date changes"] },
 };
 
 /** Null when `adding` more of this action fit, otherwise what to tell the client. */

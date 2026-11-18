@@ -5023,6 +5023,32 @@ model ClientRelease {
   @@index([clientId, externalRef])
 }
 
+/// A dated event on a client's Board Schedule that isn't a card: a content drop, a launch, an
+/// event (CLAUDE.md §128). Client-facing: the client sees and edits them on their Board. Loose ids
+/// (no relations), never unique; deleting is soft (`archivedAt`), so an imported date the client
+/// removed is never imported again.
+model WikiBoardKeyDate {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  clientId      String
+  /// At most 120 characters.
+  title         String
+  date          DateTime  @db.Date
+  note          String?
+  /// Where it came from in an outside planning tool ("forge-date:<id>"). The importer's key.
+  externalRef   String?
+  /// Who added it: a team member's id, or null for the client / an import.
+  createdById   String?
+  /// The name shown for whoever added it.
+  createdByName String?
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([clientId, archivedAt])
+  @@index([clientId, externalRef])
+}
+
 /// A single-date timeline marker (separate from feature-block bars). Renders as
 /// a diamond on the client Gantt (internal + public). Imported from ClickUp
 /// "Milestones" lists.

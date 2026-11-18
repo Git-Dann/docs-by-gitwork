@@ -115,6 +115,8 @@ import {
   type BoardWriter,
 } from "../wiki-board";
 import type { WikiBoardCard, WikiBoardSection } from "@/types/wiki-board";
+import { buildSchedule } from "@/lib/wiki-board-schedule";
+import { dayOf } from "@/lib/wiki-board-timeline";
 
 const COLUMNS = [
   { id: "col_ideas000", name: "Ideas", stage: "BACKLOG", isDefault: true },
@@ -419,6 +421,7 @@ function card(over: Partial<WikiBoardCard>): WikiBoardCard {
     subtasks: [],
     images: [],
     stageHistory: [],
+    doneAt: null,
     estimateHours: null,
     dependsOn: [],
     isCard: false,
@@ -434,6 +437,7 @@ function board(cards: WikiBoardCard[], showAllTasks: boolean): WikiBoardSection 
     showAllTasks,
     releases: [],
     areas: [],
+    keyDates: [],
     lanes: [
       {
         key: "BACKLOG",
@@ -490,7 +494,35 @@ describe("the client's copy of the board", () => {
   });
 
   it("is empty while the section is off", () => {
-    expect(forPublicBoard({ enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] }).lanes).toEqual([]);
+    expect(forPublicBoard({ enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [], keyDates: [] }).lanes).toEqual([]);
+  });
+});
+
+describe("the Schedule in the client's copy (§128)", () => {
+  const history = [{ label: "In Development", date: "2026-11-10" }];
+  const devDone = card({ id: "dd", title: "Rotate Stripe keys", status: "DONE", stageHistory: history, doneAt: "2026-11-12T10:00:00.000Z" });
+  const cardDone = card({ id: "cd", title: "Rate Course", itemType: "feature", isCard: true, status: "DONE", stageHistory: history, doneAt: "2026-11-12T10:00:00.000Z" });
+
+  it("never carries a dev task's dates or titles with Their cards only", () => {
+    const out = forPublicBoard(board([cardDone, devDone], false));
+    const schedule = buildSchedule({ cards: out.lanes.flatMap((l) => l.groups.flatMap((g) => g.cards)), releases: [], keyDates: out.keyDates, today: dayOf("2026-11-18"), mode: "past", weeks: 4 });
+    const events = schedule.weeks.flatMap((w) => w.happened.map((e) => e.card.title));
+    expect(events).toContain("Rate Course");
+    expect(JSON.stringify(out)).not.toContain("Rotate Stripe keys");
+  });
+
+  it("with dev task titles on, a dev task still makes no event: no stages, no finish date", () => {
+    const out = forPublicBoard(board([devDone], true));
+    const dev = out.lanes[0].groups[0].cards[0];
+    expect(dev).toMatchObject({ stageHistory: [], doneAt: null });
+    const schedule = buildSchedule({ cards: [dev], releases: [], keyDates: [], today: dayOf("2026-11-18"), mode: "past", weeks: 4 });
+    expect(schedule.weeks.flatMap((w) => w.happened)).toEqual([]);
+  });
+
+  it("copies key dates field by field", () => {
+    const leaky = { id: "k", title: "Million Pound Drop", date: "2026-11-20", note: null, imported: true, createdByName: "Dan", externalRef: "forge-date:1" };
+    const out = forPublicBoard({ ...board([cardDone], false), keyDates: [leaky as never] });
+    expect(out.keyDates).toEqual([{ id: "k", title: "Million Pound Drop", date: "2026-11-20", note: null, imported: true }]);
   });
 });
 

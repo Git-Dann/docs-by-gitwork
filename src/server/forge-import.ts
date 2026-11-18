@@ -24,6 +24,7 @@ import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 import { copyForgeImages, type ImageCopyResult } from "@/server/forge-images";
 import { copiedImages } from "@/lib/forge-import/images";
 import { recordAuditEntry } from "@/server/audit-log";
+import { planForgeKeyDates, syncForgeKeyDates } from "@/server/wiki-board-key-date-import";
 import { parseForgeFeed, parseForgeJson, type ForgeFeed } from "@/lib/forge-import/feed";
 import {
   buildForgePlan,
@@ -204,6 +205,8 @@ export interface ForgeApplyResult {
   devLinked: number;
   filled: number;
   releasesCreated: number;
+  /** The planning tool's calendar dates added to the Board's Schedule as key dates. */
+  keyDatesCreated: number;
   pendingReview: number;
   waiting: number;
   skipped: number;
@@ -273,6 +276,7 @@ export async function applyForgeImport(input: {
         devLinked: 0,
         filled: 0,
         releasesCreated: 0,
+        keyDatesCreated: 0,
         pendingReview: plan.counts.review,
         waiting: plan.counts.waiting,
         skipped: plan.counts.skip,
@@ -313,6 +317,10 @@ export async function applyForgeImport(input: {
         releaseIdByForge.set(r.forgeId, created.id);
         out.releasesCreated++;
       }
+
+      // The planning tool's own calendar (content drops, events) → the Schedule's key dates.
+      // Idempotent by ref; a date deleted in Foundry is never brought back.
+      out.keyDatesCreated = (await syncForgeKeyDates(tx, workspaceId, clientId, feed.keyDates)).created;
 
       const columnIdByName = new Map(board.columns.map((c) => [columnNameKey(c.name), c]));
       const columnFor = (name: string | null, status: string): string | null => {
@@ -471,4 +479,38 @@ export async function applyForgeImport(input: {
     metadata: { ...result, imagesCopied: images.copied, imagesFailed: images.failed.length, decisions: input.approvedReviewLinks.length },
   });
   return full;
+}
+
+export interface ForgeKeyDatesResult {
+  applied: boolean;
+  /** The dates that would be (or were) added, by title and date. */
+  create: Array<{ title: string; date: string }>;
+  existing: number;
+  skipped: number;
+  created: number;
+}
+
+/**
+ * Bring the planning tool's calendar dates onto the client's Schedule without running the whole
+ * plan import: a dry run unless `apply`. Apply takes the same per-client lock as the plan import,
+ * so the two can't both add the same dates.
+ */
+export async function importForgeKeyDates(input: {
+  workspaceId: string;
+  clientId: string;
+  feedUrl?: string;
+  apply: boolean;
+}): Promise<ForgeKeyDatesResult> {
+  const { workspaceId, clientId } = input;
+  const feed = await fetchForgeFeed(input.feedUrl ?? BIG_WEDGE_FORGE_FEED);
+  if (!input.apply) {
+    const plan = await planForgeKeyDates(prisma, clientId, feed.keyDates);
+    return { applied: false, create: plan.create.map(({ title, date }) => ({ title, date })), existing: plan.existing, skipped: plan.skipped, created: 0 };
+  }
+  return prisma.$transaction(async (tx) => {
+    const lock = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(hashtext(${`forge:${clientId}`})) AS locked`;
+    if (!lock[0]?.locked) throw new ForgeImportError("An import for this client is already running. Try again when it has finished.", 409);
+    const done = await syncForgeKeyDates(tx, workspaceId, clientId, feed.keyDates);
+    return { applied: true, create: done.create.map(({ title, date }) => ({ title, date })), existing: done.existing, skipped: done.skipped, created: done.created };
+  });
 }

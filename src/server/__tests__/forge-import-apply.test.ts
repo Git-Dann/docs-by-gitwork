@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   tasks: [] as Array<Record<string, unknown>>,
   releases: [] as Array<Record<string, unknown>>,
   feed: {} as unknown,
+  keyDates: [] as Array<{ externalRef: string }>,
 }));
 
 vi.mock("@/lib/prisma", () => {
@@ -26,6 +27,7 @@ vi.mock("@/lib/prisma", () => {
           if (name === "workspaceClient" && op === "findFirst") return { id: "client1", taskBoardColumns: state.columns };
           if (name === "task" && op === "findMany") return state.tasks;
           if (name === "clientRelease" && op === "findMany") return state.releases;
+          if (name === "wikiBoardKeyDate" && op === "findMany") return state.keyDates;
           if (op === "findFirst") return null;
           if (op === "groupBy") return [];
           if (op === "create") return { id: `${name}_new_${++n}` };
@@ -39,6 +41,7 @@ vi.mock("@/lib/prisma", () => {
     clientRelease: model("clientRelease"),
     workspaceClient: model("workspaceClient"),
     auditLog: model("auditLog"),
+    wikiBoardKeyDate: model("wikiBoardKeyDate"),
     // The per-client advisory lock (a tagged template in the code).
     $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
       calls.push({ model: "$queryRaw", op: "lock", args: { sql: strings.join("?"), values } });
@@ -92,6 +95,7 @@ beforeEach(() => {
   state.transactions = 0;
   state.columns = COLUMNS;
   state.releases = [];
+  state.keyDates = [];
   state.tasks = [
     dbTask({ id: "t_rate", title: "Rate Course", metadata: { clickup: { dept: "x" } } }),
     dbTask({ id: "t_hazards", title: "Distance to Hazards", status: "DONE", archivedAt: new Date() }),
@@ -242,6 +246,20 @@ describe("applying", () => {
     state.columns = COLUMNS.filter((c) => c.name !== "Triage");
     await expect(applyForgeImport(base)).rejects.toThrow(/Triage/);
     expect(writes()).toEqual([]);
+  });
+
+  it("brings the planning tool's calendar dates onto the Schedule once (§128)", async () => {
+    (state.feed as Record<string, unknown>).companyDates = [
+      { id: "469", title: "Mini Major", date: "2026-06-25", tracked: true },
+      { id: "474", title: "Million Pound Drop", date: "2026-08-17", tracked: true },
+    ];
+    state.keyDates = [{ externalRef: "forge-date:469" }];
+    const r = await applyForgeImport(base);
+    const created = calls.find((c) => c.model === "wikiBoardKeyDate" && c.op === "createMany");
+    expect((created?.args.data as Array<Record<string, unknown>>).map((d) => [d.externalRef, d.clientId, d.title])).toEqual([
+      ["forge-date:474", "client1", "Million Pound Drop"],
+    ]);
+    expect(r.keyDatesCreated).toBe(1);
   });
 
   it("records who ran it", async () => {

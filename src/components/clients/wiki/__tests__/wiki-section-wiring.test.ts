@@ -372,6 +372,9 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     "app/api/wiki/[token]/board/tasks/[taskId]/move/route.ts",
     "app/api/wiki/[token]/board/tasks/[taskId]/feedback/route.ts",
     "app/api/wiki/[token]/board/tasks/[taskId]/route.ts",
+    // Key dates on the Schedule (§128).
+    "app/api/wiki/[token]/board/key-dates/route.ts",
+    "app/api/wiki/[token]/board/key-dates/[keyDateId]/route.ts",
   ];
   /** Multipart writes: the form is read only after the writer and rate limit. */
   const uploadRoutes = ["app/api/wiki/[token]/board/tasks/[taskId]/images/route.ts"];
@@ -405,6 +408,27 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     const del = src.slice(src.indexOf("export async function DELETE"));
     expect(del).toContain("if (!access.writer.wikiUserId)");
     expect(del.indexOf("if (!access.writer.wikiUserId)")).toBeLessThan(del.indexOf("deleteBoardCard("));
+  });
+
+  it("a key date is deleted from the client's link only by a signed-in client user (§128)", () => {
+    const src = read("app/api/wiki/[token]/board/key-dates/[keyDateId]/route.ts");
+    const del = src.slice(src.indexOf("export async function DELETE"));
+    expect(del.indexOf("if (!access.writer.wikiUserId)")).toBeGreaterThan(-1);
+    expect(del.indexOf("if (!access.writer.wikiUserId)")).toBeLessThan(del.indexOf("deleteKeyDate("));
+  });
+
+  it("every internal key-date route resolves the team writer; delete needs Manage clients (§128)", () => {
+    const dir = join(ROOT, "app/api/clients/[slug]/wiki/board/key-dates");
+    const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
+    expect(files.length).toBe(2);
+    for (const f of files) {
+      const src = readFileSync(join(dir, f), "utf8");
+      const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];
+      const gates = src.match(/await resolveInternalBoardWriter\(req, slug, "(write|manage)"\)/g) ?? [];
+      expect(gates.length, `${f}: every handler must resolve the team writer`).toBe(handlers.length);
+    }
+    const one = read("app/api/clients/[slug]/wiki/board/key-dates/[keyDateId]/route.ts");
+    expect(one.slice(one.indexOf("export async function DELETE"))).toContain('resolveInternalBoardWriter(req, slug, "manage")');
   });
 
   it("every internal card route resolves the team writer; delete and restore need Manage clients", () => {

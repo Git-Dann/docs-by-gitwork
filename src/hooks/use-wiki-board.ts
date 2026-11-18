@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { FeedbackKind } from "@/lib/wiki-board";
 import type { TaskPriority, TaskStatus } from "@/types/tasks";
-import type { WikiBoardCard, WikiBoardFeedback } from "@/types/wiki-board";
+import type { WikiBoardCard, WikiBoardFeedback, WikiBoardKeyDate } from "@/types/wiki-board";
 
 export type BoardTarget = { mode: "public"; token: string } | { mode: "internal"; slug: string };
 
@@ -177,6 +177,38 @@ export async function uploadBoardImagesApi(target: BoardTarget, taskId: string, 
   for (const f of files) form.append("file", f);
   const res = await apiFetch<{ card: WikiBoardCard }>(`${cardUrl(target, taskId)}/images`, { method: "POST", body: form });
   return res.card;
+}
+
+function keyDatesUrl(target: BoardTarget): string {
+  return target.mode === "public"
+    ? `/api/wiki/${encodeURIComponent(target.token)}/board/key-dates`
+    : `/api/clients/${encodeURIComponent(target.slug)}/wiki/board/key-dates`;
+}
+
+export interface KeyDateForm {
+  title: string;
+  /** YYYY-MM-DD */
+  date: string;
+  note: string | null;
+}
+
+/** Add a key date to the Schedule: the client on their link, or the team on the internal wiki. */
+export async function addKeyDateApi(target: BoardTarget, input: KeyDateForm): Promise<WikiBoardKeyDate> {
+  const res = await apiFetch<{ keyDate: WikiBoardKeyDate }>(keyDatesUrl(target), json(input));
+  return res.keyDate;
+}
+
+export async function updateKeyDateApi(target: BoardTarget, id: string, patch: Partial<KeyDateForm>): Promise<WikiBoardKeyDate> {
+  const res = await apiFetch<{ keyDate: WikiBoardKeyDate }>(`${keyDatesUrl(target)}/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return res.keyDate;
+}
+
+export async function deleteKeyDateApi(target: BoardTarget, id: string): Promise<void> {
+  await apiFetch(`${keyDatesUrl(target)}/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 /** The team puts back a card deleted from the board. */

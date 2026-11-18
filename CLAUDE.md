@@ -10259,7 +10259,7 @@ all; releases that ended over a week ago start folded. Clicking a card opens the
 
 ### 126.2 Calendar, card images, straight side stroke
 
-- **Calendar** (Board | Timeline | **Calendar**, `wiki-board-calendar.tsx`, maths in
+- ~~**Calendar**~~ **Replaced by the Schedule (§128).** (Board | Timeline | **Calendar**, `wiki-board-calendar.tsx`, maths in
   `src/lib/wiki-board-calendar.ts`): a Monday-first month or week, today circled, cards on their
   due date (no due date → not on the calendar, never an invented date), each release a thin span
   across its days with "starts"/"ends" markers, "+N more" opening the day's list. Phone: an agenda
@@ -10449,4 +10449,47 @@ cards, with the same search, filters and "Client sees" rules, as spreadsheet row
   localStorage, read after mount so the server render matches).
 - Done columns carry their newest 50 cards; the Table says how many older ones aren't shown.
 - Demo: `/demo/wiki#board` → Table (two lists seeded).
+
+## 128. Recent Changes (November 2026) — The Board's Schedule replaces the calendar
+
+Dan, on Big Wedge's own ops calendar and ours: "both calendars are terrible… can we have something
+that is useful". Theirs printed one release name on every day of the month; ours was mostly empty
+grid with stripes, because 145 of Wedge's cards have no due date. A month grid is the wrong shape
+for a plan. The view switch is now **Board | Table | Timeline | Schedule**.
+
+- **The Schedule is a list of weeks** (`wiki-board-schedule.tsx`, rules pure in
+  `src/lib/wiki-board-schedule.ts`). Each week says, once: the **releases** running in it (dates
+  and % done, `releasePercent`), the cards **due** in it, **what happened** in it (each card's
+  imported stage dates, `stageHistoryOf`, plus the day it was finished), and the client's **key
+  dates**. **Overdue** cards (not done, due before today) are pinned above the weeks once, not
+  repeated in their week. Runs of empty weeks fold into one "N quiet weeks" line
+  (`scheduleRows`); this week always gets its own row. Upcoming / Past, Today, "Show 12 more weeks".
+- **No date yet** tray at the foot: the client's undated, unfinished cards, each with **Set date**
+  for whoever may edit it (the existing card edit route, `dueDate` only). Never invents a date.
+- ⚠️ **A dev task never makes an event.** `cardEvents` only reads cards the client may act on
+  (`clientMayActOn`), and `WikiBoardCard.doneAt` (new, `task.completedAt`) is only set for those
+  cards, null in `titleOnlyCard`. "What happened" can't leak a dev task's title or dates on either
+  "Client sees" setting. A stage dated after today is a plan, not something that happened, and is
+  left out.
+- **Key dates** — new model `WikiBoardKeyDate` (additive, loose ids, never unique, soft delete):
+  title ≤120, date (`@db.Date`), note, `externalRef`. In the board DTO as `keyDates` (both copies;
+  `forPublicBoard` copies them field by field). Writes in `src/server/wiki-board-key-dates.ts`:
+  every update/delete is scoped `{ id, clientId, archivedAt: null }` (another client's is a 404);
+  a client's writes run inside the board's per-wiki lock and count against a new `keyDate` quota
+  (60/hour, 300/day). Routes: client `POST /api/wiki/[token]/board/key-dates`,
+  `PATCH|DELETE …/key-dates/[keyDateId]` (Board write posture; delete only by a signed-in client
+  user); team `POST /api/clients/[slug]/wiki/board/key-dates`, `PATCH|DELETE …/[keyDateId]`
+  (`resolveInternalBoardWriter`; delete needs 'Manage clients').
+- **Planning-tool dates:** the Forge feed's `companyDates` are parsed (`ForgeFeed.keyDates`) and the
+  plan import's apply creates them as key dates (`syncForgeKeyDates`,
+  `src/server/wiki-board-key-date-import.ts`, kept apart so the import doesn't load the Board
+  module). Idempotent on `externalRef` "forge-date:<id>", and a ref already used **even on a deleted
+  key date** is skipped, so a date removed in Foundry is never brought back. One-off backfill
+  without re-running the plan import: `POST /api/clients/[slug]/forge-import/key-dates`
+  `{ apply?: boolean }` (dry run by default, admin-only like the plan import, same per-client lock).
+- A remembered "calendar" view opens the Schedule (`parseBoardPrefs`). The month-grid code
+  (`wiki-board-calendar.tsx`, `src/lib/wiki-board-calendar.ts` and its tests) is deleted.
+- **Known limits:** a Done column sends only its newest 50 cards, so "What happened" for an older
+  finished card that fell off the board isn't shown. "Done" comes from `completedAt`; a card
+  imported as done with no date has no finish event.
 

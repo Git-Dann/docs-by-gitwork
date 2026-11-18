@@ -621,7 +621,7 @@ export function bulkTargets(
 
 /* ─────────────────────────────────────────────────────────── this viewer's choices ── */
 
-export type BoardView = "board" | "table" | "timeline" | "calendar";
+export type BoardView = "board" | "table" | "timeline" | "schedule";
 
 export interface BoardPrefs {
   view?: BoardView;
@@ -633,7 +633,7 @@ export function boardPrefsKey(boardKey: string): string {
   return `foundry.board.prefs.v1.${boardKey}`;
 }
 
-const VIEWS: readonly BoardView[] = ["board", "table", "timeline", "calendar"];
+const VIEWS: readonly BoardView[] = ["board", "table", "timeline", "schedule"];
 
 /** This viewer's last view, grouping and sort for this board. Anything unreadable is ignored. */
 export function parseBoardPrefs(raw: string | null): BoardPrefs {
@@ -641,7 +641,10 @@ export function parseBoardPrefs(raw: string | null): BoardPrefs {
   try {
     const v = JSON.parse(raw) as Record<string, unknown>;
     const out: BoardPrefs = {};
-    if (typeof v.view === "string" && (VIEWS as readonly string[]).includes(v.view)) out.view = v.view as BoardView;
+    // The Schedule replaced the month-grid Calendar (§128): someone who last looked at the
+    // Calendar opens the Schedule.
+    const view = v.view === "calendar" ? "schedule" : v.view;
+    if (typeof view === "string" && (VIEWS as readonly string[]).includes(view)) out.view = view as BoardView;
     if (typeof v.groupBy === "string" && (TABLE_GROUP_BY as readonly string[]).includes(v.groupBy)) out.groupBy = v.groupBy as TableGroupBy;
     const s = v.sort as Record<string, unknown> | null | undefined;
     if (s && typeof s.key === "string" && (TABLE_COLUMN_KEYS as readonly string[]).includes(s.key) && (s.dir === "asc" || s.dir === "desc")) {
