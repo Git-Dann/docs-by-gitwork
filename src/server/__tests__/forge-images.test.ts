@@ -10,7 +10,8 @@ const db = vi.hoisted(() => ({ tasks: [] as Task[], attachments: [] as Array<{ i
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
-    $queryRaw: async () => [],
+    // The lock is taken with $executeRaw: pg_advisory_xact_lock returns void, which $queryRaw cannot read.
+    $executeRaw: async () => 1,
     task: {
       findUnique: async ({ where }: { where: { id: string } }) => db.tasks.find((t) => t.id === where.id) ?? null,
       update: async ({ where, data }: { where: { id: string }; data: { metadata: unknown } }) => {
