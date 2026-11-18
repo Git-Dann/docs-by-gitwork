@@ -10157,6 +10157,21 @@ only), releases on the public `/timeline/[token]` link with the Categories | Rel
 card's dev tasks read from the server (`GET /api/tasks/[id]/linked`, archived included) instead of
 the board's cached list.
 
+### 125.1 Incident: the first live dry run froze the site
+
+Title matching is n × m (199 feed items × every Wedge task) and each spelling comparison is
+O(len²), all on the one thread that answers requests. The first live dry run (18 Nov 2026), run
+twice because the browser gave up on the first, froze foundry.gitwork.co.uk for minutes.
+
+- **Exact upper bounds first** (`ratioUpperBound`, difflib's real_quick_ratio + quick_ratio):
+  the slow comparison only runs when it could reach 0.85. ~18× faster, and checked identical to
+  the old matcher on 446,954 real and near-threshold pairs.
+- **The server pauses between feed items** (`matchFeedYielding`, `setImmediate`) and stops with a
+  503 past `MATCH_BUDGET_MS` (60s) rather than run on.
+- ⚠️ **Anything O(n × m) over a client's whole board must yield and have a budget.** Unit tests on
+  fixtures did not catch this: the real board is bigger than the snapshot, and a CPU-bound loop
+  doesn't fail, it just stops the site answering.
+
 ## 126. Recent Changes (November 2026) — The client's Board: move, add and sign off cards in their wiki
 
 A client-wiki section, **Board** (id `board`, `ClientWiki.boardEnabled`, additive): the client's

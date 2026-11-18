@@ -23,7 +23,14 @@ import { parseBoardColumns, columnNameKey } from "@/lib/tasks/board-columns";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 import { recordAuditEntry } from "@/server/audit-log";
 import { parseForgeFeed, parseForgeJson, type ForgeFeed } from "@/lib/forge-import/feed";
-import { buildForgePlan, type BoardTask, type ForgePlan, type ReviewDecision } from "@/lib/forge-import/plan";
+import {
+  buildForgePlan,
+  matchFeedSteps,
+  type BoardTask,
+  type FeedMatches,
+  type ForgePlan,
+  type ReviewDecision,
+} from "@/lib/forge-import/plan";
 
 /** Big Wedge's feed. The routes accept another URL, but this is the one in use. */
 export const BIG_WEDGE_FORGE_FEED = "https://ops.bigwedgegolf.com/wp-json/forge/v1/items";
@@ -146,6 +153,36 @@ async function loadBoard(db: Db, workspaceId: string, clientId: string) {
   return { columns: parseBoardColumns(client.taskBoardColumns), tasks, rows, releases };
 }
 
+/** Longest the title matching may run before the import refuses rather than carry on. */
+export const MATCH_BUDGET_MS = 60_000;
+
+/**
+ * Title matching, handing control back to the server between feed items. Matching is n × m and
+ * runs on the one thread that answers every request: run straight through, the first live dry
+ * run against Wedge's board froze foundry.gitwork.co.uk for minutes (Nov 2026). Pausing after
+ * each item keeps the site answering; the budget stops a pathological board running forever.
+ */
+export async function matchFeedYielding(
+  feed: ForgeFeed,
+  tasks: BoardTask[],
+  opts: { budgetMs?: number; now?: () => number } = {},
+): Promise<FeedMatches> {
+  const now = opts.now ?? (() => Date.now());
+  const budget = opts.budgetMs ?? MATCH_BUDGET_MS;
+  const started = now();
+  const run = matchFeedSteps(feed, tasks);
+  for (let step = run.next(); !step.done; step = run.next()) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    if (now() - started > budget) {
+      throw new ForgeImportError(
+        "Matching this board against the feed is taking too long, so it was stopped before it slowed Foundry down.",
+        503,
+      );
+    }
+  }
+  return run.result();
+}
+
 export async function planForgeImport(input: {
   workspaceId: string;
   clientId: string;
@@ -154,7 +191,8 @@ export async function planForgeImport(input: {
 }): Promise<ForgePlan> {
   const feed = await fetchForgeFeed(input.feedUrl ?? BIG_WEDGE_FORGE_FEED);
   const board = await loadBoard(prisma, input.workspaceId, input.clientId);
-  return buildForgePlan({ feed, tasks: board.tasks, releases: board.releases, columns: board.columns, decisions: input.decisions });
+  const matched = await matchFeedYielding(feed, board.tasks);
+  return buildForgePlan({ feed, tasks: board.tasks, releases: board.releases, columns: board.columns, decisions: input.decisions, matched });
 }
 
 export interface ForgeApplyResult {
@@ -209,12 +247,14 @@ export async function applyForgeImport(input: {
       if (!lock[0]?.locked) throw new ForgeImportError("An import for this client is already running. Try again when it has finished.", 409);
 
       const board = await loadBoard(tx, workspaceId, clientId);
+      const matched = await matchFeedYielding(feed, board.tasks);
       const plan = buildForgePlan({
         feed,
         tasks: board.tasks,
         releases: board.releases,
         columns: board.columns,
         decisions: input.approvedReviewLinks,
+        matched,
       });
       if (plan.missingColumns.length) {
         throw new ForgeImportError(`Add these board columns first: ${plan.missingColumns.join(", ")}.`, 409);
