@@ -107,3 +107,43 @@ SOFTWARE.
 - **Licence:** CC0 1.0 Universal (public-domain dedication) for the package's data and SVG paths. CC0 asks for no notice, but the **marks themselves remain their owners' trademarks**: use each one only to identify that product, keep its proportions, and recolour only to the brand's own colour or a mono (one-colour) variant. Simple Icons' own disclaimer: https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md
 - **Used in:** `src/lib/platform-icons.tsx` (`PlatformMark`, `detectPlatformMark`) for the Portal client page's Platforms and Designs cards. Only the icons named there are imported, so the bundle carries those paths and no others.
 - **Rule (Dan, Nov 2026):** use official marks only, never redraw a logo as hand-made SVG paths. A brand Simple Icons doesn't carry (Slack, Amazon, TestFlight, Featurebase …) gets a generic outline icon instead. `src/lib/__tests__/platform-icons.test.tsx` fails if hand-drawn paths come back.
+
+## taste-skill (Starters prompts, adapted)
+
+- **Source:** https://github.com/Leonxlnx/taste-skill (offered as PR #702, closed in favour of this)
+- **Licence:** MIT (full text below, copied verbatim from the repo's `LICENSE`)
+- **What we took:** the substance of two skills, rewritten as Starters prompts in
+  `src/server/starters-catalog.ts` to the §8 depth standard. No upstream file or script is
+  vendored.
+
+| Upstream skill | Foundry Starter (slug) |
+|---|---|
+| `redesign-existing-projects` | `redesign-pass` (Redesign Pass) |
+| `design-taste-frontend` (tasteskill v2) | `art-direction` (Art Direction) |
+
+The library's older `taste` Starter was already adapted from the same project (`_buildRef:
+"taste-skill"`).
+
+```
+MIT License
+
+Copyright (c) 2026 Leonxlnx
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
