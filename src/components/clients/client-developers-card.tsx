@@ -13,7 +13,11 @@ import { StatusDot } from "@/components/ui/motion/status-dot";
 import { useClientActiveCovers } from "@/hooks/use-backstage";
 import { formatDate } from "@/lib/format";
 import { developerCards } from "@/lib/client-developers";
+import { cardBasis, cardsPerRow } from "@/lib/client-portal-layout";
 import type { ClientPlacementRecord } from "@/types/client";
+
+/** Grows to fill its row; on a narrow screen it wraps at 240px rather than squeezing. */
+const devCell = "min-w-[min(100%,240px)] flex-1";
 
 const MONO = "var(--font-mono)";
 const sinceLabel = (iso: string) =>
@@ -33,6 +37,7 @@ export function ClientDevelopersCard({
   // The demo's catch-all can answer {} here; only a list is a list.
   const coverList = Array.isArray(covers.data) ? covers.data : [];
   const { active, past, standIns } = developerCards(placements, coverList);
+  const basis = cardBasis(cardsPerRow(active.length + standIns.length), 8);
 
   return (
     <section className="widget-card flex flex-col">
@@ -61,9 +66,11 @@ export function ClientDevelopersCard({
             </Link>
           </p>
         ) : (
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          // Wrapping flex rather than a fixed grid: the per-row count comes from how many there are,
+          // and every card grows, so a short last row stretches instead of leaving a hole.
+          <ul className="flex flex-wrap gap-2" data-dev-grid>
             {active.map((d) => (
-              <li key={d.candidateId}>
+              <li key={d.candidateId} className={devCell} style={{ flexBasis: basis }}>
                 <Link
                   href={`/app/staff/${d.candidateId}`}
                   className="group flex h-full items-start gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3 transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]"
@@ -119,7 +126,7 @@ export function ClientDevelopersCard({
               </li>
             ))}
             {standIns.map((c) => (
-              <li key={c.absenceId}>
+              <li key={c.absenceId} className={devCell} style={{ flexBasis: basis }}>
                 <div className="flex h-full items-start gap-3 rounded-[8px] border border-dashed border-amber-300 bg-amber-50 p-3">
                   <Avatar name={c.coverUserName ?? "Cover"} size={36} />
                   <span className="min-w-0 flex-1">

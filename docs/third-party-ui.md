@@ -98,3 +98,12 @@ SOFTWARE.
   resized to 120×248. ⚠️ The artwork is **Spider-Man**, a Marvel character. It is used only in the
   internal Halloween theme, never on public pages, and is replaceable with any sprite of the same
   shape.
+
+---
+
+## Simple Icons (official brand marks)
+
+- **Source:** https://github.com/simple-icons/simple-icons · npm `simple-icons`, pinned at **16.36.0** (exact version, published 2026-10-25).
+- **Licence:** CC0 1.0 Universal (public-domain dedication) for the package's data and SVG paths. CC0 asks for no notice, but the **marks themselves remain their owners' trademarks**: use each one only to identify that product, keep its proportions, and recolour only to the brand's own colour or a mono (one-colour) variant. Simple Icons' own disclaimer: https://github.com/simple-icons/simple-icons/blob/develop/DISCLAIMER.md
+- **Used in:** `src/lib/platform-icons.tsx` (`PlatformMark`, `detectPlatformMark`) for the Portal client page's Platforms and Designs cards. Only the icons named there are imported, so the bundle carries those paths and no others.
+- **Rule (Dan, Nov 2026):** use official marks only, never redraw a logo as hand-made SVG paths. A brand Simple Icons doesn't carry (Slack, Amazon, TestFlight, Featurebase …) gets a generic outline icon instead. `src/lib/__tests__/platform-icons.test.tsx` fails if hand-drawn paths come back.

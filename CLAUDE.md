@@ -10604,3 +10604,47 @@ Verified at `/demo/portal` at 1440 · 1024 · 768 · 390: 0 clipping findings, 0
 console errors. ⚠️ The demo shell ignores the theme switch, so dark mode was not seen; everything
 uses tokens. Not verified against live data: post-deploy, open Wedge and check the Slack card
 either shows a digest or says why, and press Try again.
+
+### 129.1 Icons and colour, only where they mean something
+
+Dan's rule for the Portal: an icon says what a thing is, colour says what state it's in, and
+neither is decoration. No icons in the mono `NN //` headers, no colour per card, no tinted card
+backgrounds.
+
+- **Neutral outline icons** (--text-4) on the stat tiles, the hero's key facts, and every lifecycle
+  milestone and history entry (`src/lib/client-history-icons.ts`: decided from the event's id
+  prefix and the server's step label; an unknown step gets a clock, never a guess).
+- **Official logos only.** Platforms and Designs show the brand's real mark from **Simple Icons**
+  (`simple-icons@16.36.0`, CC0, pinned; `src/lib/platform-icons.tsx`, licence and usage rules in
+  `docs/third-party-ui.md`). ⚠️ **Never redraw a logo as hand-made SVG paths.** The old
+  hand-drawn Apple, Google Play, Amazon, GitHub, Figma, Vercel, Notion, Linear and Slack paths are
+  gone. A brand Simple Icons doesn't carry (Slack, Amazon, TestFlight, Featurebase) gets a generic
+  outline icon. Hosts match exactly or as a subdomain, never by substring.
+- **Brand colour only where it reads on both themes** (≥3:1 against light and dark
+  --surface-1, `brandFill`); otherwise the mark is drawn mono in --text-1, the variant every one of
+  these brands allows. The tile is a token, so it follows the theme.
+- **State colour:** the engagement end date is amber inside 30 days and red (worded "Ended") once
+  passed (`src/lib/client-end-date.ts`); a platform's renewal line uses the wiki's rule (amber inside
+  a fortnight, red once passed, neutral again after 30 days). Status chip, Pulse score bands,
+  meeting-note states and study dots already carried meaning and are unchanged.
+
+**No large gaps, by construction (Dan: "absolutely cannot have large gaps").** Checked on the live
+Wedge page after #840: an empty Studies card stretched to Documents' height (~250px empty), ~80px
+under four designs, and a ~300px hole on the Developers grid's second row. The rule now is that in
+every side-by-side pair **one card sets the row's height and the other fills it**:
+
+- **Meeting notes sets the height; Designs fills it** (`lg:h-0 lg:min-h-full`, so Designs can't
+  drive the row). Designs are tiles in a grid whose rows are `minmax(88px, 1fr)`: a few grow to
+  fill, many scroll inside the card; two across past three, an odd last tile spans both. A lone
+  design gets the big mark. The meeting list fills its card (empty state included) with the pager
+  pinned to the bottom.
+- **Contact sets the height; Slack fills it** and scrolls its digest inside.
+- **Documents runs full width**, and Pulse, Studies and Notes follow full width at their natural
+  height. They are never paired with Documents again.
+- **Developers wrap in a flex row**: `cardsPerRow` (`src/lib/client-portal-layout.ts`) picks the
+  per-row count from how many there are (5 → 3 + 2, 7 → 4 + 3) and every card grows, so a short
+  last row stretches instead of leaving a hole; below 240px a card wraps.
+- `/demo/portal?shape=dense` is Wedge's shape (5 developers, 4 designs, 49 meetings, 1 scan, no
+  studies, 30 documents). Measured before → after at 1440 · 1152 · 1024 · 390: largest empty space
+  under a card's content 1932px (Notes beside 30 documents) / 99px (Designs) / 68–87px (Contact) →
+  **25px**; developer row hole 327–391px → **0**; side-by-side bottom edges differ by **0px**.

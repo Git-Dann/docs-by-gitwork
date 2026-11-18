@@ -4,6 +4,14 @@ import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   BanknotesIcon,
+  BriefcaseIcon,
+  CalendarDaysIcon,
+  DocumentTextIcon,
+  FlagIcon,
+  SignalIcon,
+  Squares2X2Icon,
+  SwatchIcon,
+  UserGroupIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   LifebuoyIcon,
@@ -74,7 +82,9 @@ import {
 import { useCreateTask, useDeleteTask, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate, taskRef } from "@/lib/format";
-import { detectPlatformIcon } from "@/lib/platform-icons";
+import { PlatformMark } from "@/lib/platform-icons";
+import { daysUntil, endDateState } from "@/lib/client-end-date";
+import { RENEWAL_OVERDUE_DAYS, renewalTone } from "@/lib/wiki-platforms";
 import { ClientDriveFiles } from "@/components/clients/client-drive-files";
 import { driveFolderIdFromUrl } from "@/lib/client-drive";
 import { portalSectionNumbers } from "@/lib/client-portal-layout";
@@ -151,19 +161,12 @@ function validateEditForm(f: EditFormState): string | null {
 }
 
 /** Official Slack mark (4-colour). Labels the Internal / External channel fields. */
+/**
+ * Slack isn't carried by Simple Icons (Slack asked for its removal), and Dan's rule is never to
+ * redraw a logo, so a Slack channel gets the generic outline chat icon.
+ */
 function SlackGlyph({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 122.8 122.8" aria-hidden="true" focusable="false">
-      <path d="M25.8 77.6c0 7.1-5.8 12.9-12.9 12.9S0 84.7 0 77.6s5.8-12.9 12.9-12.9h12.9v12.9z" fill="#E01E5A" />
-      <path d="M32.3 77.6c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9v32.3c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V77.6z" fill="#E01E5A" />
-      <path d="M45.2 25.8c-7.1 0-12.9-5.8-12.9-12.9S38.1 0 45.2 0s12.9 5.8 12.9 12.9v12.9H45.2z" fill="#36C5F0" />
-      <path d="M45.2 32.3c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H12.9C5.8 58.1 0 52.3 0 45.2s5.8-12.9 12.9-12.9h32.3z" fill="#36C5F0" />
-      <path d="M97 45.2c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9-5.8 12.9-12.9 12.9H97V45.2z" fill="#2EB67D" />
-      <path d="M90.5 45.2c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V12.9C64.7 5.8 70.5 0 77.6 0s12.9 5.8 12.9 12.9v32.3z" fill="#2EB67D" />
-      <path d="M77.6 97c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9-12.9-5.8-12.9-12.9V97h12.9z" fill="#ECB22E" />
-      <path d="M77.6 90.5c-7.1 0-12.9-5.8-12.9-12.9s5.8-12.9 12.9-12.9h32.3c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H77.6z" fill="#ECB22E" />
-    </svg>
-  );
+  return <ChatBubbleLeftRightIcon className={cn(className, "text-[var(--text-3)]")} aria-hidden />;
 }
 
 const ENGAGEMENT_LABEL: Record<ClientEngagementType, string> = {
@@ -194,6 +197,39 @@ function ClientStatusChip({ status }: { status: ClientDetailRecord["client"]["st
       {m.label}
     </span>
   );
+}
+
+/** Up to this many designs sit one per row; more go two across. */
+const DESIGN_TILES_MAX = 3;
+
+const heroFact = "inline-flex items-center gap-1";
+const heroFactIcon = "h-3.5 w-3.5 shrink-0 text-[var(--text-4)]";
+
+/**
+ * The engagement's end date, coloured only when it means something: amber inside 30 days, red
+ * once it has passed (and worded as "Ended"). Otherwise it reads like the other facts.
+ */
+function EndDateFact({ endDate }: { endDate: string }) {
+  const { days, state } = endDateState(endDate);
+  const tone = state === "past" ? "text-red-700" : state === "soon" ? "text-amber-700" : undefined;
+  return (
+    <span className={cn(heroFact, tone)} title={state === "past" ? "This engagement's end date has passed" : state === "soon" ? `Ends in ${days} day${days === 1 ? "" : "s"}` : undefined}>
+      <FlagIcon aria-hidden className={cn(heroFactIcon, tone && "text-current")} />
+      {state === "past" ? "Ended" : "Ends"} {formatDate(endDate)}
+    </span>
+  );
+}
+
+/**
+ * A platform's renewal line: amber inside a fortnight, red once passed (the wiki's rule,
+ * src/lib/wiki-platforms.ts). A date more than RENEWAL_OVERDUE_DAYS gone reads neutral, because
+ * nobody updates it after renewing and a permanent red line teaches everyone to ignore it.
+ */
+function renewalTextTone(renewsOn: string): string {
+  const days = daysUntil(renewsOn);
+  if (!Number.isFinite(days) || days < -RENEWAL_OVERDUE_DAYS) return "text-[var(--text-3)]";
+  const tone = renewalTone(days);
+  return tone === "overdue" ? "text-red-700" : tone === "soon" ? "text-amber-700" : "text-[var(--text-3)]";
 }
 
 const actionMenuPanel =
@@ -599,23 +635,30 @@ export function ClientDetail({ slug }: { slug: string }) {
                 className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-[0.08em] text-[var(--text-3)]"
                 style={{ fontFamily: "var(--font-mono)" }}
               >
-                <span>Client since {new Date(client.createdAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</span>
+                <span className={heroFact}>
+                  <CalendarDaysIcon aria-hidden className={heroFactIcon} />
+                  Client since {new Date(client.createdAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+                </span>
                 {client.engagementType ? (
                   <>
                     <span aria-hidden className="text-[var(--text-4)]">·</span>
-                    <span>{ENGAGEMENT_LABEL[client.engagementType]}</span>
+                    <span className={heroFact}>
+                      <BriefcaseIcon aria-hidden className={heroFactIcon} />
+                      {ENGAGEMENT_LABEL[client.engagementType]}
+                    </span>
                   </>
                 ) : null}
                 {client.endDate ? (
                   <>
                     <span aria-hidden className="text-[var(--text-4)]">·</span>
-                    <span>Ends {formatDate(client.endDate)}</span>
+                    <EndDateFact endDate={client.endDate} />
                   </>
                 ) : null}
                 {!isLead && activeDevCount > 0 ? (
                   <>
                     <span aria-hidden className="text-[var(--text-4)]">·</span>
-                    <span>
+                    <span className={heroFact}>
+                      <UserGroupIcon aria-hidden className={heroFactIcon} />
                       {activeDevCount} dev{activeDevCount === 1 ? "" : "s"} on it
                     </span>
                   </>
@@ -801,23 +844,25 @@ export function ClientDetail({ slug }: { slug: string }) {
         <>
       {/* ── STATS ── */}
       <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", canViewPulse ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
-        <StatCard number={num.statDocs} label="DOCS" value={proposals.length} style={rise()} />
-        <StatCard number={num.statPlatforms} label="PLATFORMS" value={platforms.length} style={rise()} />
-        <StatCard number={num.statDesigns} label="DESIGNS" value={designs.length} style={rise()} />
-        {canViewPulse ? <StatCard number={num.statPulse} label="PULSE SCANS" value={pulseScans.length} style={rise()} /> : null}
+        <StatCard number={num.statDocs} label="DOCS" value={proposals.length} icon={DocumentTextIcon} style={rise()} />
+        <StatCard number={num.statPlatforms} label="PLATFORMS" value={platforms.length} icon={Squares2X2Icon} style={rise()} />
+        <StatCard number={num.statDesigns} label="DESIGNS" value={designs.length} icon={SwatchIcon} style={rise()} />
+        {canViewPulse ? <StatCard number={num.statPulse} label="PULSE SCANS" value={pulseScans.length} icon={SignalIcon} style={rise()} /> : null}
         <StatCard
           number={num.statDevs}
           label="DEVS"
           value={activeDevCount}
+          icon={UserGroupIcon}
           href={`/app/portal/${slug}/tasks`}
           action={<span className="text-[11px] font-medium text-[var(--brand-700)]">Tasks →</span>}
           style={rise()}
         />
       </div>
 
-      {/* ── SLACK ACTIVITY + CONTACT ── */}
-      <div className="grid items-stretch gap-4 lg:grid-cols-2">
-      <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
+      {/* ── SLACK ACTIVITY + CONTACT ── Contact sets the row's height; Slack (lg:h-0 + min-h-full)
+          takes that height and scrolls its digest inside, so neither card is left with a hole. */}
+      <div className="grid items-stretch gap-4 lg:min-h-[220px] lg:grid-cols-2">
+      <section className="widget-card motion-rise flex flex-col lg:h-0 lg:min-h-full" style={rise()}>
         <div className="widget-header">
           <span className="widget-header__label">
             <span className="widget-header__label--number">{num.slack}</span>
@@ -849,14 +894,16 @@ export function ClientDetail({ slug }: { slug: string }) {
             )}
           </div>
         </div>
-        <SlackActivityBody
-          data={slackActivity.data}
-          isLoading={slackActivity.isPending}
-          onConfigureClick={canManageClients ? openEdit : undefined}
-          onRetry={() => retrySlackDigest.mutate()}
-          retrying={retrySlackDigest.isPending}
-          summaryOnly
-        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <SlackActivityBody
+            data={slackActivity.data}
+            isLoading={slackActivity.isPending}
+            onConfigureClick={canManageClients ? openEdit : undefined}
+            onRetry={() => retrySlackDigest.mutate()}
+            retrying={retrySlackDigest.isPending}
+            summaryOnly
+          />
+        </div>
       </section>
       <ContactCard client={client} number={num.contact} onEdit={canManageClients ? openEdit : undefined} style={rise()} />
       </div>
@@ -995,12 +1042,14 @@ export function ClientDetail({ slug }: { slug: string }) {
       </div>
 
       {/* ── MEETING NOTES + DESIGNS ── both stretch to the taller one, so neither leaves a hole. */}
-      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
-      <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
+      <div className="grid grid-cols-1 items-stretch gap-4 lg:min-h-[320px] lg:grid-cols-2" data-pair-row>
+      <section className="widget-card motion-rise flex h-full flex-col" style={rise()} data-pair-card>
         <MeetingNotesSection slug={slug} number={num.meetings} />
       </section>
-      {/* 11 // DESIGNS */}
-      <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
+      {/* DESIGNS takes the row height Meeting notes sets (lg:h-0 + min-h-full keeps it from
+          driving the row), then fills it: a few designs become tiles that share the height, many
+          scroll inside the card. Either way the pair ends level with no hole (§129.1). */}
+      <section className="widget-card motion-rise flex flex-col lg:h-0 lg:min-h-full" style={rise()} data-pair-card>
         <div className="widget-header">
           <span className="widget-header__label">
             <span className="widget-header__label--number">{num.designs}</span>
@@ -1020,7 +1069,7 @@ export function ClientDetail({ slug }: { slug: string }) {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col p-5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5" data-pair-body>
           {designs.length === 0 ? (
             <div className="flex flex-1 items-center justify-center rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
               <p className="text-sm text-[var(--text-4)]">
@@ -1036,7 +1085,15 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
+            // Tiles in a grid whose rows share the card's height (minmax(88px, 1fr)): a few designs
+            // grow to fill it, many scroll inside it. With two columns an odd last tile spans both.
+            <div
+              className={cn(
+                "grid flex-1 auto-rows-[minmax(88px,1fr)] gap-2",
+                designs.length > DESIGN_TILES_MAX && "sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2",
+              )}
+              data-design-grid
+            >
               {designs.map((design) => (
                 <DesignCard
                   key={design.id}
@@ -1044,6 +1101,8 @@ export function ClientDetail({ slug }: { slug: string }) {
                   slug={slug}
                   deletingId={deletingDesignId}
                   setDeletingId={setDeletingDesignId}
+                  variant="tile"
+                  largeMark={designs.length === 1}
                 />
               ))}
             </div>
@@ -1053,9 +1112,10 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       </div>
 
-      {/* ── DOCUMENTS + (PULSE · STUDIES · NOTES) ── the right column stacks, and its last card
-          takes the slack, so the pair ends level. With nothing on the right, Documents is full width. */}
-      <div className={cn("grid grid-cols-1 items-stretch gap-4", sideCards > 0 && "lg:grid-cols-2")}>
+      {/* ── DOCUMENTS, then PULSE · STUDIES · NOTES ── Documents runs full width, and the small
+          cards follow full width at their natural height. Pairing them used to stretch an empty
+          Studies card to Documents' height (§129.1: no large gaps, by construction). */}
+      <div className="flex flex-col gap-4">
         {/* 14 // DOCUMENTS */}
         <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
           <div className="widget-header">
@@ -1142,21 +1202,20 @@ export function ClientDetail({ slug }: { slug: string }) {
 
 
         {sideCards > 0 ? (
-        <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4" data-side-cards>
           {canViewPulse ? (
             <ClientPulseCard
               number={num.pulse}
               scans={pulseScans}
               pendingReview={client.status === "PENDING_REVIEW"}
-              grow={!showStudies && !client.notes}
               style={rise()}
             />
           ) : null}
           {showStudies ? (
-            <ClientStudiesCard number={num.studies} clientId={client.id} studies={studies} grow={!client.notes} style={rise()} />
+            <ClientStudiesCard number={num.studies} clientId={client.id} studies={studies} style={rise()} />
           ) : null}
           {client.notes ? (
-            <section className="widget-card motion-rise flex flex-1 flex-col" style={rise()}>
+            <section className="widget-card motion-rise flex flex-col" style={rise()}>
               <div className="widget-header">
                 <span className="widget-header__label">
                   <span className="widget-header__label--number">{num.notes}</span>
@@ -1531,7 +1590,7 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 p-4">
+      <div className="flex flex-1 flex-col gap-3 p-4" data-pair-body>
         {Boolean(data) && rows.length > 0 && (
           <div className="relative">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-4)]" />
@@ -1541,7 +1600,7 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
         )}
         {isLoading && <p className="widget-data-label animate-pulse py-4 text-center">Loading…</p>}
         {!isLoading && rows.length === 0 && (
-          <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-8 text-center">
+          <div className="flex flex-1 items-center justify-center rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] px-4 py-8 text-center">
             <p className="text-sm text-[var(--text-4)]">
               {data?.calendarConnected ? (query ? `No calls matching "${query}".` : "No recent calls with this client.") : "Connect Google Calendar to capture Scribe notes from your Meet calls."}
             </p>
@@ -1605,7 +1664,7 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
           </div>
         )}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between pt-1">
+          <div className="mt-auto flex items-center justify-between pt-1">
             <span className="widget-timestamp">{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, rows.length)} of {rows.length}</span>
             <div className="flex items-center gap-1">
               <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)} title="Previous"
@@ -2308,6 +2367,7 @@ function StatCard({
   number,
   label,
   value,
+  icon: Icon,
   action,
   href,
   style,
@@ -2315,6 +2375,8 @@ function StatCard({
   number: string;
   label: string;
   value: number;
+  /** A small neutral outline icon beside the figure: what the number counts, at a glance. */
+  icon?: React.ComponentType<{ className?: string }>;
   /** Optional small control pinned bottom-right (e.g. a jump link). */
   action?: React.ReactNode;
   /** When provided, the whole metric card becomes a navigation target. */
@@ -2339,7 +2401,8 @@ function StatCard({
           {` // ${label}`}
         </span>
       </div>
-      <div className="widget-body--compact">
+      <div className="widget-body--compact relative">
+        {Icon ? <Icon aria-hidden className="absolute right-4 top-4 h-5 w-5 text-[var(--text-4)]" /> : null}
         <p
           className="text-4xl leading-none tracking-tight text-[var(--text-1)] sm:text-5xl"
           style={{ fontFamily: "var(--font-display)" }}
@@ -2616,7 +2679,6 @@ function PlatformCard({
   }
 
   const primaryUrl = platform.url || platform.stagingUrl;
-  const { icon, color, bg } = detectPlatformIcon(primaryUrl, platform.platformType);
 
   return (
     <>
@@ -2624,13 +2686,8 @@ function PlatformCard({
         className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
         onClick={() => setEditing(true)}
       >
-        {/* Icon badge */}
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px]"
-          style={{ background: bg, color }}
-        >
-          {icon}
-        </div>
+        {/* The platform's official mark, or a generic icon (src/lib/platform-icons.tsx). */}
+        <PlatformMark url={primaryUrl} platformType={platform.platformType} />
 
         {/* Content */}
         <div className="min-w-0 flex-1">
@@ -2642,7 +2699,7 @@ function PlatformCard({
           )}
           {platform.renewsOn && (
             <p
-              className="mt-0.5 truncate text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]"
+              className={cn("mt-0.5 truncate text-[10px] uppercase tracking-[0.08em]", renewalTextTone(platform.renewsOn))}
               style={{ fontFamily: "var(--font-mono), 'JetBrains Mono', monospace" }}
               title={`${platform.renewalNote ?? "Renews"} · ${platform.renewsOn}`}
             >
@@ -2759,7 +2816,13 @@ function DesignCard({
   slug,
   deletingId,
   setDeletingId,
+  variant = "row",
+  largeMark = false,
 }: {
+  /** row: a compact line in a long list. tile: a large card that fills its share of the column. */
+  variant?: "row" | "tile";
+  /** A lone design's tile is tall enough for the big mark; smaller tiles keep the 36px one. */
+  largeMark?: boolean;
   design: ClientDesignRecord;
   slug: string;
   deletingId: string | null;
@@ -2789,26 +2852,36 @@ function DesignCard({
     }
   }
 
-  const { icon, color, bg } = detectPlatformIcon(design.url, null);
 
   return (
     <>
       <article
-        className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
+        className={cn(
+          "group relative cursor-pointer rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] transition-all hover:border-[var(--brand-400)] hover:shadow-sm",
+          variant === "tile" ? "flex min-h-[88px] flex-col overflow-hidden" : "flex flex-row items-center gap-3 px-3 py-3",
+        )}
         onClick={() =>
           design.url
             ? window.open(design.url, "_blank", "noopener,noreferrer")
             : setEditing(true)
         }
       >
-        {/* Icon badge */}
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px]"
-          style={{ background: bg, color }}
-        >
-          {icon}
-        </div>
+        {variant === "tile" ? (
+          // The preview fills the tile; without one, the tool's official mark sits in the middle.
+          <div className="relative flex min-h-[24px] flex-1 items-center justify-center overflow-hidden border-b border-[var(--border-3)] bg-[var(--surface-1)]">
+            {design.previewImageUrl && /^https:\/\//i.test(design.previewImageUrl) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={design.previewImageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+            ) : (
+              <PlatformMark url={design.url} size={largeMark ? "lg" : "md"} />
+            )}
+          </div>
+        ) : (
+          /* The design tool's official mark (Figma, Miro …), or a generic icon. */
+          <PlatformMark url={design.url} />
+        )}
 
+        <div className={cn("flex min-w-0 flex-1 items-center gap-3", variant === "tile" && "flex-none px-3 py-2.5")}>
         {/* Content */}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]" title={design.name}>{design.name}</p>
@@ -2844,6 +2917,7 @@ function DesignCard({
           >
             <TrashIcon className="h-3.5 w-3.5" />
           </button>
+        </div>
         </div>
       </article>
 
