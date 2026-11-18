@@ -6,7 +6,10 @@ import { NewTaskButton } from "@/components/tasks/new-task-button";
 import { useClientList } from "@/hooks/use-proposals";
 import type { WidgetSize } from "@/components/app-overview";
 import type { ClientListItem } from "@/types/client";
-import { SkeletonWidget } from "@/components/ui/motion/skeleton";
+import { SkeletonRows } from "@/components/ui/motion/skeleton";
+import { StatusDot } from "@/components/ui/motion/status-dot";
+import { Avatar } from "@/components/ui/avatar";
+import { TileHeader } from "@/components/dashboard/tile-header";
 
 /**
  * 03 // CLIENTS — summarised active-client cards. Built per Dan's HQ-pass-2 ask:
@@ -17,11 +20,15 @@ import { SkeletonWidget } from "@/components/ui/motion/skeleton";
  *    grid height
  */
 export default function ClientsWidget({ index }: { size: WidgetSize; index: number }) {
-  const num = String(index).padStart(2, "0");
   const { data, isLoading } = useClientList();
 
   if (isLoading) {
-    return <SkeletonWidget />;
+    return (
+      <div className="flex h-full flex-col">
+        <TileHeader index={index} label="CLIENTS" href="/app/portal" />
+        <SkeletonRows count={6} avatar className="p-4" />
+      </div>
+    );
   }
 
   const clients = data?.clients ?? [];
@@ -30,29 +37,23 @@ export default function ClientsWidget({ index }: { size: WidgetSize; index: numb
     if (a.status !== b.status) return a.status === "ACTIVE" ? -1 : 1;
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
   });
+  // Red/amber delivery health is the one thing worth surfacing in the header.
+  const attention = sorted.filter((c) => c.health && c.health.level !== "green").length;
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-        <span
-          className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {`${num} // CLIENTS`}
-        </span>
-        <Link
-          href="/app/portal"
-          className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]"
-        >
-          View all
-        </Link>
-      </div>
-
+      <TileHeader
+        index={index}
+        label="CLIENTS"
+        href="/app/portal"
+        status={attention > 0 ? `${attention} NEED A LOOK` : sorted.length > 0 ? `${sorted.length} ACTIVE` : null}
+        statusTone={attention > 0 ? "warning" : "muted"}
+      />
       {sorted.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-4 text-center">
-          <BuildingOffice2Icon className="h-6 w-6 text-[#94A3B8]" />
-          <p className="text-xs text-[#475569]">No clients yet</p>
-          <Link href="/app/portal" className="text-xs font-medium text-[#1D4ED8] hover:underline">
+          <BuildingOffice2Icon className="h-6 w-6 text-[var(--text-4)]" />
+          <p className="text-xs text-[var(--text-3)]">No clients yet</p>
+          <Link href="/app/portal" className="text-xs font-medium text-[var(--brand-700)] hover:underline">
             Add a client →
           </Link>
         </div>
@@ -85,7 +86,7 @@ function ClientRow({ client }: { client: ClientListItem }) {
   }
 
   return (
-    <div className="group flex items-center gap-3 rounded-[8px] border border-[rgba(0,0,0,0.06)] bg-white px-2.5 py-2 transition-colors hover:bg-[var(--surface-1)]">
+    <div className="group flex items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-2 transition-colors hover:bg-[var(--surface-1)]">
       <Link href={`/app/portal/${client.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
         {client.logoUrl ? (
           // Logos come from arbitrary client domains — keep raw <img> to avoid
@@ -101,23 +102,30 @@ function ClientRow({ client }: { client: ClientListItem }) {
             className="h-7 w-7 shrink-0 rounded-[6px] object-cover"
           />
         ) : (
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-[var(--surface-1)] text-[10px] font-semibold text-[#475569]">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-[var(--surface-1)] text-[10px] font-semibold text-[var(--text-3)]">
             {initials(client.name)}
           </span>
         )}
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-medium text-[#0F172A]">{client.name}</p>
+            <p className="truncate text-sm font-medium text-[var(--text-1)]">{client.name}</p>
+            {client.health && client.health.level !== "green" ? (
+              <StatusDot
+                size="xs"
+                tone={client.health.level === "red" ? "danger" : "warning"}
+                label={client.health.reasons.join(" · ") || "Needs a look"}
+              />
+            ) : null}
             {client.status === "PENDING_REVIEW" ? (
-              <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">
+              <span className="shrink-0 rounded-[4px] bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">
                 Pending
               </span>
             ) : null}
           </div>
           {stats.length > 0 ? (
             <p
-              className="truncate text-[10px] uppercase tracking-[0.08em] text-[#94A3B8]"
+              className="truncate text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
               style={{ fontFamily: "var(--font-mono)" }}
             >
               {stats.join(" · ")}
@@ -125,6 +133,13 @@ function ClientRow({ client }: { client: ClientListItem }) {
           ) : null}
         </div>
       </Link>
+      {(client.people ?? []).length > 0 ? (
+        <span className="flex shrink-0 -space-x-1.5" aria-hidden>
+          {(client.people ?? []).slice(0, 3).map((p) => (
+            <Avatar key={p.id} src={p.avatarUrl} name={p.name} size={20} className="ring-2 ring-[var(--surface-0)]" />
+          ))}
+        </span>
+      ) : null}
       <NewTaskButton
         clientId={client.id}
         clientName={client.name}

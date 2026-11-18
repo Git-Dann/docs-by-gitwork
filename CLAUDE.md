@@ -10493,3 +10493,39 @@ for a plan. The view switch is now **Board | Table | Timeline | Schedule**.
   finished card that fell off the board isn't shown. "Done" comes from `completedAt`; a card
   imported as done with no date has no finish event.
 
+
+## 129. Recent Changes (November 2026) — HQ: a today band, tidier tiles, quick actions, motion
+
+Dan: the dashboard "needs a lot of love". Every capability, permission gate and role variant is
+unchanged (admin bento, developer view, Siân's people-ops tiles, guests, "view as").
+
+- **Today band** (`src/components/dashboard/hq-today-band.tsx`): big figures with a small graphic,
+  each a link to its source. My tasks (overdue / due soon / doing bar), Standups today (AM/PM
+  rings), Care awaiting reply (longest wait), Pulse health (tier bar), Next meeting (now/next with
+  Join). The developer view gets My tasks, **My standup** and Next meeting. ⚠️ It fetches nothing
+  new: each tile reads a query a card below already makes (same React Query key), and only shows to
+  someone who can see that card. `useClientQueueSummaries(enabled)` gained the switch for this.
+- **One tile header** (`tile-header.tsx`, `TileHeader`): every HQ tile wears the same
+  `NN // NAME` strip with a brand number, a status and a "View all". Half the tiles drew their own
+  in literal hex that didn't flip in dark mode.
+- **Numbering** is one running counter including the Agentic workflow card (it was hardcoded 09).
+- **Bento:** three tiles a row from `xl`, two from `lg` (`XL_SPAN` / `LG_SPAN`); the desk and
+  roll-up sit side by side from `xl` only. At 1024 they squeezed task titles to nothing.
+- **Tiles:** Clients show delivery-health dots and team faces; Mail shows people first and folds
+  bot/no-reply/newsletter mail behind a remembered toggle (`src/lib/hq-mail.ts`, conservative: when
+  unsure it's a person); Calendar leads with now/next and a Join button (`src/lib/hq-calendar.ts`);
+  Pulse and Docs draw one proportional bar with counts; Care draws a bar per client.
+- **Daily roll-up** is a face grid (one per developer, AM/PM marks under each, pick one for their
+  day) instead of a paged list of five. Broadcast is one line.
+- **On your desk:** overdue rows have **Done** (with Undo, `useToast().undo`); Doing and Upcoming
+  open at three with a remembered "Show more".
+- **Colour and icons** (Dan's rule): outline Heroicons only on the today-band labels and actions,
+  never in `NN //` headers; colour only for meaning (overdue, waiting, at risk, healthy); charts use
+  brand blue for "now/you" and greys for the rest; no tinted card backgrounds; no logos added.
+- **Motion:** bento tiles stagger in (`FadeIn`), figures count up (`CountUp` → `useCountUp`), live
+  meetings pulse (`StatusDot`), skeletons match each tile's shape.
+- **Demo:** `/demo/hq` is HQ as a Super Admin (the account query is seeded in the browser cache; it
+  reaches no server), with a roll-up roster fixture. Several tiles crashed on the demo's `{}`
+  catch-all (broadcast list, client faces, expenses, HR, agentic card) and now treat a non-list as
+  empty.
+- **Not verified:** dark mode (the demo shell ignores the theme switch), and live data.

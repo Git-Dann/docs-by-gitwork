@@ -152,11 +152,12 @@ export function useSupportConversationCounts(clientId: string | null) {
  * Replaces one useSupportConversationCounts per row (10 indexed COUNTs each), so the page no longer
  * costs more the more clients there are, and the numbers all land together instead of cascading in.
  */
-export function useClientQueueSummaries() {
+export function useClientQueueSummaries(enabled = true) {
   return useQuery({
     queryKey: ["support", "queue-summaries"],
     queryFn: getClientQueueSummaries,
     staleTime: 1000 * 15,
+    enabled,
   });
 }
 

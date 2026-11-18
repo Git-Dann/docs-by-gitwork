@@ -1,5 +1,8 @@
 "use client";
 
+import { TileHeader } from "@/components/dashboard/tile-header";
+import { CountUp } from "@/components/dashboard/count-up";
+
 import Link from "next/link";
 import { useHrOverview } from "@/hooks/use-hr";
 import { COMING_UP_LABEL } from "@/lib/hr";
@@ -14,23 +17,15 @@ import { SkeletonWidget } from "@/components/ui/motion/skeleton";
  * who isn't an Admin.
  */
 export default function HrWidget({ index }: { size: WidgetSize; index: number }) {
-  const num = String(index).padStart(2, "0");
   const overview = useHrOverview(true);
   if (overview.isPending) return <SkeletonWidget />;
 
-  const comingUp = overview.data?.comingUp ?? [];
-  const missing = overview.data?.missing ?? [];
+  const comingUp = Array.isArray(overview.data?.comingUp) ? overview.data.comingUp : [];
+  const missing = Array.isArray(overview.data?.missing) ? overview.data.missing : [];
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-1)] px-4">
-        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-          {`${num} // HR`}
-        </span>
-        <Link href="/app/staff" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
-          Staff
-        </Link>
-      </div>
+      <TileHeader index={index} label="HR" href="/app/staff" hrefLabel="Staff" />
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         {overview.isError ? (
           <p className="text-xs text-[var(--text-3)]">Couldn&apos;t load HR reminders.</p>
@@ -38,7 +33,7 @@ export default function HrWidget({ index }: { size: WidgetSize; index: number })
           <>
             <p className="flex items-baseline gap-1.5">
               <span className="text-[34px] leading-none text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
-                {comingUp.length}
+                <CountUp value={comingUp.length} />
               </span>
               <span className="text-xs text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
                 coming up · {missing.length} {missing.length === 1 ? "record" : "records"} missing details

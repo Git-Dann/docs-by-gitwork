@@ -55,9 +55,12 @@ const GATE_TONE: Record<AutomationGateState, string> = {
   blocked: "bg-[var(--text-4)]",
 };
 
-export function AgenticWorkflowCard() {
+export function AgenticWorkflowCard({ index = 9 }: { index?: number }) {
   const router = useRouter();
-  const { data, isLoading, error, refetch, isFetching } = useFoundryAutomation();
+  const automation = useFoundryAutomation();
+  const { isLoading, error, refetch, isFetching } = automation;
+  // A reply without a summary (the demo's catch-all answers `{}`) is treated as nothing loaded.
+  const data = automation.data?.summary ? automation.data : undefined;
   const onboardingLink = useCreateAutomationOnboardingLink();
   const draftProposal = useDraftProposalFromMeeting();
   const previewProposal = usePreviewProposalDraft();
@@ -248,10 +251,10 @@ export function AgenticWorkflowCard() {
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">09</span>
+          <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
           {" // AGENTIC WORKFLOW"}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
             onClick={() => setShowRuns((value) => !value)}
@@ -272,7 +275,7 @@ export function AgenticWorkflowCard() {
             className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
           >
             <ArrowPathIcon className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
       </div>

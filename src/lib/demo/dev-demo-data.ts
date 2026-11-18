@@ -4760,6 +4760,42 @@ function demoMonitorBoardBase() {
   };
 }
 
+/**
+ * The DevOps roll-up roster for `/demo/hq`: a team mid-afternoon, most of whom have posted
+ * their morning standup and some their end of day. Times are relative to now, so the demo
+ * never shows a stale day.
+ */
+function demoRollupRoster() {
+  const today = new Date();
+  const at = (h: number, m: number) => {
+    const d = new Date(today);
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  };
+  const people: Array<[string, string, boolean, boolean, number, number]> = [
+    ["d1", "Alex Rivera", true, true, 1, 3],
+    ["d2", "Priya Shah", true, false, 2, 1],
+    ["d3", "Tom Okafor", true, true, 0, 4],
+    ["d4", "Mia Larsen", true, false, 3, 0],
+    ["d5", "Jonah Reid", false, false, 1, 0],
+    ["d6", "Sara Nunez", true, true, 1, 2],
+    ["d7", "Leo Brandt", true, false, 2, 1],
+    ["d8", "Ivy Chen", false, false, 0, 0],
+    ["d9", "Omar Haddad", true, false, 1, 2],
+  ];
+  return {
+    date: today.toISOString().slice(0, 10),
+    allPushed: false,
+    devs: people.map(([id, name, am, pm, doing, done]) => ({
+      user: { id, name, avatarUrl: null },
+      amPushedAt: am ? at(9, 20) : null,
+      pmPushedAt: pm ? at(16, 45) : null,
+      doingCount: doing,
+      doneCount: done,
+    })),
+  };
+}
+
 export function resolveDemoApi(
   pathname: string,
   search?: URLSearchParams,
@@ -4774,6 +4810,8 @@ export function resolveDemoApi(
       return demoMyDay;
     case "/api/tasks/attention":
       return demoAttention;
+    case "/api/tasks/rollup":
+      return demoRollupRoster();
     case "/api/integrations/calendar":
       return demoCalendar;
     case "/api/integrations/gmail":

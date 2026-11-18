@@ -32,7 +32,10 @@ import { useClientList } from "@/hooks/use-proposals";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast, isSuperAdmin, isExternalRole } from "@/types/auth";
 import { useViewAs } from "@/lib/view-as";
+import { cn } from "@/lib/format";
 import { SkeletonBlock } from "@/components/ui/motion/skeleton";
+import { FadeIn } from "@/components/ui/motion/fade-in";
+import { HqTodayBand } from "@/components/dashboard/hq-today-band";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -151,6 +154,10 @@ function GuestOverview({
   );
 }
 
+// Literal class names so Tailwind emits them.
+const XL_SPAN: Record<number, string> = { 1: "xl:col-span-6", 2: "xl:col-span-3", 3: "xl:col-span-2" };
+const LG_SPAN: Record<number, string> = { 1: "lg:col-span-6", 2: "lg:col-span-3" };
+
 function BentoBand({ tiles, band }: { tiles: NumberedTile[]; band: WidgetBand }) {
   const height = band === "feed" ? ROW_HEIGHT * 2 + TILE_GAP : ROW_HEIGHT;
   return (
@@ -159,22 +166,27 @@ function BentoBand({ tiles, band }: { tiles: NumberedTile[]; band: WidgetBand })
       style={{ gap: `${TILE_GAP}px` }}
     >
       {tiles.map(({ component: Widget, size, number }, i) => {
-        // Length of the (max-3) row this tile sits in → its column span.
-        const rowStart = Math.floor(i / 3) * 3;
-        const rowLen = Math.min(3, tiles.length - rowStart);
-        const span = 6 / rowLen; // 3→2, 2→3, 1→6
+        // Three to a row from xl, two from lg, one below. Each row's last tiles stretch to
+        // fill it (3→2 cols, 2→3, 1→6), so there is never a blank cell at either width.
+        const xlRowStart = Math.floor(i / 3) * 3;
+        const xlSpan = XL_SPAN[Math.min(3, tiles.length - xlRowStart)];
+        const lgRowStart = Math.floor(i / 2) * 2;
+        const lgSpan = LG_SPAN[Math.min(2, tiles.length - lgRowStart)];
         return (
+          <div key={number} className={cn("min-w-0", lgSpan, xlSpan)}>
+          <FadeIn delayMs={Math.min(i, 8) * 45}>
           <div
-            key={number}
             // ⚠️ Was `bg-white` + a literal `rgba(0,0,0,0.08)` border. The dark remap
             // covers `bg-white` and rgba-black borders (see globals.css), but this card
             // ALSO wraps every HQ widget — so a token-correct widget still rendered on a
             // hardcoded white slab, which is why §42.13's Care tile "looked wrong in dark
             // mode" even after its own colours were fixed. Uses the surface tokens now.
             className="overflow-hidden rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-0)]"
-            style={{ gridColumn: `span ${span}`, height: `${height}px` }}
+            style={{ height: `${height}px` }}
           >
             <Widget size={size} index={number} />
+          </div>
+          </FadeIn>
           </div>
         );
       })}
@@ -323,10 +335,24 @@ export function AppOverview() {
 
       {isEffectiveAdmin ? <GettingStartedCard /> : null}
 
+      {/* What needs me now: a few figures, each a link to where it's dealt with. Every
+          tile reads a query a card below already makes, and only shows to someone who
+          can see that card. */}
+      <HqTodayBand
+        access={{
+          tasks: canSeeTasks,
+          rollup: canPublishRollup,
+          care: showAll || resolvedPermissions.includes("support"),
+          pulse: showAll || resolvedPermissions.includes("pulse"),
+          calendar: canSeeTasks,
+        }}
+      />
+
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
           and the DevOps lead's "Daily roll-up". Side-by-side only when both
           render; otherwise the present card fills the row. */}
-      <div className={todayTwoUp ? "grid items-stretch gap-3 lg:grid-cols-2" : ""}>
+      <div className={todayTwoUp ? "grid items-stretch gap-3 xl:grid-cols-2" : ""}>
+        <div id="hq-desk" className={cn("scroll-mt-4", todayTwoUp && "h-full", !deskVisible && "contents")}>
         <OnYourDeskCard
           index={1}
           onVisibilityChange={setDeskVisible}
@@ -335,8 +361,9 @@ export function AppOverview() {
           canSeeSignoff={canSeeSignoff}
           className={todayTwoUp ? "h-full" : undefined}
         />
+        </div>
         {hasRightColumn ? (
-          <div className="flex flex-col gap-3">
+          <div id="hq-rollup" className="flex scroll-mt-4 flex-col gap-3">
             {canPublishRollup ? <DailyRollup index={rollupNumber} canPublish={canActuallyPublish} /> : null}
             {canBroadcast ? <BroadcastComposer index={broadcastNumber} enabled /> : null}
           </div>
@@ -351,7 +378,7 @@ export function AppOverview() {
         </div>
       )}
 
-      {canSeeTasks && canSeeSignoff && canManageClientRecords ? <AgenticWorkflowCard /> : null}
+      {canSeeTasks && canSeeSignoff && canManageClientRecords ? <AgenticWorkflowCard index={counter + 1} /> : null}
     </div>
   );
 }

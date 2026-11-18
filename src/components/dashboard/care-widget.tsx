@@ -6,7 +6,8 @@ import { cn } from "@/lib/format";
 import { useSupportClients, useClientQueueSummaries } from "@/hooks/use-support";
 import { formatAge, isLongWait } from "@/components/care/care-constants";
 import type { WidgetSize } from "@/components/app-overview";
-import { SkeletonWidget } from "@/components/ui/motion/skeleton";
+import { SkeletonRows } from "@/components/ui/motion/skeleton";
+import { TileHeader } from "@/components/dashboard/tile-header";
 
 /**
  * Care on HQ: which client is being let down right now.
@@ -32,7 +33,12 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
   const summariesQ = useClientQueueSummaries();
 
   if (clientsQ.isLoading) {
-    return <SkeletonWidget />;
+    return (
+      <div className="flex h-full flex-col">
+        <TileHeader index={index} label="CARE" href="/app/care" />
+        <SkeletonRows count={3} className="p-4" />
+      </div>
+    );
   }
 
   const clients = clientsQ.data?.clients ?? [];
@@ -51,21 +57,18 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
   });
 
   const totalAwaiting = Object.values(summaries).reduce((n, s) => n + s.awaiting, 0);
+  const maxAwaiting = Object.values(summaries).reduce((n, s) => Math.max(n, s.awaiting), 0);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
-          {" // CARE"}
-        </span>
-        {/* The status slot carries the one figure worth a glance, coloured only when it is a call
-            to action — a tile that is always amber says nothing. */}
-        <span className={cn("widget-header__status", totalAwaiting > 0 && "text-[var(--warning-500)]")}>
-          {summariesQ.isLoading ? "·" : totalAwaiting > 0 ? `${totalAwaiting} AWAITING` : "ALL REPLIED"}
-        </span>
-      </div>
-
+      <TileHeader
+        index={index}
+        label="CARE"
+        href="/app/care"
+        hrefLabel="Open"
+        status={summariesQ.isLoading ? "·" : totalAwaiting > 0 ? `${totalAwaiting} AWAITING` : "ALL REPLIED"}
+        statusTone={totalAwaiting > 0 ? "warning" : "success"}
+      />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
         <div className="min-h-0 flex-1 overflow-y-auto">
           {clients.length === 0 ? (
@@ -82,28 +85,39 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
                 const s = summaries[c.id];
                 const oldest = s?.oldestAwaitingAt ?? null;
                 const stale = oldest ? isLongWait(oldest) : false;
+                const awaiting = s?.awaiting ?? 0;
+                // Bars are relative to the busiest client, so the worst queue reads at a glance.
+                const width = maxAwaiting > 0 ? Math.max(awaiting > 0 ? 4 : 0, (awaiting / maxAwaiting) * 100) : 0;
                 return (
                   <Link
                     key={c.id}
                     href="/app/care"
-                    className="flex items-center justify-between gap-2 rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
+                    className="block rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
+                    title={`${awaiting} awaiting a reply${oldest ? ` · longest ${formatAge(oldest)}` : ""}`}
                   >
-                    <span className="truncate text-sm text-[var(--text-1)]">{c.name}</span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {oldest && (
-                        <span className={cn("widget-data-label", stale && "text-[var(--warning-500)]")}>
-                          {formatAge(oldest)}
-                        </span>
-                      )}
-                      <span
-                        className={cn(
-                          "font-mono text-[11px]",
-                          (s?.awaiting ?? 0) > 0 ? "font-semibold text-[var(--warning-500)]" : "text-[var(--text-4)]",
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm text-[var(--text-1)]">{c.name}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        {oldest && (
+                          <span className={cn("widget-data-label", stale && "text-[var(--warning-500)]")}>
+                            {formatAge(oldest)}
+                          </span>
                         )}
-                        title={`${s?.awaiting ?? 0} awaiting a reply`}
-                      >
-                        {summariesQ.isLoading ? "·" : (s?.awaiting ?? 0)}
+                        <span
+                          className={cn(
+                            "w-8 text-right font-mono text-[11px] tabular-nums",
+                            awaiting > 0 ? "font-semibold text-[var(--warning-500)]" : "text-[var(--text-4)]",
+                          )}
+                        >
+                          {summariesQ.isLoading ? "·" : awaiting}
+                        </span>
                       </span>
+                    </span>
+                    <span className="mt-1 block h-1 w-full overflow-hidden rounded-[2px] bg-[var(--surface-2)]" aria-hidden>
+                      <span
+                        className={cn("block h-full transition-[width] duration-500", stale ? "bg-[var(--warning-500)]" : "bg-[var(--brand-500)]")}
+                        style={{ width: `${width}%` }}
+                      />
                     </span>
                   </Link>
                 );

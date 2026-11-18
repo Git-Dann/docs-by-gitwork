@@ -1,6 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { TileHeader } from "@/components/dashboard/tile-header";
+import { CountUp } from "@/components/dashboard/count-up";
+
 import { useLeaveRequests, useStaffingAlerts } from "@/hooks/use-backstage";
 import { formatDateRange } from "@/components/backstage/format";
 import type { WidgetSize } from "@/components/app-overview";
@@ -12,7 +14,6 @@ import { SkeletonWidget } from "@/components/ui/motion/skeleton";
  * staff here and never developers.
  */
 export default function TeamLeaveWidget({ index }: { size: WidgetSize; index: number }) {
-  const num = String(index).padStart(2, "0");
   const leave = useLeaveRequests("team", "PENDING");
   const alerts = useStaffingAlerts();
 
@@ -27,18 +28,11 @@ export default function TeamLeaveWidget({ index }: { size: WidgetSize; index: nu
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-1)] px-4">
-        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-          {`${num} // TEAM LEAVE`}
-        </span>
-        <Link href="/app/backstage?area=approvals" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
-          Approvals
-        </Link>
-      </div>
+      <TileHeader index={index} label="TEAM LEAVE" href="/app/backstage?area=approvals" hrefLabel="Approvals" />
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         <p className="flex items-baseline gap-1.5">
           <span className="text-[34px] leading-none text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
-            {waiting}
+            <CountUp value={waiting} />
           </span>
           <span className="text-xs text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
             {waiting === 1 ? "leave request to approve" : "leave requests to approve"}

@@ -8,11 +8,22 @@ import { useClientList } from "@/hooks/use-proposals";
 import { useTasks } from "@/hooks/use-tasks";
 import { MyDay } from "@/components/tasks/my-day";
 import { NewTaskButton } from "@/components/tasks/new-task-button";
-import { cn } from "@/lib/format";
+import { cn, formatDate } from "@/lib/format";
 import type { TaskStatus } from "@/types/tasks";
 import { Skeleton } from "@/components/ui/motion/skeleton";
+import { FadeIn } from "@/components/ui/motion/fade-in";
+import { HqTodayBand } from "@/components/dashboard/hq-today-band";
 
 const PAGE_SIZE = 5;
+
+const STATUS_RANK: Partial<Record<TaskStatus, number>> = { DOING: 0, IN_REVIEW: 1, UI_DONE: 2, TODO: 3, BACKLOG: 4 };
+const SPLIT_COLOUR: Partial<Record<TaskStatus, string>> = {
+  DOING: "var(--brand-500)",
+  IN_REVIEW: "var(--warning-500)",
+  UI_DONE: "var(--text-3)",
+  TODO: "var(--text-4)",
+  BACKLOG: "var(--border-1)",
+};
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
   BACKLOG:   "bg-[var(--surface-2)] text-[var(--text-3)]",
@@ -89,7 +100,17 @@ export function DevOverview() {
   // Passive dashboard summary: cap the fetch (safety ceiling) and don't refetch
   // on every window focus — this widget doesn't need the board's live self-correct.
   const tasksQuery = useTasks({ assigneeId: userId ?? "", limit: 100 }, { refetchOnFocus: false });
-  const allTasks = (tasksQuery.data ?? []).filter((t) => t.status !== "DONE");
+  // Doing first, then in review, then to do and backlog; soonest due within each.
+  const allTasks = (tasksQuery.data ?? [])
+    .filter((t) => t.status !== "DONE")
+    .sort((a, b) => {
+      const r = (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9);
+      if (r !== 0) return r;
+      const da = a.dueDate ? Date.parse(a.dueDate) : Infinity;
+      const db = b.dueDate ? Date.parse(b.dueDate) : Infinity;
+      return da - db;
+    });
+  const today = new Date().toISOString().slice(0, 10);
 
   const [tasksPage, setTasksPage] = useState(0);
   const [clientsPage, setClientsPage] = useState(0);
@@ -114,14 +135,21 @@ export function DevOverview() {
     //
     // `grid-cols-1` is `repeat(1, minmax(0,1fr))`, which bounds the track to
     // the grid. The `lg:` columns still win at ≥1024px, so desktop is untouched.
+    <div className="space-y-4">
+    {/* What needs you now: your tasks, your standup and your next meeting. */}
+    <HqTodayBand access={{ tasks: true, tasksHref: "#dev-tasks", myStandup: true, rollup: false, care: false, pulse: false, calendar: true }} />
     <div className="grid items-start gap-4 grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       {/* Left — My Day standup */}
-      <MyDay />
+      <FadeIn>
+        <div id="dev-myday" className="scroll-mt-4">
+          <MyDay />
+        </div>
+      </FadeIn>
 
       {/* Right — My Tasks + My Clients stacked */}
-      <div className="space-y-4">
+      <FadeIn delayMs={60} className="space-y-4">
         {/* 02 // MY TASKS */}
-        <section className="widget-card">
+        <section id="dev-tasks" className="widget-card scroll-mt-4">
           <div className="widget-header">
             <span className="widget-header__label">
               <span className="widget-header__label--number">02</span>
@@ -147,11 +175,12 @@ export function DevOverview() {
           ) : (
             <>
               <div className="widget-body space-y-1.5">
+                <TaskSplit tasks={allTasks} />
                 {pageTasks.map((t) => (
                   <Link
                     key={t.id}
-                    href={`/app/portal/${t.client.slug}/tasks`}
-                    className="flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
+                    href={`/app/portal/${t.client.slug}/tasks?task=${t.id}`}
+                    className="flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 transition hover:bg-[var(--surface-1)]"
                   >
                     {/* ⚠️ `title` is the recovery a truncated value needs, and it
                         matters MORE after the grid fix above: one column makes the
@@ -163,7 +192,14 @@ export function DevOverview() {
                         `desk-tasks.tsx` is the precedent. */}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-[var(--text-1)]" title={t.title}>{t.title}</p>
-                      <p className="truncate text-xs text-[var(--text-4)]" title={t.client.name}>{t.client.name}</p>
+                      <p className="truncate text-xs text-[var(--text-4)]" title={t.client.name}>
+                        {t.client.name}
+                        {t.dueDate ? (
+                          <span className={cn(t.dueDate.slice(0, 10) < today && "font-medium text-[var(--danger-500)]")}>
+                            {` · due ${formatDate(t.dueDate)}`}
+                          </span>
+                        ) : null}
+                      </p>
                     </div>
                     <span className={cn("shrink-0 rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium", STATUS_STYLES[t.status])}>
                       {STATUS_LABEL[t.status]}
@@ -214,7 +250,7 @@ export function DevOverview() {
                 {pageClients.map((c) => (
                   <div
                     key={c.id}
-                    className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
+                    className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 transition hover:bg-[var(--surface-1)]"
                   >
                     <Link
                       href={`/app/portal/${c.slug}/tasks`}
@@ -238,7 +274,31 @@ export function DevOverview() {
             </>
           )}
         </section>
+      </FadeIn>
+    </div>
+    </div>
+  );
+}
+
+/** Your open tasks by status as one proportional bar, with counts. */
+function TaskSplit({ tasks }: { tasks: Array<{ status: TaskStatus }> }) {
+  const order: TaskStatus[] = ["DOING", "IN_REVIEW", "UI_DONE", "TODO", "BACKLOG"];
+  const parts = order.map((s) => ({ s, n: tasks.filter((t) => t.status === s).length })).filter((p) => p.n > 0);
+  if (parts.length === 0) return null;
+  return (
+    <div className="pb-1.5">
+      <div className="flex h-1.5 w-full gap-[2px] overflow-hidden rounded-[2px]" aria-hidden>
+        {parts.map((p) => (
+          <span key={p.s} className="h-full" style={{ width: `${(p.n / tasks.length) * 100}%`, background: SPLIT_COLOUR[p.s] }} />
+        ))}
       </div>
+      <p
+        className="mt-1 truncate text-[10px] text-[var(--text-4)]"
+        style={{ fontFamily: "var(--font-mono)" }}
+        title={parts.map((p) => `${p.n} ${STATUS_LABEL[p.s]}`).join(" · ")}
+      >
+        {parts.map((p) => `${p.n} ${STATUS_LABEL[p.s].toUpperCase()}`).join(" · ")}
+      </p>
     </div>
   );
 }

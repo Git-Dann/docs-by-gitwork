@@ -29,6 +29,12 @@ Timings and easing are in DESIGN.md § Motion. This page covers **which componen
 | Product tour | `ui/easyui/product-tour.tsx` | A first-visit walk-through (Staff uses it). |
 | Command menu, calendar, date picker, charts | `ui/easyui/*` | See `docs/easyui-adoption.md`. |
 
+## Where it's used on HQ
+
+Foundry HQ (§129) staggers its tiles with `FadeIn`, counts figures up with `CountUp`
+(`components/dashboard/count-up.tsx`, a thin wrapper over `useCountUp`), pulses a meeting that is
+happening now with `StatusDot`, and uses `SkeletonRows` shaped like each tile while it loads.
+
 ## Rules
 
 1. **Reduced motion is already handled for CSS.** `layout.tsx` stops every CSS animation and
