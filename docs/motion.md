@@ -22,6 +22,7 @@ Timings and easing are in DESIGN.md § Motion. This page covers **which componen
 | `StatusDot` | `ui/motion/status-dot.tsx` | A coloured dot beside a status word. `pulse` means working on it; `ping` means look at this. |
 | `FadeIn` | `ui/motion/fade-in.tsx` | A step, a tab or a result arriving. Key it to replay. |
 | Sheet entrance | `globals.css`: `motion-backdrop-in`, `motion-sheet-right`, `motion-sheet-up` | Side drawers and bottom sheets. Two classes, no component. |
+| Card rise | `globals.css`: `motion-rise` | Cards arriving on a page that has just loaded, staggered with an inline `animation-delay` (the Portal client page). Fill-mode `backwards`, so no transform is left behind to trap a dialog opened from the card. Prefer it to wrapping a card in `FadeIn` when the card can open a dialog. |
 | `useCountUp` | `ui/motion/use-count-up.ts` | A score or total that has just arrived. `countUpValue` is the pure curve. |
 | `Lottie` | `ui/motion/lottie.tsx` | Illustration with real motion in it. The only Lottie player; see below. |
 | Toasts | `ui/toast.tsx` (+ EasyUI `undo-toast`) | Confirming something you just did. `toast.undo()` for reversible actions. |
@@ -31,7 +32,7 @@ Timings and easing are in DESIGN.md § Motion. This page covers **which componen
 
 ## Where it's used on HQ
 
-Foundry HQ (§129) staggers its tiles with `FadeIn`, counts figures up with `CountUp`
+Foundry HQ (§130) staggers its tiles with `FadeIn`, counts figures up with `CountUp`
 (`components/dashboard/count-up.tsx`, a thin wrapper over `useCountUp`), pulses a meeting that is
 happening now with `StatusDot`, and uses `SkeletonRows` shaped like each tile while it loads.
 

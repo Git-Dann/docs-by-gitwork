@@ -10369,6 +10369,36 @@ fails when the fix is reverted:
 - **Delete is one transaction** (archive, unlink, notes, thread entry). The team's Deleted list
   shows up to 1,000 with the total, instead of a silent 50.
 
+### 126.4 One card dialog: add, read and edit in the same place
+
+Dan, on the add form ("a single long scrolling form") and the Table's boxed dropdowns: "make sure we
+have everything in here, maybe go house pop up, 2 column approach… can it serve another purpose".
+**`wiki-board-card-dialog.tsx` is now the one place a card is created, read and edited**, from every
+view (Board card, Table row, Timeline bar, Schedule entry), on the team's wiki and the client's link.
+The old `CardForm` (add) and `CardDetail` (read, then a separate "Edit" form) are deleted.
+
+- **The house fixed-height two-column popup** (`.app-dialog-fixed`, 960px): the card on the left
+  (large title, markdown description with Write / Preview, screenshots with drop / paste / upload and
+  a lightbox, links, sub-items, then **Activity**: the thread, change entries with the team-only
+  "Previous version", and the imported stage dates on one line of time, `cardActivity`), with the
+  composer pinned under it; a **properties rail** on the right (Type, Column, Release, List, Area,
+  Priority, Tier, Estimate, Due, Depends on; Feature for a new sub-item; and, team only, People,
+  linked dev tasks and "Open on the task board"). Below `md` it is one column with the properties
+  folded under the title ("Details"), as a full-height sheet.
+- **Values read like the Table's cells, not form boxes** (`board-pick.tsx`: `PickCell`,
+  `InlineText`, `TextEditor`, `PRIORITY_TONE`, shared with the Table): text or a chip, the native
+  `<select>` invisibly over the cell, the chevron and a tint only on hover or focus.
+- **An open card saves each change as it's made**, one field per PATCH through the same routes as the
+  Table, shown at once and put back with a sentence if refused; the footer says "Saving…" / "All
+  changes saved" / the error. The column is the Board's move. Depends-on is picked in an anchored
+  popover and saved once when it closes (a client's edits are rate limited). Adding keeps a draft and
+  saves on **Add card**.
+- **Who may change what** (`cardEditing`, `src/lib/wiki-board-card-dialog.ts`, pure, tested): the
+  client edits and moves their own cards and nothing of a dev task; the team moves a dev task but
+  edits its fields on the task board (the Table's rule); nothing while previewing the client's view.
+  **The client never sees who works on a card** in the dialog (`showsPeople`), never sets it (the
+  schemas have no assignee field), and gets the client's copy of "depends on".
+
 ## 127. Recent Changes (November 2026) — Sheets is retired: its rows become Board cards
 
 Only Wedge ever used Sheets: a QA review (47 rows, 26 already sent to the board and done) and a
@@ -10494,7 +10524,50 @@ for a plan. The view switch is now **Board | Table | Timeline | Schedule**.
   imported as done with no date has no finish event.
 
 
-## 129. Recent Changes (November 2026) — HQ: a today band, tidier tiles, quick actions, motion
+## 129. Recent Changes (November 2026) — A refreshed Portal client page, and a Slack digest that says why
+
+Dan: the Portal client page (`/app/portal/[slug]`, `src/components/clients/client-detail.tsx`) felt
+stagnant. Every card was gone over; nothing it could do was removed and no permission changed.
+
+- **Numbers run in sequence.** `portalSectionNumbers` (`src/lib/client-portal-layout.ts`) hands out
+  `NN //` in render order from what is shown, so a hidden card (billing, Pulse, studies, notes,
+  proof) never leaves a gap. Before: 01–06, 07, 08, 10, 11, 12, 13, 14, 16, 17, 19.
+- **01 is a hero:** status as a dot and a word, "Client since", engagement, end date, devs on it,
+  links to the website, Drive and the internal Slack channel, and Tasks / Open wiki buttons.
+- **Stat tiles count up** (`useCountUp`); **cards rise in one after another** with the new
+  `motion-rise` class (docs/motion.md). ⚠️ It uses fill-mode `backwards` on purpose: `FadeIn` (or
+  `both`) leaves a transform on the card, which traps any `position: fixed` dialog opened inside it
+  (§108.3).
+- **No dead space:** Pulse and Studies are compact cards (the latest score leads; an empty card is
+  one line and one action) stacked beside Documents, with the last one taking the slack; Meeting
+  notes and Designs stretch to the taller of the two; Developers is full width.
+- **Developers are cards** (`client-developers-card.tsx`, rules in `src/lib/client-developers.ts`):
+  photo or initials, job title, stack, since when, share of time, projects, and "Off until … · X
+  covering" / "Covering for …". Leave is matched on the **account** (placement user id against the
+  cover's), never a name. Placements now carry `candidateJobTitle`, `candidateStack`,
+  `candidateAvatarUrl` (never a `data:` URL) and `candidateUserId`. No rates.
+- **Lifecycle is a slim timeline** with **View history**, the house two-column popup over
+  everything dated on the client (`src/lib/client-history.ts`: milestones, developers joining and
+  leaving, Pulse scans for those who can see Pulse, studies, platforms, designs, links, CRM
+  touchpoints). "Client active" with no recorded activation is `ongoing` and shown as "Now", not
+  as the date of the record's last edit.
+- **Meeting notes** say "Couldn't read" (amber, with a tooltip and Retry) or "Not ready yet",
+  never a bare red ERROR (`src/lib/meeting-status.ts`).
+
+**The Slack digest stuck on a failure** (`src/server/slack-activity-digest.ts`). Wedge's card said
+"Digest will appear after the first messages are posted" over a busy channel: one failed AI call
+(out of credit) was cached as `{ summary: null }` against the message ids, so it stuck until
+someone posted. Now only a real summary is cached, an old cached empty one counts as a miss, and
+the route returns `reason` `ok` · `stale` · `no_ai_key` · `ai_failed` with `aiError` in plain words
+(describeAiError, never the provider's text) and `canRefresh`. The card shows the reason, the
+latest four messages, and **Try again** (`?refresh=1`) for people who may use AI.
+
+Verified at `/demo/portal` at 1440 · 1024 · 768 · 390: 0 clipping findings, 0 page overflow, 0
+console errors. ⚠️ The demo shell ignores the theme switch, so dark mode was not seen; everything
+uses tokens. Not verified against live data: post-deploy, open Wedge and check the Slack card
+either shows a digest or says why, and press Try again.
+
+## 130. Recent Changes (November 2026) — HQ: a today band, tidier tiles, quick actions, motion
 
 Dan: the dashboard "needs a lot of love". Every capability, permission gate and role variant is
 unchanged (admin bento, developer view, Siân's people-ops tiles, guests, "view as").

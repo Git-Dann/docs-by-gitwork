@@ -1,3 +1,4 @@
+import { placementAvatarUrl, placementStack } from "@/lib/client-developers";
 import { parseRenewalDate } from "@/lib/wiki-platforms";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { normalisePlatformLinks } from "@/lib/platform-links";
@@ -1482,7 +1483,19 @@ export async function getDerivedClientDetail(workspaceId: string, slug: string):
     manualRecord
       ? prisma.placement.findMany({
           where: { clientId: manualRecord.id },
-          include: { candidate: { select: { id: true, name: true } } },
+          include: {
+            candidate: {
+              select: {
+                id: true,
+                name: true,
+                jobTitle: true,
+                primaryStack: true,
+                techStacks: true,
+                avatarUrl: true,
+                member: { select: { userId: true, user: { select: { avatarUrl: true } } } },
+              },
+            },
+          },
           orderBy: { startDate: "desc" },
         })
       : Promise.resolve([]),
@@ -1558,12 +1571,24 @@ export async function getDerivedClientDetail(workspaceId: string, slug: string):
       allocationPercent: number;
       notes: string | null;
       updatedAt: Date;
-      candidate: { id: string; name: string };
+      candidate: {
+        id: string;
+        name: string;
+        jobTitle: string | null;
+        primaryStack: string | null;
+        techStacks: string[];
+        avatarUrl: string | null;
+        member: { userId: string; user: { avatarUrl: string | null } } | null;
+      };
     }>
   ).map((p) => ({
     id: p.id,
     candidateId: p.candidateId,
     candidateName: p.candidate.name,
+    candidateJobTitle: p.candidate.jobTitle?.trim() || null,
+    candidateStack: placementStack(p.candidate.primaryStack, p.candidate.techStacks),
+    candidateAvatarUrl: placementAvatarUrl(p.candidate.member?.user.avatarUrl ?? null, p.candidate.avatarUrl),
+    candidateUserId: p.candidate.member?.userId ?? null,
     clientName: p.clientName,
     projectName: p.projectName,
     startDate: p.startDate.toISOString(),
@@ -2184,6 +2209,8 @@ function buildClientLifecycle(input: {
       detail: "Client is active in Portal.",
       at: (activated?.createdAt.toISOString() ?? input.client.updatedAt),
       status: "done",
+      // No activation was recorded, so `at` is just the last edit, not when they went live.
+      ...(activated ? {} : { ongoing: true }),
     });
   }
 

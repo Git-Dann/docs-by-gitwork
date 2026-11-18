@@ -318,6 +318,14 @@ export interface ClientPlacementRecord {
   id: string;
   candidateId: string;
   candidateName: string;
+  /** From the developer's Staff record. Null when not set. */
+  candidateJobTitle: string | null;
+  /** Primary stack first, then up to three more. */
+  candidateStack: string[];
+  /** Account photo, else the Staff record's. Never a data: URL. */
+  candidateAvatarUrl: string | null;
+  /** The developer's Foundry user, when their Staff record is linked to an account. */
+  candidateUserId: string | null;
   clientName: string;
   projectName: string;
   startDate: string;
@@ -345,6 +353,12 @@ export interface ClientLifecycleEvent {
   detail: string;
   at: string;
   status: "done" | "ready" | "waiting";
+  /**
+   * A state that is true now rather than a moment that happened (e.g. "Client active" when no
+   * activation was recorded). Its `at` is only when the record last changed, so it isn't shown
+   * as a date.
+   */
+  ongoing?: boolean;
 }
 
 export interface ClientDetailRecord {
