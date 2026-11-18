@@ -36,12 +36,22 @@ export interface WikiBoardCard {
   signOff: SignOff;
   feedbackCount: number;
   description: string | null;
-  subtasks: Array<{ title: string; done: boolean }>;
+  /**
+   * Its child tasks, in order. `isItem` marks a product SUB-ITEM (itemType "subitem" under a
+   * top-level feature card): those open in the card popup and are edited there. The rest are the
+   * team's checklist items, listed only; in the client's copy those carry no id (null).
+   */
+  subtasks: Array<{ id: string | null; title: string; done: boolean; isItem: boolean }>;
   /**
    * The card's image attachments (ids), oldest first: screenshots from the client's planning tool
    * or added by the team. Cards the client may act on only; a dev task's are never sent.
    */
   images: string[];
+  /**
+   * Images taken off the card (by the client or the team), newest last, so the team can put one
+   * back. The TEAM's copy only: always empty in the client's.
+   */
+  removedImages: Array<{ id: string; removedAt: string; removedByName: string | null }>;
   /**
    * When the card entered each stage on the client's own planning tool (imported), oldest first.
    * Empty for cards made in Foundry. Cards the client may act on only.

@@ -98,6 +98,18 @@ export function clientMayActOn(card: { isCard: boolean; addedByClient: boolean }
 }
 
 /**
+ * Whether a child task is a product SUB-ITEM the Board can open (the same rule as the server's
+ * `assertAddressable`): itemType "subitem", directly under a top-level FEATURE card. A sub-item under
+ * a bug or a sub-item, and every checklist item or dev subtask, is not, so it is listed only.
+ */
+export function isAddressableSubItem(
+  parent: { parentId: string | null; itemType: string | null },
+  childItemType: string | null,
+): boolean {
+  return childItemType === "subitem" && parent.parentId === null && parent.itemType === "feature";
+}
+
+/**
  * What the feedback composer needs before it can send. A comment needs words; "Changes needed"
  * needs to say what to change, or the team has nothing to act on; "Approved" can stand alone.
  */

@@ -179,6 +179,29 @@ export async function uploadBoardImagesApi(target: BoardTarget, taskId: string, 
   return res.card;
 }
 
+/** Take a screenshot off a card. Answers with the card as the caller may see it. */
+export async function removeBoardImageApi(target: BoardTarget, taskId: string, imageId: string): Promise<WikiBoardCard> {
+  const res = await apiFetch<{ card: WikiBoardCard }>(`${cardUrl(target, taskId)}/images/${encodeURIComponent(imageId)}`, {
+    method: "DELETE",
+  });
+  return res.card;
+}
+
+/** The team puts a removed screenshot back (internal wiki only; there is no client route). */
+export async function restoreBoardImageApi(slug: string, taskId: string, imageId: string): Promise<WikiBoardCard> {
+  const res = await apiFetch<{ card: WikiBoardCard }>(
+    `/api/clients/${encodeURIComponent(slug)}/wiki/board/cards/${encodeURIComponent(taskId)}/images/${encodeURIComponent(imageId)}/restore`,
+    { method: "POST" },
+  );
+  return res.card;
+}
+
+/** One card (or a sub-item of one) as the card popup opens it, in the copy the caller may see. */
+export async function readBoardCardApi(target: BoardTarget, taskId: string): Promise<WikiBoardCard> {
+  const res = await apiFetch<{ card: WikiBoardCard }>(cardUrl(target, taskId));
+  return res.card;
+}
+
 function keyDatesUrl(target: BoardTarget): string {
   return target.mode === "public"
     ? `/api/wiki/${encodeURIComponent(target.token)}/board/key-dates`

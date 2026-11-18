@@ -10398,6 +10398,44 @@ The old `CardForm` (add) and `CardDetail` (read, then a separate "Edit" form) ar
   edits its fields on the task board (the Table's rule); nothing while previewing the client's view.
   **The client never sees who works on a card** in the dialog (`showsPeople`), never sets it (the
   schemas have no assignee field), and gets the client's copy of "depends on".
+- **Screenshots come off a card** (client and team): an × on each thumbnail and **Remove** in the
+  lightbox, each asking in place first. `removeBoardCardImage` only touches an attachment on THAT
+  card (`{ id, taskId, removedAt: null }`), on a card the writer may act on (a dev task is a 404 to
+  the client), and writes "Luke removed a screenshot." in the thread.
+  - ⚠️ **It is kept, not deleted** (`TaskAttachment.removedAt` / `removedByName`, additive): every
+    other removal on the Board can be undone, and a hard delete couldn't, including team, Forge and
+    sheet images. Every reader skips a removed row (board DTO `images`, the image GET routes, the
+    task drawer's list, image GET and attachment count, the per-card 10-image cap). The bytes stay
+    in Postgres; **nothing purges them**.
+  - The team puts one back from **Removed screenshots (n) · Restore** in the card popup
+    (`restoreBoardCardImage`, team only, Manage clients, recounts the card's 10-image room). The
+    team copy carries `removedImages`; the client's is always empty. Removing an already-removed
+    image is a 404.
+  - A client's removal comes out of the **delete** quota (30 an hour, 100 a day, shared with
+    deleting a card), not the edit quota.
+  - Routes: client `DELETE /api/wiki/[token]/board/tasks/[taskId]/images/[attachmentId]` (writer,
+    then the write rate limit); team `DELETE /api/clients/[slug]/wiki/board/cards/[taskId]/images/[imageId]`
+    and `POST …/[imageId]/restore`, both `resolveInternalBoardWriter("manage")`.
+- **A feature's sub-items open in the same popup**: "‹ Feature / Sub-item" in the header, Back
+  returns to the feature without closing (one Modal; the wrapper keeps the sub-item and re-reads the
+  feature after every change so its list on the board stays right). The same layout, per-field
+  autosave, screenshots, links, thread and delete. Its type is fixed (a sub-item stays a sub-item,
+  400 otherwise). **+ Add sub-item** under the feature's list adds one and opens it. The card DTO's
+  `subtasks` now carry `{ id, title, done, isItem }`; only `isItem` rows open (`isAddressableSubItem`
+  in `src/lib/wiki-board.ts`: itemType "subitem" directly under a top-level FEATURE card, the same
+  rule as `assertAddressable`). The team's checklist children are listed only, and in the
+  **client's** copy they carry no id (`id: null`), only their words and tick. New `GET` on the card routes (`readBoardCard`)
+  opens one card or sub-item, in the copy the caller may see.
+- ⚠️ **Which child tasks a board route may address is one rule, `assertAddressable`
+  (`src/server/wiki-board.ts`)**: a live top-level task, or a product sub-item whose parent is a
+  live top-level FEATURE card on the same client. A dev task's child, or a plain checklist child of
+  a card, is a 404 to everyone. Loads find by `{ id, clientId, archivedAt: null }` and then apply it;
+  updates and deletes compare-and-set on the `parentId` they loaded. The deleted list and Restore
+  include sub-items; restoring one places its feature card.
+- **Intended widening for sub-items:** because they go through the same `loadOwnTask` /
+  `loadEditableTask`, a client can also **move** a product sub-item (Done included), **comment on or
+  sign it off**, read its thread, and get or add its screenshots, all within `assertAddressable` +
+  `clientMayActOn` and the usual quotas. Dev subtasks stay a 404 (their itemType isn't "subitem").
 
 ## 127. Recent Changes (November 2026) — Sheets is retired: its rows become Board cards
 
@@ -10566,6 +10604,50 @@ Verified at `/demo/portal` at 1440 · 1024 · 768 · 390: 0 clipping findings, 0
 console errors. ⚠️ The demo shell ignores the theme switch, so dark mode was not seen; everything
 uses tokens. Not verified against live data: post-deploy, open Wedge and check the Slack card
 either shows a digest or says why, and press Try again.
+
+### 129.1 Icons and colour, only where they mean something
+
+Dan's rule for the Portal: an icon says what a thing is, colour says what state it's in, and
+neither is decoration. No icons in the mono `NN //` headers, no colour per card, no tinted card
+backgrounds.
+
+- **Neutral outline icons** (--text-4) on the stat tiles, the hero's key facts, and every lifecycle
+  milestone and history entry (`src/lib/client-history-icons.ts`: decided from the event's id
+  prefix and the server's step label; an unknown step gets a clock, never a guess).
+- **Official logos only.** Platforms and Designs show the brand's real mark from **Simple Icons**
+  (`simple-icons@16.36.0`, CC0, pinned; `src/lib/platform-icons.tsx`, licence and usage rules in
+  `docs/third-party-ui.md`). ⚠️ **Never redraw a logo as hand-made SVG paths.** The old
+  hand-drawn Apple, Google Play, Amazon, GitHub, Figma, Vercel, Notion, Linear and Slack paths are
+  gone. A brand Simple Icons doesn't carry (Slack, Amazon, TestFlight, Featurebase) gets a generic
+  outline icon. Hosts match exactly or as a subdomain, never by substring.
+- **Brand colour only where it reads on both themes** (≥3:1 against light and dark
+  --surface-1, `brandFill`); otherwise the mark is drawn mono in --text-1, the variant every one of
+  these brands allows. The tile is a token, so it follows the theme.
+- **State colour:** the engagement end date is amber inside 30 days and red (worded "Ended") once
+  passed (`src/lib/client-end-date.ts`); a platform's renewal line uses the wiki's rule (amber inside
+  a fortnight, red once passed, neutral again after 30 days). Status chip, Pulse score bands,
+  meeting-note states and study dots already carried meaning and are unchanged.
+
+**No large gaps, by construction (Dan: "absolutely cannot have large gaps").** Checked on the live
+Wedge page after #840: an empty Studies card stretched to Documents' height (~250px empty), ~80px
+under four designs, and a ~300px hole on the Developers grid's second row. The rule now is that in
+every side-by-side pair **one card sets the row's height and the other fills it**:
+
+- **Meeting notes sets the height; Designs fills it** (`lg:h-0 lg:min-h-full`, so Designs can't
+  drive the row). Designs are tiles in a grid whose rows are `minmax(88px, 1fr)`: a few grow to
+  fill, many scroll inside the card; two across past three, an odd last tile spans both. A lone
+  design gets the big mark. The meeting list fills its card (empty state included) with the pager
+  pinned to the bottom.
+- **Contact sets the height; Slack fills it** and scrolls its digest inside.
+- **Documents runs full width**, and Pulse, Studies and Notes follow full width at their natural
+  height. They are never paired with Documents again.
+- **Developers wrap in a flex row**: `cardsPerRow` (`src/lib/client-portal-layout.ts`) picks the
+  per-row count from how many there are (5 → 3 + 2, 7 → 4 + 3) and every card grows, so a short
+  last row stretches instead of leaving a hole; below 240px a card wraps.
+- `/demo/portal?shape=dense` is Wedge's shape (5 developers, 4 designs, 49 meetings, 1 scan, no
+  studies, 30 documents). Measured before → after at 1440 · 1152 · 1024 · 390: largest empty space
+  under a card's content 1932px (Notes beside 30 documents) / 99px (Designs) / 68–87px (Contact) →
+  **25px**; developer row hole 327–391px → **0**; side-by-side bottom edges differ by **0px**.
 
 ## 130. Recent Changes (November 2026) — HQ: a today band, tidier tiles, quick actions, motion
 

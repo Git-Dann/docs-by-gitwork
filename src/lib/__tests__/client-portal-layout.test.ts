@@ -16,3 +16,23 @@ describe("Portal card numbers", () => {
     expect(n.platforms).toBe("08");
   });
 });
+
+import { cardBasis, cardsPerRow } from "@/lib/client-portal-layout";
+
+describe("cards per row", () => {
+  it("never leaves a hole on the last row for 1–8 cards", () => {
+    for (let n = 1; n <= 8; n++) {
+      const per = cardsPerRow(n);
+      const last = n % per || per;
+      // The last row is either full, or at least half full (its cards then stretch to fill it).
+      expect(last * 2).toBeGreaterThanOrEqual(per);
+    }
+    expect(cardsPerRow(5)).toBe(3);
+    expect(cardsPerRow(4)).toBe(4);
+  });
+
+  it("works out the basis with the gaps taken off", () => {
+    expect(cardBasis(3, 8)).toBe("calc((100% - 16px) / 3)");
+    expect(cardBasis(1, 8)).toBe("calc((100% - 0px) / 1)");
+  });
+});

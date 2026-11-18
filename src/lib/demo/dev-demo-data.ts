@@ -275,6 +275,15 @@ for (const [id, list] of [
 ] as const) {
   demoBoardTasks.find((t) => t.id === id)!.boardList = list;
 }
+// Two sub-items under "Saved searches", so the card popup opens and edits them (§126.4).
+for (const [id, title, status] of [
+  ["c1a", "Name a saved search", "DONE"],
+  ["c1b", "Email me when a saved search has new results", "BACKLOG"],
+] as const) {
+  const sub = mkTask({ id, release: REL.v140, title, clientSlug: "northwind", status, unassigned: true, card: { itemType: "subitem", area: "Search & discovery" } });
+  sub.parentId = "c1";
+  demoBoardTasks.push(sub);
+}
 // Which dev tasks deliver which card.
 for (const [devId, cardId] of [["t13", "c1"], ["t14", "c1"], ["t19", "c1"], ["t20", "c2"]] as const) {
   const card = demoBoardTasks.find((t) => t.id === cardId)!;
@@ -2127,6 +2136,61 @@ const demoClientMeetings = {
     },
   ],
 };
+
+/**
+ * `/demo/portal?shape=dense` — Wedge's real shape, for the no-gaps check (§129.1): five developers,
+ * four designs, 49 meetings, one Pulse scan, no studies and thirty documents. The default demo is
+ * unchanged so the baseline snapshot keeps its data.
+ */
+function demoPortalShape(): "dense" | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return new URLSearchParams(window.location.search).get("shape") === "dense" ? "dense" : null;
+  } catch {
+    return null;
+  }
+}
+
+function denseClientDetail(): ClientDetailRecord {
+  const base = demoClientDetail;
+  const extraDevs = [
+    { id: "pl5", candidateId: "cand5", candidateName: "Sana Iqbal", candidateJobTitle: "Flutter developer", candidateStack: ["Flutter", "Dart"], candidateAvatarUrl: null, candidateUserId: null, clientName: WIKI_CLIENT.name, projectName: "Northwind mobile", startDate: atDays(-40), endDate: null, allocationPercent: 100, notes: null, updatedAt: atDays(-2) },
+    { id: "pl6", candidateId: "cand6", candidateName: "Omar Farouk", candidateJobTitle: "QA engineer", candidateStack: ["Playwright"], candidateAvatarUrl: null, candidateUserId: null, clientName: WIKI_CLIENT.name, projectName: "Northwind web", startDate: atDays(-15), endDate: null, allocationPercent: 50, notes: null, updatedAt: atDays(-1) },
+  ];
+  const designs = [
+    ...base.designs,
+    { id: "ds3", clientId: WIKI_CLIENT.id, name: "Figma — Full launch", url: "https://www.figma.com/design/demo-launch", notes: null, previewImageUrl: null, createdAt: atDays(-20), updatedAt: atDays(-5) },
+    { id: "ds4", clientId: WIKI_CLIENT.id, name: "Figma — Design system", url: "https://www.figma.com/design/demo-system", notes: null, previewImageUrl: null, createdAt: atDays(-18), updatedAt: atDays(-4) },
+  ];
+  const documentLinks = Array.from({ length: 30 }, (_, i) => ({
+    id: `dl-dense-${i + 1}`,
+    clientId: WIKI_CLIENT.id,
+    name: `Release notes ${String(i + 1).padStart(2, "0")}`,
+    url: `https://docs.google.com/document/d/demo-dense-${i + 1}`,
+    notes: null,
+    createdAt: atDays(-(i + 1) * 3),
+    updatedAt: atDays(-(i + 1) * 2),
+  }));
+  return { ...base, placements: [...base.placements, ...extraDevs], designs, documentLinks, studies: [], pulseScans: base.pulseScans.slice(0, 1) };
+}
+
+function denseClientMeetings() {
+  const [first] = demoClientMeetings.meetings;
+  const statuses = ["SUMMARISED", "ERROR", "NO_TRANSCRIPT", "SUMMARISED"] as const;
+  return {
+    ...demoClientMeetings,
+    meetings: Array.from({ length: 49 }, (_, i) => ({
+      ...first,
+      id: `mtg-dense-${i + 1}`,
+      calendarEventId: `ev-dense-${i + 1}`,
+      title: i % 3 === 0 ? "Northwind x Gitwork" : i % 3 === 1 ? "Weekly standup with the team" : "Luke x Dan",
+      startedAt: atDays(-(i + 1)),
+      endedAt: atDays(-(i + 1)),
+      status: statuses[i % statuses.length],
+    })),
+  };
+}
+
 const demoSlackActivity = {
   configured: true,
   channelName: "northwind-internal",
@@ -4288,6 +4352,8 @@ let demoBoardEnabled = true;
 let demoBoardShowAllTasks = false;
 /** Demo screenshots on cards. A path rather than an attachment id: the demo has no database to serve one from. */
 const demoBoardImages = new Map<string, string[]>([["c1", ["/demo/board-screenshot.png"]]]);
+/** Screenshots taken off a card, kept for the team's Restore, as the server keeps them. */
+const demoRemovedImages = new Map<string, WikiBoardCard["removedImages"]>();
 
 /** The demo's client feedback, per task. Seeded so the thread and the sign-off chips show. */
 const demoBoardFeedback = new Map<string, WikiBoardFeedback[]>([
@@ -4353,8 +4419,14 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
     description: isCard || addedByClient ? t.description : null,
     subtasks: demoBoardTasks
       .filter((s) => s.parentId === t.id && !s.archivedAt)
-      .map((s) => ({ title: s.title, done: s.status === "DONE" })),
+      .map((s) => ({
+        id: s.id,
+        title: s.title,
+        done: s.status === "DONE",
+        isItem: s.itemType === "subitem" && !t.parentId && t.itemType === "feature",
+      })),
     images: isCard || addedByClient ? (demoBoardImages.get(t.id) ?? []) : [],
+    removedImages: isCard || addedByClient ? (demoRemovedImages.get(t.id) ?? []) : [],
     stageHistory: isCard ? demoStageHistory(t) : [],
     doneAt: (isCard || addedByClient) && t.status === "DONE" ? t.completedAt : null,
     dependsOn: (Array.isArray(t.metadata?.dependsOn) ? (t.metadata!.dependsOn as string[]) : []).flatMap((id) => {
@@ -4559,20 +4631,50 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
     return { card: demoBoardCard(parent ?? task, demoBoardColumns) };
   }
   const one =
-    /^\/api\/wiki\/[^/]+\/board\/tasks\/([^/]+)(\/images)?$/.exec(pathname) ??
-    /^\/api\/clients\/[^/]+\/wiki\/board\/cards\/([^/]+)(\/images|\/restore)?$/.exec(pathname);
+    /^\/api\/wiki\/[^/]+\/board\/tasks\/([^/]+)(\/images(?:\/([^/]+))?)?$/.exec(pathname) ??
+    /^\/api\/clients\/[^/]+\/wiki\/board\/cards\/([^/]+)(\/images(?:\/([^/]+)(\/restore)?)?|\/restore)?$/.exec(pathname);
   if (one) {
     const task = demoBoardTasks.find((t) => t.id === one[1]);
     if (!task) return { error: "Not found", __status: 404 };
     const actable = isProductCard(task) || Boolean(task.metadata && "createdByClient" in task.metadata);
     if (!team && !actable) return { error: "Not found", __status: 404 };
+    // The same rule as the server (`assertAddressable`): a child task is only addressed when it is a
+    // product sub-item under a feature card.
+    const parent = task.parentId ? demoBoardTasks.find((t) => t.id === task.parentId) : undefined;
+    if (task.parentId && (task.itemType !== "subitem" || parent?.itemType !== "feature" || parent.archivedAt)) {
+      return { error: "Not found", __status: 404 };
+    }
     if (one[2] === "/restore" && method === "POST") {
       task.archivedAt = null;
       if (task.metadata) delete task.metadata.deletedFromBoard;
       demoRecordChange(task.id, true, `${who} restored this card.`);
-      return { card: demoBoardCard(task, demoBoardColumns) };
+      return { card: demoBoardCard(parent ?? task, demoBoardColumns) };
     }
     if (task.archivedAt) return { error: "Not found", __status: 404 };
+    if (method === "GET" && !one[2]) return { card: demoBoardCard(task, demoBoardColumns) };
+    if (one[3] && method === "DELETE") {
+      const image = decodeURIComponent(one[3]);
+      const list = demoBoardImages.get(task.id) ?? [];
+      if (!list.includes(image)) return { error: "That screenshot isn't on this card any more.", __status: 404 };
+      demoBoardImages.set(task.id, list.filter((i) => i !== image));
+      // Kept, not deleted, as on the server: the team can put it back.
+      demoRemovedImages.set(task.id, [
+        ...(demoRemovedImages.get(task.id) ?? []),
+        { id: image, removedAt: new Date().toISOString(), removedByName: who },
+      ]);
+      demoRecordChange(task.id, team, `${who} removed a screenshot.`);
+      return { card: demoBoardCard(task, demoBoardColumns) };
+    }
+    if (one[3] && one[4] && method === "POST") {
+      if (!team) return { error: "Not found", __status: 404 };
+      const image = decodeURIComponent(one[3]);
+      const removed = demoRemovedImages.get(task.id) ?? [];
+      if (!removed.some((r) => r.id === image)) return { error: "That screenshot isn't waiting to be put back.", __status: 404 };
+      demoRemovedImages.set(task.id, removed.filter((r) => r.id !== image));
+      demoBoardImages.set(task.id, [...(demoBoardImages.get(task.id) ?? []), image]);
+      demoRecordChange(task.id, team, `${who} put a removed screenshot back.`);
+      return { card: demoBoardCard(task, demoBoardColumns) };
+    }
     if (one[2] === "/images" && method === "POST") {
       // The demo has no database: an uploaded image is shown from the browser's own copy.
       const form = init?.body instanceof FormData ? init.body : null;
@@ -4591,6 +4693,9 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
     if (method === "PATCH") {
       const body = bodyOf(init);
       if ("assignees" in body || "assigneeId" in body) return { error: "Unrecognized key: assignees", __status: 400 };
+      if (task.parentId && typeof body.itemType === "string" && body.itemType !== task.itemType) {
+        return { error: "A sub-item stays a sub-item. Add a new card if this should stand on its own.", __status: 400 };
+      }
       const before = demoCardFields(task);
       if (typeof body.title === "string") task.title = body.title.trim() || task.title;
       if (typeof body.itemType === "string") task.itemType = body.itemType;
@@ -5116,14 +5221,14 @@ export function resolveDemoApi(
     return demoSlackActivity;
   }
   if (/^\/api\/clients\/[^/]+\/meetings$/.test(pathname)) {
-    return demoClientMeetings;
+    return demoPortalShape() === "dense" ? denseClientMeetings() : demoClientMeetings;
   }
   if (/^\/api\/clients\/[^/]+\/design-system$/.test(pathname)) {
     return demoDesignSystem;
   }
   // Single client — GET /api/clients/{slug} (exact; not a sub-resource).
   if (/^\/api\/clients\/[^/]+$/.test(pathname)) {
-    return demoClientDetail;
+    return demoPortalShape() === "dense" ? denseClientDetail() : demoClientDetail;
   }
 
   // Docs.

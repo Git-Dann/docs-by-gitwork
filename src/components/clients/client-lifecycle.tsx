@@ -8,12 +8,35 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRightIcon, ClockIcon } from "@heroicons/react/24/outline";
+import type { ComponentType } from "react";
+import {
+  ArrowRightStartOnRectangleIcon,
+  ArrowUpRightIcon,
+  BeakerIcon,
+  BoltIcon,
+  ChatBubbleLeftEllipsisIcon,
+  CheckBadgeIcon,
+  ClipboardDocumentCheckIcon,
+  ClockIcon,
+  DocumentTextIcon,
+  EnvelopeIcon,
+  IdentificationIcon,
+  LinkIcon,
+  MapIcon,
+  PencilSquareIcon,
+  PhoneIcon,
+  SignalIcon,
+  Squares2X2Icon,
+  SwatchIcon,
+  UserPlusIcon,
+  UsersIcon,
+} from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { FadeIn } from "@/components/ui/motion/fade-in";
 import { StatusDot } from "@/components/ui/motion/status-dot";
 import { cn, formatDate } from "@/lib/format";
+import { historyIconKey, type HistoryIconKey } from "@/lib/client-history-icons";
 import { HISTORY_KIND_LABELS, buildClientHistory, timelineMilestones, type HistoryEvent, type HistoryKind } from "@/lib/client-history";
 import type { ClientDetailRecord, ClientLifecycleEvent } from "@/types/client";
 
@@ -23,6 +46,35 @@ type Source = Pick<
   ClientDetailRecord,
   "lifecycle" | "placements" | "pulseScans" | "studies" | "platforms" | "designs" | "documentLinks" | "touchpoints"
 >;
+
+/** What kind of thing happened, as a neutral outline glyph. State stays with the dot's colour. */
+const HISTORY_ICON: Record<HistoryIconKey, ComponentType<{ className?: string }>> = {
+  record: IdentificationIcon,
+  proposal: DocumentTextIcon,
+  signed: CheckBadgeIcon,
+  signature: PencilSquareIcon,
+  onboarding: ClipboardDocumentCheckIcon,
+  active: BoltIcon,
+  plan: MapIcon,
+  joined: UserPlusIcon,
+  left: ArrowRightStartOnRectangleIcon,
+  scan: SignalIcon,
+  study: BeakerIcon,
+  platform: Squares2X2Icon,
+  design: SwatchIcon,
+  link: LinkIcon,
+  call: PhoneIcon,
+  email: EnvelopeIcon,
+  meeting: UsersIcon,
+  note: PencilSquareIcon,
+  message: ChatBubbleLeftEllipsisIcon,
+  other: ClockIcon,
+};
+
+function KindIcon({ e, className }: { e: { id: string; label: string }; className?: string }) {
+  const Icon = HISTORY_ICON[historyIconKey(e)];
+  return <Icon aria-hidden className={cn("h-3.5 w-3.5 shrink-0 text-[var(--text-4)]", className)} />;
+}
 
 function whenLabel(e: { at: string; ongoing?: boolean; status: ClientLifecycleEvent["status"] }): string {
   if (e.ongoing) return "Now";
@@ -98,8 +150,11 @@ export function ClientLifecycleCard({ number, source }: { number: string; source
                       />
                     ) : null}
                   </span>
-                  <span className="mt-3 truncate text-[13px] font-semibold text-[var(--text-1)]" title={e.label}>
-                    {e.label}
+                  <span className="mt-3 flex min-w-0 items-center gap-1.5">
+                    <KindIcon e={e} />
+                    <span className="truncate text-[13px] font-semibold text-[var(--text-1)]" title={e.label}>
+                      {e.label}
+                    </span>
                   </span>
                   <span className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-[var(--text-3)]" title={e.detail}>
                     {e.detail}
@@ -171,8 +226,11 @@ export function ClientHistoryDialog({ open, onClose, history }: { open: boolean;
                       {e.ongoing || e.status !== "done" ? <Dot e={e} /> : <StatusDot tone={KIND_TONE[e.kind]} />}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium text-[var(--text-1)]" title={e.label}>
-                        {e.label}
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <KindIcon e={e} />
+                        <span className="truncate text-[13px] font-medium text-[var(--text-1)]" title={e.label}>
+                          {e.label}
+                        </span>
                       </span>
                       <span className="block truncate text-[11px] text-[var(--text-3)]" title={e.detail}>
                         {e.detail}

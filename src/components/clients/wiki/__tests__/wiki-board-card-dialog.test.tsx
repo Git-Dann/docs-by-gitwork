@@ -12,6 +12,11 @@ const calls = vi.hoisted(() => [] as Array<{ url: string; init?: RequestInit }>)
 vi.mock("@/lib/api", () => ({
   apiFetch: vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
+    if (init?.method === "DELETE" && url.includes("/images/")) return { card: { ...CARD, images: [] } };
+    if (init?.method === "POST" && url.endsWith("/board/tasks")) {
+      return { card: { ...CARD, subtasks: [...SUBTASKS, { id: "s2", title: "Brand new", done: false, isItem: true }] } };
+    }
+    if (!init?.method && url.endsWith("/tasks/s1")) return { card: SUB_ITEM };
     if (init?.method === "PATCH") {
       const body = JSON.parse(String(init.body));
       return { card: { ...CARD, ...body } };
@@ -46,6 +51,7 @@ const CARD: WikiBoardCard = {
   description: "Show the best round.",
   subtasks: [],
   images: [],
+  removedImages: [],
   stageHistory: [],
   doneAt: null,
   dependsOn: [],
@@ -53,6 +59,11 @@ const CARD: WikiBoardCard = {
   addedByClient: false,
   updatedAt: "2026-11-18T09:00:00Z",
 };
+const SUBTASKS: WikiBoardCard["subtasks"] = [
+  { id: "s1", title: "Name a saved search", done: false, isItem: true },
+  { id: "k1", title: "Team checklist item", done: false, isItem: false },
+];
+const SUB_ITEM: WikiBoardCard = { ...CARD, id: "s1", title: "Name a saved search", itemType: "subitem", subtasks: [] };
 const DEV_TASK: WikiBoardCard = { ...CARD, id: "d1", title: "Rotate the API keys", itemType: null, isCard: false };
 
 const SECTION: WikiBoardSection = {
@@ -158,5 +169,54 @@ describe("the card dialog", () => {
     const patch = calls.find((c) => c.init?.method === "PATCH");
     expect(patch?.url).toBe("/api/wiki/tok/board/tasks/c1");
     expect(JSON.parse(String(patch?.init?.body))).toEqual({ priority: "HIGH" });
+  });
+});
+
+describe("screenshots in the card dialog", () => {
+  it("takes one off the card only after asking, through the card's own route", async () => {
+    open({ ...CARD, images: ["img1"] }, "client");
+    act(() => document.querySelector<HTMLButtonElement>("[data-card-image-remove]")!.click());
+    expect(document.querySelector("[data-card-image-confirm]")).not.toBeNull();
+    expect(calls.some((c) => c.init?.method === "DELETE")).toBe(false);
+    const remove = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-card-image-confirm] button")).find((b) => b.textContent === "Remove")!;
+    await act(async () => remove.click());
+    const del = calls.find((c) => c.init?.method === "DELETE");
+    expect(del?.url).toBe("/api/wiki/tok/board/tasks/c1/images/img1");
+    expect(document.querySelector("[data-card-image]")).toBeNull();
+  });
+
+  it("offers the client no way to take one off a team dev task", () => {
+    open({ ...DEV_TASK, images: ["img1"] }, "client");
+    expect(document.querySelector("[data-card-image-remove]")).toBeNull();
+  });
+});
+
+describe("sub-items in the card dialog", () => {
+  it("opens a product sub-item in the same popup, and Back returns to the feature", async () => {
+    open({ ...CARD, subtasks: SUBTASKS }, "client");
+    // Only the product sub-item opens; the team's checklist item is listed, not a button.
+    expect(document.querySelectorAll("[data-card-subitem]")).toHaveLength(1);
+    await act(async () => document.querySelector<HTMLButtonElement>("[data-card-subitem]")!.click());
+    expect(calls.some((c) => !c.init?.method && c.url === "/api/wiki/tok/board/tasks/s1")).toBe(true);
+    expect(document.querySelector<HTMLTextAreaElement>("[data-card-title]")?.value).toBe("Name a saved search");
+    expect(document.querySelector("[data-card-back]")?.textContent).toContain("Course record leaderboard");
+    // A sub-item stays a sub-item: its type isn't offered.
+    expect(railSelects()).not.toContain("Type");
+    act(() => document.querySelector<HTMLButtonElement>("[data-card-back]")!.click());
+    expect(document.querySelector<HTMLTextAreaElement>("[data-card-title]")?.value).toBe("Course record leaderboard");
+  });
+
+  it("adds a sub-item under the feature and opens it", async () => {
+    open({ ...CARD, subtasks: SUBTASKS }, "client");
+    const input = document.querySelector<HTMLInputElement>("[data-card-subitem-add]")!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(input, "Brand new");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    const post = calls.find((c) => c.init?.method === "POST" && c.url.endsWith("/board/tasks"));
+    expect(JSON.parse(String(post?.init?.body))).toMatchObject({ title: "Brand new", itemType: "subitem", parentId: "c1" });
+    expect(calls.some((c) => !c.init?.method && c.url === "/api/wiki/tok/board/tasks/s2")).toBe(true);
   });
 });
