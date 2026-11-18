@@ -398,6 +398,26 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     expect(del.indexOf("assertBoardWriteRate(req)")).toBeLessThan(del.indexOf("removeBoardCardImage("));
   });
 
+  /** Older cards in a Done column (§126.5): read-only, the client's copy, behind a read limit. */
+  const laneRoutes = ["app/api/wiki/[token]/board/lanes/[laneKey]/route.ts"];
+
+  it.each(laneRoutes)("%s only reads, gated and rate-limited, and always sends the client's copy", (rel) => {
+    const src = read(rel);
+    expect(src).toMatch(/export async function GET/);
+    expect(src).not.toMatch(/export async function (POST|PATCH|PUT|DELETE)/);
+    expect(src.indexOf("resolveBoardWriter(req, token)")).toBeGreaterThan(-1);
+    expect(src.indexOf("resolveBoardWriter(req, token)")).toBeLessThan(src.indexOf("assertBoardReadRate(req)"));
+    expect(src.indexOf("assertBoardReadRate(req)")).toBeLessThan(src.indexOf("loadBoardLanePage("));
+    expect(src).toContain('audience: "client"');
+    expect(src).not.toContain('audience: "team"');
+  });
+
+  it("the team's lane route resolves the internal writer and sends the team's copy", () => {
+    const src = read("app/api/clients/[slug]/wiki/board/lanes/[laneKey]/route.ts");
+    expect(src).toContain('resolveInternalBoardWriter(req, slug, "write")');
+    expect(src).toContain('audience: "team"');
+  });
+
   it("reading one card for the popup resolves the writer and only reads", () => {
     const src = read("app/api/wiki/[token]/board/tasks/[taskId]/route.ts");
     const get = src.slice(src.indexOf("export async function GET"), src.indexOf("export async function PATCH"));
@@ -477,7 +497,7 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
   it("every handler under the board's token routes resolves the writer first", () => {
     const dir = join(ROOT, "app/api/wiki/[token]/board");
     const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
-    expect(files.length).toBe(routes.length + readRoutes.length + uploadRoutes.length);
+    expect(files.length).toBe(routes.length + readRoutes.length + uploadRoutes.length + laneRoutes.length);
     for (const f of files) {
       const src = readFileSync(join(dir, f), "utf8");
       const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];

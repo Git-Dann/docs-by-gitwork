@@ -54,6 +54,7 @@ export function WikiBoardSchedule({
   onOpen,
   onPlace,
   refresh,
+  loadingOlder = false,
 }: {
   /** The cards in view, already filtered the way the Board is. */
   cards: WikiBoardCard[];
@@ -70,6 +71,8 @@ export function WikiBoardSchedule({
   /** Put a card the server returned in place on the Board. */
   onPlace: (card: WikiBoardCard) => void;
   refresh: () => void;
+  /** A Done column's older cards are still being read, so "What happened" isn't complete yet. */
+  loadingOlder?: boolean;
 }) {
   const toast = useToast();
   const today = useMemo(() => todayDay(), []);
@@ -135,6 +138,11 @@ export function WikiBoardSchedule({
           Today
         </button>
         <span className="text-[12px] text-[var(--text-3)]">{dayLabel(today)}</span>
+        {loadingOlder ? (
+          <span className="text-[12px] text-[var(--text-4)]" data-schedule-loading-older>
+            Loading older finished cards…
+          </span>
+        ) : null}
         {canEditKeyDates ? (
           <button
             type="button"

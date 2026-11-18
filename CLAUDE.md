@@ -10437,6 +10437,31 @@ The old `CardForm` (add) and `CardDetail` (read, then a separate "Edit" form) ar
   sign it off**, read its thread, and get or add its screenshots, all within `assertAddressable` +
   `clientMayActOn` and the usual quotas. Dev subtasks stay a 404 (their itemType isn't "subitem").
 
+### 126.5 A Done column's older cards, on request
+
+The board sends a Done column's newest `BOARD_LIMITS.doneLaneCards` (50) cards and counts the
+rest, so a long-running client's board stays light. Wedge's Live Features has ~77. The rest is
+read when someone asks:
+
+- **Board:** "Show N older" at the foot of the column (and under the phone's column) reads that column.
+- **Table and Schedule:** opening either reads every Done column's older cards, because both count
+  every card and the Schedule logs what finished. The Table's note says "Loading…" while it reads
+  and disappears once the set is complete.
+- **Routes:** `GET /api/wiki/[token]/board/lanes/[laneKey]` (client link: `resolveBoardWriter`,
+  then a per-IP read limit, `assertBoardReadRate`, 120/min) and
+  `GET /api/clients/[slug]/wiki/board/lanes/[laneKey]` (team: `resolveInternalBoardWriter("write")`).
+  Query `?kind=cards|other&offset=&limit=` (≤100, `DONE_PAGE_MAX`), parsed `.strict()` by
+  `parseDoneLaneQuery`. Done columns only (400 otherwise).
+- ⚠️ **The client's link always gets the client's copy** (`boardLanePage`, `audience: "client"`),
+  whoever is signed in, because that's what the page shows: their cards through `publicCard`, the
+  team's dev tasks as `titleOnlyCard` only while `showAllTasks` is on, and not counted otherwise.
+  A test asserts a dev task a card depends on is never named.
+- **Order:** `byRecency` (finished, else last changed, newest first; ties by id), the same order the
+  board caps by, so page one starts with the cards already shown. The client reads from offset 0
+  and merges (`mergeBoardCards`: the board's copy wins, nothing twice), so a card finishing between
+  the two reads can't be missed. After a refresh the older cards are read again.
+- The wiki DTO's board shape is unchanged.
+
 ## 127. Recent Changes (November 2026) — Sheets is retired: its rows become Board cards
 
 Only Wedge ever used Sheets: a QA review (47 rows, 26 already sent to the board and done) and a

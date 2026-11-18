@@ -25,7 +25,7 @@ import {
 } from "@/server/wiki-board-limit";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { boardLanes, laneKeyFor, parseBoardColumns, type BoardLane } from "@/lib/tasks/board-columns";
-import { layoutBoard } from "@/lib/wiki-board-layout";
+import { DONE_PAGE_MAX, doneLanePage, layoutBoard, type DoneLaneKind, type DoneLanePage } from "@/lib/wiki-board-layout";
 import { BOARD_LIST_MAX, cardProgress, isProductCard } from "@/lib/tasks/product-cards";
 import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
 import {
@@ -325,6 +325,20 @@ async function cardContext(
  * other tasks, with counts for the rest, so a long-running client's board stays a board.
  */
 export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection> {
+  const all = await boardCards(clientId);
+  if (!all) return EMPTY_BOARD;
+  const laid = layoutBoard({
+    cards: all.cards,
+    columns: all.columns,
+    releases: all.releases,
+    completedAt: all.completedAt,
+  });
+  const [deleted, keyDates] = await Promise.all([listDeletedBoardCards(clientId), loadBoardKeyDates(clientId)]);
+  return { ...laid, showAllTasks: all.showAllTasks, keyDates, deleted: deleted.cards, deletedTotal: deleted.total };
+}
+
+/** Every live top-level card on the board, the team's copy, with what laying it out needs. Null when the Board is off. */
+async function boardCards(clientId: string) {
   const wiki = await prisma.clientWiki.findUnique({
     where: { clientId },
     select: {
@@ -333,27 +347,71 @@ export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection>
       client: { select: { workspaceId: true, taskBoardColumns: true } },
     },
   });
-  if (!wiki?.boardEnabled) return EMPTY_BOARD;
+  if (!wiki?.boardEnabled) return null;
   const columns = parseBoardColumns(wiki.client.taskBoardColumns);
   const rows = await prisma.task.findMany({
     where: { clientId, parentId: null, archivedAt: null },
     select: TASK_SELECT,
   });
   const ctx = await cardContext(wiki.client.workspaceId, clientId, columns, rows);
-  const completedAt = new Map(rows.map((r) => [r.id, r.completedAt?.toISOString() ?? null]));
-  const laid = layoutBoard({
-    cards: rows.map((r) => toCard(r, ctx)),
+  return {
+    showAllTasks: wiki.boardShowAllTasks,
     columns,
+    cards: rows.map((r) => toCard(r, ctx)),
+    completedAt: new Map(rows.map((r) => [r.id, r.completedAt?.toISOString() ?? null])),
     releases: ctx.releases.map((r) => ({
       id: r.id,
       label: r.label,
       startDate: r.startDate?.toISOString() ?? null,
       endDate: r.endDate?.toISOString() ?? null,
     })),
-    completedAt,
-  });
-  const [deleted, keyDates] = await Promise.all([listDeletedBoardCards(clientId), loadBoardKeyDates(clientId)]);
-  return { ...laid, showAllTasks: wiki.boardShowAllTasks, keyDates, deleted: deleted.cards, deletedTotal: deleted.total };
+  };
+}
+
+/**
+ * One page of a Done column's cards, newest first (CLAUDE.md §126.5). The board sends a Done
+ * column's newest `BOARD_LIMITS.doneLaneCards`; "Show older", the Table and the Schedule read the
+ * rest through this.
+ *
+ * `audience` decides the copy, exactly as the board itself is copied: the team gets its own copy;
+ * the client gets the client's (`publicCard`), their own cards only, plus the team's dev tasks as a
+ * title and a column ONLY while the team shows them (`showAllTasks`). The client's link always gets
+ * the client's copy, whoever is signed in, because that's what the page itself shows.
+ */
+export async function loadBoardLanePage(
+  clientId: string,
+  input: { laneKey: string; kind: DoneLaneKind; offset: number; limit: number; audience: "team" | "client" },
+): Promise<DoneLanePage> {
+  const all = await boardCards(clientId);
+  if (!all) throw new BoardError("The Board is switched off for this client.", 409);
+  return boardLanePage(all, input);
+}
+
+/**
+ * The page itself, from cards already loaded: the column is checked, then the copy is made for
+ * the audience. Exported for its tests; `loadBoardLanePage` is the way in.
+ */
+export function boardLanePage(
+  all: {
+    cards: WikiBoardCard[];
+    columns: ReturnType<typeof parseBoardColumns>;
+    completedAt: ReadonlyMap<string, string | null>;
+    showAllTasks: boolean;
+  },
+  input: { laneKey: string; kind: DoneLaneKind; offset: number; limit: number; audience: "team" | "client" },
+): DoneLanePage {
+  const lane = boardLanes(all.columns).find((l) => l.key === input.laneKey);
+  if (!lane) throw new BoardError("That column isn't on this board.", 404);
+  if (lane.stage !== "DONE") throw new BoardError("Only a done column holds older cards.", 400);
+  const limit = Math.min(DONE_PAGE_MAX, Math.max(1, input.limit));
+  if (input.audience === "team") {
+    return doneLanePage({ cards: all.cards, laneKey: lane.key, kind: input.kind, completedAt: all.completedAt, offset: input.offset, limit });
+  }
+  // What the client's copy of the board would carry, before paging, so `total` counts only that.
+  const seen = all.cards.filter((c) => clientMayActOn(c) || all.showAllTasks);
+  const visible = new Set(all.cards.filter(clientMayActOn).map((c) => c.id));
+  const page = doneLanePage({ cards: seen, laneKey: lane.key, kind: input.kind, completedAt: all.completedAt, offset: input.offset, limit });
+  return { ...page, cards: page.cards.map((c) => (clientMayActOn(c) ? publicCard(c, visible) : titleOnlyCard(c))) };
 }
 
 /** The most key dates the Schedule carries for one client. */

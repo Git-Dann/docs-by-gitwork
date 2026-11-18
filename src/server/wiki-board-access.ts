@@ -118,6 +118,19 @@ export async function assertBoardWriteRate(req: NextRequest): Promise<void> {
   });
 }
 
+/**
+ * Reading older cards from a Done column is a whole-board read, so it gets its own, looser
+ * bucket: generous for someone opening the Table or the Schedule, a wall for a script.
+ */
+export async function assertBoardReadRate(req: NextRequest): Promise<void> {
+  await assertWithinRateLimit({
+    bucket: `board:read:${clientIpFrom(req.headers) ?? "unknown"}`,
+    max: 120,
+    windowMs: 60_000,
+    message: "Too many requests at once — please wait a moment and try again.",
+  });
+}
+
 export function boardAccessError(reason: BoardAccessFailure): { message: string; status: number } {
   switch (reason) {
     case "unauthorized":
