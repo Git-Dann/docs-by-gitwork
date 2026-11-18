@@ -51,6 +51,13 @@ export const BOARD_LIMITS = {
   /** Screenshots on one card. */
   images: 10,
   imageBytes: 10 * 1024 * 1024,
+  /**
+   * One upload request. nginx refuses bodies over 25 MB (deploy/nginx/foundry.conf), so the form
+   * sends larger selections in several requests, each under this.
+   */
+  uploadRequestBytes: 24 * 1024 * 1024,
+  /** Width × height an uploaded image may declare. Above this it isn't decoded at all. */
+  imagePixels: 40_000_000,
   /** Done lanes show the newest this-many cards, then "+N more". */
   doneLaneCards: 50,
 } as const;

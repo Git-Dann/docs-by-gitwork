@@ -108,6 +108,8 @@ export interface WikiBoardSection {
    * Never sent to the client.
    */
   deleted?: WikiBoardDeletedCard[];
+  /** TEAM copy only: how many deleted cards there are in all, when `deleted` holds only the newest. */
+  deletedTotal?: number;
 }
 
 export interface WikiBoardDeletedCard {
@@ -120,13 +122,18 @@ export interface WikiBoardDeletedCard {
 
 export interface WikiBoardFeedback {
   id: string;
-  /** "change": written by the board when someone edits, deletes or restores the card. */
+  /** "change": written by the board when someone edits, moves, deletes or restores the card. */
   kind: "comment" | "approved" | "changes_requested" | "change";
   body: string | null;
   authorName: string;
   /** Who it came from: shown as "Client" or "Gitwork". */
   side: "client" | "team";
   createdAt: string;
+  /**
+   * TEAM reads only: on a client's edit, the title and/or description as they were before it,
+   * so the team can see what was replaced. Never in what the client's page receives.
+   */
+  previous?: { title?: string | null; description?: string | null };
 }
 
 /** What the board needs to place a card a client just made or moved, without a refetch. */

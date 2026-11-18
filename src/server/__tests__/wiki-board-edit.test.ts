@@ -20,9 +20,8 @@ const db = vi.hoisted(() => ({
 const spies = vi.hoisted(() => ({
   dispatch: vi.fn(),
   cardQuota: vi.fn(async () => undefined),
-  editQuota: vi.fn<(wikiId: string) => Promise<void>>(async () => undefined),
-  uploadQuota: vi.fn<(wikiId: string, n: number) => Promise<void>>(async () => undefined),
-  recordUploads: vi.fn(async () => undefined),
+  consume: vi.fn<(db: unknown, wikiId: string, action: string, n?: number) => Promise<void>>(async () => undefined),
+  lock: vi.fn(async () => 1),
 }));
 
 function cond(value: unknown, c: unknown): boolean {
@@ -37,8 +36,8 @@ function cond(value: unknown, c: unknown): boolean {
 }
 const matches = (row: Row, where: Row = {}) => Object.entries(where).every(([k, v]) => cond(row[k], v));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma: Record<string, unknown> = {
     task: {
       findFirst: vi.fn(async ({ where }: { where: Row }) => {
         const t = db.tasks.find((r) => matches(r, where));
@@ -93,16 +92,35 @@ vi.mock("@/lib/prisma", () => ({
     },
     taskComment: { createMany: vi.fn(async ({ data }: { data: Row[] }) => { db.comments.push(...data); return { count: data.length }; }) },
     $queryRaw: vi.fn(async () => []),
-  },
-}));
+    $executeRaw: spies.lock,
+  };
+  // A transaction that really rolls back: what it wrote is undone if it throws.
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const snap = {
+      tasks: db.tasks.map((t) => ({ ...t })),
+      feedback: [...db.feedback],
+      attachments: [...db.attachments],
+      comments: [...db.comments],
+    };
+    try {
+      return await fn(prisma);
+    } catch (err) {
+      db.tasks = snap.tasks;
+      db.feedback = snap.feedback;
+      db.attachments = snap.attachments;
+      db.comments = snap.comments;
+      throw err;
+    }
+  });
+  return { prisma };
+});
 vi.mock("@/server/notifications", () => ({ dispatchNotification: spies.dispatch }));
 vi.mock("@/server/tasks", () => ({ moveTaskForClient: vi.fn(async () => true), assertClientInScope: vi.fn(async () => undefined) }));
 vi.mock("@/server/wiki-board-limit", () => ({
   assertWithinBoardCardQuota: spies.cardQuota,
   assertWithinBoardFeedbackQuota: vi.fn(async () => undefined),
-  assertWithinBoardEditQuota: spies.editQuota,
-  assertWithinBoardUploadQuota: spies.uploadQuota,
-  recordBoardUploads: spies.recordUploads,
+  consumeBoardQuota: spies.consume,
+  pruneBoardQuota: vi.fn(),
   countClientCards: vi.fn(async () => 1),
   shouldNotifyBoardCards: () => false,
   // The real rule: once per card per 10 minutes.
@@ -159,8 +177,8 @@ beforeEach(async () => {
   db.comments = [];
   db.updateManyCalls = [];
   spies.dispatch.mockClear();
-  spies.editQuota.mockReset().mockResolvedValue(undefined);
-  spies.uploadQuota.mockReset().mockResolvedValue(undefined);
+  spies.consume.mockReset().mockResolvedValue(undefined);
+  spies.lock.mockClear();
   png ??= new Uint8Array(await sharp({ create: { width: 8, height: 8, channels: 3, background: "#123456" } }).png().toBuffer());
 });
 
@@ -228,7 +246,7 @@ describe("editing a card", () => {
   });
 
   it("over the edit limit, nothing is written", async () => {
-    spies.editQuota.mockRejectedValue(Object.assign(new Error("That's 120 changes"), { status: 429 }));
+    spies.consume.mockRejectedValue(Object.assign(new Error("That's 120 changes"), { status: 429 }));
     await expect(updateBoardCard(client, "card", { title: "x" })).rejects.toMatchObject({ status: 429 });
     expect(db.updateManyCalls).toHaveLength(0);
   });
@@ -322,7 +340,7 @@ describe("screenshots", () => {
     await addBoardCardImages(client, "card", [{ name: "a.png", bytes: png }]);
     expect(db.attachments).toHaveLength(1);
     expect(db.attachments[0]).toMatchObject({ taskId: "card", mime: "image/png", filename: "a.png" });
-    expect(spies.uploadQuota).toHaveBeenCalledWith("w1", 1);
+    expect(spies.consume).toHaveBeenCalledWith(expect.anything(), "w1", "upload", 1);
     expect(changes()).toEqual(["Luke M. added 1 screenshot."]);
   });
 

@@ -51,9 +51,9 @@ import { Segmented } from "@/components/ui/segmented";
 import { WikiBoardTimeline } from "@/components/clients/wiki/wiki-board-timeline";
 import { WikiBoardCalendar } from "@/components/clients/wiki/wiki-board-calendar";
 import { useToast } from "@/components/ui/toast";
-import { CardProgressChip, ItemTypeChip, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
+import { CardProgressChip, ItemTypeChip, PreviousValues, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
 import { ITEM_TYPE_LABELS, TIERS, TIER_LABELS, isItemType } from "@/lib/tasks/product-cards";
-import { splitCardDescription } from "@/lib/wiki-board-edit";
+import { splitCardDescription, uploadBatches } from "@/lib/wiki-board-edit";
 import { safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { groupByRelease } from "@/lib/wiki-board-layout";
 import {
@@ -383,7 +383,7 @@ export function WikiBoardSectionView({
         </div>
 
         {audience === "team" && target.mode === "internal" && section.deleted?.length ? (
-          <DeletedCards slug={target.slug} cards={section.deleted} onRestored={(card) => { place(card); refresh(); }} />
+          <DeletedCards slug={target.slug} cards={section.deleted} total={section.deletedTotal ?? section.deleted.length} onRestored={(card) => { place(card); refresh(); }} />
         ) : null}
       </div>
 
@@ -622,10 +622,13 @@ function ClientViewMenu({
 function DeletedCards({
   slug,
   cards,
+  total,
   onRestored,
 }: {
   slug: string;
   cards: WikiBoardDeletedCard[];
+  /** Every deleted card; `cards` may hold only the newest. */
+  total: number;
   onRestored: (card: WikiBoardCard) => void;
 }) {
   const toast = useToast();
@@ -633,9 +636,14 @@ function DeletedCards({
   return (
     <details className="rounded-[8px] border border-[var(--border-2)]" data-board-deleted>
       <summary className="cursor-pointer px-3 py-2 text-[12px] text-[var(--text-2)]">
-        Deleted from the board <span className="text-[var(--text-4)]" style={MONO}>({cards.length})</span>
+        Deleted from the board <span className="text-[var(--text-4)]" style={MONO}>({total})</span>
       </summary>
-      <ul className="divide-y divide-[var(--border-2)] border-t border-[var(--border-2)]">
+      {total > cards.length ? (
+        <p className="border-t border-[var(--border-2)] px-3 py-2 text-[12px] text-[var(--text-3)]">
+          Showing the newest {cards.length.toLocaleString("en-GB")} of {total.toLocaleString("en-GB")}.
+        </p>
+      ) : null}
+      <ul className="max-h-[360px] divide-y divide-[var(--border-2)] overflow-y-auto border-t border-[var(--border-2)]">
         {cards.map((c) => (
           <li key={c.id} className="flex items-center gap-3 px-3 py-2">
             <span className="min-w-0 flex-1">
@@ -1081,12 +1089,15 @@ function CardDetail({
             {feedback.data?.feedback.map((f) =>
               f.kind === "change" ? (
                 // A record of an edit, written by the board: one quiet line.
-                <p key={f.id} className="text-[12px] text-[var(--text-3)]" data-board-change>
-                  <span className="text-[11px] text-[var(--text-4)]" style={MONO}>
-                    {formatDay(f.createdAt)} ·{" "}
-                  </span>
-                  {f.body}
-                </p>
+                <div key={f.id} className="text-[12px] text-[var(--text-3)]" data-board-change>
+                  <p>
+                    <span className="text-[11px] text-[var(--text-4)]" style={MONO}>
+                      {formatDay(f.createdAt)} ·{" "}
+                    </span>
+                    {f.body}
+                  </p>
+                  <PreviousValues previous={f.previous} />
+                </div>
               ) : (
                 <div key={f.id} className="text-[13px]">
                   <p className="text-[11px] text-[var(--text-4)]" style={MONO}>
@@ -1245,7 +1256,8 @@ function CardForm({
       }
       if (files.length && !subItem) {
         try {
-          saved = await uploadBoardImagesApi(target, saved.id, files);
+          // nginx refuses a body over 25 MB, so a big selection goes up in several requests.
+          for (const batch of uploadBatches(files)) saved = await uploadBoardImagesApi(target, saved.id, batch);
         } catch (err) {
           toast.error("The card is saved, but the images weren't", err instanceof Error ? err.message : "Please try adding them again.");
         }
@@ -1449,7 +1461,7 @@ function CardForm({
           <div>
             <span className="widget-data-label text-[var(--text-4)]">Screenshots</span>
             <p className="text-[12px] text-[var(--text-4)]">
-              PNG, JPEG, GIF or WebP, up to 10 MB each and {BOARD_LIMITS.images} a card
+              PNG, JPEG, GIF or WebP, up to 10 MB and 40 megapixels each, and {BOARD_LIMITS.images} a card
               {existingImages ? ` (this card has ${existingImages})` : ""}.
             </p>
             <label className="app-button app-button-secondary app-button-sm mt-1.5 inline-flex cursor-pointer">

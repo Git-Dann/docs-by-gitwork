@@ -166,10 +166,23 @@ export async function resolveInternalBoardWriter(
 }
 
 /**
- * The screenshots in a multipart upload (`file` fields). Sizes are checked from the form before
- * any bytes are read into memory; the bytes themselves are checked in `addBoardCardImages`.
+ * The screenshots in a multipart upload (`file` fields). The request's declared size is checked
+ * BEFORE the body is read: `formData()` buffers the whole body, so a size checked afterwards
+ * protects nothing. nginx refuses anything over 25 MB anyway; this refuses over
+ * `uploadRequestBytes` (plus room for the form's own framing) with a sentence instead of a 413.
+ * Each file's size is checked next, and its bytes in `addBoardCardImages`.
  */
 export async function readBoardImageForm(req: Request): Promise<Array<{ name: string; bytes: Uint8Array }>> {
+  const declared = Number(req.headers.get("content-length") ?? "");
+  if (!Number.isFinite(declared) || declared <= 0) {
+    throw new BoardError("Send the images as a form upload.", 411);
+  }
+  if (declared > BOARD_LIMITS.uploadRequestBytes + UPLOAD_FORM_OVERHEAD) {
+    throw new BoardError(
+      `That's more than ${BOARD_LIMITS.uploadRequestBytes / 1024 / 1024} MB in one go. Add the images in smaller batches.`,
+      413,
+    );
+  }
   let form: FormData;
   try {
     form = await req.formData();
@@ -183,3 +196,6 @@ export async function readBoardImageForm(req: Request): Promise<Array<{ name: st
   if (tooBig) throw new BoardError(`“${tooBig.name || "That image"}” is over 10 MB.`, 400);
   return Promise.all(files.map(async (f) => ({ name: f.name || "image", bytes: new Uint8Array(await f.arrayBuffer()) })));
 }
+
+/** Multipart boundaries and part headers on top of the files themselves. */
+const UPLOAD_FORM_OVERHEAD = 64 * 1024;

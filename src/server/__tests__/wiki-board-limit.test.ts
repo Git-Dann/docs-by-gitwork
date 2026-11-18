@@ -37,10 +37,10 @@ vi.mock("@/lib/prisma", () => ({
 
 import {
   assertWithinBoardCardQuota,
-  assertWithinBoardEditQuota,
   assertWithinBoardFeedbackQuota,
-  assertWithinBoardUploadQuota,
   BOARD_QUOTA,
+  boardActionQuotaBreach,
+  consumeBoardQuota,
   boardCardQuotaBreach,
   boardEditQuotaBreach,
   boardFeedbackQuotaBreach,
@@ -90,7 +90,7 @@ describe("how much the client can change on their Board", () => {
   it("allows 120 edits an hour per wiki, then says why it stopped", () => {
     expect(BOARD_QUOTA.editsPerHour).toBe(120);
     expect(boardEditQuotaBreach(119)).toBeNull();
-    expect(boardEditQuotaBreach(120)).toMatch(/120 changes in the last hour/);
+    expect(boardEditQuotaBreach(120)).toMatch(/more than 120 changes in an hour/);
   });
 
   it("allows 50 screenshots an hour and 200 a day per wiki, counting what's being added", () => {
@@ -108,22 +108,52 @@ describe("how much the client can change on their Board", () => {
   });
 });
 
-describe("the edit and upload counters", () => {
-  it("edits count change entries only, and feedback never counts them", async () => {
-    counts.feedbackWhere = [];
-    counts.edits = 120;
-    await expect(assertWithinBoardEditQuota("w1")).rejects.toMatchObject({ status: 429 });
-    counts.edits = 3;
-    await expect(assertWithinBoardEditQuota("w1")).resolves.toBeUndefined();
-    counts.feedback = 0;
-    await assertWithinBoardFeedbackQuota("w1");
-    expect(counts.feedbackWhere.at(-1)).toMatchObject({ kind: { not: "change" } });
+describe("moves and deletes", () => {
+  it("allows 200 moves an hour, and 30 deletes an hour / 100 a day, per wiki", () => {
+    expect(BOARD_QUOTA).toMatchObject({ movesPerHour: 200, deletesPerHour: 30, deletesPerDay: 100 });
+    expect(boardActionQuotaBreach("move", { hour: 199, day: 0 })).toBeNull();
+    expect(boardActionQuotaBreach("move", { hour: 200, day: 0 })).toMatch(/200 moves in an hour/);
+    expect(boardActionQuotaBreach("delete", { hour: 29, day: 29 })).toBeNull();
+    expect(boardActionQuotaBreach("delete", { hour: 30, day: 30 })).toMatch(/30 deleted cards in an hour/);
+    expect(boardActionQuotaBreach("delete", { hour: 0, day: 100 })).toMatch(/100 deleted cards today/);
+  });
+});
+
+describe("taking the quota", () => {
+  function fakeDb(hits: Record<string, number>) {
+    const created: string[] = [];
+    return {
+      created,
+      db: {
+        rateLimitHit: {
+          count: vi.fn(async ({ where }: { where: { bucket: string } }) => hits[where.bucket] ?? 0),
+          createMany: vi.fn(async ({ data }: { data: Array<{ bucket: string }> }) => {
+            created.push(...data.map((d) => d.bucket));
+            return { count: data.length };
+          }),
+        },
+      } as never,
+    };
+  }
+
+  it("records one hit per thing, in this wiki's bucket for that action", async () => {
+    const { db, created } = fakeDb({});
+    await consumeBoardQuota(db, "w1", "upload", 3);
+    await consumeBoardQuota(db, "w1", "delete");
+    expect(created).toEqual(["board:upload:w1", "board:upload:w1", "board:upload:w1", "board:delete:w1"]);
   });
 
-  it("uploads are counted per wiki, and refused before anything is stored", async () => {
-    counts.uploads = [49, 49];
-    await expect(assertWithinBoardUploadQuota("w1", 2)).rejects.toMatchObject({ status: 429 });
-    counts.uploads = [10, 10];
-    await expect(assertWithinBoardUploadQuota("w1", 2)).resolves.toBeUndefined();
+  it("over the limit it throws a 429 and records nothing", async () => {
+    const { db, created } = fakeDb({ "board:edit:w1": 120 });
+    await expect(consumeBoardQuota(db, "w1", "edit")).rejects.toMatchObject({ status: 429 });
+    const up = fakeDb({ "board:upload:w1": 49 });
+    await expect(consumeBoardQuota(up.db, "w1", "upload", 2)).rejects.toMatchObject({ status: 429 });
+    expect(created).toEqual([]);
+    expect(up.created).toEqual([]);
+  });
+
+  it("another wiki's hits don't count", async () => {
+    const { db } = fakeDb({ "board:move:w2": 500 });
+    await expect(consumeBoardQuota(db, "w1", "move")).resolves.toBeUndefined();
   });
 });

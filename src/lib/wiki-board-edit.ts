@@ -154,6 +154,10 @@ export function checkBoardImages(
         : `This card already has ${BOARD_LIMITS.images} images, the most it holds.`,
     };
   }
+  const total = files.reduce((n, f) => n + f.size, 0);
+  if (total > BOARD_LIMITS.uploadRequestBytes) {
+    return { ok: false, error: `That's more than ${BOARD_LIMITS.uploadRequestBytes / 1024 / 1024} MB in one go. Add the images in smaller batches.` };
+  }
   const mimes: ImageMime[] = [];
   for (const f of files) {
     if (f.size > BOARD_LIMITS.imageBytes) return { ok: false, error: `“${f.name}” is over 10 MB.` };
@@ -162,6 +166,27 @@ export function checkBoardImages(
     mimes.push(mime);
   }
   return { ok: true, mimes };
+}
+
+/**
+ * Split chosen images into upload requests that each stay under `uploadRequestBytes`, in order.
+ * One image is never split, and each is already capped at `imageBytes`, which is smaller.
+ */
+export function uploadBatches<T extends { size: number }>(files: readonly T[]): T[][] {
+  const out: T[][] = [];
+  let current: T[] = [];
+  let bytes = 0;
+  for (const f of files) {
+    if (current.length && bytes + f.size > BOARD_LIMITS.uploadRequestBytes) {
+      out.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(f);
+    bytes += f.size;
+  }
+  if (current.length) out.push(current);
+  return out;
 }
 
 /** How the thread records added screenshots. */

@@ -179,3 +179,27 @@ export function CardPicker({
     </Combobox>
   );
 }
+
+/** What a client's edit replaced. Only the team's reads carry `previous`, so the client never sees this. */
+export function PreviousValues({ previous }: { previous?: { title?: string | null; description?: string | null } }) {
+  if (!previous) return null;
+  return (
+    <details className="mt-1" data-board-previous>
+      <summary className="cursor-pointer text-[11px] text-[var(--text-4)]">Previous version</summary>
+      <dl className="mt-1 space-y-1 border-l-2 border-[var(--border-2)] pl-2 text-[12px] text-[var(--text-2)]">
+        {"title" in previous ? (
+          <div>
+            <dt className="text-[11px] text-[var(--text-4)]">Title</dt>
+            <dd className="break-words">{previous.title || "(none)"}</dd>
+          </div>
+        ) : null}
+        {"description" in previous ? (
+          <div>
+            <dt className="text-[11px] text-[var(--text-4)]">Description</dt>
+            <dd className="whitespace-pre-wrap break-words">{previous.description || "(none)"}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </details>
+  );
+}

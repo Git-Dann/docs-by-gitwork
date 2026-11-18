@@ -42,8 +42,8 @@ function matches(row: Row, where: Row | undefined): boolean {
   });
 }
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma: Record<string, unknown> = {
     clientWiki: {
       findFirst: vi.fn(async ({ where }: { where: Row }) => db.wikis.find((w) => matches(w, where)) ?? null),
       findUnique: vi.fn(async ({ where }: { where: Row }) => db.wikis.find((w) => w.id === where.id) ?? null),
@@ -80,8 +80,11 @@ vi.mock("@/lib/prisma", () => ({
       }),
       findMany: vi.fn(async () => []),
     },
-  },
-}));
+    $executeRaw: vi.fn(async () => 1),
+  };
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma));
+  return { prisma };
+});
 vi.mock("@/server/notifications", () => ({ dispatchNotification: spies.dispatch }));
 vi.mock("@/server/tasks", () => ({ moveTaskForClient: spies.move, assertClientInScope: spies.inScope }));
 vi.mock("@/server/mcp/auth", () => ({ resolveEffectiveUserById: spies.member }));
@@ -89,7 +92,10 @@ vi.mock("@/server/wiki-board-limit", () => ({
   assertWithinBoardCardQuota: spies.cardQuota,
   assertWithinBoardFeedbackQuota: spies.feedbackQuota,
   countClientCards: spies.countCards,
+  consumeBoardQuota: vi.fn(async () => undefined),
+  pruneBoardQuota: vi.fn(),
   shouldNotifyBoardCards: (last: Date | null) => !last,
+  shouldNotifyCardChange: () => false,
 }));
 vi.mock("@/server/wiki-access", () => ({
   wikiAccessCookieName: (id: string) => `wiki_access_${id}`,

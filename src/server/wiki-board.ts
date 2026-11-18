@@ -16,11 +16,10 @@ import { dispatchNotification } from "@/server/notifications";
 import { assertClientInScope, moveTaskForClient } from "@/server/tasks";
 import {
   assertWithinBoardCardQuota,
-  assertWithinBoardEditQuota,
   assertWithinBoardFeedbackQuota,
-  assertWithinBoardUploadQuota,
+  consumeBoardQuota,
   countClientCards,
-  recordBoardUploads,
+  pruneBoardQuota,
   shouldNotifyBoardCards,
   shouldNotifyCardChange,
 } from "@/server/wiki-board-limit";
@@ -314,24 +313,32 @@ export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection>
     })),
     completedAt,
   });
-  return { ...laid, showAllTasks: wiki.boardShowAllTasks, deleted: await listDeletedBoardCards(clientId) };
+  const deleted = await listDeletedBoardCards(clientId);
+  return { ...laid, showAllTasks: wiki.boardShowAllTasks, deleted: deleted.cards, deletedTotal: deleted.total };
 }
 
-/** Cards deleted from the board (soft), newest first: the team's "put it back" list. */
-export async function listDeletedBoardCards(clientId: string): Promise<WikiBoardDeletedCard[]> {
-  const ids = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT "id" FROM "Task"
+/**
+ * The most deleted cards the team's list carries. Client deletes are capped per wiki (30 an hour,
+ * 100 a day), so this is far more than a day's worth; past it the list says how many there are.
+ */
+export const DELETED_LIST_MAX = 1000;
+
+/** Cards deleted from the board (soft), newest first: the team's "put it back" list, and how many in all. */
+export async function listDeletedBoardCards(clientId: string): Promise<{ cards: WikiBoardDeletedCard[]; total: number }> {
+  const ids = await prisma.$queryRaw<Array<{ id: string; total: bigint }>>`
+    SELECT "id", count(*) OVER () AS total FROM "Task"
     WHERE "clientId" = ${clientId} AND "parentId" IS NULL AND "archivedAt" IS NOT NULL
       AND "metadata" ? 'deletedFromBoard'
     ORDER BY "archivedAt" DESC
-    LIMIT 50`;
-  if (!ids.length) return [];
+    LIMIT ${DELETED_LIST_MAX}`;
+  if (!ids.length) return { cards: [], total: 0 };
+  const total = Number(ids[0].total ?? ids.length);
   const rows = await prisma.task.findMany({
     where: { id: { in: ids.map((r) => r.id) }, clientId },
     orderBy: { archivedAt: "desc" },
     select: { id: true, title: true, itemType: true, archivedAt: true, metadata: true },
   });
-  return rows.flatMap((r) => {
+  const cards = rows.flatMap((r) => {
     const marker = metaObject(r.metadata).deletedFromBoard;
     if (!marker || typeof marker !== "object" || Array.isArray(marker)) return [];
     const by = (marker as Record<string, unknown>).name;
@@ -345,6 +352,7 @@ export async function listDeletedBoardCards(clientId: string): Promise<WikiBoard
       },
     ];
   });
+  return { cards, total: Math.max(total, cards.length) };
 }
 
 /**
@@ -476,6 +484,7 @@ async function loadOwnTask(clientId: string, taskId: string) {
       id: true,
       title: true,
       status: true,
+      boardColumnId: true,
       workspaceId: true,
       assigneeId: true,
       itemType: true,
@@ -493,6 +502,25 @@ function isClientWriter(writer: BoardWriter): boolean {
   return Boolean(writer.wikiUserId) || !writer.userId;
 }
 
+type Tx = Prisma.TransactionClient;
+
+/**
+ * Run a write in one transaction. For a client writer it first takes the board's per-wiki lock,
+ * so the quota count, the hits it records and the write they pay for are serialised: parallel
+ * requests can't all pass the same count, and a write that fails takes its hits with it.
+ * `pg_advisory_xact_lock` returns void, so it goes through `$executeRaw` (see
+ * void-advisory-lock.test.ts).
+ */
+async function withBoardLock<T>(writer: BoardWriter, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return prisma.$transaction(
+    async (tx) => {
+      if (isClientWriter(writer)) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`board-write:${writer.wikiId}`}))`;
+      return fn(tx);
+    },
+    { timeout: 20_000 },
+  );
+}
+
 /**
  * The client may only move, comment on or sign off their product cards and the cards they added.
  * A team dev task is a 404 to them, the same answer as a task that doesn't exist, so a guessed
@@ -505,8 +533,13 @@ function assertClientMayAct(writer: BoardWriter, task: { itemType: string | null
   }
 }
 
-/** One card as the board shows it, after a write, so the client can place it without a refetch. */
-export async function loadBoardCard(clientId: string, taskId: string): Promise<WikiBoardCard> {
+/**
+ * One card as the board shows it, after a write, so the writer can place it without a refetch.
+ * `forClient` returns the CLIENT's copy, exactly as their page would carry it (`publicCard`): its
+ * "depends on" names only cards the client may act on, never a team dev task, whichever way the
+ * team set "Client sees". Every write a client makes answers with this copy.
+ */
+export async function loadBoardCard(clientId: string, taskId: string, forClient = false): Promise<WikiBoardCard> {
   const row = await prisma.task.findFirst({
     where: { id: taskId, clientId },
     select: { ...TASK_SELECT, workspaceId: true, client: { select: { taskBoardColumns: true } } },
@@ -514,7 +547,25 @@ export async function loadBoardCard(clientId: string, taskId: string): Promise<W
   if (!row) throw new BoardError("Not found", 404);
   const columns = parseBoardColumns(row.client.taskBoardColumns);
   const ctx = await cardContext(row.workspaceId, clientId, columns, [row]);
-  return toCard(row, ctx);
+  const card = toCard(row, ctx);
+  if (!forClient) return card;
+  if (!clientMayActOn(card)) return titleOnlyCard(card);
+  const depIds = card.dependsOn.map((d) => d.id);
+  const deps = depIds.length
+    ? await prisma.task.findMany({
+        where: { id: { in: depIds }, clientId, parentId: null, archivedAt: null },
+        select: { id: true, itemType: true, metadata: true },
+      })
+    : [];
+  const visible = new Set(
+    deps.filter((d) => clientMayActOn({ isCard: isProductCard(d), addedByClient: addedByClient(d.metadata) })).map((d) => d.id),
+  );
+  return publicCard(card, visible);
+}
+
+/** The card after a write, in the copy the writer is allowed to see. */
+function cardFor(writer: BoardWriter, taskId: string): Promise<WikiBoardCard> {
+  return loadBoardCard(writer.clientId, taskId, isClientWriter(writer));
 }
 
 function laneFor(columnsRaw: unknown, laneKey: string): BoardLane {
@@ -531,6 +582,11 @@ export async function moveBoardCard(
   const task = await loadOwnTask(writer.clientId, taskId);
   assertClientMayAct(writer, task);
   const lane = laneFor(task.client.taskBoardColumns, input.laneKey);
+  const fromLane = laneKeyFor({ status: task.status as TaskStatus, boardColumnId: task.boardColumnId }, parseBoardColumns(task.client.taskBoardColumns));
+  if (isClientWriter(writer)) {
+    await withBoardLock(writer, (tx) => consumeBoardQuota(tx, writer.wikiId, "move"));
+    pruneBoardQuota(writer.wikiId);
+  }
   // The client may move a card anywhere, Done included (Dan, Nov 2026). The write itself still
   // re-checks the card is where we read it: on this client, live, in the status we saw. If
   // someone else moved or archived it in between, the move lands on nothing.
@@ -542,7 +598,10 @@ export async function moveBoardCard(
     expect: { clientId: writer.clientId, fromStatus: task.status as TaskStatus },
   });
   if (!moved) throw new BoardError("This card has just changed. Refresh to see where it is now.", 409);
-  return loadBoardCard(writer.clientId, task.id);
+  // A move to another column is recorded on the card, so a card the client marked Live says so.
+  // The assignees were already told by moveTaskForClient, so this entry notifies nobody.
+  if (fromLane !== lane.key) await writeChange(prisma, writer, task, `${writer.name} moved this to ${lane.label}.`);
+  return cardFor(writer, task.id);
 }
 
 /** The card fields a create or an edit may set. Assignees are not here, on purpose. */
@@ -608,7 +667,6 @@ export async function createBoardCard(writer: BoardWriter, input: BoardCardInput
     select: { id: true, workspaceId: true, slug: true, name: true, taskBoardColumns: true },
   });
   if (!client) throw new BoardError("Not found", 404);
-  if (isClientWriter(writer)) await assertWithinBoardCardQuota(client.id);
   const lane = laneFor(client.taskBoardColumns, input.laneKey);
   if (!clientCanAddToStage(lane.stage)) {
     throw new BoardError("New cards go in an early column, such as Backlog or To do. Move them on from there.", 403);
@@ -637,7 +695,10 @@ export async function createBoardCard(writer: BoardWriter, input: BoardCardInput
   // what lets the client act on a card that isn't a product card.
   if (isClientWriter(writer)) meta.createdByClient = { wikiUserId: writer.wikiUserId, name: writer.name, at: new Date().toISOString() };
   if (dependsOn.length) meta.dependsOn = dependsOn;
-  const task = await prisma.task.create({
+  // The count and the card land under the per-wiki lock, so parallel adds can't all pass it.
+  const task = await withBoardLock(writer, async (tx) => {
+    if (isClientWriter(writer)) await assertWithinBoardCardQuota(client.id, tx);
+    return tx.task.create({
     data: {
       workspaceId: client.workspaceId,
       clientId: client.id,
@@ -658,10 +719,11 @@ export async function createBoardCard(writer: BoardWriter, input: BoardCardInput
       ...(Object.keys(meta).length ? { metadata: meta } : {}),
     },
     select: { id: true },
+    });
   });
   if (isClientWriter(writer)) await notifyClientCards(writer.wikiId, client, input.title.trim());
   // A sub-item lives inside its feature card, so the card to place is the parent.
-  return loadBoardCard(client.id, parentId ?? task.id);
+  return cardFor(writer, parentId ?? task.id);
 }
 
 /** Everything an edit compares and writes, for one card. */
@@ -711,21 +773,37 @@ function fieldsOf(task: EditableTask): CardFields {
   };
 }
 
+type ChangedTask = {
+  id: string;
+  title: string;
+  workspaceId: string;
+  assigneeId: string | null;
+  assignees: Array<{ id: string }>;
+  client: { slug: string };
+};
+
 /**
- * Write one entry in the card's thread recording what happened, and, for a client, tell the team
- * once per card per 10 minutes: a run of edits is one notification.
+ * Write one entry in the card's thread recording what happened. `previous` (a client's edit only)
+ * keeps the title / description it replaced, for the team. Returns whether the team should be
+ * told: a client's change, at most once per card per 10 minutes (`notifyChange`, after commit).
  */
-async function recordChange(writer: BoardWriter, task: { id: string; title: string; workspaceId: string; assigneeId: string | null; assignees: Array<{ id: string }>; client: { slug: string } }, body: string): Promise<void> {
+async function writeChange(
+  db: Pick<Tx, "taskClientFeedback">,
+  writer: BoardWriter,
+  task: ChangedTask,
+  body: string,
+  previous?: { title?: string | null; description?: string | null },
+): Promise<boolean> {
   const fromClient = isClientWriter(writer);
   const now = new Date();
-  const previous = fromClient
-    ? await prisma.taskClientFeedback.findFirst({
+  const last = fromClient
+    ? await db.taskClientFeedback.findFirst({
         where: { taskId: task.id, kind: "change", authorUserId: null, createdAt: { lt: now } },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       })
     : null;
-  await prisma.taskClientFeedback.create({
+  await db.taskClientFeedback.create({
     data: {
       taskId: task.id,
       wikiId: writer.wikiId,
@@ -734,10 +812,15 @@ async function recordChange(writer: BoardWriter, task: { id: string; title: stri
       authorWikiUserId: writer.wikiUserId,
       authorUserId: fromClient ? null : writer.userId,
       authorName: writer.name,
+      ...(fromClient && previous && Object.keys(previous).length ? { previous } : {}),
     },
     select: { id: true },
   });
-  if (!fromClient || !shouldNotifyCardChange(previous?.createdAt ?? null, now)) return;
+  return fromClient && shouldNotifyCardChange(last?.createdAt ?? null, now);
+}
+
+/** Tell the card's assignees (or the client's team) about a client's change. */
+function notifyChange(writer: BoardWriter, task: ChangedTask, body: string): void {
   const assigneeIds = task.assignees.length ? task.assignees.map((a) => a.id) : task.assigneeId ? [task.assigneeId] : [];
   dispatchNotification({
     event: "tasks.client_feedback",
@@ -753,14 +836,36 @@ async function recordChange(writer: BoardWriter, task: { id: string; title: stri
 }
 
 /**
+ * The card's "depends on" entries the client can't see (the team's dev tasks, live on this
+ * client). A client's edit sends only what they could see, so these are kept rather than dropped.
+ */
+async function hiddenDependsOn(clientId: string, ids: readonly string[]): Promise<string[]> {
+  if (!ids.length) return [];
+  const rows = await prisma.task.findMany({
+    where: { id: { in: [...ids] }, clientId, parentId: null, archivedAt: null },
+    select: { id: true, itemType: true, metadata: true },
+  });
+  const hidden = new Set(
+    rows.filter((r) => !clientMayActOn({ isCard: isProductCard(r), addedByClient: addedByClient(r.metadata) })).map((r) => r.id),
+  );
+  return ids.filter((id) => hidden.has(id));
+}
+
+/**
  * Edit a card's fields. The client may change everything here on any card they can see; the
  * schema has no assignee field, so who works on a card stays the team's to decide. The write is a
  * compare-and-set on the client, the card still being live, so a card deleted meanwhile is a 409.
  */
 export async function updateBoardCard(writer: BoardWriter, taskId: string, patch: BoardCardPatch): Promise<WikiBoardCard> {
   const task = await loadEditableTask(writer, taskId);
-  if (isClientWriter(writer)) await assertWithinBoardEditQuota(writer.wikiId);
   const before = fieldsOf(task);
+  let dependsOn = before.dependsOn;
+  if (patch.dependsOn !== undefined) {
+    const submitted = await ownDependsOn(writer, task.id, patch.dependsOn);
+    // A client edits only what they can see: dependencies the team set on its dev tasks stay.
+    const kept = isClientWriter(writer) ? await hiddenDependsOn(writer.clientId, before.dependsOn) : [];
+    dependsOn = [...submitted, ...kept.filter((id) => !submitted.includes(id))];
+  }
   const after: CardFields = {
     title: patch.title !== undefined ? patch.title.trim() : before.title,
     itemType: patch.itemType !== undefined ? patch.itemType : before.itemType,
@@ -772,7 +877,7 @@ export async function updateBoardCard(writer: BoardWriter, taskId: string, patch
     releaseId: patch.releaseId !== undefined ? await ownRelease(writer.clientId, patch.releaseId) : before.releaseId,
     description: patch.description !== undefined ? patch.description?.trim() || null : before.description,
     links: patch.links !== undefined ? patch.links : before.links,
-    dependsOn: patch.dependsOn !== undefined ? await ownDependsOn(writer, task.id, patch.dependsOn) : before.dependsOn,
+    dependsOn,
   };
   if (!after.title) throw new BoardError("Give the card a title.", 400);
   const releases = after.releaseId
@@ -782,12 +887,19 @@ export async function updateBoardCard(writer: BoardWriter, taskId: string, patch
     const r = releases.find((x) => x.id === id);
     return r ? releaseLabel(r) : null;
   });
-  if (!phrases.length) return loadBoardCard(writer.clientId, task.id);
+  if (!phrases.length) return cardFor(writer, task.id);
 
   const meta = metaObject(task.metadata);
   if (after.dependsOn.length) meta.dependsOn = after.dependsOn;
   else delete meta.dependsOn;
-  const { count } = await prisma.task.updateMany({
+  // What a client's edit replaced, kept for the team (never sent to the client).
+  const previous: { title?: string | null; description?: string | null } = {};
+  if (after.title !== before.title) previous.title = before.title;
+  if ((after.description ?? null) !== (before.description ?? null)) previous.description = before.description;
+  const sentence = changeSentence(writer.name, phrases);
+  const notify = await withBoardLock(writer, async (tx) => {
+    if (isClientWriter(writer)) await consumeBoardQuota(tx, writer.wikiId, "edit");
+    const { count } = await tx.task.updateMany({
     where: { id: task.id, clientId: writer.clientId, parentId: null, archivedAt: null },
     data: {
       title: after.title,
@@ -801,10 +913,13 @@ export async function updateBoardCard(writer: BoardWriter, taskId: string, patch
       description: cardDescription(after.description, after.links),
       metadata: meta,
     },
+    });
+    if (count === 0) throw new BoardError("This card has just been deleted or moved off the board. Refresh to see the board now.", 409);
+    return writeChange(tx, writer, task, sentence, previous);
   });
-  if (count === 0) throw new BoardError("This card has just been deleted or moved off the board. Refresh to see the board now.", 409);
-  await recordChange(writer, task, changeSentence(writer.name, phrases));
-  return loadBoardCard(writer.clientId, task.id);
+  if (isClientWriter(writer)) pruneBoardQuota(writer.wikiId);
+  if (notify) notifyChange(writer, task, sentence);
+  return cardFor(writer, task.id);
 }
 
 /**
@@ -815,40 +930,48 @@ export async function updateBoardCard(writer: BoardWriter, taskId: string, patch
  */
 export async function deleteBoardCard(writer: BoardWriter, taskId: string): Promise<void> {
   const task = await loadEditableTask(writer, taskId);
-  const linked = await prisma.task.findMany({
-    where: { productCardId: task.id, clientId: writer.clientId },
-    select: { id: true },
-    take: 500,
-  });
-  const meta = metaObject(task.metadata);
-  meta.deletedFromBoard = {
-    name: writer.name,
-    side: isClientWriter(writer) ? "client" : "team",
-    wikiUserId: writer.wikiUserId,
-    userId: writer.userId,
-    at: new Date().toISOString(),
-    linkedTaskIds: linked.map((l) => l.id),
-  };
-  const { count } = await prisma.task.updateMany({
-    where: { id: task.id, clientId: writer.clientId, parentId: null, archivedAt: null },
-    data: { archivedAt: new Date(), metadata: meta },
-  });
-  if (count === 0) throw new BoardError("This card has already been deleted. Refresh to see the board now.", 409);
-  if (linked.length) {
-    await prisma.task.updateMany({
-      where: { id: { in: linked.map((l) => l.id) }, clientId: writer.clientId, productCardId: task.id },
-      data: { productCardId: null },
+  // The archive, the unlink, the notes on the dev tasks and the entry in the thread land together
+  // or not at all, so a failure can't leave a card deleted with its dev tasks half unlinked.
+  const linked = await withBoardLock(writer, async (tx) => {
+    if (isClientWriter(writer)) await consumeBoardQuota(tx, writer.wikiId, "delete");
+    const linked = await tx.task.findMany({
+      where: { productCardId: task.id, clientId: writer.clientId },
+      select: { id: true },
+      take: 500,
     });
-    await prisma.taskComment.createMany({
-      data: linked.map((l) => ({
-        taskId: l.id,
-        authorId: writer.userId,
-        body: `${writer.name} deleted the card “${task.title}” from the client's board, so this task is no longer linked to it. Restoring the card links it again.`,
-      })),
+    const meta = metaObject(task.metadata);
+    meta.deletedFromBoard = {
+      name: writer.name,
+      side: isClientWriter(writer) ? "client" : "team",
+      wikiUserId: writer.wikiUserId,
+      userId: writer.userId,
+      at: new Date().toISOString(),
+      linkedTaskIds: linked.map((l) => l.id),
+    };
+    const { count } = await tx.task.updateMany({
+      where: { id: task.id, clientId: writer.clientId, parentId: null, archivedAt: null },
+      data: { archivedAt: new Date(), metadata: meta },
     });
-  }
-  await recordChange(writer, task, `${writer.name} deleted this card.`);
+    if (count === 0) throw new BoardError("This card has already been deleted. Refresh to see the board now.", 409);
+    if (linked.length) {
+      await tx.task.updateMany({
+        where: { id: { in: linked.map((l) => l.id) }, clientId: writer.clientId, productCardId: task.id },
+        data: { productCardId: null },
+      });
+      await tx.taskComment.createMany({
+        data: linked.map((l) => ({
+          taskId: l.id,
+          authorId: writer.userId,
+          body: `${writer.name} deleted the card “${task.title}” from the client's board, so this task is no longer linked to it. Restoring the card links it again.`,
+        })),
+      });
+    }
+    // The delete has its own notification below, so this entry notifies nobody.
+    await writeChange(tx, writer, task, `${writer.name} deleted this card.`);
+    return linked;
+  });
   if (isClientWriter(writer)) {
+    pruneBoardQuota(writer.wikiId);
     dispatchNotification({
       event: "tasks.client_request",
       workspaceId: task.workspaceId,
@@ -875,25 +998,58 @@ export async function restoreBoardCard(writer: BoardWriter, taskId: string): Pro
     ? ((marker as Prisma.JsonObject).linkedTaskIds as unknown[]).filter((v): v is string => typeof v === "string")
     : [];
   delete meta.deletedFromBoard;
-  const { count } = await prisma.task.updateMany({
-    where: { id: task.id, clientId: writer.clientId, archivedAt: { not: null } },
-    data: { archivedAt: null, metadata: meta },
-  });
-  if (count === 0) throw new BoardError("This card has already been restored.", 409);
-  if (linkedIds.length) {
-    await prisma.task.updateMany({
-      where: { id: { in: linkedIds }, clientId: writer.clientId, productCardId: null, archivedAt: null },
-      data: { productCardId: task.id },
+  await withBoardLock(writer, async (tx) => {
+    const { count } = await tx.task.updateMany({
+      where: { id: task.id, clientId: writer.clientId, archivedAt: { not: null } },
+      data: { archivedAt: null, metadata: meta },
     });
+    if (count === 0) throw new BoardError("This card has already been restored.", 409);
+    if (linkedIds.length) {
+      await tx.task.updateMany({
+        where: { id: { in: linkedIds }, clientId: writer.clientId, productCardId: null, archivedAt: null },
+        data: { productCardId: task.id },
+      });
+    }
+    await writeChange(tx, writer, task, `${writer.name} restored this card.`);
+  });
+  return cardFor(writer, task.id);
+}
+
+/**
+ * Decode every image and make its thumbnail before anything is stored, so one bad file stores
+ * nothing. An image declaring more than `imagePixels` (width × height) is refused from its header
+ * before it is decoded at all, so a small file can't make libvips allocate gigabytes.
+ */
+async function prepareBoardImages(
+  files: Array<{ name: string; bytes: Uint8Array }>,
+): Promise<Array<{ name: string; bytes: Buffer; thumb: Buffer }>> {
+  const sharp = (await import("sharp")).default;
+  const out: Array<{ name: string; bytes: Buffer; thumb: Buffer }> = [];
+  for (const f of files) {
+    const name = f.name || "That image";
+    const bytes = Buffer.from(f.bytes);
+    try {
+      const img = sharp(bytes, { limitInputPixels: BOARD_LIMITS.imagePixels, failOn: "error" });
+      const meta = await img.metadata();
+      if (!meta.width || !meta.height) throw new BoardError(`“${name}” couldn't be read as an image.`, 400);
+      if (meta.width * meta.height > BOARD_LIMITS.imagePixels) {
+        throw new BoardError(`“${name}” is ${meta.width} × ${meta.height} pixels, more than the board takes. Resize it and try again.`, 400);
+      }
+      const thumb = await img.rotate().resize(320, 320, { fit: "inside" }).jpeg({ quality: 80 }).toBuffer();
+      out.push({ name: f.name, bytes, thumb });
+    } catch (err) {
+      if (err instanceof BoardError) throw err;
+      throw new BoardError(`“${name}” couldn't be read as an image.`, 400);
+    }
   }
-  await recordChange(writer, task, `${writer.name} restored this card.`);
-  return loadBoardCard(writer.clientId, task.id);
+  return out;
 }
 
 /**
  * Add screenshots to a card. Each is checked by its bytes (PNG, JPEG, GIF or WebP; never SVG),
- * capped at 10 MB and 10 a card, then stored as a task attachment exactly as the Forge image copy
- * stores one, with a small JPEG thumbnail. Served back through the card's own image route.
+ * capped at 10 MB, 10 a card and `uploadRequestBytes` a request, and decoded in full before any is
+ * stored. Then, under the per-wiki lock, the card's room is re-counted, the client's quota is taken,
+ * and the attachments and the thread entry are written in one transaction: all or nothing.
  */
 export async function addBoardCardImages(
   writer: BoardWriter,
@@ -901,32 +1057,36 @@ export async function addBoardCardImages(
   files: Array<{ name: string; bytes: Uint8Array }>,
 ): Promise<WikiBoardCard> {
   const task = await loadEditableTask(writer, taskId);
+  const offered = files.map((f) => ({ name: f.name, size: f.bytes.byteLength, head: f.bytes.subarray(0, 16) }));
   const existing = await prisma.taskAttachment.count({ where: { taskId: task.id } });
-  const checked = checkBoardImages(
-    existing,
-    files.map((f) => ({ name: f.name, size: f.bytes.byteLength, head: f.bytes.subarray(0, 16) })),
-  );
+  const checked = checkBoardImages(existing, offered);
   if (!checked.ok) throw new BoardError(checked.error, 400);
-  if (isClientWriter(writer)) await assertWithinBoardUploadQuota(writer.wikiId, files.length);
-  const sharp = (await import("sharp")).default;
-  for (let i = 0; i < files.length; i++) {
-    const bytes = Buffer.from(files[i].bytes);
-    const thumb = await sharp(bytes).rotate().resize(320, 320, { fit: "inside" }).jpeg({ quality: 80 }).toBuffer();
-    await prisma.taskAttachment.create({
-      data: {
-        taskId: task.id,
-        uploadedById: writer.userId,
-        image: bytesForPrisma(bytes),
-        thumb: bytesForPrisma(thumb),
-        mime: checked.mimes[i],
-        filename: files[i].name.slice(0, 200) || null,
-      },
-      select: { id: true },
-    });
-  }
-  if (isClientWriter(writer)) await recordBoardUploads(writer.wikiId, files.length);
-  await recordChange(writer, task, imagesSentence(writer.name, files.length));
-  return loadBoardCard(writer.clientId, task.id);
+  const prepared = await prepareBoardImages(files);
+  const sentence = imagesSentence(writer.name, files.length);
+  const notify = await withBoardLock(writer, async (tx) => {
+    // Counted again under the lock: a parallel upload may have filled the card meanwhile.
+    const now = await tx.taskAttachment.count({ where: { taskId: task.id } });
+    const recheck = checkBoardImages(now, offered);
+    if (!recheck.ok) throw new BoardError(recheck.error, 400);
+    if (isClientWriter(writer)) await consumeBoardQuota(tx, writer.wikiId, "upload", files.length);
+    for (let i = 0; i < prepared.length; i++) {
+      await tx.taskAttachment.create({
+        data: {
+          taskId: task.id,
+          uploadedById: writer.userId,
+          image: bytesForPrisma(prepared[i].bytes),
+          thumb: bytesForPrisma(prepared[i].thumb),
+          mime: checked.mimes[i],
+          filename: prepared[i].name.slice(0, 200) || null,
+        },
+        select: { id: true },
+      });
+    }
+    return writeChange(tx, writer, task, sentence);
+  });
+  if (isClientWriter(writer)) pruneBoardQuota(writer.wikiId);
+  if (notify) notifyChange(writer, task, sentence);
+  return cardFor(writer, task.id);
 }
 
 /**
@@ -967,15 +1127,30 @@ async function notifyClientCards(
   }
 }
 
-function feedbackRowToDTO(row: {
-  id: string;
-  kind: string;
-  body: string | null;
-  authorName: string;
-  authorWikiUserId: string | null;
-  authorUserId: string | null;
-  createdAt: Date;
-}): WikiBoardFeedback {
+function previousOf(value: unknown): WikiBoardFeedback["previous"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const v = value as Record<string, unknown>;
+  const out: NonNullable<WikiBoardFeedback["previous"]> = {};
+  if ("title" in v) out.title = typeof v.title === "string" ? v.title : null;
+  if ("description" in v) out.description = typeof v.description === "string" ? v.description : null;
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** `forTeam` adds what a client's edit replaced; the client's own page never gets it. */
+function feedbackRowToDTO(
+  row: {
+    id: string;
+    kind: string;
+    body: string | null;
+    authorName: string;
+    authorWikiUserId: string | null;
+    authorUserId: string | null;
+    createdAt: Date;
+    previous?: unknown;
+  },
+  forTeam = false,
+): WikiBoardFeedback {
+  const previous = forTeam ? previousOf(row.previous) : undefined;
   return {
     id: row.id,
     kind: row.kind as WikiBoardFeedback["kind"],
@@ -984,6 +1159,7 @@ function feedbackRowToDTO(row: {
     // Anything not written by a team member is the client's, including a client user since removed.
     side: row.authorUserId ? "team" : "client",
     createdAt: row.createdAt.toISOString(),
+    ...(previous ? { previous } : {}),
   };
 }
 
@@ -995,6 +1171,7 @@ const FEEDBACK_SELECT = {
   authorWikiUserId: true,
   authorUserId: true,
   createdAt: true,
+  previous: true,
 } as const satisfies Prisma.TaskClientFeedbackSelect;
 
 /**
@@ -1026,7 +1203,7 @@ export async function listBoardFeedback(writer: BoardWriter, taskId: string): Pr
     orderBy: { createdAt: "asc" },
     select: FEEDBACK_SELECT,
   });
-  return rows.map(feedbackRowToDTO);
+  return rows.map((r) => feedbackRowToDTO(r, !isClientWriter(writer)));
 }
 
 /**
@@ -1098,7 +1275,7 @@ export async function listTaskFeedbackForTeam(user: EffectiveUser, taskId: strin
     orderBy: { createdAt: "asc" },
     select: FEEDBACK_SELECT,
   });
-  return rows.map(feedbackRowToDTO);
+  return rows.map((r) => feedbackRowToDTO(r, true));
 }
 
 /** The team replying to a client on a card. Shown to the client on their Board. */

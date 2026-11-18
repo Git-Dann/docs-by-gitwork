@@ -129,9 +129,5 @@ export function retryAfterHeaders(seconds = 30): Record<string, string> {
   return { "Retry-After": String(seconds) };
 }
 
-/** Best-effort client IP from standard proxy headers (Vercel sets these). */
-export function clientIpFrom(headers: Headers): string | null {
-  const xff = headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return headers.get("x-real-ip");
-}
+/** The client IP for rate limiting. One rule for the whole app: see src/server/rate-limit.ts. */
+export { clientIpFrom } from "@/server/rate-limit";

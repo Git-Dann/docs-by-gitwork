@@ -4871,7 +4871,7 @@ model TaskClientFeedback {
   id               String   @id @default(cuid())
   taskId           String
   wikiId           String
-  /// "comment" | "approved" | "changes_requested"
+  /// "comment" | "approved" | "changes_requested" | "change" (written by the board on an edit, move, delete or restore)
   kind             String
   body             String?  @db.Text
   /// The client wiki user who wrote it (from their sign-in cookie, never the request body).
@@ -4879,6 +4879,9 @@ model TaskClientFeedback {
   /// The Gitwork team member who wrote it.
   authorUserId     String?
   authorName       String
+  /// On a "change" entry from the client: the title / description as they were before the edit,
+  /// so the team can see (and put back) what was replaced. Never sent to the client.
+  previous         Json?
   createdAt        DateTime @default(now())
   task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
