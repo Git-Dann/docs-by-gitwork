@@ -96,7 +96,7 @@ export function WikiBoardCalendar({
             Today
           </button>
         </div>
-        <div className="ml-auto hidden sm:block">
+        <div className="ml-auto">
           <Segmented
             label="Calendar scale"
             className="h-9"
