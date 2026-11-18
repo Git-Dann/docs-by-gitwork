@@ -4,7 +4,7 @@
  */
 
 import { boardLanes, type BoardColumnDef } from "@/lib/tasks/board-columns";
-import { BOARD_LIMITS, clientCanAddToStage } from "@/lib/wiki-board";
+import { BOARD_LIMITS, clientCanAddToStage, clientMayActOn } from "@/lib/wiki-board";
 import type { WikiBoardCard, WikiBoardGroup, WikiBoardLane, WikiBoardRelease, WikiBoardSection } from "@/types/wiki-board";
 
 /** Newest first, for capping a Done column: when it went live, else when it last changed. */
@@ -13,7 +13,10 @@ function recency(c: WikiBoardCard, completedAt: ReadonlyMap<string, string | nul
 }
 
 /** Cards under each release heading, in the releases' order, then "No release" last. */
-export function groupByRelease(cards: WikiBoardCard[], releases: readonly WikiBoardRelease[]): WikiBoardGroup[] {
+export function groupByRelease(
+  cards: WikiBoardCard[],
+  releases: ReadonlyArray<Omit<WikiBoardRelease, "cards" | "done">>,
+): WikiBoardGroup[] {
   const known = new Set(releases.map((r) => r.id));
   const groups: WikiBoardGroup[] = [];
   for (const r of releases) {
@@ -33,13 +36,25 @@ export function groupByRelease(cards: WikiBoardCard[], releases: readonly WikiBo
  * A Done column sends its newest 50 product cards and newest 50 other tasks, with counts for the
  * rest, so a long-running client's board stays a board. Other columns send everything.
  */
+/** How many of the client's cards each release holds, and how many are done (src/types/wiki-board.ts). */
+export function countReleaseCards(
+  cards: readonly WikiBoardCard[],
+  releases: ReadonlyArray<Omit<WikiBoardRelease, "cards" | "done">>,
+): WikiBoardRelease[] {
+  return releases.map((r) => {
+    const own = cards.filter((c) => c.release?.id === r.id && clientMayActOn(c));
+    return { ...r, cards: own.length, done: own.filter((c) => c.status === "DONE").length };
+  });
+}
+
 export function layoutBoard(input: {
   cards: WikiBoardCard[];
   columns: readonly BoardColumnDef[];
-  releases: WikiBoardRelease[];
+  releases: ReadonlyArray<Omit<WikiBoardRelease, "cards" | "done">>;
   completedAt: ReadonlyMap<string, string | null>;
 }): WikiBoardSection {
-  const { cards, columns, releases, completedAt } = input;
+  const { cards, columns, completedAt } = input;
+  const releases = countReleaseCards(cards, input.releases);
   const lanes: WikiBoardLane[] = boardLanes(columns).map((lane) => {
     const inLane = cards.filter((c) => c.laneKey === lane.key);
     const own = inLane.filter((c) => c.isCard);

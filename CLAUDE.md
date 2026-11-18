@@ -10235,3 +10235,19 @@ had a Kanban grouped by release and who wanted Foundry to be the one place the p
   or the client's team when nobody is on it, grouped per card. A client adding a card raises
   the existing `tasks.client_request`.
 - Demo: `/demo/wiki#board` (team view; moves, replies and the toggle work in memory).
+
+### 126.1 Timeline view
+
+A **Board | Timeline** switch at the top of the Board (both audiences): the same cards and filters,
+drawn as Big Wedge's own planning site does. Each release is a bar from its start to end date with
+**% done**; its cards sit beneath it, each a bar across the release's dates, tinted by type (the
+same families as the type chips; no side stroke). A today line, Weeks / Months, Today, Collapse
+all; releases that ended over a week ago start folded. Clicking a card opens the Board's detail.
+
+- Layout maths are pure in `src/lib/wiki-board-timeline.ts` (whole UTC days, so a bar never slips
+  a column with the viewer's time zone; end date inclusive).
+- ⚠️ **% done is counted on the server** (`WikiBoardRelease.cards` / `done`, via
+  `countReleaseCards`) from every card before a Done column is capped at 50. Counting what the
+  browser has would understate a release with more than 50 cards live. Only cards the client sees
+  are counted, never the team's dev tasks.
+- One scroller holds the header and every row (§45.2), and the name rail is sticky on the left.
