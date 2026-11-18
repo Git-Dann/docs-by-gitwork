@@ -3,7 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import {
   isGitworkTeamLogin,
   loginPortalUser,
-  WIKI_ACCESS_COOKIE_MAX_AGE,
+  wikiAccessCookieOptions,
 } from "@/server/wiki-access";
 import { z } from "zod";
 
@@ -48,15 +48,7 @@ export async function POST(req: NextRequest) {
       wikis: wikis.map((w) => ({ clientName: w.clientName, slug: w.slug, url: w.url })),
     });
     for (const w of wikis) {
-      res.cookies.set({
-        name: w.cookieName,
-        value: w.cookieValue,
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: WIKI_ACCESS_COOKIE_MAX_AGE,
-      });
+      res.cookies.set({ name: w.cookieName, value: w.cookieValue, ...wikiAccessCookieOptions() });
     }
     return res;
   } catch (err) {

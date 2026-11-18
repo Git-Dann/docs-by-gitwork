@@ -13,13 +13,15 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { isGitworkStaffEmail } from "@/lib/staff-email";
 
+import { WIKI_ACCESS_COOKIE_PREFIX } from "@/lib/wiki-access-cookie";
+
+/** How long a client stays signed in, and the cookie options: src/lib/wiki-access-cookie.ts. */
+export { WIKI_ACCESS_COOKIE_MAX_AGE, wikiAccessCookieOptions } from "@/lib/wiki-access-cookie";
+
 /** Per-wiki cookie so a visitor only unlocks the one wiki they logged into. */
 export function wikiAccessCookieName(wikiId: string): string {
-  return `wiki_access_${wikiId}`;
+  return `${WIKI_ACCESS_COOKIE_PREFIX}${wikiId}`;
 }
-
-/** 7 days — long enough that a client isn't re-prompted every visit. */
-export const WIKI_ACCESS_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
 function accessSecret(): string {
   // Only real server secrets — never API_KEY / NEXT_PUBLIC_API_KEY (the latter is

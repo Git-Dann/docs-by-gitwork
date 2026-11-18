@@ -10041,3 +10041,17 @@ a rate, **no email**) and the record made for his login ("Hassaan Bin Sajjad").
 - **The Developers list always names its groups** (Bench / Off Bench), even when a filter
   leaves one group. The "missing details" view showed Abdullah Farooq with no group heading,
   so it wasn't clear he was already on the Bench.
+
+## 122. Recent Changes (November 2026) — Clients stay signed in for 30 days, renewed as they use it
+
+A client's wiki sign-in (`wiki_access_<wikiId>`, set by `/api/portal/login`) lasted **7 days
+from sign-in and was never renewed**, so a client who opened their wiki every day was still
+signed out a week after they last typed their password. It is now 30 days
+(`WIKI_ACCESS_COOKIE_MAX_AGE` in `src/lib/wiki-access-cookie.ts`, edge-safe), and the
+middleware sets the cookie again on every GET of a `/wiki/` page, so a client is only asked to
+sign in after a month away.
+
+- Renewal copies the cookie as it is. It is still checked on every request against the user and
+  their current password hash, so removing a client user or resetting their password still signs
+  them out at once.
+- Only page visits renew, not `/api/wiki` fetches.
