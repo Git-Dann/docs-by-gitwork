@@ -36,6 +36,7 @@ import {
   deriveSignOff,
   FEEDBACK_KINDS,
   feedbackRefusal,
+  isAddressableSubItem,
   shortPersonName,
   SIGN_OFF_LABELS,
   type BoardEditType,
@@ -89,6 +90,7 @@ export interface BoardWriter {
 const TASK_SELECT = {
   id: true,
   title: true,
+  parentId: true,
   status: true,
   boardColumnId: true,
   orderKey: true,
@@ -127,19 +129,39 @@ async function descriptionsFor(rows: TaskRow[]): Promise<Map<string, string | nu
   return new Map(found.map((r) => [r.id, r.description]));
 }
 
-/** Image attachment ids for the same cards `descriptionsFor` covers, oldest first. One query. */
-async function imagesFor(rows: TaskRow[]): Promise<Map<string, string[]>> {
+/**
+ * Image attachments for the same cards `descriptionsFor` covers, oldest first, in one query: the
+ * live ones (`images`) and the ones taken off the card (`removed`, the team's copy only, so they
+ * can be put back). A removed image is never served as a live one.
+ */
+async function imagesFor(rows: TaskRow[]): Promise<{
+  live: Map<string, string[]>;
+  removed: Map<string, WikiBoardCard["removedImages"]>;
+}> {
   const ids = rows.filter((r) => clientMayActOn({ isCard: isProductCard(r), addedByClient: addedByClient(r.metadata) })).map((r) => r.id);
-  if (!ids.length) return new Map();
+  const live = new Map<string, string[]>();
+  const removed = new Map<string, WikiBoardCard["removedImages"]>();
+  if (!ids.length) return { live, removed };
   const found = await prisma.taskAttachment.findMany({
     where: { taskId: { in: ids } },
-    select: { id: true, taskId: true },
+    select: { id: true, taskId: true, removedAt: true, removedByName: true },
     orderBy: { createdAt: "asc" },
   });
-  const out = new Map<string, string[]>();
-  for (const a of found) out.set(a.taskId, [...(out.get(a.taskId) ?? []), a.id]);
-  return out;
+  for (const a of found) {
+    if (a.removedAt) {
+      removed.set(a.taskId, [
+        ...(removed.get(a.taskId) ?? []),
+        { id: a.id, removedAt: a.removedAt.toISOString(), removedByName: a.removedByName },
+      ]);
+    } else {
+      live.set(a.taskId, [...(live.get(a.taskId) ?? []), a.id]);
+    }
+  }
+  return { live, removed };
 }
+
+/** Only images still on the card: a removed one is kept for the team to restore, never shown. */
+const LIVE_IMAGE = { removedAt: null } as const;
 
 /** The card ids a card depends on (`metadata.dependsOn`), as stored. Anything malformed is ignored. */
 export function dependsOnIds(metadata: unknown): string[] {
@@ -173,6 +195,8 @@ interface CardContext {
   descriptions: Map<string, string | null>;
   /** Cards' image attachment ids only (`imagesFor`); a dev task has none here. */
   images: Map<string, string[]>;
+  /** Images taken off a card, for the team's Restore. Never in the client's copy. */
+  removedImages: Map<string, WikiBoardCard["removedImages"]>;
   /** Titles of the live top-level tasks a card depends on, for its "Depends on" list. */
   titles: Map<string, string>;
 }
@@ -200,8 +224,14 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     signOff: deriveSignOff(entries),
     feedbackCount: entries.length,
     description: ctx.descriptions.get(row.id) ?? null,
-    subtasks: row.subtasks.map((s) => ({ id: s.id, title: s.title, done: s.status === "DONE", isItem: s.itemType === "subitem" })),
+    subtasks: row.subtasks.map((s) => ({
+      id: s.id,
+      title: s.title,
+      done: s.status === "DONE",
+      isItem: isAddressableSubItem(row, s.itemType),
+    })),
     images: ctx.images.get(row.id) ?? [],
+    removedImages: ctx.removedImages.get(row.id) ?? [],
     stageHistory: stageHistoryOf(row.metadata),
     // When it was finished, for the Schedule's log. The client's own cards only: a dev task's
     // dates are the team's.
@@ -283,7 +313,8 @@ async function cardContext(
     feedback,
     progress,
     descriptions,
-    images,
+    images: images.live,
+    removedImages: images.removed,
     titles,
   };
 }
@@ -448,8 +479,11 @@ function publicCard(c: WikiBoardCard, visible: ReadonlySet<string>): WikiBoardCa
     signOff: c.signOff,
     feedbackCount: c.feedbackCount,
     description: c.description,
-    subtasks: c.subtasks,
+    // A checklist item or a dev subtask reaches the client as its words and tick only: the id is
+    // for opening a sub-item, and only a real sub-item opens.
+    subtasks: c.subtasks.map((t) => (t.isItem ? t : { id: null, title: t.title, done: t.done, isItem: false })),
     images: c.images,
+    removedImages: [],
     stageHistory: c.stageHistory,
     doneAt: c.doneAt,
     dependsOn: c.dependsOn.filter((d) => visible.has(d.id)),
@@ -482,6 +516,7 @@ function titleOnlyCard(c: WikiBoardCard): WikiBoardCard {
     description: null,
     subtasks: [],
     images: [],
+    removedImages: [],
     stageHistory: [],
     doneAt: null,
     dependsOn: [],
@@ -522,7 +557,9 @@ async function assertAddressable(clientId: string, task: { parentId: string | nu
     where: { id: task.parentId, clientId, parentId: null, archivedAt: null },
     select: { itemType: true },
   });
-  if (!parent || parent.itemType !== "feature") throw new BoardError("Not found", 404);
+  if (!parent || !isAddressableSubItem({ parentId: null, itemType: parent.itemType }, task.itemType)) {
+    throw new BoardError("Not found", 404);
+  }
 }
 
 /** The card (or a product sub-item, `assertAddressable`), on this client and live, or a 404. */
@@ -1155,14 +1192,14 @@ export async function addBoardCardImages(
 ): Promise<WikiBoardCard> {
   const task = await loadEditableTask(writer, taskId);
   const offered = files.map((f) => ({ name: f.name, size: f.bytes.byteLength, head: f.bytes.subarray(0, 16) }));
-  const existing = await prisma.taskAttachment.count({ where: { taskId: task.id } });
+  const existing = await prisma.taskAttachment.count({ where: { taskId: task.id, ...LIVE_IMAGE } });
   const checked = checkBoardImages(existing, offered);
   if (!checked.ok) throw new BoardError(checked.error, 400);
   const prepared = await prepareBoardImages(files);
   const sentence = imagesSentence(writer.name, files.length);
   const notify = await withBoardLock(writer, async (tx) => {
     // Counted again under the lock: a parallel upload may have filled the card meanwhile.
-    const now = await tx.taskAttachment.count({ where: { taskId: task.id } });
+    const now = await tx.taskAttachment.count({ where: { taskId: task.id, ...LIVE_IMAGE } });
     const recheck = checkBoardImages(now, offered);
     if (!recheck.ok) throw new BoardError(recheck.error, 400);
     if (isClientWriter(writer)) await consumeBoardQuota(tx, writer.wikiId, "upload", files.length);
@@ -1187,22 +1224,51 @@ export async function addBoardCardImages(
 }
 
 /**
- * Take a screenshot off a card. The image must be on THIS card, and the card on this client and
- * one the writer may act on (a team dev task is a 404 to the client). It counts as an edit
- * against the client's quota, under the per-wiki lock, and the removal is written in the card's
- * thread with the change. TaskAttachment keeps its bytes in Postgres, so deleting the row is the
- * whole removal; there is nothing in object storage to clean up.
+ * Take a screenshot off a card. The image must be on THIS card and still on it, and the card on
+ * this client and one the writer may act on (a team dev task is a 404 to the client). It is not
+ * deleted: `removedAt` is set and every reader skips it, so the team can put it back
+ * (`restoreBoardCardImage`), as with every other removal on the board. The client's removals come
+ * out of the same quota as deleting a card (30 an hour, 100 a day), under the per-wiki lock, and
+ * the removal is written in the card's thread.
  */
 export async function removeBoardCardImage(writer: BoardWriter, taskId: string, attachmentId: string): Promise<WikiBoardCard> {
   const task = await loadEditableTask(writer, taskId);
   const sentence = `${writer.name} removed a screenshot.`;
   const notify = await withBoardLock(writer, async (tx) => {
-    if (isClientWriter(writer)) await consumeBoardQuota(tx, writer.wikiId, "edit");
-    const { count } = await tx.taskAttachment.deleteMany({ where: { id: attachmentId, taskId: task.id } });
+    if (isClientWriter(writer)) await consumeBoardQuota(tx, writer.wikiId, "delete");
+    const { count } = await tx.taskAttachment.updateMany({
+      where: { id: attachmentId, taskId: task.id, ...LIVE_IMAGE },
+      data: { removedAt: new Date(), removedByName: writer.name.slice(0, 120) },
+    });
     if (count === 0) throw new BoardError("That screenshot isn't on this card any more. Refresh to see the card now.", 404);
     return writeChange(tx, writer, task, sentence);
   });
   if (isClientWriter(writer)) pruneBoardQuota(writer.wikiId);
+  if (notify) notifyChange(writer, task, sentence);
+  return cardFor(writer, task.id);
+}
+
+/**
+ * The team puts a removed screenshot back on its card. Team only: the client takes things off, the
+ * team decides what comes back, the same split as restoring a card. The card's room is counted
+ * again, so a restore can't push a card past its 10 screenshots.
+ */
+export async function restoreBoardCardImage(writer: BoardWriter, taskId: string, attachmentId: string): Promise<WikiBoardCard> {
+  if (isClientWriter(writer)) throw new BoardError("Not found", 404);
+  const task = await loadEditableTask(writer, taskId);
+  const sentence = `${writer.name} put a removed screenshot back.`;
+  const notify = await withBoardLock(writer, async (tx) => {
+    const live = await tx.taskAttachment.count({ where: { taskId: task.id, ...LIVE_IMAGE } });
+    if (live >= BOARD_LIMITS.images) {
+      throw new BoardError(`This card already has ${BOARD_LIMITS.images} screenshots. Remove one before putting another back.`, 400);
+    }
+    const { count } = await tx.taskAttachment.updateMany({
+      where: { id: attachmentId, taskId: task.id, removedAt: { not: null } },
+      data: { removedAt: null, removedByName: null },
+    });
+    if (count === 0) throw new BoardError("That screenshot isn't waiting to be put back. Refresh to see the card now.", 404);
+    return writeChange(tx, writer, task, sentence);
+  });
   if (notify) notifyChange(writer, task, sentence);
   return cardFor(writer, task.id);
 }
@@ -1305,7 +1371,9 @@ export async function boardCardImage(
   const task = await loadOwnTask(writer.clientId, taskId);
   assertClientMayAct(writer, task);
   const row = await prisma.taskAttachment.findFirst({
-    where: { id: attachmentId, taskId: task.id },
+    // A removed screenshot is never served to the client; the team can still see it to decide
+    // whether to put it back.
+    where: { id: attachmentId, taskId: task.id, ...(isClientWriter(writer) ? LIVE_IMAGE : {}) },
     select: { image: true, thumb: true, mime: true },
   });
   if (!row) throw new BoardError("Not found", 404);

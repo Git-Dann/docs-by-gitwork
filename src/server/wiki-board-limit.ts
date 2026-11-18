@@ -68,7 +68,7 @@ export function boardFeedbackQuotaBreach(hour: number): string | null {
 
 /**
  * The client's own writes to their cards, counted per wiki in the rate-limit table: an edit, a
- * move, a delete, or a screenshot (one hit per file). Counted and recorded together, inside the
+ * move, a delete (a card or a screenshot taken off one), or a screenshot added (one hit per file). Counted and recorded together, inside the
  * board's per-wiki lock (`consumeBoardQuota`), so parallel requests can't all pass the same count.
  */
 export type BoardAction = "edit" | "move" | "delete" | "upload" | "keyDate";
@@ -76,7 +76,8 @@ export type BoardAction = "edit" | "move" | "delete" | "upload" | "keyDate";
 const ACTION_LIMITS: Record<BoardAction, { hour: number; day: number | null; noun: [string, string] }> = {
   edit: { hour: BOARD_QUOTA.editsPerHour, day: null, noun: ["change", "changes"] },
   move: { hour: BOARD_QUOTA.movesPerHour, day: null, noun: ["move", "moves"] },
-  delete: { hour: BOARD_QUOTA.deletesPerHour, day: BOARD_QUOTA.deletesPerDay, noun: ["deleted card", "deleted cards"] },
+  // Removing a card and removing a screenshot share this bucket: both take something off the board.
+  delete: { hour: BOARD_QUOTA.deletesPerHour, day: BOARD_QUOTA.deletesPerDay, noun: ["removal", "removals (cards and screenshots)"] },
   upload: { hour: BOARD_QUOTA.uploadsPerHour, day: BOARD_QUOTA.uploadsPerDay, noun: ["screenshot", "screenshots"] },
   keyDate: { hour: BOARD_QUOTA.keyDatesPerHour, day: BOARD_QUOTA.keyDatesPerDay, noun: ["key date change", "key date changes"] },
 };

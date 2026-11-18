@@ -47,7 +47,9 @@ const taskInclude = {
   createdBy: userSelect,
   featureBlock: { select: { id: true, name: true } },
   release: { select: { id: true, version: true, name: true } },
-  _count: { select: { comments: true, subtasks: true, attachments: true } },
+  // Screenshots taken off a card on the client's Board (`removedAt`) don't count: they're kept
+  // only so the team can put them back.
+  _count: { select: { comments: true, subtasks: true, attachments: { where: { removedAt: null } } } },
 } satisfies Prisma.TaskInclude;
 
 type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
@@ -615,7 +617,7 @@ export async function getTask(user: EffectiveUser, id: string): Promise<TaskDeta
       include: taskInclude,
     }),
     prisma.taskAttachment.findMany({
-      where: { taskId: id },
+      where: { taskId: id, removedAt: null },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -1849,7 +1851,7 @@ export async function getTaskAttachmentBytes(
   await assertClientInScope(user, task.clientId);
 
   const row = await prisma.taskAttachment.findFirst({
-    where: { id: attachmentId, taskId },
+    where: { id: attachmentId, taskId, removedAt: null },
     select: { image: true, thumb: true, mime: true },
   });
   if (!row) return null;

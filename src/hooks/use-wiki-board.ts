@@ -187,6 +187,15 @@ export async function removeBoardImageApi(target: BoardTarget, taskId: string, i
   return res.card;
 }
 
+/** The team puts a removed screenshot back (internal wiki only; there is no client route). */
+export async function restoreBoardImageApi(slug: string, taskId: string, imageId: string): Promise<WikiBoardCard> {
+  const res = await apiFetch<{ card: WikiBoardCard }>(
+    `/api/clients/${encodeURIComponent(slug)}/wiki/board/cards/${encodeURIComponent(taskId)}/images/${encodeURIComponent(imageId)}/restore`,
+    { method: "POST" },
+  );
+  return res.card;
+}
+
 /** One card (or a sub-item of one) as the card popup opens it, in the copy the caller may see. */
 export async function readBoardCardApi(target: BoardTarget, taskId: string): Promise<WikiBoardCard> {
   const res = await apiFetch<{ card: WikiBoardCard }>(cardUrl(target, taskId));

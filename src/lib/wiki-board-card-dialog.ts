@@ -108,7 +108,7 @@ export function pickCardImages(
  * before. Null when the server's answer doesn't show it (the popup then just stays on the parent).
  */
 export function addedSubItemId(beforeIds: ReadonlySet<string>, after: Pick<WikiBoardCard, "subtasks">): string | null {
-  return after.subtasks.find((s) => s.isItem && !beforeIds.has(s.id))?.id ?? null;
+  return after.subtasks.find((s) => s.isItem && s.id !== null && !beforeIds.has(s.id))?.id ?? null;
 }
 
 /**

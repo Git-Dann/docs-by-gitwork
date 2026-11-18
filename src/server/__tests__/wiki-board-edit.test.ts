@@ -83,12 +83,17 @@ vi.mock("@/lib/prisma", () => {
       findMany: vi.fn(async () => []),
     },
     taskAttachment: {
-      count: vi.fn(async ({ where }: { where: Row }) => db.attachments.filter((a) => a.taskId === where.taskId).length),
+      count: vi.fn(async ({ where }: { where: Row }) => db.attachments.filter((a) => matches(a, where)).length),
       create: vi.fn(async ({ data }: { data: Row }) => {
         db.attachments.push({ id: `att-${db.attachments.length + 1}`, ...data });
         return { id: "att" };
       }),
       findMany: vi.fn(async () => []),
+      updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
+        const hit = db.attachments.filter((a) => matches(a, where));
+        for (const a of hit) Object.assign(a, data);
+        return { count: hit.length };
+      }),
       deleteMany: vi.fn(async ({ where }: { where: Row }) => {
         const before = db.attachments.length;
         db.attachments = db.attachments.filter((a) => !matches(a, where));
@@ -142,6 +147,7 @@ import {
   readBoardCard,
   removeBoardCardImage,
   restoreBoardCard,
+  restoreBoardCardImage,
   updateBoardCard,
   type BoardWriter,
 } from "../wiki-board";
@@ -554,38 +560,103 @@ describe("lists (the Table view's groups)", () => {
 describe("removing a screenshot", () => {
   beforeEach(() => {
     db.attachments = [
-      { id: "img-card", taskId: "card" },
-      { id: "img-bug", taskId: "bug" },
-      { id: "img-dev", taskId: "dev" },
-      { id: "img-else", taskId: "elsewhere" },
+      { id: "img-card", taskId: "card", removedAt: null },
+      { id: "img-bug", taskId: "bug", removedAt: null },
+      { id: "img-dev", taskId: "dev", removedAt: null },
+      { id: "img-else", taskId: "elsewhere", removedAt: null },
     ];
   });
+  const removed = (id: string) => db.attachments.find((a) => a.id === id)!.removedAt;
 
-  it("takes it off the card, says so in the thread, and counts as a client's edit", async () => {
+  it("takes it off the card but keeps it, says so in the thread, and counts as a client's removal", async () => {
     await removeBoardCardImage(client, "card", "img-card");
-    expect(db.attachments.map((a) => a.id)).not.toContain("img-card");
+    // Kept, not deleted: the team can put it back.
+    expect(db.attachments.map((a) => a.id)).toContain("img-card");
+    expect(removed("img-card")).toBeInstanceOf(Date);
+    expect(db.attachments.find((a) => a.id === "img-card")!.removedByName).toBe("Luke M.");
     expect(changes()).toEqual(["Luke M. removed a screenshot."]);
-    expect(spies.consume).toHaveBeenCalledWith(expect.anything(), "w1", "edit");
+    // The same quota as deleting a card, not the much larger edit quota.
+    expect(spies.consume).toHaveBeenCalledWith(expect.anything(), "w1", "delete");
+  });
+
+  it("removing one already removed is a 404 and writes nothing", async () => {
+    await removeBoardCardImage(client, "card", "img-card");
+    await expect(removeBoardCardImage(client, "card", "img-card")).rejects.toMatchObject({ status: 404 });
+    expect(changes()).toHaveLength(1);
   });
 
   it("an image from another card is a 404, through this card's address, and stays", async () => {
     await expect(removeBoardCardImage(client, "card", "img-bug")).rejects.toMatchObject({ status: 404 });
     await expect(removeBoardCardImage(team, "card", "img-bug")).rejects.toMatchObject({ status: 404 });
-    expect(db.attachments.map((a) => a.id)).toContain("img-bug");
+    expect(removed("img-bug")).toBeNull();
     expect(changes()).toHaveLength(0);
   });
 
   it("another client's card is a 404, whoever asks", async () => {
     await expect(removeBoardCardImage(client, "elsewhere", "img-else")).rejects.toMatchObject({ status: 404 });
     await expect(removeBoardCardImage(team, "elsewhere", "img-else")).rejects.toMatchObject({ status: 404 });
-    expect(db.attachments.map((a) => a.id)).toContain("img-else");
+    expect(removed("img-else")).toBeNull();
   });
 
   it("the client can't touch a team dev task's screenshot; the team can", async () => {
     await expect(removeBoardCardImage(client, "dev", "img-dev")).rejects.toMatchObject({ status: 404 });
-    expect(db.attachments.map((a) => a.id)).toContain("img-dev");
+    expect(removed("img-dev")).toBeNull();
     await removeBoardCardImage(team, "dev", "img-dev");
-    expect(db.attachments.map((a) => a.id)).not.toContain("img-dev");
+    expect(removed("img-dev")).toBeInstanceOf(Date);
+  });
+
+  it("the team puts a removed screenshot back, and the thread says so", async () => {
+    await removeBoardCardImage(client, "card", "img-card");
+    await restoreBoardCardImage(team, "card", "img-card");
+    expect(removed("img-card")).toBeNull();
+    expect(changes()).toEqual(["Luke M. removed a screenshot.", "Dan put a removed screenshot back."]);
+  });
+
+  it("the client can't put one back, and a live screenshot can't be 'restored'", async () => {
+    await removeBoardCardImage(client, "card", "img-card");
+    await expect(restoreBoardCardImage(client, "card", "img-card")).rejects.toMatchObject({ status: 404 });
+    expect(removed("img-card")).toBeInstanceOf(Date);
+    await expect(restoreBoardCardImage(team, "bug", "img-bug")).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("a restore can't push a card past its screenshot limit", async () => {
+    await removeBoardCardImage(client, "card", "img-card");
+    for (let i = 0; i < 10; i++) db.attachments.push({ id: `live-${i}`, taskId: "card", removedAt: null });
+    await expect(restoreBoardCardImage(team, "card", "img-card")).rejects.toMatchObject({ status: 400 });
+    expect(removed("img-card")).toBeInstanceOf(Date);
+  });
+
+  it("a removed screenshot doesn't count towards the card's limit", async () => {
+    for (let i = 0; i < 10; i++) db.attachments.push({ id: `gone-${i}`, taskId: "card", removedAt: new Date() });
+    await addBoardCardImages(client, "card", [{ name: "a.png", bytes: png }]);
+    expect(db.attachments.filter((a) => a.taskId === "card" && !a.removedAt)).toHaveLength(2);
+  });
+});
+
+describe("a card's child tasks in the client's copy", () => {
+  beforeEach(() => {
+    const card = db.tasks.find((t) => t.id === "card")!;
+    card.subtasks = [
+      { id: "sub", title: "A sub-item", status: "BACKLOG", itemType: "subitem" },
+      { id: "checklist", title: "Team checklist item", status: "DONE", itemType: null },
+    ];
+    db.tasks.find((t) => t.id === "bug")!.subtasks = [{ id: "bugsub", title: "Under a bug", status: "BACKLOG", itemType: "subitem" }];
+  });
+
+  it("a checklist item reaches the client as words and a tick only, with no id; a sub-item keeps its id", async () => {
+    const seen = await readBoardCard(client, "card");
+    expect(seen.subtasks).toEqual([
+      { id: "sub", title: "A sub-item", done: false, isItem: true },
+      { id: null, title: "Team checklist item", done: true, isItem: false },
+    ]);
+    // The team's copy keeps every id.
+    expect((await readBoardCard(team, "card")).subtasks.map((s) => s.id)).toEqual(["sub", "checklist"]);
+  });
+
+  it("a 'sub-item' under a card that isn't a feature isn't offered as one, and carries no id to the client", async () => {
+    const seen = await readBoardCard(client, "bug");
+    expect(seen.subtasks).toEqual([{ id: null, title: "Under a bug", done: false, isItem: false }]);
+    expect((await readBoardCard(team, "bug")).subtasks[0].isItem).toBe(false);
   });
 });
 
@@ -613,6 +684,44 @@ describe("sub-items, opened and edited in the card popup", () => {
       await expect(deleteBoardCard(who, "devchild")).rejects.toMatchObject({ status: 404 });
     }
     expect(db.tasks.find((t) => t.id === "devchild")!.title).toBe("Secret dev step");
+  });
+
+  it("a sub-item under a sub-item (a grandchild) is a 404", async () => {
+    db.tasks.push(task({ id: "grand", title: "Too deep", itemType: "subitem", parentId: "sub" }));
+    for (const who of [client, team]) {
+      await expect(readBoardCard(who, "grand")).rejects.toMatchObject({ status: 404 });
+      await expect(updateBoardCard(who, "grand", { title: "x" })).rejects.toMatchObject({ status: 404 });
+    }
+  });
+
+  it("a sub-item whose feature card was deleted is a 404", async () => {
+    db.tasks.push(
+      task({ id: "gonefeature", title: "Deleted feature", archivedAt: new Date() }),
+      task({ id: "orphan", title: "Left behind", itemType: "subitem", parentId: "gonefeature" }),
+    );
+    for (const who of [client, team]) {
+      await expect(readBoardCard(who, "orphan")).rejects.toMatchObject({ status: 404 });
+      await expect(updateBoardCard(who, "orphan", { title: "x" })).rejects.toMatchObject({ status: 404 });
+    }
+  });
+
+  it("a sub-item whose feature card is on another client is a 404", async () => {
+    db.tasks.push(
+      task({ id: "otherfeature", title: "Their feature", clientId: "c2" }),
+      task({ id: "crosssub", title: "Crossed", itemType: "subitem", parentId: "otherfeature" }),
+    );
+    for (const who of [client, team]) {
+      await expect(readBoardCard(who, "crosssub")).rejects.toMatchObject({ status: 404 });
+      await expect(deleteBoardCard(who, "crosssub")).rejects.toMatchObject({ status: 404 });
+    }
+  });
+
+  it("a sub-item under a card that isn't a feature (a bug) is a 404", async () => {
+    db.tasks.push(task({ id: "bugsub", title: "Under a bug", itemType: "subitem", parentId: "bug" }));
+    for (const who of [client, team]) {
+      await expect(readBoardCard(who, "bugsub")).rejects.toMatchObject({ status: 404 });
+      await expect(updateBoardCard(who, "bugsub", { title: "x" })).rejects.toMatchObject({ status: 404 });
+    }
   });
 
   it("a card's plain checklist child isn't a sub-item, so it isn't addressed either", async () => {

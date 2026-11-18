@@ -420,6 +420,7 @@ function card(over: Partial<WikiBoardCard>): WikiBoardCard {
     description: null,
     subtasks: [],
     images: [],
+    removedImages: [],
     stageHistory: [],
     doneAt: null,
     estimateHours: null,

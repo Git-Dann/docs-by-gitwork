@@ -51,6 +51,7 @@ const CARD: WikiBoardCard = {
   description: "Show the best round.",
   subtasks: [],
   images: [],
+  removedImages: [],
   stageHistory: [],
   doneAt: null,
   dependsOn: [],

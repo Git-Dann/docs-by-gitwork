@@ -452,8 +452,9 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
   it("every internal card route resolves the team writer; delete and restore need Manage clients", () => {
     const dir = join(ROOT, "app/api/clients/[slug]/wiki/board/cards");
     const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
-    // cards, cards/[taskId], …/images, …/images/[imageId] (removing one, §126.4), …/restore.
-    expect(files.length).toBe(5);
+    // cards, cards/[taskId], …/images, …/images/[imageId] (removing one, §126.4),
+    // …/images/[imageId]/restore (putting one back), …/restore.
+    expect(files.length).toBe(6);
     for (const f of files) {
       const src = readFileSync(join(dir, f), "utf8");
       const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];
@@ -463,6 +464,9 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     const one = read("app/api/clients/[slug]/wiki/board/cards/[taskId]/route.ts");
     expect(one.slice(one.indexOf("export async function DELETE"))).toContain('resolveInternalBoardWriter(req, slug, "manage")');
     expect(read("app/api/clients/[slug]/wiki/board/cards/[taskId]/restore/route.ts")).toContain('resolveInternalBoardWriter(req, slug, "manage")');
+    // Taking a screenshot off, and putting one back, need Manage clients too (§126.4).
+    expect(read("app/api/clients/[slug]/wiki/board/cards/[taskId]/images/[imageId]/route.ts")).toContain('resolveInternalBoardWriter(req, slug, "manage")');
+    expect(read("app/api/clients/[slug]/wiki/board/cards/[taskId]/images/[imageId]/restore/route.ts")).toContain('resolveInternalBoardWriter(req, slug, "manage")');
     const access = read("server/wiki-board-access.ts");
     const fn = access.slice(access.indexOf("export async function resolveInternalBoardWriter"));
     expect(fn).toContain("requireAuthedUser(req)");
@@ -501,9 +505,10 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     const rule = src.slice(src.indexOf("async function assertAddressable"), src.indexOf("async function loadOwnTask"));
     expect(rule).toContain('task.itemType !== "subitem"');
     expect(rule).toContain("where: { id: task.parentId, clientId, parentId: null, archivedAt: null }");
-    expect(rule).toContain('parent.itemType !== "feature"');
-    // A screenshot comes off only through its own card.
-    expect(src).toContain("deleteMany({ where: { id: attachmentId, taskId: task.id } })");
+    expect(rule).toContain("isAddressableSubItem({ parentId: null, itemType: parent.itemType }, task.itemType)");
+    // A screenshot comes off only through its own card, and is kept for the team to put back.
+    expect(src).toContain("where: { id: attachmentId, taskId: task.id, ...LIVE_IMAGE }");
+    expect(src).not.toMatch(/taskAttachment\.delete(Many)?\(/);
   });
 
   it("a Foundry session only writes as the team if it really is this client's team", () => {

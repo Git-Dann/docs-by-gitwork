@@ -37,6 +37,7 @@ import { Markdown } from "@/lib/markdown";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
+import { usePermissions } from "@/hooks/use-permissions";
 import { CardProgressChip, ItemTypeChip, PreviousValues, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
 import { InlineText, PickCell, PRIORITY_TONE } from "@/components/clients/wiki/board-pick";
 import { BOARD_LIST_MAX, ITEM_TYPE_LABELS, TIERS, TIER_LABELS } from "@/lib/tasks/product-cards";
@@ -68,6 +69,7 @@ import {
   moveBoardCardApi,
   readBoardCardApi,
   removeBoardImageApi,
+  restoreBoardImageApi,
   updateBoardCardApi,
   uploadBoardImagesApi,
   useBoardFeedback,
@@ -441,6 +443,30 @@ function CardDialogBody(props: BodyProps) {
     }
   }
 
+  // Putting a removed screenshot back: the team, on its own wiki, with Manage clients (the route
+  // asks for the same). The client never sees what was removed.
+  const { canManageClients } = usePermissions();
+  const canRestoreImages = audience === "team" && !previewing && target.mode === "internal" && canManageClients;
+  // Taking one off: the client on cards it may change; the team with Manage clients (the route asks
+  // for the same, like deleting a card).
+  const mayRemoveImages = editing.fields && (audience === "client" || canManageClients);
+  const [restoringImage, setRestoringImage] = useState<string | null>(null);
+  async function restoreImage(img: string) {
+    if (!local || target.mode !== "internal") return;
+    setRestoringImage(img);
+    setImageError(null);
+    try {
+      const saved = await restoreBoardImageApi(target.slug, local.id, img);
+      setLocal(saved);
+      props.onSaved(saved);
+      void feedback.refetch();
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "Couldn't put the screenshot back. Please try again.");
+    } finally {
+      setRestoringImage(null);
+    }
+  }
+
   // ---- Sub-items (a feature card's, opened in this same popup) ----
   const [subDraft, setSubDraft] = useState("");
   const [subAdding, setSubAdding] = useState(false);
@@ -452,7 +478,7 @@ function CardDialogBody(props: BodyProps) {
     if (!local || !title || subAdding) return;
     setSubAdding(true);
     setSubError(null);
-    const before = new Set(local.subtasks.map((s) => s.id));
+    const before = new Set(local.subtasks.flatMap((s) => (s.id ? [s.id] : [])));
     try {
       const saved = await addBoardCardApi(target, { ...EMPTY_CARD_FORM, title, itemType: "subitem", parentId: local.id, laneKey: subLane });
       setLocal(saved);
@@ -613,7 +639,7 @@ function CardDialogBody(props: BodyProps) {
                           className="aspect-[4/3] w-full object-cover"
                         />
                       </button>
-                      {editing.fields && confirmImage !== img ? (
+                      {mayRemoveImages && confirmImage !== img ? (
                         <button
                           type="button"
                           className="absolute right-1 top-1 rounded-[4px] bg-[var(--surface-0)] p-0.5 text-[var(--text-3)] opacity-100 shadow-sm hover:text-red-700 focus:opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100"
@@ -691,6 +717,31 @@ function CardDialogBody(props: BodyProps) {
                   ) : null}
                 </div>
                 {imageError ? <p className="mt-1.5 text-[12px] text-red-700">{imageError}</p> : null}
+                {canRestoreImages && local && !isAdd && local.removedImages.length > 0 ? (
+                  <details className="mt-2 text-[12px]" data-card-removed-images>
+                    <summary className="cursor-pointer text-[var(--text-3)] hover:text-[var(--text-1)]">
+                      Removed screenshots ({local.removedImages.length})
+                    </summary>
+                    <ul className="mt-1.5 space-y-1">
+                      {local.removedImages.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between gap-2 rounded-[6px] border border-[var(--border-2)] px-2 py-1.5">
+                          <span className="min-w-0 truncate text-[var(--text-3)]" title={`Removed by ${r.removedByName ?? "someone"}`}>
+                            Removed by {r.removedByName ?? "someone"} · {formatDay(r.removedAt)}
+                          </span>
+                          <button
+                            type="button"
+                            className="app-button app-button-secondary app-button-sm shrink-0 px-2 text-[11px]"
+                            disabled={restoringImage === r.id}
+                            onClick={() => void restoreImage(r.id)}
+                            data-card-image-restore
+                          >
+                            {restoringImage === r.id ? "Restoring…" : "Restore"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
                 {imagesAllowed ? (
                   <p className="mt-1 text-[11px] text-[var(--text-4)]">PNG, JPEG, GIF or WebP, up to 10 MB each, {BOARD_LIMITS.images} a card.</p>
                 ) : null}
@@ -708,17 +759,17 @@ function CardDialogBody(props: BodyProps) {
             {local && !isAdd && !parent && (local.subtasks.length || canAddSubItem) ? (
               <Block label="Sub-items">
                 <ul className="space-y-0.5" data-card-subitems>
-                  {local.subtasks.map((s) => {
+                  {local.subtasks.map((s, i) => {
                     const dot = (
                       <span className={cn("h-3 w-3 shrink-0 rounded-full border", s.done ? "border-emerald-500 bg-emerald-500" : "border-[var(--border-1)]")} />
                     );
                     const label = <span className={cn("min-w-0 flex-1 truncate", s.done && "text-[var(--text-4)] line-through")}>{s.title}</span>;
                     return (
-                      <li key={s.id}>
-                        {s.isItem && props.onOpenSubItem ? (
+                      <li key={s.id ?? `item-${i}`}>
+                        {s.isItem && s.id && props.onOpenSubItem ? (
                           <button
                             type="button"
-                            onClick={() => props.onOpenSubItem?.(s.id)}
+                            onClick={() => props.onOpenSubItem?.(s.id!)}
                             className="flex w-full items-center gap-2 rounded-[4px] px-1 py-1 text-left text-[13px] text-[var(--text-2)] hover:bg-[var(--surface-2)]"
                             title={`Open “${s.title}”`}
                             data-card-subitem
@@ -828,7 +879,7 @@ function CardDialogBody(props: BodyProps) {
             onIndex={setLightbox}
             onClose={() => setLightbox(null)}
             onRemove={
-              editing.fields
+              mayRemoveImages
                 ? async (img) => {
                     const remaining = local.images.length - 1;
                     if (await removeImage(img)) setLightbox(indexAfterRemoval(lightbox, remaining));
