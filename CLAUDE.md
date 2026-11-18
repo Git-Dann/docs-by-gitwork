@@ -10184,14 +10184,15 @@ had a Kanban grouped by release and who wanted Foundry to be the one place the p
   `tasks.ts`, same status stamps as a team move). Nothing is copied, so nothing is lost between
   the client's view and the devs'.
 - **Rules** (`src/lib/wiki-board.ts`, pure, tested):
-  - The client moves cards between any columns **except into or out of Done**, and can't
-    rearrange live cards either. Going live, or reopening, is the team's call: it drives
-    standups, Foreman and the Delivery figures.
+  - ~~The client moves cards between any columns except into or out of Done.~~ **Superseded
+    (§126.3):** the client has full control of their cards, Done included. The one thing they
+    can never do is set who works on a card.
   - ⚠️ **The client only acts on their product cards and the cards they added**
     (`clientMayActOn`). The team's plain dev tasks are a 404 to every client write and read of
     the feedback thread.
-  - The client adds cards only to **Backlog and To do** columns, as Feature, Bug or Feedback.
-    Links must be http(s) (the Launchpad allow-list) and are stored as markdown in the description.
+  - The client adds cards only to **Backlog and To do** columns, as Feature, Sub-item, Bug or
+    Feedback (§126.3). Links must be http(s) (the Launchpad allow-list) and are stored as markdown
+    in the description.
   - **Sign-off is derived** from the latest Approved / Changes needed entry, never stored. A
     comment never changes it. "Changes needed" must say what. Only the client signs off: a
     Gitwork session on the client's page, or the team's own route, can only comment.
@@ -10216,8 +10217,7 @@ had a Kanban grouped by release and who wanted Foundry to be the one place the p
   whole wiki (this board included) per call; a drag writes on every move. Every write then loads
   the task **scoped to the wiki's client** (`loadOwnTask`), so another client's card is a 404.
   A move is a compare-and-set (`moveTaskForClient`'s `expect`): it lands only while the card is
-  on this client, live, not Done and still in the status the client saw, so a drag in flight
-  can't reopen a card the team just marked Done. Otherwise 409.
+  on this client, live and still in the status the client saw. Otherwise 409.
 - **Limits** (`src/server/wiki-board-limit.ts`, pure thresholds): a client adds at most 30 cards
   an hour and 200 a day (counted from `metadata.createdByClient`, so team and imported cards
   never count) and 60 comments an hour. The team hears about new client cards once per wiki per
@@ -10230,7 +10230,7 @@ had a Kanban grouped by release and who wanted Foundry to be the one place the p
 - **Team side:** the task drawer has a **Client feedback** section (thread + reply), on product
   cards always and on other tasks once the client has said something. Board cards show the
   sign-off chip. The internal wiki shows the same Board (`audience="team"`): drag anywhere,
-  reply; new cards are added on the task board.
+  reply, and add, edit, delete and restore cards (§126.3).
 - **Notifications:** new event `tasks.client_feedback` (in-app + push) to the card's assignees,
   or the client's team when nobody is on it, grouped per card. A client adding a card raises
   the existing `tasks.client_request`.
@@ -10270,3 +10270,68 @@ all; releases that ended over a week ago start folded. Clicking a card opens the
 - **Side stroke:** back, but straight: `rounded-l-none` wherever `border-l-[3px]` is drawn
   (`straight-side-stroke.test.ts`). A stroke that bends round a rounded corner is what Dan ruled out.
 - **Sheets** sit under Working together (QA lists and dev tasks shared with the client).
+
+### 126.3 A cleaner toolbar, and full control of the cards (the client's ops-board parity)
+
+Dan: "the top section needs a lot of love… too much going on", and Big Wedge (Luke) needs to do
+everything on Foundry's Board that he did on his own ops board. Dan's ruling: **"he needs full
+control over the tasks basically… what he can't do is assign it to a dev."**
+
+- **One toolbar row** (`wiki-board-section.tsx`): Board | Timeline | Calendar on the left; search,
+  **Filters** (an anchored popover with Type, Release, Area, and Cards / Everything where both
+  exist, plus a count badge) and **+ Add card** on the right. Team only: a **⋯ Client view** menu
+  holding "Client sees: Their cards only / Cards and dev task titles" and **Preview as client**,
+  which shows a one-line "Previewing <client name>'s view · Exit" strip. The old Client sees
+  banner and the Cards/Everything/Client's view control are gone. On a phone the views take the
+  first line and the rest the second (icons only), nothing clipped. The Timeline's and Calendar's
+  own controls stay in their view's own header line.
+- **What the client can do, on every card they can see** (product cards, including imported
+  `forge:*` and team-made ones, and cards they added): add (Feature, Sub-item, Bug, Feedback),
+  edit every field (title, type, release, tier, area, priority, estimate 0–1000h, due date,
+  description, links, depends on, screenshots), move anywhere **including into and out of
+  Done/Live** (`clientMoveRefusal` is deleted; `moveTaskForClient` no longer refuses Done), and
+  delete.
+- ⚠️ **The one thing they can never do is choose who works on a card.** `boardCardEditSchema` and
+  `boardCardCreateSchema` (`validators.ts`) are `.strict()` and have no assignee field, so
+  `assignees` / `assigneeId` is a **400**, not silently dropped (`board-card-schema.test.ts`).
+  Status goes only through the move route. **The team's dev tasks are still untouchable**: every
+  client write loads the task through `loadEditableTask` / `assertClientMayAct`, and a dev task
+  is a 404, the same as one that doesn't exist.
+- **Edits** (`updateBoardCard`) are an `updateMany` scoped to `{ id, clientId, parentId: null,
+  archivedAt: null }`; 0 rows is a 409. Releases and "depends on" are checked against the same
+  client (a client may only depend on cards they can see). An edit that changes nothing writes
+  nothing.
+- **Every change is a readable entry in the card's thread**: `TaskClientFeedback.kind = "change"`
+  (no schema change), body one sentence from `describeCardChanges` + `changeSentence`
+  (`src/lib/wiki-board-edit.ts`, pure): "Luke changed the priority from Medium to High and set
+  the due date to 4 Dec 2026." Never JSON. Change entries don't count as feedback or sign-off and
+  don't count against the feedback limit. A client's edit notifies the card's people (or the
+  client's team) at most once per card per 10 minutes (`shouldNotifyCardChange`).
+- **Links** stay where they were: a markdown block in the description (`cardDescription`), which
+  the team's task drawer shows. `splitCardDescription` reads that exact block back out for the
+  edit form; anything else stays as text.
+- **Depends on** is `task.metadata.dependsOn = [taskIds]`, same client, up to 20; cards carry
+  `dependsOn: [{ id, title }]` and the client's copy keeps only cards they can see.
+- **Sub-items** need a parent that is a top-level **feature** card on this client (one level);
+  they become its subtask and show inside it, not on the board.
+- **Screenshots** (`addBoardCardImages`, `POST …/tasks/[taskId]/images` multipart `file`):
+  PNG, JPEG, GIF or WebP **by magic bytes** (`checkBoardImages`; SVG refused whatever it's
+  called), 10 MB each, 10 a card, stored as `TaskAttachment` the way the Forge copy stores them
+  (bytea + a 320px JPEG thumb) and served through the existing token-scoped image route.
+  ⚠️ `TaskAttachment` has no `storageKey`, so these don't go through `blob-storage.ts`; moving task
+  attachments to the bucket is its own change.
+- **Delete is soft** (`deleteBoardCard`: `archivedAt` + `metadata.deletedFromBoard`, with a
+  confirm step). A product card's linked dev tasks are **not** deleted: their `productCardId` is
+  cleared, each gets a `TaskComment` saying who deleted the card, and their ids are kept on the
+  card so **Restore** links them again. The team is notified. On the client's link only a signed-in
+  client user may delete; the team deletes from the internal wiki.
+- **The team** has internal routes `/api/clients/[slug]/wiki/board/cards` (POST),
+  `…/cards/[taskId]` (PATCH, DELETE), `…/images` (POST) and `…/restore` (POST), through
+  `resolveInternalBoardWriter`: `requireAuthedUser`, Developer or above, client in scope, and
+  'Manage clients' to delete or restore. The internal Board lists **Deleted from the board** with
+  Restore (`WikiBoardSection.deleted`, team copy only; `forPublicBoard` never sends it).
+- **Limits** (`wiki-board-limit.ts`, pure, tested): edits 120 an hour per wiki (counted from
+  change entries), screenshots 50 an hour and 200 a day per wiki (counted per file in
+  `RateLimitHit` under `board:upload:<wikiId>`), on top of the card and comment limits.
+- Demo: `/demo/wiki#board` adds (with an image), edits, deletes and restores in memory.
+

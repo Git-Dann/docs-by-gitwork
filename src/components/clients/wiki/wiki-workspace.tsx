@@ -1628,7 +1628,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           section={wiki!.board}
           target={{ mode: "internal", slug }}
           audience="team"
-          tasksHref={`/app/portal/${slug}/tasks`}
+          clientName={clientName}
         />
       );
     }

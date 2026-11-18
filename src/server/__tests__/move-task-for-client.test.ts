@@ -1,7 +1,8 @@
 /**
  * A client's drag on their Board (src/server/tasks.ts `moveTaskForClient`) lands only while the
- * card is still where the board saw it. If the team marks it Done or archives it between the
- * client reading the board and the write, the drag changes nothing — it must never reopen a card.
+ * card is still where the board saw it. If someone moves or archives it between the client
+ * reading the board and the write, the drag changes nothing. Done is an ordinary column to the
+ * client now (Dan, Nov 2026): they may move a card into it and out of it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,13 +22,11 @@ vi.mock("@/lib/prisma", () => ({
       // Honours the guard the way Postgres would: count 0 unless every condition holds.
       updateMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         db.updateWhere = where;
-        const status = where.status as { equals: string; not: string };
         const ok =
           db.row !== null &&
           db.row.clientId === where.clientId &&
           db.row.archivedAt === null &&
-          db.row.status === status.equals &&
-          db.row.status !== status.not;
+          db.row.status === where.status;
         return { count: ok ? 1 : 0 };
       }),
       findUnique: vi.fn(async () => ({ id: "t1", title: "Card", workspaceId: "ws", clientId: "c1", client: { slug: "wedge" }, assignees: [] })),
@@ -62,7 +61,7 @@ beforeEach(() => {
 describe("a client's move is a compare-and-set", () => {
   it("lands when the card is still where the board saw it", async () => {
     expect(await move("BACKLOG")).toBe(true);
-    expect(db.updateWhere).toMatchObject({ id: "t1", clientId: "c1", archivedAt: null, status: { equals: "BACKLOG", not: "DONE" } });
+    expect(db.updateWhere).toMatchObject({ id: "t1", clientId: "c1", archivedAt: null, status: "BACKLOG" });
   });
 
   it("changes nothing if the team marked it Done in between", async () => {
@@ -70,7 +69,7 @@ describe("a client's move is a compare-and-set", () => {
     expect(await move("BACKLOG")).toBe(false);
   });
 
-  it("the write itself refuses when it went Done between the read and the write", async () => {
+  it("the write itself refuses when it moved between the read and the write", async () => {
     // The read still sees Backlog; by the time the update runs, the team has marked it Done.
     vi.mocked(prisma.task.findFirst).mockResolvedValueOnce({ status: "BACKLOG", startedAt: null } as never);
     db.row!.status = "DONE";
@@ -88,11 +87,11 @@ describe("a client's move is a compare-and-set", () => {
     expect(await move("BACKLOG")).toBe(false);
   });
 
-  it("never moves into or out of Done, whatever the caller checked", async () => {
-    expect(await move("BACKLOG", "DONE")).toBe(false);
+  it("moves a card into Done, and back out of it", async () => {
+    expect(await move("BACKLOG", "DONE")).toBe(true);
     db.row!.status = "DONE";
-    expect(await move("DONE", "TODO")).toBe(false);
-    expect(db.updateWhere).toBeNull();
+    expect(await move("DONE", "TODO")).toBe(true);
+    expect(db.updateWhere).toMatchObject({ status: "DONE" });
   });
 
   it("a card on another client never matches", async () => {

@@ -1296,13 +1296,13 @@ export async function moveTaskForClient(
     movedBy: string;
     /**
      * What the caller checked the move against. The update only lands while the task is still on
-     * this client, live, in this status, and not Done; otherwise it changes nothing and this
-     * returns false. A client's drag must never reopen a card the team marked Done meanwhile.
+     * this client, live and in this status; otherwise it changes nothing and this returns false,
+     * so a client's drag never lands on a card someone else moved or archived meanwhile. The
+     * client may move a card into and out of Done (Dan, Nov 2026).
      */
     expect: { clientId: string; fromStatus: TaskStatus };
   },
 ): Promise<boolean> {
-  if (input.status === "DONE" || input.expect.fromStatus === "DONE") return false;
   const existing = await prisma.task.findFirst({
     where: { id: taskId, clientId: input.expect.clientId, archivedAt: null },
     select: { status: true, startedAt: true },
@@ -1313,7 +1313,7 @@ export async function moveTaskForClient(
       id: taskId,
       clientId: input.expect.clientId,
       archivedAt: null,
-      status: { equals: input.expect.fromStatus, not: "DONE" },
+      status: input.expect.fromStatus,
     },
     data: {
       status: input.status,

@@ -4,7 +4,14 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-const counts = vi.hoisted(() => ({ cards: [0, 0], feedback: 0, sql: [] as string[] }));
+const counts = vi.hoisted(() => ({
+  cards: [0, 0],
+  feedback: 0,
+  edits: 0,
+  uploads: [0, 0],
+  sql: [] as string[],
+  feedbackWhere: [] as Array<Record<string, unknown>>,
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
@@ -15,7 +22,14 @@ vi.mock("@/lib/prisma", () => ({
       count: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         // Only the client's own feedback counts: the team's replies (authorUserId set) never do.
         expect(where.authorUserId).toBeNull();
-        return counts.feedback;
+        counts.feedbackWhere.push(where);
+        return where.kind === "change" ? counts.edits : counts.feedback;
+      }),
+    },
+    rateLimitHit: {
+      count: vi.fn(async ({ where }: { where: { bucket: string } }) => {
+        expect(where.bucket).toBe("board:upload:w1");
+        return counts.uploads.shift() ?? 0;
       }),
     },
   },
@@ -23,11 +37,16 @@ vi.mock("@/lib/prisma", () => ({
 
 import {
   assertWithinBoardCardQuota,
+  assertWithinBoardEditQuota,
   assertWithinBoardFeedbackQuota,
+  assertWithinBoardUploadQuota,
   BOARD_QUOTA,
   boardCardQuotaBreach,
+  boardEditQuotaBreach,
   boardFeedbackQuotaBreach,
+  boardUploadQuotaBreach,
   shouldNotifyBoardCards,
+  shouldNotifyCardChange,
 } from "../wiki-board-limit";
 
 describe("the board's limits", () => {
@@ -64,5 +83,47 @@ describe("the board's limits", () => {
     await expect(assertWithinBoardFeedbackQuota("w1")).rejects.toMatchObject({ status: 429 });
     counts.feedback = 3;
     await expect(assertWithinBoardFeedbackQuota("w1")).resolves.toBeUndefined();
+  });
+});
+
+describe("how much the client can change on their Board", () => {
+  it("allows 120 edits an hour per wiki, then says why it stopped", () => {
+    expect(BOARD_QUOTA.editsPerHour).toBe(120);
+    expect(boardEditQuotaBreach(119)).toBeNull();
+    expect(boardEditQuotaBreach(120)).toMatch(/120 changes in the last hour/);
+  });
+
+  it("allows 50 screenshots an hour and 200 a day per wiki, counting what's being added", () => {
+    expect(boardUploadQuotaBreach({ hour: 49, day: 49 }, 1)).toBeNull();
+    expect(boardUploadQuotaBreach({ hour: 49, day: 49 }, 2)).toMatch(/50 screenshots in an hour/);
+    expect(boardUploadQuotaBreach({ hour: 0, day: 199 }, 1)).toBeNull();
+    expect(boardUploadQuotaBreach({ hour: 0, day: 199 }, 2)).toMatch(/200 screenshots today/);
+  });
+
+  it("tells the team about a card's edits once per 10 minutes", () => {
+    const now = new Date("2026-11-18T12:00:00Z");
+    expect(shouldNotifyCardChange(null, now)).toBe(true);
+    expect(shouldNotifyCardChange(new Date(now.getTime() - 9 * 60_000), now)).toBe(false);
+    expect(shouldNotifyCardChange(new Date(now.getTime() - 10 * 60_000), now)).toBe(true);
+  });
+});
+
+describe("the edit and upload counters", () => {
+  it("edits count change entries only, and feedback never counts them", async () => {
+    counts.feedbackWhere = [];
+    counts.edits = 120;
+    await expect(assertWithinBoardEditQuota("w1")).rejects.toMatchObject({ status: 429 });
+    counts.edits = 3;
+    await expect(assertWithinBoardEditQuota("w1")).resolves.toBeUndefined();
+    counts.feedback = 0;
+    await assertWithinBoardFeedbackQuota("w1");
+    expect(counts.feedbackWhere.at(-1)).toMatchObject({ kind: { not: "change" } });
+  });
+
+  it("uploads are counted per wiki, and refused before anything is stored", async () => {
+    counts.uploads = [49, 49];
+    await expect(assertWithinBoardUploadQuota("w1", 2)).rejects.toMatchObject({ status: 429 });
+    counts.uploads = [10, 10];
+    await expect(assertWithinBoardUploadQuota("w1", 2)).resolves.toBeUndefined();
   });
 });

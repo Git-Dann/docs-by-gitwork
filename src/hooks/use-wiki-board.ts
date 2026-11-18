@@ -4,7 +4,9 @@
  * The client Board's reads and writes (src/server/wiki-board.ts). One component serves both
  * audiences, so the calls go through a target:
  *   - public:   the client on their wiki link → /api/wiki/[token]/board/… (hardened posture)
- *   - internal: the team on the internal wiki → the task routes they already use
+ *   - internal: the team on the internal wiki → the task routes they already use, and the
+ *               Board's own card routes (/api/clients/[slug]/wiki/board/cards/…) to add,
+ *               edit, delete and restore cards
  */
 
 import { useCallback } from "react";
@@ -34,7 +36,7 @@ function feedbackUrl(target: BoardTarget, taskId: string): string {
  * the task's attachment. A value that's already a path (the demo's sample image) is used as is.
  */
 export function boardImageUrl(target: BoardTarget, taskId: string, image: string, thumb: boolean): string {
-  if (image.startsWith("/")) return image;
+  if (image.startsWith("/") || image.startsWith("blob:")) return image;
   const q = thumb ? "?thumb=1" : "";
   return target.mode === "public"
     ? `/api/wiki/${encodeURIComponent(target.token)}/board/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(image)}${q}`
@@ -105,25 +107,80 @@ export async function moveBoardCardApi(
   }
 }
 
-export interface NewBoardCard {
+/** The fields a card is added or edited with. Never an assignee: that stays the team's (§126). */
+export interface BoardCardForm {
   title: string;
-  itemType: "feature" | "bug" | "feedback";
+  itemType: "feature" | "subitem" | "bug" | "feedback";
   laneKey: string;
+  parentId: string | null;
   releaseId: string | null;
+  tier: string | null;
+  area: string | null;
   priority: TaskPriority;
+  estimateHours: number | null;
+  dueDate: string | null;
   description: string;
   links: string[];
+  dependsOn: string[];
 }
 
-/** A client adds a card (public only: the team adds cards on their task board). */
-export async function addBoardCardApi(token: string, input: NewBoardCard): Promise<WikiBoardCard> {
+function cardsUrl(target: BoardTarget): string {
+  return target.mode === "public"
+    ? `/api/wiki/${encodeURIComponent(target.token)}/board/tasks`
+    : `/api/clients/${encodeURIComponent(target.slug)}/wiki/board/cards`;
+}
+
+function cardUrl(target: BoardTarget, taskId: string): string {
+  return `${cardsUrl(target)}/${encodeURIComponent(taskId)}`;
+}
+
+/** Add a card: the client on their link, or the team on the internal wiki. */
+export async function addBoardCardApi(target: BoardTarget, input: BoardCardForm): Promise<WikiBoardCard> {
   const res = await apiFetch<{ card: WikiBoardCard }>(
-    `/api/wiki/${encodeURIComponent(token)}/board/tasks`,
+    cardsUrl(target),
     json({
       ...input,
+      parentId: input.itemType === "subitem" ? input.parentId : null,
       releaseId: input.releaseId || null,
+      area: input.area?.trim() || null,
       description: input.description.trim() || null,
     }),
+  );
+  return res.card;
+}
+
+/** Edit a card. Only the fields given change. */
+export async function updateBoardCardApi(
+  target: BoardTarget,
+  taskId: string,
+  patch: Partial<Omit<BoardCardForm, "laneKey" | "parentId">>,
+): Promise<WikiBoardCard> {
+  const res = await apiFetch<{ card: WikiBoardCard }>(cardUrl(target, taskId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return res.card;
+}
+
+/** Delete a card (soft). The team can restore it from the internal wiki. */
+export async function deleteBoardCardApi(target: BoardTarget, taskId: string): Promise<void> {
+  await apiFetch(cardUrl(target, taskId), { method: "DELETE" });
+}
+
+/** Add screenshots to a card. */
+export async function uploadBoardImagesApi(target: BoardTarget, taskId: string, files: File[]): Promise<WikiBoardCard> {
+  const form = new FormData();
+  for (const f of files) form.append("file", f);
+  const res = await apiFetch<{ card: WikiBoardCard }>(`${cardUrl(target, taskId)}/images`, { method: "POST", body: form });
+  return res.card;
+}
+
+/** The team puts back a card deleted from the board. */
+export async function restoreBoardCardApi(slug: string, taskId: string): Promise<WikiBoardCard> {
+  const res = await apiFetch<{ card: WikiBoardCard }>(
+    `/api/clients/${encodeURIComponent(slug)}/wiki/board/cards/${encodeURIComponent(taskId)}/restore`,
+    { method: "POST" },
   );
   return res.card;
 }

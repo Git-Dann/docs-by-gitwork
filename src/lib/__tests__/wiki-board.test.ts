@@ -3,7 +3,6 @@ import {
   cardDescription,
   clientMayActOn,
   clientCanAddToStage,
-  clientMoveRefusal,
   deriveSignOff,
   feedbackRefusal,
   shortPersonName,
@@ -61,16 +60,6 @@ describe("what a client may do on the board", () => {
     expect(clientCanAddToStage("DONE")).toBe(false);
   });
 
-  it("moves between any columns except into or out of Done", () => {
-    expect(clientMoveRefusal("BACKLOG", "TODO")).toBeNull();
-    expect(clientMoveRefusal("DOING", "IN_REVIEW")).toBeNull();
-    expect(clientMoveRefusal("IN_REVIEW", "BACKLOG")).toBeNull();
-    // A live card isn't the client's to rearrange, even within Done.
-    expect(clientMoveRefusal("DONE", "DONE")).toMatch(/live/);
-    expect(clientMoveRefusal("IN_REVIEW", "DONE")).toMatch(/Only Gitwork/);
-    expect(clientMoveRefusal("DONE", "TODO")).toMatch(/live/);
-  });
-
   it("acts only on product cards and cards the client added, never the team's dev tasks", () => {
     expect(clientMayActOn({ isCard: true, addedByClient: false })).toBe(true);
     expect(clientMayActOn({ isCard: false, addedByClient: true })).toBe(true);
@@ -121,6 +110,8 @@ function card(id: string, over: Partial<WikiBoardCard> = {}): WikiBoardCard {
     subtasks: [],
     images: [],
     stageHistory: [],
+    estimateHours: null,
+    dependsOn: [],
     isCard: true,
     addedByClient: false,
     updatedAt: "2026-11-01T00:00:00.000Z",

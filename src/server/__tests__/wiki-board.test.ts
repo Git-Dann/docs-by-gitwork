@@ -230,9 +230,9 @@ describe("moving a card", () => {
     expect(spies.move).not.toHaveBeenCalled();
   });
 
-  it("a client can't move a card into Done", async () => {
-    await expect(moveBoardCard(client, "t1", { laneKey: "DONE", orderKey: 1 })).rejects.toMatchObject({ status: 403 });
-    expect(spies.move).not.toHaveBeenCalled();
+  it("a client can move a card into Done (Dan, Nov 2026)", async () => {
+    await moveBoardCard(client, "t1", { laneKey: "DONE", orderKey: 1 }).catch(() => undefined);
+    expect(spies.move).toHaveBeenCalledWith("t1", expect.objectContaining({ status: "DONE" }));
   });
 
   it("a column that isn't on the board is a 409", async () => {
@@ -256,9 +256,9 @@ describe("moving a card", () => {
     expect(spies.move).toHaveBeenCalled();
   });
 
-  it("a client can't move a live card, even within Done", async () => {
-    await expect(moveBoardCard(client, "t6", { laneKey: "TODO", orderKey: 1 })).rejects.toMatchObject({ status: 403 });
-    expect(spies.move).not.toHaveBeenCalled();
+  it("a client can move a live card back out of Done", async () => {
+    await moveBoardCard(client, "t6", { laneKey: "TODO", orderKey: 1 }).catch(() => undefined);
+    expect(spies.move).toHaveBeenCalledWith("t6", expect.objectContaining({ status: "TODO", expect: { clientId: "c1", fromStatus: "DONE" } }));
   });
 
   it("a client can't move the team's dev task: it's a 404, like a task that isn't there", async () => {
@@ -412,6 +412,8 @@ function card(over: Partial<WikiBoardCard>): WikiBoardCard {
     subtasks: [],
     images: [],
     stageHistory: [],
+    estimateHours: null,
+    dependsOn: [],
     isCard: false,
     addedByClient: false,
     updatedAt: "2026-11-18T00:00:00.000Z",

@@ -16,6 +16,8 @@ export interface WikiBoardCard {
   tier: string | null;
   area: string | null;
   priority: TaskPriority;
+  /** Hours estimated for the card, or null. */
+  estimateHours: number | null;
   status: TaskStatus;
   /** The lane the card sits in (a board column id, or the status). Derived, never stored. */
   laneKey: string;
@@ -40,6 +42,11 @@ export interface WikiBoardCard {
    * Empty for cards made in Foundry. Cards the client may act on only.
    */
   stageHistory: Array<{ label: string; date: string }>;
+  /**
+   * Other cards on this board this one depends on (`task.metadata.dependsOn`), with their titles.
+   * The client's copy keeps only cards the client can see.
+   */
+  dependsOn: Array<{ id: string; title: string }>;
   /** A product card (has an item type). The board shows cards by default; dev tasks on request. */
   isCard: boolean;
   /** Added by the client from their board. */
@@ -96,11 +103,25 @@ export interface WikiBoardSection {
   releases: WikiBoardRelease[];
   /** Product areas in use, for the filter. */
   areas: string[];
+  /**
+   * TEAM copy only: cards the client deleted (soft), newest first, so the team can put one back.
+   * Never sent to the client.
+   */
+  deleted?: WikiBoardDeletedCard[];
+}
+
+export interface WikiBoardDeletedCard {
+  id: string;
+  title: string;
+  itemType: string | null;
+  deletedBy: string;
+  deletedAt: string;
 }
 
 export interface WikiBoardFeedback {
   id: string;
-  kind: "comment" | "approved" | "changes_requested";
+  /** "change": written by the board when someone edits, deletes or restores the card. */
+  kind: "comment" | "approved" | "changes_requested" | "change";
   body: string | null;
   authorName: string;
   /** Who it came from: shown as "Client" or "Gitwork". */

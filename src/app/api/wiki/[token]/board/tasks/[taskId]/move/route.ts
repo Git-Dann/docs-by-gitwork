@@ -1,6 +1,6 @@
 /**
- * A client moves a card between columns on their Board. Never into or out of Done: that is the
- * team's call (src/lib/wiki-board.ts `clientMoveRefusal`). The card must be this wiki's client's.
+ * A client moves a card between columns on their Board, Done included (Dan, Nov 2026). The card
+ * must be this wiki's client's, and one they may act on: the team's dev tasks are a 404.
  */
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";

@@ -12,7 +12,8 @@ import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
 import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
-import { BOARD_LIMITS, CLIENT_CARD_TYPES, FEEDBACK_KINDS } from "@/lib/wiki-board";
+import { BOARD_EDIT_TYPES, BOARD_LIMITS, CLIENT_CARD_TYPES, FEEDBACK_KINDS } from "@/lib/wiki-board";
+import { TIERS } from "@/lib/tasks/product-cards";
 import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
 import {
   LIST_AREA_MAX,
@@ -2711,26 +2712,59 @@ export const commitmentSettingsSchema = z
 // ─── Client Board (src/lib/wiki-board.ts) ─────────────────────────────────────
 
 /** A card a client adds from their wiki Board. Links must be http(s), the Launchpad allow-list. */
+/** The card fields a client or the team may set from the Board. No assignee field, ever (§126). */
+const boardCardFields = {
+  title: z.string().trim().min(1, "Give the card a title.").max(BOARD_LIMITS.title),
+  releaseId: z.string().min(1).max(40).nullish(),
+  tier: z.enum(TIERS).nullish(),
+  area: z.string().trim().max(BOARD_LIMITS.area, `Keep the area under ${BOARD_LIMITS.area} characters.`).nullish(),
+  priority: taskPrioritySchema.optional(),
+  estimateHours: z
+    .number()
+    .finite()
+    .min(0, "The estimate can't be negative.")
+    .max(BOARD_LIMITS.estimateHours, `Estimates go up to ${BOARD_LIMITS.estimateHours} hours.`)
+    .nullish(),
+  dueDate: isoDateString.nullish(),
+  description: z.string().max(BOARD_LIMITS.description).nullish(),
+  links: z
+    .array(
+      z
+        .string()
+        .trim()
+        .max(2048)
+        .refine((v) => safeLaunchpadLink(v) !== null, LAUNCHPAD_LINK_ERROR),
+    )
+    .max(BOARD_LIMITS.links)
+    .optional(),
+  dependsOn: z.array(z.string().min(1).max(40)).max(BOARD_LIMITS.dependsOn).optional(),
+};
+
 export const boardCardCreateSchema = z
   .object({
-    title: z.string().trim().min(1, "Give the card a title.").max(BOARD_LIMITS.title),
+    ...boardCardFields,
     itemType: z.enum(CLIENT_CARD_TYPES),
     laneKey: z.string().min(1).max(40),
-    releaseId: z.string().cuid().nullish(),
-    priority: taskPrioritySchema.optional(),
-    description: z.string().max(BOARD_LIMITS.description).nullish(),
-    links: z
-      .array(
-        z
-          .string()
-          .trim()
-          .max(2048)
-          .refine((v) => safeLaunchpadLink(v) !== null, LAUNCHPAD_LINK_ERROR),
-      )
-      .max(BOARD_LIMITS.links)
-      .optional(),
+    parentId: z.string().min(1).max(40).nullish(),
   })
-  .strict();
+  .strict()
+  .refine((b) => b.itemType !== "subitem" || Boolean(b.parentId), {
+    message: "Pick the feature this sub-item belongs to.",
+    path: ["parentId"],
+  });
+
+/**
+ * Editing a card from the Board. `.strict()` is the allow-list: anything not named here,
+ * `assignees` and `assigneeId` above all, is a 400 rather than silently dropped.
+ */
+export const boardCardEditSchema = z
+  .object({
+    ...boardCardFields,
+    title: boardCardFields.title.optional(),
+    itemType: z.enum(BOARD_EDIT_TYPES).optional(),
+  })
+  .strict()
+  .refine((b) => Object.keys(b).length > 0, "Nothing to change");
 
 export const boardMoveSchema = z
   .object({

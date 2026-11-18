@@ -24,6 +24,7 @@ const SCOPED_BY = [
   // Shared resolvers that scope to the caller's workspace themselves:
   "resolveInternalChangelog(", // src/server/wiki-changelog-access.ts
   "resolveInternalSheets(", // src/server/wiki-sheets-access.ts
+  "resolveInternalBoardWriter(", // src/server/wiki-board-access.ts (slug looked up in user.workspaceId)
   "resolveInternalLaunchpadTarget(", // src/server/launchpad-access.ts (takes the request)
   "WikiLink(user,", // src/server/wiki-links.ts (scopes to user.workspaceId)
   "WikiLinks(user,",

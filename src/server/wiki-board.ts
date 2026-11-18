@@ -10,14 +10,19 @@
 
 import { stageHistoryOf } from "@/lib/wiki-board-stage-history";
 import type { Prisma } from "@prisma/client";
+import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
 import { assertClientInScope, moveTaskForClient } from "@/server/tasks";
 import {
   assertWithinBoardCardQuota,
+  assertWithinBoardEditQuota,
   assertWithinBoardFeedbackQuota,
+  assertWithinBoardUploadQuota,
   countClientCards,
+  recordBoardUploads,
   shouldNotifyBoardCards,
+  shouldNotifyCardChange,
 } from "@/server/wiki-board-limit";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { boardLanes, laneKeyFor, parseBoardColumns, type BoardLane } from "@/lib/tasks/board-columns";
@@ -25,20 +30,33 @@ import { layoutBoard } from "@/lib/wiki-board-layout";
 import { cardProgress, isProductCard } from "@/lib/tasks/product-cards";
 import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
 import {
+  BOARD_LIMITS,
   cardDescription,
   clientCanAddToStage,
   clientMayActOn,
-  clientMoveRefusal,
   deriveSignOff,
+  FEEDBACK_KINDS,
   feedbackRefusal,
   shortPersonName,
   SIGN_OFF_LABELS,
+  type BoardEditType,
   type ClientCardType,
   type FeedbackKind,
 } from "@/lib/wiki-board";
+import {
+  changeSentence,
+  checkBoardImages,
+  dependsOnRefusal,
+  describeCardChanges,
+  imagesSentence,
+  splitCardDescription,
+  subItemParentRefusal,
+  type CardFields,
+} from "@/lib/wiki-board-edit";
 import type { TaskPriority, TaskStatus } from "@/types/tasks";
 import type {
   WikiBoardCard,
+  WikiBoardDeletedCard,
   WikiBoardFeedback,
   WikiBoardSection,
 } from "@/types/wiki-board";
@@ -75,6 +93,7 @@ const TASK_SELECT = {
   boardColumnId: true,
   orderKey: true,
   priority: true,
+  estimateHours: true,
   dueDate: true,
   updatedAt: true,
   completedAt: true,
@@ -121,6 +140,17 @@ async function imagesFor(rows: TaskRow[]): Promise<Map<string, string[]>> {
   return out;
 }
 
+/** The card ids a card depends on (`metadata.dependsOn`), as stored. Anything malformed is ignored. */
+export function dependsOnIds(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
+  const list = (metadata as Record<string, unknown>).dependsOn;
+  return Array.isArray(list) ? list.filter((v): v is string => typeof v === "string").slice(0, 50) : [];
+}
+
+function metaObject(metadata: unknown): Prisma.JsonObject {
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? { ...(metadata as Prisma.JsonObject) } : {};
+}
+
 function addedByClient(metadata: unknown): boolean {
   return Boolean(metadata && typeof metadata === "object" && "createdByClient" in (metadata as Record<string, unknown>));
 }
@@ -142,6 +172,8 @@ interface CardContext {
   descriptions: Map<string, string | null>;
   /** Cards' image attachment ids only (`imagesFor`); a dev task has none here. */
   images: Map<string, string[]>;
+  /** Titles of the live top-level tasks a card depends on, for its "Depends on" list. */
+  titles: Map<string, string>;
 }
 
 function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
@@ -155,6 +187,7 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     tier: row.tier,
     area: row.area,
     priority: row.priority as TaskPriority,
+    estimateHours: row.estimateHours ?? null,
     status,
     laneKey: laneKeyFor({ status, boardColumnId: row.boardColumnId }, ctx.columns),
     orderKey: row.orderKey,
@@ -168,6 +201,9 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     subtasks: row.subtasks.map((s) => ({ title: s.title, done: s.status === "DONE" })),
     images: ctx.images.get(row.id) ?? [],
     stageHistory: stageHistoryOf(row.metadata),
+    dependsOn: dependsOnIds(row.metadata)
+      .filter((id) => ctx.titles.has(id))
+      .map((id) => ({ id, title: ctx.titles.get(id)! })),
     isCard,
     addedByClient: addedByClient(row.metadata),
     updatedAt: row.updatedAt.toISOString(),
@@ -190,7 +226,8 @@ async function cardContext(
     }),
     ids.length
       ? prisma.taskClientFeedback.findMany({
-          where: { taskId: { in: ids } },
+          // Change entries are a record of edits, not feedback: they don't count or sign off.
+          where: { taskId: { in: ids }, kind: { in: [...FEEDBACK_KINDS] } },
           select: { taskId: true, kind: true, createdAt: true },
         })
       : Promise.resolve([]),
@@ -204,6 +241,15 @@ async function cardContext(
     descriptionsFor(rows),
     imagesFor(rows),
   ]);
+  const titles = new Map(rows.map((r) => [r.id, r.title]));
+  const missing = [...new Set(rows.flatMap((r) => dependsOnIds(r.metadata)))].filter((id) => !titles.has(id));
+  if (missing.length) {
+    const found = await prisma.task.findMany({
+      where: { id: { in: missing }, clientId, parentId: null, archivedAt: null },
+      select: { id: true, title: true },
+    });
+    for (const t of found) titles.set(t.id, t.title);
+  }
   const releases = sortReleases(releaseRows).map((r) => ({
     id: r.id,
     label: releaseLabel(r),
@@ -231,6 +277,7 @@ async function cardContext(
     progress,
     descriptions,
     images,
+    titles,
   };
 }
 
@@ -267,7 +314,37 @@ export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection>
     })),
     completedAt,
   });
-  return { ...laid, showAllTasks: wiki.boardShowAllTasks };
+  return { ...laid, showAllTasks: wiki.boardShowAllTasks, deleted: await listDeletedBoardCards(clientId) };
+}
+
+/** Cards deleted from the board (soft), newest first: the team's "put it back" list. */
+export async function listDeletedBoardCards(clientId: string): Promise<WikiBoardDeletedCard[]> {
+  const ids = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "Task"
+    WHERE "clientId" = ${clientId} AND "parentId" IS NULL AND "archivedAt" IS NOT NULL
+      AND "metadata" ? 'deletedFromBoard'
+    ORDER BY "archivedAt" DESC
+    LIMIT 50`;
+  if (!ids.length) return [];
+  const rows = await prisma.task.findMany({
+    where: { id: { in: ids.map((r) => r.id) }, clientId },
+    orderBy: { archivedAt: "desc" },
+    select: { id: true, title: true, itemType: true, archivedAt: true, metadata: true },
+  });
+  return rows.flatMap((r) => {
+    const marker = metaObject(r.metadata).deletedFromBoard;
+    if (!marker || typeof marker !== "object" || Array.isArray(marker)) return [];
+    const by = (marker as Record<string, unknown>).name;
+    return [
+      {
+        id: r.id,
+        title: r.title,
+        itemType: r.itemType,
+        deletedBy: typeof by === "string" && by ? by : "Someone",
+        deletedAt: (r.archivedAt ?? new Date()).toISOString(),
+      },
+    ];
+  });
 }
 
 /**
@@ -282,6 +359,8 @@ export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection>
  */
 export function forPublicBoard(section: WikiBoardSection): WikiBoardSection {
   if (!section.enabled) return EMPTY_BOARD;
+  // A card's "depends on" only names cards the client can see themselves.
+  const visible = new Set(section.lanes.flatMap((l) => l.groups.flatMap((g) => g.cards.filter(clientMayActOn).map((c) => c.id))));
   return {
     enabled: true,
     showAllTasks: section.showAllTasks,
@@ -303,7 +382,7 @@ export function forPublicBoard(section: WikiBoardSection): WikiBoardSection {
           startDate: g.startDate,
           endDate: g.endDate,
           cards: g.cards.flatMap((c) => {
-            if (clientMayActOn(c)) return [publicCard(c)];
+            if (clientMayActOn(c)) return [publicCard(c, visible)];
             return section.showAllTasks ? [titleOnlyCard(c)] : [];
           }),
         }))
@@ -312,7 +391,7 @@ export function forPublicBoard(section: WikiBoardSection): WikiBoardSection {
   };
 }
 
-function publicCard(c: WikiBoardCard): WikiBoardCard {
+function publicCard(c: WikiBoardCard, visible: ReadonlySet<string>): WikiBoardCard {
   return {
     id: c.id,
     title: c.title,
@@ -320,6 +399,7 @@ function publicCard(c: WikiBoardCard): WikiBoardCard {
     tier: c.tier,
     area: c.area,
     priority: c.priority,
+    estimateHours: c.estimateHours,
     status: c.status,
     laneKey: c.laneKey,
     orderKey: c.orderKey,
@@ -333,6 +413,7 @@ function publicCard(c: WikiBoardCard): WikiBoardCard {
     subtasks: c.subtasks,
     images: c.images,
     stageHistory: c.stageHistory,
+    dependsOn: c.dependsOn.filter((d) => visible.has(d.id)),
     isCard: c.isCard,
     addedByClient: c.addedByClient,
     updatedAt: c.updatedAt,
@@ -348,6 +429,7 @@ function titleOnlyCard(c: WikiBoardCard): WikiBoardCard {
     tier: null,
     area: null,
     priority: c.priority,
+    estimateHours: null,
     status: c.status,
     laneKey: c.laneKey,
     orderKey: c.orderKey,
@@ -361,6 +443,7 @@ function titleOnlyCard(c: WikiBoardCard): WikiBoardCard {
     subtasks: [],
     images: [],
     stageHistory: [],
+    dependsOn: [],
     isCard: false,
     addedByClient: false,
     updatedAt: c.updatedAt,
@@ -448,11 +531,9 @@ export async function moveBoardCard(
   const task = await loadOwnTask(writer.clientId, taskId);
   assertClientMayAct(writer, task);
   const lane = laneFor(task.client.taskBoardColumns, input.laneKey);
-  const refusal = clientMoveRefusal(task.status as TaskStatus, lane.stage);
-  if (refusal) throw new BoardError(refusal, 403);
-  // The write itself re-checks the card is still where the rule above saw it: on this client,
-  // live, and in the status we read. If the team marked it Done, or archived it, in between, the
-  // move lands on nothing rather than reopening it.
+  // The client may move a card anywhere, Done included (Dan, Nov 2026). The write itself still
+  // re-checks the card is where we read it: on this client, live, in the status we saw. If
+  // someone else moved or archived it in between, the move lands on nothing.
   const moved = await moveTaskForClient(task.id, {
     status: lane.stage,
     orderKey: input.orderKey,
@@ -464,18 +545,64 @@ export async function moveBoardCard(
   return loadBoardCard(writer.clientId, task.id);
 }
 
-export async function createBoardCard(
-  writer: BoardWriter,
-  input: {
-    title: string;
-    itemType: ClientCardType;
-    laneKey: string;
-    releaseId?: string | null;
-    priority?: TaskPriority;
-    description?: string | null;
-    links?: string[];
-  },
-): Promise<WikiBoardCard> {
+/** The card fields a create or an edit may set. Assignees are not here, on purpose. */
+export interface BoardCardInput {
+  title: string;
+  itemType: ClientCardType;
+  laneKey: string;
+  /** Required for a sub-item: the feature card it belongs under. */
+  parentId?: string | null;
+  releaseId?: string | null;
+  tier?: string | null;
+  area?: string | null;
+  priority?: TaskPriority;
+  estimateHours?: number | null;
+  /** YYYY-MM-DD. */
+  dueDate?: string | null;
+  description?: string | null;
+  links?: string[];
+  dependsOn?: string[];
+}
+
+export type BoardCardPatch = Partial<Omit<BoardCardInput, "laneKey" | "parentId" | "itemType">> & { itemType?: BoardEditType };
+
+/** A release on this client, or a 400. Null clears it. */
+async function ownRelease(clientId: string, releaseId: string | null | undefined): Promise<string | null> {
+  if (!releaseId) return null;
+  const release = await prisma.clientRelease.findFirst({ where: { id: releaseId, clientId }, select: { id: true } });
+  if (!release) throw new BoardError("That release isn't on this board.", 400);
+  return release.id;
+}
+
+/**
+ * The "depends on" list, checked: every id a live top-level card on this client, and one the
+ * writer could see. A client may only point at cards they can see (not the team's dev tasks).
+ */
+async function ownDependsOn(writer: BoardWriter, selfId: string | null, ids: readonly string[]): Promise<string[]> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  const rows = await prisma.task.findMany({
+    where: { id: { in: unique }, clientId: writer.clientId, parentId: null, archivedAt: null },
+    select: { id: true, itemType: true, metadata: true },
+  });
+  const usable = rows.filter(
+    (r) => !isClientWriter(writer) || clientMayActOn({ isCard: isProductCard(r), addedByClient: addedByClient(r.metadata) }),
+  );
+  const refusal = dependsOnRefusal(selfId, unique, new Set(usable.map((r) => r.id)));
+  if (refusal) throw new BoardError(refusal, 400);
+  return unique;
+}
+
+function dueDateValue(day: string | null | undefined): Date | null {
+  return day ? new Date(`${day.slice(0, 10)}T12:00:00.000Z`) : null;
+}
+
+function cleanArea(area: string | null | undefined): string | null {
+  const a = area?.trim().replace(/\s+/g, " ") ?? "";
+  return a ? a.slice(0, BOARD_LIMITS.area) : null;
+}
+
+export async function createBoardCard(writer: BoardWriter, input: BoardCardInput): Promise<WikiBoardCard> {
   const client = await prisma.workspaceClient.findUnique({
     where: { id: writer.clientId },
     select: { id: true, workspaceId: true, slug: true, name: true, taskBoardColumns: true },
@@ -484,22 +611,32 @@ export async function createBoardCard(
   if (isClientWriter(writer)) await assertWithinBoardCardQuota(client.id);
   const lane = laneFor(client.taskBoardColumns, input.laneKey);
   if (!clientCanAddToStage(lane.stage)) {
-    throw new BoardError("New cards go in an early column, such as Backlog or To do. Gitwork moves them on from there.", 403);
+    throw new BoardError("New cards go in an early column, such as Backlog or To do. Move them on from there.", 403);
   }
-  let releaseId: string | null = null;
-  if (input.releaseId) {
-    const release = await prisma.clientRelease.findFirst({
-      where: { id: input.releaseId, clientId: client.id },
-      select: { id: true },
-    });
-    if (!release) throw new BoardError("That release isn't on this board.", 400);
-    releaseId = release.id;
+  let parentId: string | null = null;
+  if (input.itemType === "subitem") {
+    const parent = input.parentId
+      ? await prisma.task.findFirst({
+          where: { id: input.parentId, clientId: client.id, archivedAt: null },
+          select: { id: true, itemType: true, parentId: true },
+        })
+      : null;
+    const refusal = subItemParentRefusal(parent);
+    if (refusal) throw new BoardError(refusal, 400);
+    parentId = parent!.id;
   }
+  const releaseId = await ownRelease(client.id, input.releaseId);
+  const dependsOn = await ownDependsOn(writer, null, input.dependsOn ?? []);
   const top = await prisma.task.findFirst({
     where: { clientId: client.id, status: lane.stage },
     orderBy: { orderKey: "desc" },
     select: { orderKey: true },
   });
+  const meta: Prisma.JsonObject = {};
+  // Only a client's card is marked as theirs: the marker is what the board's limits count and
+  // what lets the client act on a card that isn't a product card.
+  if (isClientWriter(writer)) meta.createdByClient = { wikiUserId: writer.wikiUserId, name: writer.name, at: new Date().toISOString() };
+  if (dependsOn.length) meta.dependsOn = dependsOn;
   const task = await prisma.task.create({
     data: {
       workspaceId: client.workspaceId,
@@ -511,18 +648,285 @@ export async function createBoardCard(
       boardColumnId: lane.columnId,
       priority: input.priority ?? "MEDIUM",
       itemType: input.itemType,
+      tier: input.tier ?? null,
+      area: cleanArea(input.area),
+      estimateHours: input.estimateHours ?? null,
+      dueDate: dueDateValue(input.dueDate),
       releaseId,
+      parentId,
       orderKey: (top?.orderKey ?? 0) + 1,
-      // Only a client's card is marked as theirs: the marker is what the board's limits count
-      // and what lets the client act on a card that isn't a product card.
-      ...(isClientWriter(writer)
-        ? { metadata: { createdByClient: { wikiUserId: writer.wikiUserId, name: writer.name, at: new Date().toISOString() } } }
-        : {}),
+      ...(Object.keys(meta).length ? { metadata: meta } : {}),
     },
     select: { id: true },
   });
   if (isClientWriter(writer)) await notifyClientCards(writer.wikiId, client, input.title.trim());
-  return loadBoardCard(client.id, task.id);
+  // A sub-item lives inside its feature card, so the card to place is the parent.
+  return loadBoardCard(client.id, parentId ?? task.id);
+}
+
+/** Everything an edit compares and writes, for one card. */
+async function loadEditableTask(writer: BoardWriter, taskId: string) {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, clientId: writer.clientId, parentId: null, archivedAt: null },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      workspaceId: true,
+      itemType: true,
+      tier: true,
+      area: true,
+      priority: true,
+      estimateHours: true,
+      dueDate: true,
+      releaseId: true,
+      description: true,
+      metadata: true,
+      assigneeId: true,
+      assignees: { select: { id: true } },
+      client: { select: { slug: true, name: true, workspaceId: true } },
+    },
+  });
+  if (!task) throw new BoardError("Not found", 404);
+  assertClientMayAct(writer, task);
+  return task;
+}
+
+type EditableTask = Awaited<ReturnType<typeof loadEditableTask>>;
+
+function fieldsOf(task: EditableTask): CardFields {
+  const { body, links } = splitCardDescription(task.description);
+  return {
+    title: task.title,
+    itemType: task.itemType,
+    tier: task.tier,
+    area: task.area,
+    priority: task.priority as TaskPriority,
+    estimateHours: task.estimateHours ?? null,
+    dueDate: task.dueDate ? task.dueDate.toISOString().slice(0, 10) : null,
+    releaseId: task.releaseId,
+    description: body || null,
+    links,
+    dependsOn: dependsOnIds(task.metadata),
+  };
+}
+
+/**
+ * Write one entry in the card's thread recording what happened, and, for a client, tell the team
+ * once per card per 10 minutes: a run of edits is one notification.
+ */
+async function recordChange(writer: BoardWriter, task: { id: string; title: string; workspaceId: string; assigneeId: string | null; assignees: Array<{ id: string }>; client: { slug: string } }, body: string): Promise<void> {
+  const fromClient = isClientWriter(writer);
+  const now = new Date();
+  const previous = fromClient
+    ? await prisma.taskClientFeedback.findFirst({
+        where: { taskId: task.id, kind: "change", authorUserId: null, createdAt: { lt: now } },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      })
+    : null;
+  await prisma.taskClientFeedback.create({
+    data: {
+      taskId: task.id,
+      wikiId: writer.wikiId,
+      kind: "change",
+      body,
+      authorWikiUserId: writer.wikiUserId,
+      authorUserId: fromClient ? null : writer.userId,
+      authorName: writer.name,
+    },
+    select: { id: true },
+  });
+  if (!fromClient || !shouldNotifyCardChange(previous?.createdAt ?? null, now)) return;
+  const assigneeIds = task.assignees.length ? task.assignees.map((a) => a.id) : task.assigneeId ? [task.assigneeId] : [];
+  dispatchNotification({
+    event: "tasks.client_feedback",
+    workspaceId: task.workspaceId,
+    target: assigneeIds.length ? { kind: "users", userIds: assigneeIds } : { kind: "clientTeam" },
+    clientId: writer.clientId,
+    title: `${writer.name} changed “${task.title}”`,
+    body: body.slice(0, 280),
+    actionUrl: `/app/portal/${task.client.slug}/tasks?task=${task.id}`,
+    groupKey: `tasks.client_change:${task.id}`,
+    metadata: { taskId: task.id, kind: "change" },
+  });
+}
+
+/**
+ * Edit a card's fields. The client may change everything here on any card they can see; the
+ * schema has no assignee field, so who works on a card stays the team's to decide. The write is a
+ * compare-and-set on the client, the card still being live, so a card deleted meanwhile is a 409.
+ */
+export async function updateBoardCard(writer: BoardWriter, taskId: string, patch: BoardCardPatch): Promise<WikiBoardCard> {
+  const task = await loadEditableTask(writer, taskId);
+  if (isClientWriter(writer)) await assertWithinBoardEditQuota(writer.wikiId);
+  const before = fieldsOf(task);
+  const after: CardFields = {
+    title: patch.title !== undefined ? patch.title.trim() : before.title,
+    itemType: patch.itemType !== undefined ? patch.itemType : before.itemType,
+    tier: patch.tier !== undefined ? patch.tier : before.tier,
+    area: patch.area !== undefined ? cleanArea(patch.area) : before.area,
+    priority: patch.priority ?? before.priority,
+    estimateHours: patch.estimateHours !== undefined ? patch.estimateHours : before.estimateHours,
+    dueDate: patch.dueDate !== undefined ? (patch.dueDate ? patch.dueDate.slice(0, 10) : null) : before.dueDate,
+    releaseId: patch.releaseId !== undefined ? await ownRelease(writer.clientId, patch.releaseId) : before.releaseId,
+    description: patch.description !== undefined ? patch.description?.trim() || null : before.description,
+    links: patch.links !== undefined ? patch.links : before.links,
+    dependsOn: patch.dependsOn !== undefined ? await ownDependsOn(writer, task.id, patch.dependsOn) : before.dependsOn,
+  };
+  if (!after.title) throw new BoardError("Give the card a title.", 400);
+  const releases = after.releaseId
+    ? await prisma.clientRelease.findMany({ where: { id: after.releaseId, clientId: writer.clientId }, select: { id: true, version: true, name: true } })
+    : [];
+  const phrases = describeCardChanges(before, after, (id) => {
+    const r = releases.find((x) => x.id === id);
+    return r ? releaseLabel(r) : null;
+  });
+  if (!phrases.length) return loadBoardCard(writer.clientId, task.id);
+
+  const meta = metaObject(task.metadata);
+  if (after.dependsOn.length) meta.dependsOn = after.dependsOn;
+  else delete meta.dependsOn;
+  const { count } = await prisma.task.updateMany({
+    where: { id: task.id, clientId: writer.clientId, parentId: null, archivedAt: null },
+    data: {
+      title: after.title,
+      itemType: after.itemType,
+      tier: after.tier,
+      area: after.area,
+      priority: after.priority,
+      estimateHours: after.estimateHours,
+      dueDate: dueDateValue(after.dueDate),
+      releaseId: after.releaseId,
+      description: cardDescription(after.description, after.links),
+      metadata: meta,
+    },
+  });
+  if (count === 0) throw new BoardError("This card has just been deleted or moved off the board. Refresh to see the board now.", 409);
+  await recordChange(writer, task, changeSentence(writer.name, phrases));
+  return loadBoardCard(writer.clientId, task.id);
+}
+
+/**
+ * Delete a card (soft: archivedAt). The client may delete any card they can see; the team's dev
+ * tasks are never theirs to delete. A product card's linked dev tasks are NOT deleted: the link is
+ * cleared and each gets a note saying why, and the ids are kept on the card so restoring it can
+ * link them again.
+ */
+export async function deleteBoardCard(writer: BoardWriter, taskId: string): Promise<void> {
+  const task = await loadEditableTask(writer, taskId);
+  const linked = await prisma.task.findMany({
+    where: { productCardId: task.id, clientId: writer.clientId },
+    select: { id: true },
+    take: 500,
+  });
+  const meta = metaObject(task.metadata);
+  meta.deletedFromBoard = {
+    name: writer.name,
+    side: isClientWriter(writer) ? "client" : "team",
+    wikiUserId: writer.wikiUserId,
+    userId: writer.userId,
+    at: new Date().toISOString(),
+    linkedTaskIds: linked.map((l) => l.id),
+  };
+  const { count } = await prisma.task.updateMany({
+    where: { id: task.id, clientId: writer.clientId, parentId: null, archivedAt: null },
+    data: { archivedAt: new Date(), metadata: meta },
+  });
+  if (count === 0) throw new BoardError("This card has already been deleted. Refresh to see the board now.", 409);
+  if (linked.length) {
+    await prisma.task.updateMany({
+      where: { id: { in: linked.map((l) => l.id) }, clientId: writer.clientId, productCardId: task.id },
+      data: { productCardId: null },
+    });
+    await prisma.taskComment.createMany({
+      data: linked.map((l) => ({
+        taskId: l.id,
+        authorId: writer.userId,
+        body: `${writer.name} deleted the card “${task.title}” from the client's board, so this task is no longer linked to it. Restoring the card links it again.`,
+      })),
+    });
+  }
+  await recordChange(writer, task, `${writer.name} deleted this card.`);
+  if (isClientWriter(writer)) {
+    dispatchNotification({
+      event: "tasks.client_request",
+      workspaceId: task.workspaceId,
+      target: { kind: "clientTeam" },
+      clientId: writer.clientId,
+      title: `${writer.name} deleted “${task.title}” from their board`,
+      body: linked.length ? `${linked.length} linked dev task${linked.length === 1 ? " was" : "s were"} unlinked, not deleted.` : undefined,
+      actionUrl: `/app/portal/${task.client.slug}/wiki#board`,
+      groupKey: `tasks.client_delete:${writer.clientId}`,
+    });
+  }
+}
+
+/** The team puts a deleted card back, and relinks the dev tasks it had, where they're still free. */
+export async function restoreBoardCard(writer: BoardWriter, taskId: string): Promise<WikiBoardCard> {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, clientId: writer.clientId, parentId: null, archivedAt: { not: null } },
+    select: { id: true, title: true, metadata: true, workspaceId: true, assigneeId: true, assignees: { select: { id: true } }, client: { select: { slug: true } } },
+  });
+  const meta = metaObject(task?.metadata);
+  const marker = meta.deletedFromBoard;
+  if (!task || !marker || typeof marker !== "object" || Array.isArray(marker)) throw new BoardError("Not found", 404);
+  const linkedIds = Array.isArray((marker as Prisma.JsonObject).linkedTaskIds)
+    ? ((marker as Prisma.JsonObject).linkedTaskIds as unknown[]).filter((v): v is string => typeof v === "string")
+    : [];
+  delete meta.deletedFromBoard;
+  const { count } = await prisma.task.updateMany({
+    where: { id: task.id, clientId: writer.clientId, archivedAt: { not: null } },
+    data: { archivedAt: null, metadata: meta },
+  });
+  if (count === 0) throw new BoardError("This card has already been restored.", 409);
+  if (linkedIds.length) {
+    await prisma.task.updateMany({
+      where: { id: { in: linkedIds }, clientId: writer.clientId, productCardId: null, archivedAt: null },
+      data: { productCardId: task.id },
+    });
+  }
+  await recordChange(writer, task, `${writer.name} restored this card.`);
+  return loadBoardCard(writer.clientId, task.id);
+}
+
+/**
+ * Add screenshots to a card. Each is checked by its bytes (PNG, JPEG, GIF or WebP; never SVG),
+ * capped at 10 MB and 10 a card, then stored as a task attachment exactly as the Forge image copy
+ * stores one, with a small JPEG thumbnail. Served back through the card's own image route.
+ */
+export async function addBoardCardImages(
+  writer: BoardWriter,
+  taskId: string,
+  files: Array<{ name: string; bytes: Uint8Array }>,
+): Promise<WikiBoardCard> {
+  const task = await loadEditableTask(writer, taskId);
+  const existing = await prisma.taskAttachment.count({ where: { taskId: task.id } });
+  const checked = checkBoardImages(
+    existing,
+    files.map((f) => ({ name: f.name, size: f.bytes.byteLength, head: f.bytes.subarray(0, 16) })),
+  );
+  if (!checked.ok) throw new BoardError(checked.error, 400);
+  if (isClientWriter(writer)) await assertWithinBoardUploadQuota(writer.wikiId, files.length);
+  const sharp = (await import("sharp")).default;
+  for (let i = 0; i < files.length; i++) {
+    const bytes = Buffer.from(files[i].bytes);
+    const thumb = await sharp(bytes).rotate().resize(320, 320, { fit: "inside" }).jpeg({ quality: 80 }).toBuffer();
+    await prisma.taskAttachment.create({
+      data: {
+        taskId: task.id,
+        uploadedById: writer.userId,
+        image: bytesForPrisma(bytes),
+        thumb: bytesForPrisma(thumb),
+        mime: checked.mimes[i],
+        filename: files[i].name.slice(0, 200) || null,
+      },
+      select: { id: true },
+    });
+  }
+  if (isClientWriter(writer)) await recordBoardUploads(writer.wikiId, files.length);
+  await recordChange(writer, task, imagesSentence(writer.name, files.length));
+  return loadBoardCard(writer.clientId, task.id);
 }
 
 /**
