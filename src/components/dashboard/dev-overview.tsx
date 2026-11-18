@@ -101,7 +101,20 @@ export function DevOverview() {
   const pageClients = clients.slice(clientsPage * PAGE_SIZE, (clientsPage + 1) * PAGE_SIZE);
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    // ⚠️ `grid-cols-1` is load-bearing below lg, and its absence clipped this
+    // dashboard on every phone. With columns declared only at `lg:`, the grid
+    // falls back to `grid-template-columns: none` — ONE implicit track sized to
+    // its content's max-content, not to the grid. My Day's rows do not shrink,
+    // so the track measured 383.8px inside a 327px grid and the `w-full` cards
+    // ran to x=408 in a 375px viewport. `.widget-card` is `overflow: hidden`
+    // and <main> does not scroll sideways, so those 33px were not merely
+    // off-screen, they were UNREACHABLE — and a page-X check reports clean,
+    // because the page itself never overflows. Measured in the browser before
+    // and after: card right edge 408px → 351px.
+    //
+    // `grid-cols-1` is `repeat(1, minmax(0,1fr))`, which bounds the track to
+    // the grid. The `lg:` columns still win at ≥1024px, so desktop is untouched.
+    <div className="grid items-start gap-4 grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       {/* Left — My Day standup */}
       <MyDay />
 
@@ -140,9 +153,17 @@ export function DevOverview() {
                     href={`/app/portal/${t.client.slug}/tasks`}
                     className="flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
                   >
+                    {/* ⚠️ `title` is the recovery a truncated value needs, and it
+                        matters MORE after the grid fix above: one column makes the
+                        card narrower (384px → 327px measured at 375px), so a task
+                        name that used to just fit now ellipses. Truncated with no
+                        title and no scroll means the full value is unreadable
+                        anywhere — `audit:clipping` flags exactly that, and it
+                        already flags these two on production at 375 and 390.
+                        `desk-tasks.tsx` is the precedent. */}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-[var(--text-1)]">{t.title}</p>
-                      <p className="truncate text-xs text-[var(--text-4)]">{t.client.name}</p>
+                      <p className="truncate text-sm font-medium text-[var(--text-1)]" title={t.title}>{t.title}</p>
+                      <p className="truncate text-xs text-[var(--text-4)]" title={t.client.name}>{t.client.name}</p>
                     </div>
                     <span className={cn("shrink-0 rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium", STATUS_STYLES[t.status])}>
                       {STATUS_LABEL[t.status]}
@@ -199,7 +220,7 @@ export function DevOverview() {
                       href={`/app/portal/${c.slug}/tasks`}
                       className="flex min-w-0 flex-1 items-center justify-between gap-2"
                     >
-                      <span className="truncate text-sm font-medium text-[var(--text-1)]">{c.name}</span>
+                      <span className="truncate text-sm font-medium text-[var(--text-1)]" title={c.name}>{c.name}</span>
                       <ArrowRightIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
                     </Link>
                     <NewTaskButton clientId={c.id} clientName={c.name} />
