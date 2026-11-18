@@ -131,3 +131,17 @@ export function useSetWikiBoardEnabled(slug: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }
+
+/** The team's "show all tasks to the client (titles only)" switch on the client's Board. */
+export function useSetWikiBoardShowAllTasks(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (showAllTasks: boolean) =>
+      apiFetch(`/api/clients/${slug}/wiki/board`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showAllTasks }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}

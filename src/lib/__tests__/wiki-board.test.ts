@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   cardDescription,
+  clientMayActOn,
   clientCanAddToStage,
   clientMoveRefusal,
   deriveSignOff,
@@ -64,9 +65,16 @@ describe("what a client may do on the board", () => {
     expect(clientMoveRefusal("BACKLOG", "TODO")).toBeNull();
     expect(clientMoveRefusal("DOING", "IN_REVIEW")).toBeNull();
     expect(clientMoveRefusal("IN_REVIEW", "BACKLOG")).toBeNull();
-    expect(clientMoveRefusal("DONE", "DONE")).toBeNull();
+    // A live card isn't the client's to rearrange, even within Done.
+    expect(clientMoveRefusal("DONE", "DONE")).toMatch(/live/);
     expect(clientMoveRefusal("IN_REVIEW", "DONE")).toMatch(/Only Gitwork/);
     expect(clientMoveRefusal("DONE", "TODO")).toMatch(/live/);
+  });
+
+  it("acts only on product cards and cards the client added, never the team's dev tasks", () => {
+    expect(clientMayActOn({ isCard: true, addedByClient: false })).toBe(true);
+    expect(clientMayActOn({ isCard: false, addedByClient: true })).toBe(true);
+    expect(clientMayActOn({ isCard: false, addedByClient: false })).toBe(false);
   });
 
   it("feedback: a comment needs words, Changes needed needs to say what, Approve can stand alone", () => {

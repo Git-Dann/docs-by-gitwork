@@ -12,6 +12,12 @@
  * Precedence is the same: a whole-wiki link first, then a per-section link.
  *
  * Attribution comes from the sign-in, never the request body.
+ *
+ * ⚠️ A Foundry session is NOT enough to act as the team. These routes write to the team's real
+ * task board, so a session only counts when the person is an ACTIVE, non-guest member of the
+ * workspace that owns this client AND can open this client (`assertClientInScope`). A session
+ * from another business, a guest, or a developer not on this client falls through to the
+ * client-sign-in check like anyone else (`teamWriterFor`).
  */
 
 import type { NextRequest } from "next/server";
@@ -20,6 +26,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveWikiAccessUser, wikiAccessCookieName } from "@/server/wiki-access";
 import { assertWithinRateLimit, clientIpFrom } from "@/server/rate-limit";
+import { resolveEffectiveUserById } from "@/server/mcp/auth";
+import { assertClientInScope } from "@/server/tasks";
 import type { BoardWriter } from "@/server/wiki-board";
 
 export type BoardAccessFailure = "not_found" | "unauthorized" | "section_disabled" | "wrong_section";
@@ -29,8 +37,27 @@ const WIKI_SELECT = {
   clientId: true,
   boardEnabled: true,
   pageShares: true,
-  client: { select: { slug: true } },
+  client: { select: { slug: true, workspaceId: true } },
 } as const satisfies Prisma.ClientWikiSelect;
+
+/**
+ * The signed-in Foundry user, if they may act as the team on this client's board: an active,
+ * non-guest member of the client's own workspace who can open this client. Null otherwise.
+ */
+export async function teamWriterFor(
+  userId: string,
+  clientWorkspaceId: string,
+  clientId: string,
+): Promise<{ id: string; name: string } | null> {
+  const user = await resolveEffectiveUserById(userId, clientWorkspaceId, { onlyThisWorkspace: true });
+  if (!user || user.workspaceId !== clientWorkspaceId || user.role === "GUEST") return null;
+  try {
+    await assertClientInScope(user, clientId);
+  } catch {
+    return null;
+  }
+  return { id: user.id, name: user.name?.trim() || user.email || "Gitwork" };
+}
 
 /** The wiki a link opens, and the one section it is limited to (null = the whole wiki). */
 async function wikiForToken(token: string) {
@@ -69,11 +96,11 @@ export async function resolveBoardWriter(
   if (clientUser) {
     return { ok: true, writer: { ...base, name: clientUser.displayName, wikiUserId: clientUser.id, userId: null } };
   }
-  // Gitwork staff on the client's page act as the team: they can comment, not sign off.
+  // This client's own team on the client's page act as the team: they can comment, not sign off.
   const staff = await auth();
   if (staff?.user?.id) {
-    const name = staff.user.name?.trim() || staff.user.email || "Gitwork";
-    return { ok: true, writer: { ...base, name, wikiUserId: null, userId: staff.user.id } };
+    const team = await teamWriterFor(staff.user.id, wiki.client.workspaceId, wiki.clientId);
+    if (team) return { ok: true, writer: { ...base, name: team.name, wikiUserId: null, userId: team.id } };
   }
   return { ok: false, reason: "unauthorized" };
 }

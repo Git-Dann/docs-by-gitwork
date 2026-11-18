@@ -12,6 +12,12 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
 import { assertClientInScope, moveTaskForClient } from "@/server/tasks";
+import {
+  assertWithinBoardCardQuota,
+  assertWithinBoardFeedbackQuota,
+  countClientCards,
+  shouldNotifyBoardCards,
+} from "@/server/wiki-board-limit";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { boardLanes, laneKeyFor, parseBoardColumns, type BoardLane } from "@/lib/tasks/board-columns";
 import { layoutBoard } from "@/lib/wiki-board-layout";
@@ -20,6 +26,7 @@ import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
 import {
   cardDescription,
   clientCanAddToStage,
+  clientMayActOn,
   clientMoveRefusal,
   deriveSignOff,
   feedbackRefusal,
@@ -35,7 +42,7 @@ import type {
   WikiBoardSection,
 } from "@/types/wiki-board";
 
-export const EMPTY_BOARD: WikiBoardSection = { enabled: false, lanes: [], releases: [], areas: [] };
+export const EMPTY_BOARD: WikiBoardSection = { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] };
 
 /** A write the board refuses, with a sentence the client can act on. */
 export class BoardError extends Error {
@@ -70,7 +77,8 @@ const TASK_SELECT = {
   dueDate: true,
   updatedAt: true,
   completedAt: true,
-  description: true,
+  // No `description` here. A dev task's description holds internal notes, so it is never
+  // loaded for the board at all; cards' descriptions are read separately (`descriptionsFor`).
   itemType: true,
   tier: true,
   area: true,
@@ -86,6 +94,17 @@ const TASK_SELECT = {
 } as const satisfies Prisma.TaskSelect;
 
 type TaskRow = Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>;
+
+/**
+ * Descriptions for the cards on the board: product cards and cards the client added, and nothing
+ * else. One query for the lot.
+ */
+async function descriptionsFor(rows: TaskRow[]): Promise<Map<string, string | null>> {
+  const ids = rows.filter((r) => clientMayActOn({ isCard: isProductCard(r), addedByClient: addedByClient(r.metadata) })).map((r) => r.id);
+  if (!ids.length) return new Map();
+  const found = await prisma.task.findMany({ where: { id: { in: ids } }, select: { id: true, description: true } });
+  return new Map(found.map((r) => [r.id, r.description]));
+}
 
 function addedByClient(metadata: unknown): boolean {
   return Boolean(metadata && typeof metadata === "object" && "createdByClient" in (metadata as Record<string, unknown>));
@@ -104,6 +123,8 @@ interface CardContext {
   releaseById: Map<string, { id: string; label: string }>;
   feedback: Map<string, Array<{ kind: string; createdAt: Date }>>;
   progress: Map<string, TaskStatus[]>;
+  /** Cards' descriptions only (`descriptionsFor`); a dev task has none here. */
+  descriptions: Map<string, string | null>;
 }
 
 function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
@@ -126,7 +147,7 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     people: peopleOf(row),
     signOff: deriveSignOff(entries),
     feedbackCount: entries.length,
-    description: row.description,
+    description: ctx.descriptions.get(row.id) ?? null,
     subtasks: row.subtasks.map((s) => ({ title: s.title, done: s.status === "DONE" })),
     isCard,
     addedByClient: addedByClient(row.metadata),
@@ -143,7 +164,7 @@ async function cardContext(
 ): Promise<CardContext & { releases: Array<{ id: string; label: string; startDate: Date | null; endDate: Date | null }> }> {
   const ids = rows.map((r) => r.id);
   const cardIds = rows.filter((r) => isProductCard(r)).map((r) => r.id);
-  const [releaseRows, feedbackRows, linked] = await Promise.all([
+  const [releaseRows, feedbackRows, linked, descriptions] = await Promise.all([
     prisma.clientRelease.findMany({
       where: { clientId },
       select: { id: true, version: true, name: true, startDate: true, endDate: true, orderKey: true },
@@ -161,6 +182,7 @@ async function cardContext(
           _count: { _all: true },
         })
       : Promise.resolve([]),
+    descriptionsFor(rows),
   ]);
   const releases = sortReleases(releaseRows).map((r) => ({
     id: r.id,
@@ -187,6 +209,7 @@ async function cardContext(
     releaseById: new Map(releases.map((r) => [r.id, { id: r.id, label: r.label }])),
     feedback,
     progress,
+    descriptions,
   };
 }
 
@@ -198,7 +221,11 @@ async function cardContext(
 export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection> {
   const wiki = await prisma.clientWiki.findUnique({
     where: { clientId },
-    select: { boardEnabled: true, client: { select: { workspaceId: true, taskBoardColumns: true } } },
+    select: {
+      boardEnabled: true,
+      boardShowAllTasks: true,
+      client: { select: { workspaceId: true, taskBoardColumns: true } },
+    },
   });
   if (!wiki?.boardEnabled) return EMPTY_BOARD;
   const columns = parseBoardColumns(wiki.client.taskBoardColumns);
@@ -208,7 +235,7 @@ export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection>
   });
   const ctx = await cardContext(wiki.client.workspaceId, clientId, columns, rows);
   const completedAt = new Map(rows.map((r) => [r.id, r.completedAt?.toISOString() ?? null]));
-  return layoutBoard({
+  const laid = layoutBoard({
     cards: rows.map((r) => toCard(r, ctx)),
     columns,
     releases: ctx.releases.map((r) => ({
@@ -219,46 +246,111 @@ export async function loadWikiBoard(clientId: string): Promise<WikiBoardSection>
     })),
     completedAt,
   });
+  return { ...laid, showAllTasks: wiki.boardShowAllTasks };
 }
 
 /**
- * The client's copy. Everything on a card is already client-safe by construction (the loader
- * selects no emails, ids of people, internal notes or money), so this only drops the section
- * when it is off. Kept as a function so a field added later has one obvious place to be cut.
+ * The client's copy. Product cards, and cards the client added, go with every client-safe field.
+ * The team's plain dev tasks don't go at all, unless the team switched on `showAllTasks`; even
+ * then they go as a title, a column and who's on it, and the client can't act on them (the write
+ * routes check the same rule). A dev task's description is never loaded for the board in the
+ * first place (`descriptionsFor`), so it can't leak through here by mistake.
+ *
+ * Every field is copied by name rather than spread, so one added to the card later stays on the
+ * server until someone decides the client should see it.
  */
 export function forPublicBoard(section: WikiBoardSection): WikiBoardSection {
   if (!section.enabled) return EMPTY_BOARD;
   return {
-    ...section,
+    enabled: true,
+    showAllTasks: section.showAllTasks,
+    releases: section.releases,
+    areas: section.areas,
     lanes: section.lanes.map((l) => ({
-      ...l,
-      groups: l.groups.map((g) => ({
-        ...g,
-        cards: g.cards.map((c) => ({
-          id: c.id,
-          title: c.title,
-          itemType: c.itemType,
-          tier: c.tier,
-          area: c.area,
-          priority: c.priority,
-          status: c.status,
-          laneKey: c.laneKey,
-          orderKey: c.orderKey,
-          release: c.release,
-          progress: c.progress,
-          dueDate: c.dueDate,
-          people: c.people,
-          signOff: c.signOff,
-          feedbackCount: c.feedbackCount,
-          description: c.description,
-          subtasks: c.subtasks,
-          isCard: c.isCard,
-          addedByClient: c.addedByClient,
-          updatedAt: c.updatedAt,
-        })),
-      })),
+      key: l.key,
+      label: l.label,
+      stage: l.stage,
+      columnId: l.columnId,
+      canAdd: l.canAdd,
+      // With dev tasks hidden, the client isn't told how many there are either.
+      total: section.showAllTasks ? l.total : { cards: l.total.cards, other: 0 },
+      hidden: section.showAllTasks ? l.hidden : { cards: l.hidden.cards, other: 0 },
+      groups: l.groups
+        .map((g) => ({
+          releaseId: g.releaseId,
+          label: g.label,
+          startDate: g.startDate,
+          endDate: g.endDate,
+          cards: g.cards.flatMap((c) => {
+            if (clientMayActOn(c)) return [publicCard(c)];
+            return section.showAllTasks ? [titleOnlyCard(c)] : [];
+          }),
+        }))
+        .filter((g) => g.cards.length > 0),
     })),
   };
+}
+
+function publicCard(c: WikiBoardCard): WikiBoardCard {
+  return {
+    id: c.id,
+    title: c.title,
+    itemType: c.itemType,
+    tier: c.tier,
+    area: c.area,
+    priority: c.priority,
+    status: c.status,
+    laneKey: c.laneKey,
+    orderKey: c.orderKey,
+    release: c.release,
+    progress: c.progress,
+    dueDate: c.dueDate,
+    people: c.people,
+    signOff: c.signOff,
+    feedbackCount: c.feedbackCount,
+    description: c.description,
+    subtasks: c.subtasks,
+    isCard: c.isCard,
+    addedByClient: c.addedByClient,
+    updatedAt: c.updatedAt,
+  };
+}
+
+/** A team dev task, when the team shows them: where it is and who's on it, nothing else. */
+function titleOnlyCard(c: WikiBoardCard): WikiBoardCard {
+  return {
+    id: c.id,
+    title: c.title,
+    itemType: null,
+    tier: null,
+    area: null,
+    priority: c.priority,
+    status: c.status,
+    laneKey: c.laneKey,
+    orderKey: c.orderKey,
+    release: c.release,
+    progress: null,
+    dueDate: null,
+    people: c.people,
+    signOff: null,
+    feedbackCount: 0,
+    description: null,
+    subtasks: [],
+    isCard: false,
+    addedByClient: false,
+    updatedAt: c.updatedAt,
+  };
+}
+
+/**
+ * A link shared for ONE section carries the Board only when that section IS the Board. The
+ * Board holds the client's whole plan, so a Changelog or Sheets link mustn't ship it in the page
+ * data. ⚠️ Known gap (Nov 2026): other sections are not cut down this way; a per-section link
+ * still sends the rest of the wiki DTO, behind the wiki login. Only the Board is scoped here.
+ */
+export function scopeBoardToSection<T extends { board: WikiBoardSection }>(dto: T, onlySection: string | null): T {
+  if (!onlySection || onlySection === "board") return dto;
+  return { ...dto, board: EMPTY_BOARD };
 }
 
 /** "The client has at least one card to look at" — the share page's predicate for the section. */
@@ -278,12 +370,31 @@ async function loadOwnTask(clientId: string, taskId: string) {
       status: true,
       workspaceId: true,
       assigneeId: true,
+      itemType: true,
+      metadata: true,
       assignees: { select: { id: true } },
       client: { select: { slug: true, name: true, taskBoardColumns: true } },
     },
   });
   if (!task) throw new BoardError("Not found", 404);
   return task;
+}
+
+/** A client user, as opposed to a Gitwork team member writing on the client's page. */
+function isClientWriter(writer: BoardWriter): boolean {
+  return Boolean(writer.wikiUserId) || !writer.userId;
+}
+
+/**
+ * The client may only move, comment on or sign off their product cards and the cards they added.
+ * A team dev task is a 404 to them, the same answer as a task that doesn't exist, so a guessed
+ * id tells them nothing. The team, on the client's page, may act on anything here.
+ */
+function assertClientMayAct(writer: BoardWriter, task: { itemType: string | null; metadata: unknown }): void {
+  if (!isClientWriter(writer)) return;
+  if (!clientMayActOn({ isCard: isProductCard(task), addedByClient: addedByClient(task.metadata) })) {
+    throw new BoardError("Not found", 404);
+  }
 }
 
 /** One card as the board shows it, after a write, so the client can place it without a refetch. */
@@ -310,15 +421,21 @@ export async function moveBoardCard(
   input: { laneKey: string; orderKey: number },
 ): Promise<WikiBoardCard> {
   const task = await loadOwnTask(writer.clientId, taskId);
+  assertClientMayAct(writer, task);
   const lane = laneFor(task.client.taskBoardColumns, input.laneKey);
   const refusal = clientMoveRefusal(task.status as TaskStatus, lane.stage);
   if (refusal) throw new BoardError(refusal, 403);
-  await moveTaskForClient(task.id, {
+  // The write itself re-checks the card is still where the rule above saw it: on this client,
+  // live, and in the status we read. If the team marked it Done, or archived it, in between, the
+  // move lands on nothing rather than reopening it.
+  const moved = await moveTaskForClient(task.id, {
     status: lane.stage,
     orderKey: input.orderKey,
     boardColumnId: lane.columnId,
     movedBy: writer.name,
+    expect: { clientId: writer.clientId, fromStatus: task.status as TaskStatus },
   });
+  if (!moved) throw new BoardError("This card has just changed. Refresh to see where it is now.", 409);
   return loadBoardCard(writer.clientId, task.id);
 }
 
@@ -339,6 +456,7 @@ export async function createBoardCard(
     select: { id: true, workspaceId: true, slug: true, name: true, taskBoardColumns: true },
   });
   if (!client) throw new BoardError("Not found", 404);
+  if (isClientWriter(writer)) await assertWithinBoardCardQuota(client.id);
   const lane = laneFor(client.taskBoardColumns, input.laneKey);
   if (!clientCanAddToStage(lane.stage)) {
     throw new BoardError("New cards go in an early column, such as Backlog or To do. Gitwork moves them on from there.", 403);
@@ -370,32 +488,54 @@ export async function createBoardCard(
       itemType: input.itemType,
       releaseId,
       orderKey: (top?.orderKey ?? 0) + 1,
-      metadata: {
-        createdByClient: {
-          wikiUserId: writer.wikiUserId,
-          name: writer.name,
-          at: new Date().toISOString(),
-        },
-      },
+      // Only a client's card is marked as theirs: the marker is what the board's limits count
+      // and what lets the client act on a card that isn't a product card.
+      ...(isClientWriter(writer)
+        ? { metadata: { createdByClient: { wikiUserId: writer.wikiUserId, name: writer.name, at: new Date().toISOString() } } }
+        : {}),
     },
     select: { id: true },
   });
-  if (writer.wikiUserId) {
-    const title = (n: number) => `${client.name} added ${n === 1 ? "a card" : `${n} cards`} to their board`;
+  if (isClientWriter(writer)) await notifyClientCards(writer.wikiId, client, input.title.trim());
+  return loadBoardCard(client.id, task.id);
+}
+
+/**
+ * Tell the client's team that the client added cards: at most once per wiki per 10 minutes, with
+ * how many arrived, so a client adding twenty cards is one notification, not twenty. The window is
+ * claimed with a conditional update, so two cards added at once can't both send. A failure here
+ * never fails the card, which is already saved.
+ */
+async function notifyClientCards(
+  wikiId: string,
+  client: { id: string; workspaceId: string; slug: string; name: string },
+  latestTitle: string,
+): Promise<void> {
+  try {
+    const now = new Date();
+    const wiki = await prisma.clientWiki.findUnique({ where: { id: wikiId }, select: { boardClientNotifiedAt: true } });
+    if (!wiki || !shouldNotifyBoardCards(wiki.boardClientNotifiedAt, now)) return;
+    const claimed = await prisma.clientWiki.updateMany({
+      where: { id: wikiId, boardClientNotifiedAt: wiki.boardClientNotifiedAt },
+      data: { boardClientNotifiedAt: now },
+    });
+    if (claimed.count === 0) return;
+    const since = wiki.boardClientNotifiedAt ?? new Date(now.getTime() - 10 * 60 * 1000);
+    const count = Math.max(1, await countClientCards(client.id, since));
     dispatchNotification({
       event: "tasks.client_request",
       workspaceId: client.workspaceId,
       target: { kind: "clientTeam" },
       clientId: client.id,
-      title: title(1),
-      titleForCount: title,
-      body: input.title.trim(),
-      actionUrl: `/app/portal/${client.slug}/tasks?task=${task.id}`,
+      title: `${client.name} added ${count === 1 ? "a card" : `${count} cards`} to their board`,
+      body: count === 1 ? latestTitle : `Latest: ${latestTitle}`,
+      actionUrl: `/app/portal/${client.slug}/tasks`,
       groupKey: `tasks.client_request:${client.id}`,
-      count: 1,
+      count,
     });
+  } catch (err) {
+    console.error("[wiki-board] client-card notification failed", err);
   }
-  return loadBoardCard(client.id, task.id);
 }
 
 function feedbackRowToDTO(row: {
@@ -428,8 +568,9 @@ const FEEDBACK_SELECT = {
   createdAt: true,
 } as const satisfies Prisma.TaskClientFeedbackSelect;
 
-export async function listBoardFeedback(clientId: string, taskId: string): Promise<WikiBoardFeedback[]> {
-  await loadOwnTask(clientId, taskId);
+export async function listBoardFeedback(writer: BoardWriter, taskId: string): Promise<WikiBoardFeedback[]> {
+  const task = await loadOwnTask(writer.clientId, taskId);
+  assertClientMayAct(writer, task);
   const rows = await prisma.taskClientFeedback.findMany({
     where: { taskId },
     orderBy: { createdAt: "asc" },
@@ -449,12 +590,14 @@ export async function addBoardFeedback(
   input: { kind: FeedbackKind; body?: string | null },
 ): Promise<WikiBoardFeedback> {
   const task = await loadOwnTask(writer.clientId, taskId);
+  assertClientMayAct(writer, task);
   const fromTeam = Boolean(writer.userId) && !writer.wikiUserId;
   if (fromTeam && input.kind !== "comment") {
     throw new BoardError("Only the client can approve a card or ask for changes. Reply with a comment instead.", 403);
   }
   const refusal = feedbackRefusal(input.kind, input.body);
   if (refusal) throw new BoardError(refusal, 400);
+  if (!fromTeam) await assertWithinBoardFeedbackQuota(writer.wikiId);
   const row = await prisma.taskClientFeedback.create({
     data: {
       taskId: task.id,
@@ -533,6 +676,16 @@ export async function replyToTaskFeedback(user: EffectiveUser, taskId: string, b
 }
 
 /* ─────────────────────────────────────────────────────────── toggle ── */
+
+/** Whether the client also sees the team's dev tasks on their Board (titles only, read-only). */
+export async function setWikiBoardShowAllTasks(clientId: string, showAllTasks: boolean): Promise<void> {
+  await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, boardShowAllTasks: showAllTasks },
+    update: { boardShowAllTasks: showAllTasks },
+    select: { id: true },
+  });
+}
 
 export async function setWikiBoardEnabled(clientId: string, enabled: boolean): Promise<void> {
   await prisma.clientWiki.upsert({

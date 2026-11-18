@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       const { message, status } = boardAccessError(access.reason);
       return apiError(message, status);
     }
-    return apiOk({ feedback: await listBoardFeedback(access.writer.clientId, taskId) });
+    return apiOk({ feedback: await listBoardFeedback(access.writer, taskId) });
   } catch (err) {
     return fromError(err);
   }

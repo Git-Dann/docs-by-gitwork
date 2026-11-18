@@ -1,31 +1,32 @@
 /**
- * Enable/disable the Board section (the sidebar Add New / delete). The board is the client's own
- * tasks, so there is nothing else to store: turning it off hides it, and keeps every card and
- * every piece of feedback.
+ * The Board section's settings (the sidebar's Add New / delete, and the team's "show all tasks"
+ * switch). The board is the client's own tasks, so there is nothing else to store: turning it
+ * off hides it, and keeps every card and every piece of feedback.
+ *   PATCH { enabled?: boolean, showAllTasks?: boolean }
+ *
+ * Gated like Sheets' settings (`resolveInternalSheets`): 'Manage clients' AND access to this
+ * client, so a developer who can't open a client can't change what its client sees.
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
-import { setWikiBoardEnabled } from "@/server/wiki-board";
-import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { setWikiBoardEnabled, setWikiBoardShowAllTasks } from "@/server/wiki-board";
+import { resolveInternalSheets } from "@/server/wiki-sheets-access";
 
-const bodySchema = z.object({ enabled: z.boolean() });
+const bodySchema = z
+  .object({ enabled: z.boolean().optional(), showAllTasks: z.boolean().optional() })
+  .strict()
+  .refine((b) => b.enabled !== undefined || b.showAllTasks !== undefined, "Nothing to change");
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the Board section");
     const { slug } = await params;
-    const workspaceId = await workspaceIdForRequest(req);
-    const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId, slug } },
-      select: { id: true },
-    });
-    if (!client) return apiError("Client not found", 404);
-    const { enabled } = bodySchema.parse(await req.json());
-    await setWikiBoardEnabled(client.id, enabled);
-    return apiOk({ enabled });
+    const { clientId } = await resolveInternalSheets(req, slug, "manage the Board section");
+    if (!clientId) return apiError("Client not found", 404);
+    const body = bodySchema.parse(await req.json());
+    if (body.enabled !== undefined) await setWikiBoardEnabled(clientId, body.enabled);
+    if (body.showAllTasks !== undefined) await setWikiBoardShowAllTasks(clientId, body.showAllTasks);
+    return apiOk(body);
   } catch (err) {
     return fromError(err);
   }

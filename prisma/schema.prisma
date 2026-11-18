@@ -1576,6 +1576,12 @@ model ClientWiki {
   /// Board — the client's own Kanban of their product cards, grouped by release. The client can
   /// move cards (never into or out of Done), add cards and leave feedback or sign off a card.
   boardEnabled        Boolean                @default(false)
+  /// Board: also show the client the team's plain dev tasks (not product cards), as titles only
+  /// and read-only. Off by default: a dev task's description holds internal notes.
+  boardShowAllTasks   Boolean                @default(false)
+  /// Board: when the team was last told the client added cards. One notification per wiki per
+  /// 10 minutes, claimed with a conditional update so two cards at once can't both send.
+  boardClientNotifiedAt DateTime?
   /// Whether the Support section is enabled — the client's own Care figures, the same
   /// ones the monthly report already emails them. Off unless a linked SupportClient
   /// exists AND someone turns it on.

@@ -69,6 +69,11 @@ export interface WikiBoardRelease {
 
 export interface WikiBoardSection {
   enabled: boolean;
+  /**
+   * The team chose to show the client its plain dev tasks as well as product cards. Off by
+   * default. Even on, the client gets a dev task's title, column and people, read-only.
+   */
+  showAllTasks: boolean;
   lanes: WikiBoardLane[];
   /** Every release the client has, in order: for filters and the Add card form. */
   releases: WikiBoardRelease[];

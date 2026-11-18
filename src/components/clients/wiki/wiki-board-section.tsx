@@ -15,7 +15,7 @@
  * column picker over one stacked column.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -39,13 +39,21 @@ import { CardProgressChip, ItemTypeChip, SignOffChip, TierChip } from "@/compone
 import { ITEM_TYPE_LABELS, isItemType } from "@/lib/tasks/product-cards";
 import { safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { groupByRelease } from "@/lib/wiki-board-layout";
-import { BOARD_LIMITS, CLIENT_CARD_TYPES, clientMoveRefusal, feedbackRefusal, type FeedbackKind } from "@/lib/wiki-board";
+import {
+  BOARD_LIMITS,
+  CLIENT_CARD_TYPES,
+  clientMayActOn,
+  clientMoveRefusal,
+  feedbackRefusal,
+  type FeedbackKind,
+} from "@/lib/wiki-board";
 import {
   addBoardCardApi,
   moveBoardCardApi,
   useBoardFeedback,
   useBoardRefresh,
   useSendBoardFeedback,
+  useSetWikiBoardShowAllTasks,
   type BoardTarget,
 } from "@/hooks/use-wiki-board";
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/types/tasks";
@@ -102,6 +110,10 @@ export function WikiBoardSectionView({
 }) {
   const toast = useToast();
   const refresh = useBoardRefresh(target);
+  // The client's board is server-rendered: dnd-kit's own counter numbers its accessibility ids
+  // differently on the server and in the browser, which fails hydration. A React id is the same
+  // on both.
+  const dndId = useId();
   const [cards, setCards] = useState<WikiBoardCard[]>(() => flatten(section));
   // A refetch or router.refresh brings the server's board back: it replaces the local copy.
   useEffect(() => setCards(flatten(section)), [section]);
@@ -137,6 +149,10 @@ export function WikiBoardSectionView({
 
   async function move(card: WikiBoardCard, lane: WikiBoardLane) {
     if (card.laneKey === lane.key) return;
+    if (audience === "client" && !clientMayActOn(card)) {
+      toast.error("Can't move that card", "This is one of Gitwork's own tasks, shown so you can see where it is.");
+      return;
+    }
     const refusal = audience === "client" ? clientMoveRefusal(card.status, lane.stage) : null;
     if (refusal) {
       toast.error("Can't move that card", refusal);
@@ -239,6 +255,9 @@ export function WikiBoardSectionView({
                 <PlusIcon className="h-4 w-4" /> Add card
               </button>
             ) : null}
+            {audience === "team" && target.mode === "internal" ? (
+              <ShowAllTasksSwitch slug={target.slug} on={section.showAllTasks} onChanged={refresh} />
+            ) : null}
             {audience === "team" && tasksHref ? (
               <Link href={tasksHref} className="app-button app-button-secondary app-button-sm h-9">
                 Add on the task board
@@ -255,7 +274,7 @@ export function WikiBoardSectionView({
           </p>
         ) : null}
 
-        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+        <DndContext id={dndId} sensors={sensors} onDragEnd={onDragEnd}>
           {/* Desktop and tablet: every column side by side, in one scroller with its header. */}
           <div className="hidden overflow-x-auto pb-2 sm:block" data-board-scroller>
             <div className="flex items-start gap-3">
@@ -271,6 +290,7 @@ export function WikiBoardSectionView({
                   canAdd={audience === "client" && lane.canAdd}
                   onAdd={() => setAdding(lane.key)}
                   onOpen={setOpenId}
+                  audience={audience}
                 />
               ))}
             </div>
@@ -300,7 +320,12 @@ export function WikiBoardSectionView({
                 <div key={g.key} className="space-y-2">
                   <GroupHeading group={g} />
                   {g.cards.map((c) => (
-                    <CardFace key={c.id} card={c} onOpen={() => setOpenId(c.id)} />
+                    <CardFace
+                      key={c.id}
+                      card={c}
+                      onOpen={() => setOpenId(c.id)}
+                      readOnly={audience === "client" && !clientMayActOn(c)}
+                    />
                   ))}
                 </div>
               ))
@@ -347,6 +372,7 @@ function Lane({
   canAdd,
   onAdd,
   onOpen,
+  audience,
 }: {
   lane: WikiBoardLane;
   groups: ViewGroup[];
@@ -354,6 +380,7 @@ function Lane({
   canAdd: boolean;
   onAdd: () => void;
   onOpen: (id: string) => void;
+  audience: "client" | "team";
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: lane.key });
   const count = groups.reduce((n, g) => n + g.cards.length, 0);
@@ -392,9 +419,14 @@ function Lane({
         {groups.map((g) => (
           <div key={g.key} className="space-y-2">
             <GroupHeading group={g} />
-            {g.cards.map((c) => (
-              <DraggableCard key={c.id} card={c} onOpen={() => onOpen(c.id)} />
-            ))}
+            {g.cards.map((c) =>
+              // The team's own dev tasks are shown to the client read-only: not draggable, not openable.
+              audience === "client" && !clientMayActOn(c) ? (
+                <CardFace key={c.id} card={c} onOpen={() => onOpen(c.id)} readOnly />
+              ) : (
+                <DraggableCard key={c.id} card={c} onOpen={() => onOpen(c.id)} />
+              ),
+            )}
           </div>
         ))}
         {count === 0 ? <p className="py-6 text-center text-[12px] text-[var(--text-4)]">No cards</p> : null}
@@ -438,13 +470,14 @@ function DraggableCard({ card, onOpen }: { card: WikiBoardCard; onOpen: () => vo
   );
 }
 
-function CardFace({ card, onOpen }: { card: WikiBoardCard; onOpen: () => void }) {
+function CardFace({ card, onOpen, readOnly = false }: { card: WikiBoardCard; onOpen: () => void; readOnly?: boolean }) {
   const bug = card.itemType === "bug";
+  const Tag = readOnly ? "div" : "button";
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <Tag
+      {...(readOnly ? { title: "Gitwork's own task, shown so you can see where it is" } : { type: "button" as const, onClick: onOpen })}
       data-board-card={card.id}
+      data-board-readonly={readOnly ? "" : undefined}
       className={cn(
         "block w-full rounded-[8px] border border-l-[3px] bg-[var(--surface-0)] p-2.5 text-left shadow-[var(--shadow-xs)] transition-colors hover:border-[var(--border-1)]",
         bug ? "border-l-red-500" : card.isCard ? "border-l-[var(--brand-500)]" : "border-l-[var(--border-1)]",
@@ -473,7 +506,36 @@ function CardFace({ card, onOpen }: { card: WikiBoardCard; onOpen: () => void })
         ) : null}
         {card.people.length ? <span className="ml-auto truncate">{card.people.join(", ")}</span> : null}
       </span>
-    </button>
+    </Tag>
+  );
+}
+
+/**
+ * The team's switch: whether the client also sees the team's own dev tasks. Off by default; on,
+ * the client sees each one's title, column and who's on it, read-only, and nothing else.
+ */
+function ShowAllTasksSwitch({ slug, on, onChanged }: { slug: string; on: boolean; onChanged: () => void }) {
+  const set = useSetWikiBoardShowAllTasks(slug);
+  const toast = useToast();
+  return (
+    <label
+      className="inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-[6px] border border-[var(--border-2)] px-2.5 text-[12px] text-[var(--text-2)]"
+      title="Off: the client sees their product cards and the cards they added. On: they also see your dev tasks as titles only, and can't move or comment on them."
+    >
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-[var(--brand-500)]"
+        checked={on}
+        disabled={set.isPending}
+        onChange={(e) =>
+          set.mutate(e.target.checked, {
+            onSuccess: onChanged,
+            onError: (err) => toast.error("Couldn't change that", err instanceof Error ? err.message : "Please try again."),
+          })
+        }
+      />
+      Show the client all tasks (titles only)
+    </label>
   );
 }
 

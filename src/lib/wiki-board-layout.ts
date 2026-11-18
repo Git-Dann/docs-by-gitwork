@@ -64,5 +64,7 @@ export function layoutBoard(input: {
   const areas = [...new Set(cards.map((c) => c.area?.trim()).filter((a): a is string => Boolean(a)))].sort((a, b) =>
     a.localeCompare(b),
   );
-  return { enabled: true, lanes, releases, areas };
+  // Whether the client sees the team's dev tasks too is the wiki's setting, applied by the
+  // loader; the layout itself is the same either way.
+  return { enabled: true, showAllTasks: false, lanes, releases, areas };
 }

@@ -424,6 +424,27 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     expect(src).toContain("where: { id: taskId, clientId, parentId: null, archivedAt: null }");
   });
 
+  it("a Foundry session only writes as the team if it really is this client's team", () => {
+    const src = read("server/wiki-board-access.ts");
+    const resolve = src.slice(src.indexOf("export async function resolveBoardWriter"));
+    expect(resolve).toContain("teamWriterFor(staff.user.id, wiki.client.workspaceId, wiki.clientId)");
+    expect(src).toContain("{ onlyThisWorkspace: true }");
+    expect(src).toContain('user.role === "GUEST"');
+    expect(src).toContain("assertClientInScope(user, clientId)");
+  });
+
+  it("the settings route checks client access, like Sheets' settings", () => {
+    const src = read("app/api/clients/[slug]/wiki/board/route.ts");
+    expect(src).toContain("resolveInternalSheets(req, slug,");
+    expect(src).not.toContain("getEffectiveUserOrNull");
+  });
+
+  it("a link shared for another section doesn't carry the board", () => {
+    const wiki = read("server/wiki.ts");
+    const fn = wiki.slice(wiki.indexOf("export async function resolvePublicWiki"));
+    expect(fn).toContain("scopeBoardToSection(withPublicAvatars(forPublic(await buildDTO(bySection)), token), section)");
+  });
+
   it("the client's copy is cut by forPublicBoard, and the section loads through settle()", () => {
     const wiki = read("server/wiki.ts");
     const fn = wiki.slice(wiki.indexOf("function forPublic("), wiki.indexOf("export async function resolvePublicWiki"));

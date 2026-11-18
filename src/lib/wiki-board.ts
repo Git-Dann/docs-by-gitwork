@@ -70,14 +70,23 @@ export function clientCanAddToStage(stage: TaskStatus): boolean {
 }
 
 /**
- * Why a client can't make this move, as a sentence, or null when they can. Moving within Done,
- * or between lanes that aren't Done, is fine; crossing the Done line is the team's call.
+ * Why a client can't make this move, as a sentence, or null when they can. Anything touching
+ * Done is the team's call, including rearranging live cards: a live card isn't the client's to
+ * move, it's the record of what shipped.
  */
 export function clientMoveRefusal(from: TaskStatus, to: TaskStatus): string | null {
-  if (from === to) return null;
-  if (to === "DONE") return "Only Gitwork can mark a card as live. Leave feedback or approve it instead.";
   if (from === "DONE") return "This card is live. Leave feedback on it and Gitwork will reopen it if needed.";
+  if (to === "DONE") return "Only Gitwork can mark a card as live. Leave feedback or approve it instead.";
   return null;
+}
+
+/**
+ * Whether the client may move, comment on or sign off this task: their product cards and the
+ * cards they added. The team's own dev tasks are the team's: when the team chooses to show them
+ * (`boardShowAllTasks`), the client sees their titles and nothing more.
+ */
+export function clientMayActOn(card: { isCard: boolean; addedByClient: boolean }): boolean {
+  return card.isCard || card.addedByClient;
 }
 
 /**

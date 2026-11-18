@@ -54,7 +54,7 @@ import { loadWikiCosts } from "./wiki-costs";
 import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
 import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
 import { EMPTY_SHEETS, forPublicSheets, loadWikiSheets } from "./wiki-sheets";
-import { EMPTY_BOARD, forPublicBoard, loadWikiBoard } from "./wiki-board";
+import { EMPTY_BOARD, forPublicBoard, loadWikiBoard, scopeBoardToSection } from "./wiki-board";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { clientVisibleSections } from "@/lib/wiki-client-visibility";
 import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSection } from "./wiki-metrics";
@@ -3506,7 +3506,10 @@ export async function resolvePublicWiki(
       : {};
   const section = Object.keys(map).find((k) => map[k] === token) ?? null;
   if (!section) return null;
-  return { wiki: withPublicAvatars(forPublic(await buildDTO(bySection)), token), onlySection: section };
+  return {
+    wiki: scopeBoardToSection(withPublicAvatars(forPublic(await buildDTO(bySection)), token), section),
+    onlySection: section,
+  };
 }
 
 /**

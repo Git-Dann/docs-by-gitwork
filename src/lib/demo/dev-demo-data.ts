@@ -1597,7 +1597,7 @@ const demoWiki: WikiDTO = {
    */
   comparisons: { enabled: true, comparisons: demoComparisons },
   sheets: demoSheets,
-  board: { enabled: false, lanes: [], releases: [], areas: [] },
+  board: { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] },
   estimates: {
     enabled: true,
     estimates: [
@@ -4205,6 +4205,8 @@ let demoBoardColumns: BoardColumnDef[] = [
 /* ── Client Board (src/server/wiki-board.ts) ───────────────────────────────────────────── */
 
 let demoBoardEnabled = true;
+/** The team's "show all tasks to the client" switch, in memory like the rest of the demo board. */
+let demoBoardShowAllTasks = false;
 
 /** The demo's client feedback, per task. Seeded so the thread and the sign-off chips show. */
 const demoBoardFeedback = new Map<string, WikiBoardFeedback[]>([
@@ -4227,6 +4229,8 @@ const demoBoardFeedback = new Map<string, WikiBoardFeedback[]>([
 function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
   const release = t.release ? demoReleases.find((r) => r.id === t.release!.id) : undefined;
   const entries = demoBoardFeedback.get(t.id) ?? [];
+  const isCard = isProductCard(t);
+  const addedByClient = Boolean(t.metadata && "createdByClient" in t.metadata);
   return {
     id: t.id,
     title: t.title,
@@ -4243,17 +4247,18 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
     people: t.assignees.map((a) => shortPersonName(a.name)).filter((n): n is string => Boolean(n)),
     signOff: deriveSignOff(entries),
     feedbackCount: entries.length,
-    description: t.description,
+    // Same rule as the server (`descriptionsFor`): a dev task's description never reaches the board.
+    description: isCard || addedByClient ? t.description : null,
     subtasks: [],
-    isCard: isProductCard(t),
-    addedByClient: Boolean(t.metadata && "createdByClient" in t.metadata),
+    isCard,
+    addedByClient,
     updatedAt: t.updatedAt,
   };
 }
 
 /** Northwind's board, built from the in-memory task list with the same layout as the server. */
 function demoBoardSection(): WikiBoardSection {
-  if (!demoBoardEnabled) return { enabled: false, lanes: [], releases: [], areas: [] };
+  if (!demoBoardEnabled) return { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] };
   const tasks = demoTasksWithCards().filter((t) => t.client.slug === "northwind" && !t.parentId && !t.archivedAt);
   const releases = sortReleases(demoReleases).map((r) => ({
     id: r.id,
@@ -4261,12 +4266,13 @@ function demoBoardSection(): WikiBoardSection {
     startDate: r.startDate,
     endDate: r.endDate,
   }));
-  return layoutBoard({
+  const laid = layoutBoard({
     cards: tasks.map((t) => demoBoardCard(t, demoBoardColumns)),
     columns: demoBoardColumns,
     releases,
     completedAt: new Map(tasks.map((t) => [t.id, t.completedAt])),
   });
+  return { ...laid, showAllTasks: demoBoardShowAllTasks };
 }
 
 function bodyOf(init?: { body?: unknown }): Record<string, unknown> {
@@ -4277,8 +4283,10 @@ function bodyOf(init?: { body?: unknown }): Record<string, unknown> {
 function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unknown }): unknown {
   const method = (init?.method ?? "GET").toUpperCase();
   if (/^\/api\/clients\/[^/]+\/wiki\/board$/.test(pathname) && method === "PATCH") {
-    demoBoardEnabled = bodyOf(init).enabled === true;
-    return { enabled: demoBoardEnabled };
+    const body = bodyOf(init);
+    if (typeof body.enabled === "boolean") demoBoardEnabled = body.enabled;
+    if (typeof body.showAllTasks === "boolean") demoBoardShowAllTasks = body.showAllTasks;
+    return { enabled: demoBoardEnabled, showAllTasks: demoBoardShowAllTasks };
   }
   const feedback =
     /^\/api\/tasks\/([^/]+)\/client-feedback$/.exec(pathname) ??

@@ -1235,21 +1235,42 @@ export async function moveTask(
  */
 export async function moveTaskForClient(
   taskId: string,
-  input: { status: TaskStatus; orderKey: number; boardColumnId: string | null; movedBy: string },
-): Promise<void> {
-  const existing = await prisma.task.findUnique({
-    where: { id: taskId },
+  input: {
+    status: TaskStatus;
+    orderKey: number;
+    boardColumnId: string | null;
+    movedBy: string;
+    /**
+     * What the caller checked the move against. The update only lands while the task is still on
+     * this client, live, in this status, and not Done; otherwise it changes nothing and this
+     * returns false. A client's drag must never reopen a card the team marked Done meanwhile.
+     */
+    expect: { clientId: string; fromStatus: TaskStatus };
+  },
+): Promise<boolean> {
+  if (input.status === "DONE" || input.expect.fromStatus === "DONE") return false;
+  const existing = await prisma.task.findFirst({
+    where: { id: taskId, clientId: input.expect.clientId, archivedAt: null },
     select: { status: true, startedAt: true },
   });
-  if (!existing) throw new ForbiddenError("Task not found");
-  const row = await prisma.task.update({
-    where: { id: taskId },
+  if (!existing || existing.status !== input.expect.fromStatus) return false;
+  const { count } = await prisma.task.updateMany({
+    where: {
+      id: taskId,
+      clientId: input.expect.clientId,
+      archivedAt: null,
+      status: { equals: input.expect.fromStatus, not: "DONE" },
+    },
     data: {
       status: input.status,
       orderKey: input.orderKey,
       ...statusTimestamps(existing.status as TaskStatus, input.status, existing),
       boardColumnId: input.boardColumnId,
     },
+  });
+  if (count === 0) return false;
+  const row = await prisma.task.findUnique({
+    where: { id: taskId },
     select: {
       id: true,
       title: true,
@@ -1259,7 +1280,7 @@ export async function moveTaskForClient(
       assignees: { select: { id: true } },
     },
   });
-  if (input.status !== existing.status && row.assignees.length > 0) {
+  if (row && input.status !== existing.status && row.assignees.length > 0) {
     dispatchNotification({
       event: "tasks.status_changed",
       workspaceId: row.workspaceId,
@@ -1271,6 +1292,7 @@ export async function moveTaskForClient(
       metadata: { taskId: row.id, status: input.status },
     });
   }
+  return true;
 }
 
 export async function deleteTask(user: EffectiveUser, id: string): Promise<void> {
