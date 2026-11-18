@@ -10082,3 +10082,32 @@ as a category. A category says what a task is about; a release says when it ship
 - **MCP:** `create_task` / `update_task` take `release` (a version or an id; '' detaches), plus
   `list_releases` and `create_release`.
 - Not wired: the CSV import, Sheets "send to board", and the public `/timeline/[token]` share.
+
+## 124. Recent Changes (November 2026) — Product cards, linked dev tasks, default board columns
+
+A client plans **product features**; developers track the **work behind them**, split by
+platform and step. On Wedge only 16 of Luke's 199 planned items matched a Foundry task by name,
+because "Tee Shot Planner" on his plan was "Calculate tee shot planner", "Tee Shot Planner - IOS"
+and two more on the board. Both levels now live on one board.
+
+- **A task with an `itemType` (feature · sub-item · bug · feedback) is a PRODUCT CARD.** It can
+  also carry `tier` (free · premium · scoping), `area` and `estimateHours`; `externalRef`
+  (e.g. `forge:247`) lets a re-run import link instead of duplicate. All additive columns on Task.
+- **A dev task delivers a card through `productCardId`** (loose id) and stays exactly where it
+  is: never re-parented, because subtasks are hidden from the board and a dev task that vanished
+  would be lost work. Rules in `src/lib/tasks/product-cards.ts` (`linkProblem`): same client, a
+  real card, not itself, **one level only** (a card links to nothing; a card can't deliver a card).
+  Refusals are `ProductCardLinkError` (409) with the reason as a sentence. Taking the type off a
+  card that still has dev tasks is refused. Deleting a card unlinks its dev tasks; archiving does not.
+- **A card's progress is derived** from its linked, unarchived dev tasks (`cardProgress`): one
+  `groupBy` per list in `attachCardInfo`, never stored. Nothing linked is `null`, not 0%.
+- **UI:** Type / Tier / Area / Estimate on the task form, and a **Delivers card** picker for a dev
+  task (anchored combobox, §55). The drawer shows a card's **Dev tasks** (link, unlink) and a dev
+  task's **Delivers** link. Board cards carry type, tier and `2/3 dev` chips. MCP `create_task` /
+  `update_task` take `itemType`, `tier`, `area`, `estimateHours`, `productCard` (id or exact title).
+- **Default board columns.** A custom column can be the default for its status (`isDefault`, one
+  per status): that status's own column is then not shown, and a task of that status with no
+  column (or a stale one) sits in the default. Statuses without one are unchanged. This is what
+  lets a client's whole board be their own workflow (Wedge's 12 columns) without re-filing tasks.
+- **A task in a release counts as planned** (plan health, My Day "From the plan", Foreman
+  PLAN_DRIFT), not only one in a category.

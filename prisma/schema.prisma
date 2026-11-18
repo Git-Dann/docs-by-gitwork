@@ -4748,6 +4748,20 @@ model Task {
   metadata           Json?
   /// Source ClickUp task id (one-time migration). Indexed, NOT unique.
   clickupId          String?
+  /// Product cards (CLAUDE.md §124). A task with an `itemType` is a PRODUCT CARD: a feature,
+  /// sub-item, bug or feedback item as the client plans it. Dev tasks link to the card they
+  /// deliver via `productCardId` (loose id, same client, one level) and stay where they are.
+  itemType           String?
+  /// free | premium | scoping — which tier of the product a card is for.
+  tier               String?
+  /// The product area a card belongs to (e.g. "GPS & Shot Tracking").
+  area               String?
+  estimateHours      Float?
+  /// The card this dev task delivers (loose Task id on the same client). Null = not linked.
+  productCardId      String?
+  /// The item's id in an outside planning tool, e.g. "forge:247", so a re-run of an import
+  /// links instead of duplicating. Indexed per client, NOT unique (§2).
+  externalRef        String?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
   /// Soft-archive: hidden from board/list/Gantt + dashboard scans, but never deleted (the
@@ -4776,6 +4790,8 @@ model Task {
   @@index([releaseId])
   @@index([parentId])
   @@index([clickupId])
+  @@index([productCardId])
+  @@index([clientId, externalRef])
   // Cross-client dashboard reads: the existing [workspaceId, clientId, status]
   // can't serve a workspace-wide status/due query (clientId sits between the two
   // predicates). These match getTaskAttention's overdue/due-soon/doing scans and

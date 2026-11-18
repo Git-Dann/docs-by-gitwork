@@ -42,11 +42,14 @@ describe("listTasks — plan filters", () => {
     expect(seen.where).toMatchObject({
       clientId: { in: ["c1", "c2"] },
       status: { not: "DONE" },
-      featureBlockId: { not: null },
       parentId: null,
       archivedAt: null,
     });
-    expect(seen.where!.AND).toEqual([{ assigneeId: null, assignees: { none: {} } }]);
+    // "On the plan" = in a category OR a release (CLAUDE.md §124).
+    expect(seen.where!.AND).toEqual([
+      { OR: [{ featureBlockId: { not: null } }, { releaseId: { not: null } }] },
+      { assigneeId: null, assignees: { none: {} } },
+    ]);
   });
 
   it("⚠️ clientIds can't widen a restricted developer's scope", async () => {

@@ -316,6 +316,18 @@ describe("detectFindings — plan drift (work happening outside the plan)", () =
     expect(f!.recommendation).toContain("Sort into categories");
   });
 
+  it("counts tasks planned by release alone, and doesn't crash naming a category they don't have (§124)", () => {
+    const inRelease = Array.from({ length: 3 }, (_, i) =>
+      task({ id: `r${i}`, clientId: "acme", title: `Release ${i}`, releaseId: "rel-1", updatedAt: daysAgo(40 + i) }),
+    );
+    const f = byKind(
+      detectFindings(data({ clients: [acme], blocks: [pay], tasks: inRelease, recentDone: done(0, 150) }), CONFIG, NOW),
+    ).get("PLAN_DRIFT");
+    expect(f).toBeDefined();
+    expect(f!.metric).toBe(3);
+    expect(f!.evidence.some((e) => e.startsWith("Most left alone"))).toBe(false);
+  });
+
   it("stays quiet when the recent work went ON the plan", () => {
     const kinds = detectFindings(data({ clients: [acme], blocks: [pay], tasks: stalePlanned(5), recentDone: done(40, 4) }), CONFIG, NOW).map((x) => x.kind);
     expect(kinds).not.toContain("PLAN_DRIFT");

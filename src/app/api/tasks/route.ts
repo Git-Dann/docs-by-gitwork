@@ -40,6 +40,13 @@ function taskListResponse(task: TaskDTO): TaskDTO {
     attachmentCount: task.attachmentCount,
     metadata: null,
     scribeSource: task.scribeSource,
+    itemType: task.itemType,
+    tier: task.tier,
+    area: task.area,
+    estimateHours: task.estimateHours,
+    externalRef: task.externalRef,
+    productCard: task.productCard,
+    cardProgress: task.cardProgress,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   };

@@ -5,6 +5,7 @@ import { cn, formatDate, taskRef } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
 import { releaseLabel } from "@/lib/tasks/releases";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
+import { CardProgressChip, ItemTypeChip, TierChip } from "@/components/tasks/product-card-parts";
 import { TaskPriorityDot, TaskStatusBadge, TaskLabelBadge, TaskBlockedBadge } from "@/components/tasks/task-badges";
 
 /** Is the due date in the past and the task still open? */
@@ -102,6 +103,17 @@ export const TaskCard = memo(function TaskCard({
         {showStatus ? <TaskStatusBadge status={task.status} /> : null}
         {task.blockedReason ? <TaskBlockedBadge clientReplied={Boolean(task.blockedResponseAt)} /> : null}
         {task.label ? <TaskLabelBadge label={task.label} /> : null}
+        <ItemTypeChip itemType={task.itemType} />
+        <TierChip tier={task.tier} />
+        <CardProgressChip progress={task.cardProgress} />
+        {task.productCard ? (
+          <span
+            className="inline-flex max-w-[150px] items-center truncate rounded-[4px] border border-[var(--border-2)] px-1.5 py-0.5 text-[10px] text-[var(--text-3)]"
+            title={`Delivers: ${task.productCard.title}`}
+          >
+            ↳ {task.productCard.title}
+          </span>
+        ) : null}
 
         <span className="text-[10px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
           {taskRef(task.id)}

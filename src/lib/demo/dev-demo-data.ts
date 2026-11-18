@@ -15,6 +15,7 @@
 
 import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
 import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
+import { cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
 import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
 import { demoAiAnswersReport, demoSaveAiAnswersConfig, demoStartAiAnswersRun } from "@/lib/demo/demo-ai-answers";
 import { parseAiSearchRange } from "@/lib/ai-search";
@@ -161,6 +162,10 @@ function mkTask(
     unassigned?: boolean;
     /** Days ago it was last touched (default yesterday). */
     touchedDaysAgo?: number;
+    /** A product card (CLAUDE.md §124): its type, tier and area. */
+    card?: { itemType: string; tier?: string | null; area?: string | null; estimateHours?: number | null };
+    /** The card this dev task delivers. */
+    delivers?: { id: string; title: string; itemType: string | null } | null;
   },
 ): TaskDTO {
   const client = byClient[partial.clientSlug];
@@ -195,6 +200,13 @@ function mkTask(
     attachmentCount: 0,
     metadata: null,
     scribeSource: null,
+    itemType: partial.card?.itemType ?? null,
+    tier: partial.card?.tier ?? null,
+    area: partial.card?.area ?? null,
+    estimateHours: partial.card?.estimateHours ?? null,
+    externalRef: null,
+    productCard: partial.delivers ?? null,
+    cardProgress: null,
     createdAt: atDays(-14),
     updatedAt: atDays(-(partial.touchedDaysAgo ?? 1)),
   };
@@ -227,7 +239,77 @@ export const demoBoardTasks: TaskDTO[] = [
   mkTask({ id: "t19", release: REL.v140, title: "Search filters: date range picker", clientSlug: "northwind", status: "DONE", completedAt: atDays(-3) }),
   mkTask({ id: "t20", release: REL.v140, title: "Fix search result paging on mobile", clientSlug: "northwind", status: "DONE", completedAt: atDays(-5) }),
   mkTask({ id: "t21", release: REL.v150, title: "Analytics dashboard loading skeletons", clientSlug: "northwind", status: "DONE", completedAt: atDays(-8) }),
+  // Product cards (CLAUDE.md §124): what the client plans, with the dev tasks above linked
+  // to the card they deliver. The dev tasks stay where they are on the board.
+  mkTask({ id: "c1", release: REL.v140, title: "Saved searches", clientSlug: "northwind", status: "DOING", priority: "HIGH", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Search & discovery", estimateHours: 24 } }),
+  mkTask({ id: "c2", release: REL.v140, title: "Search paging breaks on iOS", clientSlug: "northwind", status: "IN_REVIEW", priority: "HIGH", unassigned: true, card: { itemType: "bug", area: "Search & discovery" } }),
+  mkTask({ id: "c3", title: "Let users pin a favourite report", clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
 ];
+// Which dev tasks deliver which card.
+for (const [devId, cardId] of [["t13", "c1"], ["t14", "c1"], ["t19", "c1"], ["t20", "c2"]] as const) {
+  const card = demoBoardTasks.find((t) => t.id === cardId)!;
+  demoBoardTasks.find((t) => t.id === devId)!.productCard = { id: card.id, title: card.title, itemType: card.itemType };
+}
+
+/** The board as the API returns it: each dev task's card title and each card's progress, derived. */
+function demoTasksWithCards(): TaskDTO[] {
+  const byId = new Map(demoBoardTasks.map((t) => [t.id, t]));
+  return demoBoardTasks.map((t) => {
+    const card = t.productCard ? byId.get(t.productCard.id) : undefined;
+    return {
+      ...t,
+      productCard: card ? { id: card.id, title: card.title, itemType: card.itemType } : null,
+      cardProgress: isProductCard(t)
+        ? cardProgress(demoBoardTasks.filter((d) => d.productCard?.id === t.id && !d.archivedAt).map((d) => d.status))
+        : null,
+    };
+  });
+}
+
+/**
+ * /api/tasks/<id> and /api/tasks/<id>/move, applied to the in-memory board so the demo's drawer,
+ * card links and default columns can be tried for real. Refuses a bad card link like the server.
+ */
+function demoTaskApi(pathname: string, init?: { method?: string; body?: unknown }): unknown {
+  const m = pathname.match(/^\/api\/tasks\/([^/]+)(\/move)?$/);
+  if (!m) return { ok: true };
+  const task = demoBoardTasks.find((t) => t.id === m[1]);
+  // Not a task id (e.g. /api/tasks/batch, /api/tasks/counts): a benign success, as before.
+  if (!task) return { ok: true };
+  const method = (init?.method ?? "GET").toUpperCase();
+  const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+  if (m[2] && method === "POST") {
+    if (typeof body.status === "string") task.status = body.status as TaskStatus;
+    if (typeof body.orderKey === "number") task.orderKey = body.orderKey;
+    task.boardColumnId = typeof body.boardColumnId === "string" ? body.boardColumnId : null;
+  } else if (method === "PATCH") {
+    const nextType = body.itemType !== undefined ? (body.itemType as string) || null : task.itemType;
+    if (body.productCardId !== undefined && body.productCardId) {
+      const card = demoBoardTasks.find((t) => t.id === body.productCardId);
+      const problem = linkProblem(
+        { id: task.id, clientId: task.client.id, isCard: isProductCard({ itemType: nextType }) },
+        card ? { id: card.id, clientId: card.client.id, itemType: card.itemType, productCardId: card.productCard?.id ?? null } : null,
+      );
+      if (problem) return { error: problem, __status: 409 };
+    }
+    for (const k of ["title", "priority", "tier", "area", "estimateHours"] as const) {
+      if (body[k] !== undefined) (task as Record<string, unknown>)[k] = body[k] === "" ? null : body[k];
+    }
+    if (body.itemType !== undefined) task.itemType = nextType;
+    if (typeof body.status === "string" && body.status !== task.status) {
+      task.status = body.status as TaskStatus;
+      task.boardColumnId = null;
+    }
+    if (body.productCardId !== undefined) {
+      const card = demoBoardTasks.find((t) => t.id === body.productCardId);
+      task.productCard = card ? { id: card.id, title: card.title, itemType: card.itemType } : null;
+    }
+  } else if (method === "DELETE") {
+    return { ok: true };
+  }
+  const withCards = demoTasksWithCards().find((t) => t.id === task.id)!;
+  return { ...withCards, comments: [], subtasks: [], attachments: [] };
+}
 
 const mine = demoBoardTasks.filter((t) => t.assignees.some((a) => a.id === DEV.id));
 const doing = mine.filter((t) => t.status === "DOING" || t.status === "IN_REVIEW");
@@ -4097,7 +4179,12 @@ function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
   }));
 }
 
-let demoBoardColumns: BoardColumnDef[] = [{ id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" }];
+// "Ideas" is the default for Backlog (CLAUDE.md §124): it stands in for the Backlog column, and
+// every backlog task with no column of its own sits there.
+let demoBoardColumns: BoardColumnDef[] = [
+  { id: "col_demoidea", name: "Ideas", stage: "BACKLOG", isDefault: true },
+  { id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" },
+];
 
 /** Monitors added through the demo's Add monitor popup, by client slug. Merged into the board. */
 const demoAddedMonitors = new Map<string, { name: string; target: string; environment: string }[]>();
@@ -4699,12 +4786,12 @@ export function resolveDemoApi(
 
   // `/api/tasks` (list) — after the more specific /api/tasks/* cases above.
   if (pathname === "/api/tasks" || pathname.startsWith("/api/tasks?")) {
-    return demoBoardTasks;
+    return demoTasksWithCards();
   }
   if (pathname.startsWith("/api/tasks/")) {
-    // Any per-task write (move/update) — benign success; the list re-fetch above
-    // returns the unchanged canned data.
-    return { ok: true };
+    // A task's detail, an edit or a move, applied to the in-memory board; anything else
+    // under /api/tasks/* is a benign success.
+    return demoTaskApi(pathname, init);
   }
 
   // DevSignal (developer vetting). The interceptor is method-agnostic, so the

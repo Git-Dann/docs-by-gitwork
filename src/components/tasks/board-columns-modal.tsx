@@ -55,13 +55,44 @@ export function BoardColumnsModal({
   }
 
   const patch = (id: string, p: Partial<BoardColumnDef>) =>
-    setDraft((d) => d.map((c) => (c.id === id ? { ...c, ...p } : c)));
+    setDraft((d) =>
+      d.map((c) => {
+        if (c.id !== id) return c;
+        const next = { ...c, ...p };
+        // Moving a default column onto a status that already has one makes it an ordinary column.
+        if (p.stage && next.isDefault && d.some((o) => o.id !== id && o.stage === p.stage && o.isDefault)) {
+          delete next.isDefault;
+        }
+        return next;
+      }),
+    );
+
+  /** One default per status: turning one on turns the others for that status off. */
+  const setDefault = (id: string, on: boolean) =>
+    setDraft((d) => {
+      const target = d.find((c) => c.id === id);
+      return d.map((c) => {
+        if (c.id === id) {
+          const next = { ...c };
+          if (on) next.isDefault = true;
+          else delete next.isDefault;
+          return next;
+        }
+        if (on && target && c.stage === target.stage && c.isDefault) {
+          const next = { ...c };
+          delete next.isDefault;
+          return next;
+        }
+        return c;
+      });
+    });
 
   return (
     <Modal open onClose={onClose} title="Board columns" panelClassName="app-dialog-fixed w-full max-w-lg">
       <p className="shrink-0 border-b border-[var(--border-2)] px-5 py-3 text-[13px] text-[var(--text-2)]">
         Each column sits inside a status, so “QA” can count as In review. Standups, the timeline and the
-        client&apos;s Delivery page still see the status.
+        client&apos;s Delivery page still see the status. Make a column the default for its status to
+        replace that status&apos;s own column.
       </p>
 
       <ul className="min-h-0 flex-1 divide-y divide-[var(--border-2)] overflow-y-auto">
@@ -93,6 +124,18 @@ export function BoardColumnsModal({
               >
                 <TrashIcon className="h-4 w-4" />
               </button>
+              <label className="col-span-full flex items-start gap-2 text-[12px] text-[var(--text-3)]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-[var(--brand-700)]"
+                  checked={Boolean(c.isDefault)}
+                  onChange={(e) => setDefault(c.id, e.target.checked)}
+                />
+                <span>
+                  Default for {TASK_STATUS_LABELS[c.stage]}: replaces the {TASK_STATUS_LABELS[c.stage]} column, and
+                  tasks with no column of their own sit here.
+                </span>
+              </label>
             </li>
           ))
         )}

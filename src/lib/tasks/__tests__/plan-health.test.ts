@@ -73,3 +73,19 @@ describe("planHealthWorthShowing", () => {
     expect(planHealthWorthShowing({ ...base, doneInWindow: 0, plannedStale: 20 })).toBe(false);
   });
 });
+
+describe("a release puts a task on the plan (CLAUDE.md §124)", () => {
+  it("counts done and open work in a release as planned, with no category", () => {
+    const rel = { id: "rel-1" };
+    const h = computePlanHealth(
+      [
+        t({ status: "DONE", completedAt: daysAgo(2), release: rel }),
+        t({ status: "TODO", release: rel }),
+        t({ status: "TODO" }),
+      ],
+      NOW,
+    );
+    expect(h).toMatchObject({ donePlanned: 1, doneUnplanned: 0 });
+    expect(h.plannedOpen).toBe(1);
+  });
+});
