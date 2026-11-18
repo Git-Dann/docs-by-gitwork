@@ -38,6 +38,7 @@ function bare(): AnyWiki {
     estimates: { enabled: false, estimates: [] },
     comparisons: { enabled: false, comparisons: [] },
     sheets: { enabled: false, sheets: [] },
+    board: { enabled: false, lanes: [], releases: [], areas: [] },
     support: { enabled: false, linked: false },
     metrics: { enabled: false, source: null, metrics: [] },
     meetings: { enabled: false, meetings: [] },
@@ -85,6 +86,16 @@ describe("clientVisibleSections", () => {
     expect(after).not.toContain("metrics");
     expect(after).not.toContain("comparisons");
     expect(after).not.toContain("sheets");
+  });
+
+  it("offers the Board only with a card on it, and not once forPublic has emptied it", () => {
+    const lane = (cards: number) => ({ key: "BACKLOG", total: { cards, other: 0 }, hidden: { cards: 0, other: 0 }, groups: [] });
+    const withCard = { ...bare(), board: { enabled: true, lanes: [lane(1)], releases: [], areas: [] } } as unknown as AnyWiki;
+    expect(clientVisibleSections(withCard)).toContain("board");
+    const empty = { ...bare(), board: { enabled: true, lanes: [lane(0)], releases: [], areas: [] } } as unknown as AnyWiki;
+    expect(clientVisibleSections(empty)).not.toContain("board");
+    const off = { ...bare(), board: { enabled: false, lanes: [], releases: [], areas: [] } } as unknown as AnyWiki;
+    expect(clientVisibleSections(off)).not.toContain("board");
   });
 
   /**

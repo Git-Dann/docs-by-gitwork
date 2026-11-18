@@ -1,0 +1,89 @@
+/**
+ * How much a client can add to their Board, and how often the team hears about it.
+ *
+ * The Board writes real tasks to the team's board and each one notifies people, so a script, or
+ * a client user with a stuck form, could bury the board in cards and the team in push
+ * notifications. The per-IP limit on the routes (240 writes a minute) is a wall for a runaway
+ * loop on one connection, not a ceiling on what lands. These caps count what actually landed for
+ * THIS client, the same way src/server/wiki-intake-limit.ts does for the intake API.
+ *
+ * The thresholds are pure so they can be tested without a database; the wrappers below only
+ * count. Generous for a client planning a release (thirty new cards in an hour is a long
+ * session), a wall for anything automated.
+ */
+
+import { prisma } from "@/lib/prisma";
+
+export const BOARD_QUOTA = {
+  cardsPerHour: 30,
+  cardsPerDay: 200,
+  feedbackPerHour: 60,
+  /** The team hears about new client cards at most once in this window, with a count. */
+  notifyWindowMs: 10 * 60 * 1000,
+} as const;
+
+/** Carries 429 so `fromError` maps it to "Too Many Requests". */
+export class BoardRateLimitedError extends Error {
+  readonly status = 429;
+  constructor(message: string) {
+    super(message);
+    this.name = "BoardRateLimitedError";
+  }
+}
+
+/** Null when another card is allowed, otherwise what to tell the client. */
+export function boardCardQuotaBreach(counts: { hour: number; day: number }): string | null {
+  if (counts.hour >= BOARD_QUOTA.cardsPerHour) {
+    return `That's ${BOARD_QUOTA.cardsPerHour} new cards in the last hour, the most the board takes at once. Your cards are all saved; add more in a little while.`;
+  }
+  if (counts.day >= BOARD_QUOTA.cardsPerDay) {
+    return `That's ${BOARD_QUOTA.cardsPerDay} new cards today, the most the board takes in a day. Your cards are all saved; add more tomorrow, or ask Gitwork to import a larger list.`;
+  }
+  return null;
+}
+
+/** Null when more feedback is allowed, otherwise what to tell the client. */
+export function boardFeedbackQuotaBreach(hour: number): string | null {
+  if (hour >= BOARD_QUOTA.feedbackPerHour) {
+    return `That's ${BOARD_QUOTA.feedbackPerHour} comments in the last hour, the most the board takes. Everything you've written is saved; try again in a little while.`;
+  }
+  return null;
+}
+
+/** Whether the team should be told about new client cards now, given when they last were. */
+export function shouldNotifyBoardCards(lastNotifiedAt: Date | null, now: Date): boolean {
+  return !lastNotifiedAt || now.getTime() - lastNotifiedAt.getTime() >= BOARD_QUOTA.notifyWindowMs;
+}
+
+/**
+ * Cards a client added on this board in a window. Read from the marker every client-added card
+ * carries (`metadata.createdByClient`), so cards the team makes, or an import writes, never count
+ * against the client.
+ */
+export async function countClientCards(clientId: string, since: Date): Promise<number> {
+  const rows = await prisma.$queryRaw<Array<{ n: bigint }>>`
+    SELECT count(*)::bigint AS n FROM "Task"
+    WHERE "clientId" = ${clientId}
+      AND "createdAt" >= ${since}
+      AND "metadata" ? 'createdByClient'`;
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function assertWithinBoardCardQuota(clientId: string): Promise<void> {
+  const now = Date.now();
+  const [hour, day] = await Promise.all([
+    countClientCards(clientId, new Date(now - 60 * 60 * 1000)),
+    countClientCards(clientId, new Date(now - 24 * 60 * 60 * 1000)),
+  ]);
+  const breach = boardCardQuotaBreach({ hour, day });
+  if (breach) throw new BoardRateLimitedError(breach);
+}
+
+/** The client's own feedback on this wiki in the last hour. The team's replies never count. */
+export async function assertWithinBoardFeedbackQuota(wikiId: string): Promise<void> {
+  const hour = await prisma.taskClientFeedback.count({
+    where: { wikiId, authorUserId: null, createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
+  });
+  const breach = boardFeedbackQuotaBreach(hour);
+  if (breach) throw new BoardRateLimitedError(breach);
+}

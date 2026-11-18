@@ -12,6 +12,7 @@ import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
 import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
+import { BOARD_LIMITS, CLIENT_CARD_TYPES, FEEDBACK_KINDS } from "@/lib/wiki-board";
 import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
 import {
   LIST_AREA_MAX,
@@ -2704,4 +2705,48 @@ export const commitmentSettingsSchema = z
     meetingsEnabled: z.boolean().optional(),
     calendarEnabled: z.boolean().optional(),
   })
+  .strict();
+
+
+// ─── Client Board (src/lib/wiki-board.ts) ─────────────────────────────────────
+
+/** A card a client adds from their wiki Board. Links must be http(s), the Launchpad allow-list. */
+export const boardCardCreateSchema = z
+  .object({
+    title: z.string().trim().min(1, "Give the card a title.").max(BOARD_LIMITS.title),
+    itemType: z.enum(CLIENT_CARD_TYPES),
+    laneKey: z.string().min(1).max(40),
+    releaseId: z.string().cuid().nullish(),
+    priority: taskPrioritySchema.optional(),
+    description: z.string().max(BOARD_LIMITS.description).nullish(),
+    links: z
+      .array(
+        z
+          .string()
+          .trim()
+          .max(2048)
+          .refine((v) => safeLaunchpadLink(v) !== null, LAUNCHPAD_LINK_ERROR),
+      )
+      .max(BOARD_LIMITS.links)
+      .optional(),
+  })
+  .strict();
+
+export const boardMoveSchema = z
+  .object({
+    laneKey: z.string().min(1).max(40),
+    orderKey: z.number().finite(),
+  })
+  .strict();
+
+export const boardFeedbackSchema = z
+  .object({
+    kind: z.enum(FEEDBACK_KINDS),
+    body: z.string().max(BOARD_LIMITS.feedback).nullish(),
+  })
+  .strict();
+
+/** The team's reply on a card's client feedback thread: comments only. */
+export const teamFeedbackSchema = z
+  .object({ body: z.string().trim().min(1, "Write something first.").max(BOARD_LIMITS.feedback) })
   .strict();

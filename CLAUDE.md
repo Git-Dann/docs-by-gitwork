@@ -10112,7 +10112,7 @@ and two more on the board. Both levels now live on one board.
 - **A task in a release counts as planned** (plan health, My Day "From the plan", Foreman
   PLAN_DRIFT), not only one in a category.
 
-## 125 (Forge import). Recent Changes (November 2026) — Importing a client's plan from their planning tool
+## 125. Recent Changes (November 2026) — Importing a client's plan from their planning tool
 
 Big Wedge plans in a WordPress "Forge" board that publishes the whole plan as public JSON
 (`https://ops.bigwedgegolf.com/wp-json/forge/v1/items`: features, sub-items, bugs, feedback,
@@ -10156,3 +10156,67 @@ Same change: releases in the CSV import and Sheets "send to board" (validated to
 only), releases on the public `/timeline/[token]` link with the Categories | Releases switch, and a
 card's dev tasks read from the server (`GET /api/tasks/[id]/linked`, archived included) instead of
 the board's cached list.
+
+## 126. Recent Changes (November 2026) — The client's Board: move, add and sign off cards in their wiki
+
+A client-wiki section, **Board** (id `board`, `ClientWiki.boardEnabled`, additive): the client's
+product cards on the team's own task board, in the client's columns (default columns included,
+§124), grouped by release under each column. Asked for by Big Wedge, whose own planning site
+had a Kanban grouped by release and who wanted Foundry to be the one place the plan lives.
+
+- **It is the real board.** A card the client adds is a `Task` at once (`createdById` null,
+  `metadata.createdByClient`), a move is a real status change (`moveTaskForClient` in
+  `tasks.ts`, same status stamps as a team move). Nothing is copied, so nothing is lost between
+  the client's view and the devs'.
+- **Rules** (`src/lib/wiki-board.ts`, pure, tested):
+  - The client moves cards between any columns **except into or out of Done**, and can't
+    rearrange live cards either. Going live, or reopening, is the team's call: it drives
+    standups, Foreman and the Delivery figures.
+  - ⚠️ **The client only acts on their product cards and the cards they added**
+    (`clientMayActOn`). The team's plain dev tasks are a 404 to every client write and read of
+    the feedback thread.
+  - The client adds cards only to **Backlog and To do** columns, as Feature, Bug or Feedback.
+    Links must be http(s) (the Launchpad allow-list) and are stored as markdown in the description.
+  - **Sign-off is derived** from the latest Approved / Changes needed entry, never stored. A
+    comment never changes it. "Changes needed" must say what. Only the client signs off: a
+    Gitwork session on the client's page, or the team's own route, can only comment.
+- **Data:** `TaskClientFeedback` (additive): the thread both sides see, unlike `TaskComment`
+  (internal notes, never shown to the client). `TaskDTO.clientSignOff` is derived from it in
+  `attachCardInfo`, one query per list, and is in both list allow-lists.
+- **Loader:** `loadWikiBoard` (only while the section is on) sends top-level, live tasks.
+  `isCard` marks product cards. ⚠️ **A dev task's description is never loaded for the board**
+  (`descriptionsFor` reads descriptions for cards only): devs paste internal notes, Slack and
+  sometimes secrets into them. **The client doesn't see dev tasks at all** unless the team
+  switches on `ClientWiki.boardShowAllTasks` ("Show the client all tasks (titles only)" on the
+  team's Board); even then a dev task goes as title, column and people only, read-only, and the
+  client's counts leave them out when it's off. Done columns send their newest 50 cards and newest 50 other tasks, with counts.
+  Layout is pure (`src/lib/wiki-board-layout.ts`) so the server and the demo build it the same.
+  People on a card are first name + initial; no emails, ids, internal notes or money.
+  `forPublicBoard` rebuilds every card from an allow-list.
+- **Writes** go through `src/server/wiki-board-access.ts`, the Sheets posture: token → section on
+  → a per-section link must be for the Board → wiki sign-in or this client's team → per-IP rate
+  limit. ⚠️ **A Foundry session alone is not the team** (`teamWriterFor`): it must be an active,
+  non-guest member of the client's own workspace who can open this client. A session from
+  another business, a guest or an unassigned developer is treated like anyone else. It looks the token up directly rather than through `resolvePublicWiki`, which builds the
+  whole wiki (this board included) per call; a drag writes on every move. Every write then loads
+  the task **scoped to the wiki's client** (`loadOwnTask`), so another client's card is a 404.
+  A move is a compare-and-set (`moveTaskForClient`'s `expect`): it lands only while the card is
+  on this client, live, not Done and still in the status the client saw, so a drag in flight
+  can't reopen a card the team just marked Done. Otherwise 409.
+- **Limits** (`src/server/wiki-board-limit.ts`, pure thresholds): a client adds at most 30 cards
+  an hour and 200 a day (counted from `metadata.createdByClient`, so team and imported cards
+  never count) and 60 comments an hour. The team hears about new client cards once per wiki per
+  10 minutes, with a count, claimed on `ClientWiki.boardClientNotifiedAt`.
+- **A per-section link for another section doesn't carry the board** (`scopeBoardToSection`).
+  ⚠️ Known gap: the other sections aren't cut down that way; a per-section link still sends the
+  rest of the wiki DTO, behind the wiki login.
+- **Settings** (`PATCH /api/clients/[slug]/wiki/board` { enabled?, showAllTasks? }) are gated
+  like Sheets' (`resolveInternalSheets`): 'Manage clients' and access to the client.
+- **Team side:** the task drawer has a **Client feedback** section (thread + reply), on product
+  cards always and on other tasks once the client has said something. Board cards show the
+  sign-off chip. The internal wiki shows the same Board (`audience="team"`): drag anywhere,
+  reply; new cards are added on the task board.
+- **Notifications:** new event `tasks.client_feedback` (in-app + push) to the card's assignees,
+  or the client's team when nobody is on it, grouped per card. A client adding a card raises
+  the existing `tasks.client_request`.
+- Demo: `/demo/wiki#board` (team view; moves, replies and the toggle work in memory).

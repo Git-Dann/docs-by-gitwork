@@ -77,6 +77,7 @@ import {
 } from "@/lib/wiki-comparisons";
 import type { WikiComparison } from "@/types/wiki-comparisons";
 import { setWikiSheetsEnabled } from "@/server/wiki-sheets";
+import { setWikiBoardEnabled } from "@/server/wiki-board";
 import { buildSheetTools } from "@/server/mcp/sheet-tools";
 import { setWikiInsightsEnabled } from "@/server/wiki-insights";
 import { setWikiEstimatesEnabled } from "@/server/wiki-estimates";
@@ -999,6 +1000,7 @@ function projectComparison(table: WikiComparison) {
 const WIKI_SECTION_TOGGLES = {
   comparisons: setWikiComparisonsEnabled,
   sheets: setWikiSheetsEnabled,
+  board: setWikiBoardEnabled,
   insights: setWikiInsightsEnabled,
   costs: setWikiCostsEnabled,
   estimates: setWikiEstimatesEnabled,

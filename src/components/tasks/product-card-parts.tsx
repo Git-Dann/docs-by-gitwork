@@ -70,6 +70,28 @@ export function CardProgressChip({ progress }: { progress: TaskDTO["cardProgress
 }
 
 /**
+ * The client's sign-off from their wiki Board (src/lib/wiki-board.ts): Approved or Changes needed.
+ * Shown on the client's board and the team's, so both read the same thing.
+ */
+export function SignOffChip({ signOff, className }: { signOff: "approved" | "changes_requested" | null; className?: string }) {
+  if (!signOff) return null;
+  const approved = signOff === "approved";
+  return (
+    <span
+      className={cn(
+        chip,
+        approved ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700",
+        className,
+      )}
+      style={{ fontFamily: MONO }}
+      title={approved ? "The client approved this" : "The client asked for changes"}
+    >
+      {approved ? "Approved" : "Changes needed"}
+    </span>
+  );
+}
+
+/**
  * Pick the card a dev task delivers. The list is the client's product cards; the panel is
  * anchored (portalled), so a dialog body that scrolls can't clip it (§55).
  */

@@ -42,6 +42,7 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   "tasks.status_changed": { icon: ArrowPathRoundedSquareIcon, label: "Tasks" },
   "tasks.commented": { icon: ChatBubbleLeftEllipsisIcon, label: "Tasks" },
   "tasks.client_request": { icon: InboxArrowDownIcon, label: "Client request" },
+  "tasks.client_feedback": { icon: ChatBubbleLeftEllipsisIcon, label: "Client feedback" },
   "tasks.mentioned": { icon: AtSymbolIcon, label: "Tasks" },
   "tasks.blocker_response": { icon: ChatBubbleLeftEllipsisIcon, label: "Tasks" },
   "backstage.leave_submitted": { icon: CalendarDaysIcon, label: "Backstage" },

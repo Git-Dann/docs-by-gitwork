@@ -54,6 +54,7 @@ import { loadWikiCosts } from "./wiki-costs";
 import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
 import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
 import { EMPTY_SHEETS, forPublicSheets, loadWikiSheets } from "./wiki-sheets";
+import { EMPTY_BOARD, forPublicBoard, loadWikiBoard, scopeBoardToSection } from "./wiki-board";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { clientVisibleSections } from "@/lib/wiki-client-visibility";
 import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSection } from "./wiki-metrics";
@@ -65,6 +66,7 @@ import { EMPTY_DRIVE, type WikiDriveSection } from "@/lib/client-drive";
 import type { WikiEstimatesSection } from "@/types/wiki-estimates";
 import type { WikiComparisonsSection } from "@/types/wiki-comparisons";
 import type { WikiSheetsSection } from "@/types/wiki-sheets";
+import type { WikiBoardSection } from "@/types/wiki-board";
 import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
 import { getLaunchpadByWikiId } from "./launchpad";
@@ -458,6 +460,12 @@ export interface WikiDTO {
    * and is empty while the section is off.
    */
   sheets: WikiSheetsSection;
+  /**
+   * Board — the client's product cards on the team's task board, grouped by release
+   * (src/server/wiki-board.ts). The client can move, add and sign off cards. Only loaded while
+   * the section is on; the client's copy is cut by `forPublicBoard`.
+   */
+  board: WikiBoardSection;
   /**
    * Whether the Delivery section is on. There is no `delivery` DTO: the page derives
    * everything from `timeline` and `blockers`, which are already here — so a loader
@@ -1149,6 +1157,7 @@ async function buildDTO(
     estimates,
     comparisons,
     sheets,
+    board,
     support,
     standups,
     metrics,
@@ -1200,6 +1209,7 @@ async function buildDTO(
     settle("estimates", () => loadWikiEstimates(wiki.clientId), EMPTY_ESTIMATES),
     settle("comparisons", () => loadWikiComparisons(wiki.clientId), EMPTY_COMPARISONS),
     settle("sheets", () => loadWikiSheets(wiki.clientId), EMPTY_SHEETS),
+    settle("board", () => loadWikiBoard(wiki.clientId), EMPTY_BOARD),
     settle("support", () => loadWikiSupport(wiki.clientId), {
       enabled: false,
       linked: false,
@@ -1284,6 +1294,7 @@ async function buildDTO(
     estimates,
     comparisons,
     sheets,
+    board,
     deliveryEnabled: wiki.deliveryEnabled ?? false,
     roundupEnabled: wiki.roundupEnabled ?? false,
     support,
@@ -3354,6 +3365,7 @@ const SHAREABLE_SECTIONS = [
   "estimates",
   "comparisons",
   "sheets",
+  "board",
   "roundup",
   "delivery",
   "support",
@@ -3438,6 +3450,8 @@ function forPublic(dto: WikiDTO): WikiDTO {
     // Deleted rows and who on our team holds each task stay on the server; nothing at all
     // leaves while the section is off.
     sheets: forPublicSheets(dto.sheets),
+    // The board is built from an allow-list of client-safe fields; nothing leaves while it's off.
+    board: forPublicBoard(dto.board),
     // Whose Google account reads the folder for the client is ours, not theirs.
     drive: forPublicDrive(dto.drive),
     // Only PRODUCTION monitors, and their incidents, leave: a staging box being redeployed is
@@ -3495,7 +3509,10 @@ export async function resolvePublicWiki(
       : {};
   const section = Object.keys(map).find((k) => map[k] === token) ?? null;
   if (!section) return null;
-  return { wiki: withPublicAvatars(forPublic(await buildDTO(bySection)), token), onlySection: section };
+  return {
+    wiki: scopeBoardToSection(withPublicAvatars(forPublic(await buildDTO(bySection)), token), section),
+    onlySection: section,
+  };
 }
 
 /**

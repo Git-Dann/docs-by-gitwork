@@ -1573,6 +1573,15 @@ model ClientWiki {
   /// RoundUp — the weekly summary. Derived entirely from the timeline the wiki already
   /// carries, so this flag is the only stored state the section has.
   roundupEnabled      Boolean                @default(false)
+  /// Board — the client's own Kanban of their product cards, grouped by release. The client can
+  /// move cards (never into or out of Done), add cards and leave feedback or sign off a card.
+  boardEnabled        Boolean                @default(false)
+  /// Board: also show the client the team's plain dev tasks (not product cards), as titles only
+  /// and read-only. Off by default: a dev task's description holds internal notes.
+  boardShowAllTasks   Boolean                @default(false)
+  /// Board: when the team was last told the client added cards. One notification per wiki per
+  /// 10 minutes, claimed with a conditional update so two cards at once can't both send.
+  boardClientNotifiedAt DateTime?
   /// Whether the Support section is enabled — the client's own Care figures, the same
   /// ones the monthly report already emails them. Off unless a linked SupportClient
   /// exists AND someone turns it on.
@@ -4781,6 +4790,7 @@ model Task {
   subtasks         Task[]            @relation("Subtasks")
   comments         TaskComment[]
   attachments      TaskAttachment[]
+  clientFeedback   TaskClientFeedback[]
   slackMessageRefs SlackMessageRef[]
 
   @@index([workspaceId, clientId, status])
@@ -4853,6 +4863,28 @@ model SlackUpdateLog {
 
 /// Free-text notes on a task. A simple append-only thread (mirrors how Care
 /// keeps SupportMessage rows). Author is nullable so notes survive member removal.
+/// A client's feedback on a task from their wiki Board, or the team's reply to it. Shown to both
+/// sides, unlike TaskComment (the team's internal notes, never shown to the client). A card's
+/// sign-off (Approved / Changes needed) is DERIVED from the latest approved/changes_requested
+/// entry, never stored on the task (src/lib/wiki-board.ts).
+model TaskClientFeedback {
+  id               String   @id @default(cuid())
+  taskId           String
+  wikiId           String
+  /// "comment" | "approved" | "changes_requested"
+  kind             String
+  body             String?  @db.Text
+  /// The client wiki user who wrote it (from their sign-in cookie, never the request body).
+  authorWikiUserId String?
+  /// The Gitwork team member who wrote it.
+  authorUserId     String?
+  authorName       String
+  createdAt        DateTime @default(now())
+  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+}
+
 model TaskComment {
   id        String   @id @default(cuid())
   taskId    String

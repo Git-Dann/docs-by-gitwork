@@ -14,8 +14,20 @@
  */
 
 import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
-import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
+import { boardLanes, laneKeyFor, parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
 import { cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
+import { layoutBoard } from "@/lib/wiki-board-layout";
+import {
+  cardDescription,
+  clientCanAddToStage,
+  clientMoveRefusal,
+  deriveSignOff,
+  feedbackRefusal,
+  isClientCardType,
+  isFeedbackKind,
+  shortPersonName,
+} from "@/lib/wiki-board";
+import type { WikiBoardCard, WikiBoardFeedback, WikiBoardSection } from "@/types/wiki-board";
 import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
 import { demoAiAnswersReport, demoSaveAiAnswersConfig, demoStartAiAnswersRun } from "@/lib/demo/demo-ai-answers";
 import { parseAiSearchRange } from "@/lib/ai-search";
@@ -207,6 +219,7 @@ function mkTask(
     externalRef: null,
     productCard: partial.delivers ?? null,
     cardProgress: null,
+    clientSignOff: null,
     createdAt: atDays(-14),
     updatedAt: atDays(-(partial.touchedDaysAgo ?? 1)),
   };
@@ -262,6 +275,8 @@ function demoTasksWithCards(): TaskDTO[] {
       cardProgress: isProductCard(t)
         ? cardProgress(demoBoardTasks.filter((d) => d.productCard?.id === t.id && !d.archivedAt).map((d) => d.status))
         : null,
+      // The client's sign-off, derived from the Board's feedback like the server does.
+      clientSignOff: deriveSignOff(demoBoardFeedback.get(t.id) ?? []),
     };
   });
 }
@@ -1594,6 +1609,7 @@ const demoWiki: WikiDTO = {
    */
   comparisons: { enabled: true, comparisons: demoComparisons },
   sheets: demoSheets,
+  board: { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] },
   estimates: {
     enabled: true,
     estimates: [
@@ -4199,6 +4215,161 @@ let demoBoardColumns: BoardColumnDef[] = [
   { id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" },
 ];
 
+/* ── Client Board (src/server/wiki-board.ts) ───────────────────────────────────────────── */
+
+let demoBoardEnabled = true;
+/** The team's "show all tasks to the client" switch, in memory like the rest of the demo board. */
+let demoBoardShowAllTasks = false;
+
+/** The demo's client feedback, per task. Seeded so the thread and the sign-off chips show. */
+const demoBoardFeedback = new Map<string, WikiBoardFeedback[]>([
+  [
+    "c1",
+    [
+      {
+        id: "fb-1",
+        kind: "changes_requested",
+        body: "The save button should sit beside the search box, not under the results.",
+        authorName: "Priya Shah",
+        side: "client",
+        createdAt: atDays(-2),
+      },
+      { id: "fb-2", kind: "comment", body: "Moved it. It's in today's build.", authorName: DEV.name, side: "team", createdAt: atDays(-1) },
+    ],
+  ],
+]);
+
+function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
+  const release = t.release ? demoReleases.find((r) => r.id === t.release!.id) : undefined;
+  const entries = demoBoardFeedback.get(t.id) ?? [];
+  const isCard = isProductCard(t);
+  const addedByClient = Boolean(t.metadata && "createdByClient" in t.metadata);
+  return {
+    id: t.id,
+    title: t.title,
+    itemType: t.itemType,
+    tier: t.tier,
+    area: t.area,
+    priority: t.priority,
+    status: t.status,
+    laneKey: laneKeyFor(t, cols),
+    orderKey: t.orderKey,
+    release: release ? { id: release.id, label: releaseLabel(release) } : null,
+    progress: t.cardProgress,
+    dueDate: t.dueDate,
+    people: t.assignees.map((a) => shortPersonName(a.name)).filter((n): n is string => Boolean(n)),
+    signOff: deriveSignOff(entries),
+    feedbackCount: entries.length,
+    // Same rule as the server (`descriptionsFor`): a dev task's description never reaches the board.
+    description: isCard || addedByClient ? t.description : null,
+    subtasks: [],
+    isCard,
+    addedByClient,
+    updatedAt: t.updatedAt,
+  };
+}
+
+/** Northwind's board, built from the in-memory task list with the same layout as the server. */
+function demoBoardSection(): WikiBoardSection {
+  if (!demoBoardEnabled) return { enabled: false, showAllTasks: false, lanes: [], releases: [], areas: [] };
+  const tasks = demoTasksWithCards().filter((t) => t.client.slug === "northwind" && !t.parentId && !t.archivedAt);
+  const releases = sortReleases(demoReleases).map((r) => ({
+    id: r.id,
+    label: releaseLabel(r),
+    startDate: r.startDate,
+    endDate: r.endDate,
+  }));
+  const laid = layoutBoard({
+    cards: tasks.map((t) => demoBoardCard(t, demoBoardColumns)),
+    columns: demoBoardColumns,
+    releases,
+    completedAt: new Map(tasks.map((t) => [t.id, t.completedAt])),
+  });
+  return { ...laid, showAllTasks: demoBoardShowAllTasks };
+}
+
+function bodyOf(init?: { body?: unknown }): Record<string, unknown> {
+  return typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {};
+}
+
+/** undefined = not a board route. */
+function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unknown }): unknown {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (/^\/api\/clients\/[^/]+\/wiki\/board$/.test(pathname) && method === "PATCH") {
+    const body = bodyOf(init);
+    if (typeof body.enabled === "boolean") demoBoardEnabled = body.enabled;
+    if (typeof body.showAllTasks === "boolean") demoBoardShowAllTasks = body.showAllTasks;
+    return { enabled: demoBoardEnabled, showAllTasks: demoBoardShowAllTasks };
+  }
+  const feedback =
+    /^\/api\/tasks\/([^/]+)\/client-feedback$/.exec(pathname) ??
+    /^\/api\/wiki\/[^/]+\/board\/tasks\/([^/]+)\/feedback$/.exec(pathname);
+  if (feedback) {
+    const id = feedback[1];
+    const team = pathname.startsWith("/api/tasks/");
+    if (method === "POST") {
+      const body = bodyOf(init);
+      const kind = team ? "comment" : body.kind;
+      if (!isFeedbackKind(kind)) return { error: "Unknown kind", __status: 400 };
+      const refusal = feedbackRefusal(kind, typeof body.body === "string" ? body.body : "");
+      if (refusal) return { error: refusal, __status: 400 };
+      const entry: WikiBoardFeedback = {
+        id: `fb-${Date.now()}`,
+        kind,
+        body: typeof body.body === "string" && body.body.trim() ? body.body.trim() : null,
+        authorName: team ? DEV.name : "Priya Shah",
+        side: team ? "team" : "client",
+        createdAt: new Date().toISOString(),
+      };
+      demoBoardFeedback.set(id, [...(demoBoardFeedback.get(id) ?? []), entry]);
+      return { entry };
+    }
+    return { feedback: demoBoardFeedback.get(id) ?? [] };
+  }
+  const move = /^\/api\/wiki\/[^/]+\/board\/tasks\/([^/]+)\/move$/.exec(pathname);
+  if (move && method === "POST") {
+    const task = demoBoardTasks.find((t) => t.id === move[1]);
+    const body = bodyOf(init);
+    const lane = boardLanes(demoBoardColumns).find((l) => l.key === body.laneKey);
+    if (!task || !lane) return { error: "Not found", __status: 404 };
+    const refusal = clientMoveRefusal(task.status, lane.stage);
+    if (refusal) return { error: refusal, __status: 403 };
+    task.status = lane.stage;
+    task.boardColumnId = lane.columnId;
+    if (typeof body.orderKey === "number") task.orderKey = body.orderKey;
+    return { card: demoBoardCard(task, demoBoardColumns) };
+  }
+  if (/^\/api\/wiki\/[^/]+\/board\/tasks$/.test(pathname) && method === "POST") {
+    const body = bodyOf(init);
+    const lane = boardLanes(demoBoardColumns).find((l) => l.key === body.laneKey);
+    if (!lane || !clientCanAddToStage(lane.stage)) return { error: "New cards go in an early column.", __status: 403 };
+    if (!isClientCardType(body.itemType) || typeof body.title !== "string" || !body.title.trim()) {
+      return { error: "Give the card a title.", __status: 400 };
+    }
+    const release = typeof body.releaseId === "string" ? demoReleases.find((r) => r.id === body.releaseId) : undefined;
+    const task = mkTask({
+      id: `cc-${Date.now()}`,
+      title: body.title.trim(),
+      clientSlug: "northwind",
+      status: lane.stage,
+      priority: (body.priority as TaskDTO["priority"]) ?? "MEDIUM",
+      unassigned: true,
+      touchedDaysAgo: 0,
+      release: release ? { id: release.id, version: release.version, name: release.name } : null,
+      description: cardDescription(
+        typeof body.description === "string" ? body.description : null,
+        Array.isArray(body.links) ? (body.links as string[]) : [],
+      ) ?? undefined,
+      card: { itemType: body.itemType },
+    });
+    task.boardColumnId = lane.columnId;
+    task.metadata = { createdByClient: { name: "Priya Shah" } };
+    demoBoardTasks.push(task);
+    return { card: demoBoardCard(task, demoBoardColumns) };
+  }
+  return undefined;
+}
+
 /** Monitors added through the demo's Add monitor popup, by client slug. Merged into the board. */
 const demoAddedMonitors = new Map<string, { name: string; target: string; environment: string }[]>();
 /** Edits made through the Monitors page's Edit popup, by monitor id. Applied over the board. */
@@ -4630,6 +4801,7 @@ export function resolveDemoApi(
       // otherwise compare the cache against the very object that changed and see no change.
       comparisons: JSON.parse(JSON.stringify(demoWiki.comparisons)) as WikiDTO["comparisons"],
       sheets: JSON.parse(JSON.stringify(demoSheets)) as WikiDTO["sheets"],
+      board: demoBoardSection(),
     };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).
@@ -4800,6 +4972,11 @@ export function resolveDemoApi(
   // `/api/tasks` (list) — after the more specific /api/tasks/* cases above.
   if (pathname === "/api/tasks" || pathname.startsWith("/api/tasks?")) {
     return demoTasksWithCards();
+  }
+  // The client Board (src/server/wiki-board.ts): feedback, client moves and new cards, in memory.
+  {
+    const board = resolveDemoBoard(pathname, init);
+    if (board !== undefined) return board;
   }
   if (pathname.startsWith("/api/tasks/")) {
     // A task's detail, an edit or a move, applied to the in-memory board; anything else
