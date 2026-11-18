@@ -55,8 +55,6 @@ export const TaskCard = memo(function TaskCard({
         "group rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-3 text-left transition",
         onClick && "cursor-pointer hover:border-[var(--brand-300)] hover:shadow-[0_1px_3px_rgba(0,0,0,0.04)]",
         dragging && "rotate-1 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]",
-        // Blocked tasks get a red left accent so they jump out even before you read the badge.
-        task.blockedReason && "border-l-2 border-l-red-400",
         className,
       )}
     >
