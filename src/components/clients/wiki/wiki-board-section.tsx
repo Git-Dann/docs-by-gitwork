@@ -52,10 +52,12 @@ import { WikiBoardTimeline } from "@/components/clients/wiki/wiki-board-timeline
 import { WikiBoardCalendar } from "@/components/clients/wiki/wiki-board-calendar";
 import { useToast } from "@/components/ui/toast";
 import { CardProgressChip, ItemTypeChip, PreviousValues, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
-import { ITEM_TYPE_LABELS, TIERS, TIER_LABELS, isItemType } from "@/lib/tasks/product-cards";
+import { BOARD_LIST_MAX, ITEM_TYPE_LABELS, TIERS, TIER_LABELS, isItemType } from "@/lib/tasks/product-cards";
 import { splitCardDescription, uploadBatches } from "@/lib/wiki-board-edit";
 import { safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { groupByRelease } from "@/lib/wiki-board-layout";
+import { boardLists, readBoardPrefs, writeBoardPrefs, type BoardView, type TableGroupBy, type TableSort } from "@/lib/wiki-board-table";
+import { WikiBoardTable } from "@/components/clients/wiki/wiki-board-table";
 import {
   BOARD_EDIT_TYPES,
   BOARD_LIMITS,
@@ -157,9 +159,39 @@ export function WikiBoardSectionView({
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null); // lane key, or "" for the toolbar
   const [phoneLane, setPhoneLane] = useState<string>(section.lanes[0]?.key ?? "");
-  // The same cards three ways: columns (the Board), releases over time (the Timeline), or by
-  // date (the Calendar).
-  const [view, setView] = useState<"board" | "timeline" | "calendar">("board");
+  // The same cards four ways: columns (the Board), rows (the Table), releases over time (the
+  // Timeline), or by date (the Calendar). The view, the table's grouping and its sort are this
+  // viewer's own, remembered per board in their browser.
+  const boardKey = target.mode === "internal" ? `team:${target.slug}` : `link:${target.token.slice(0, 16)}`;
+  const [view, setViewState] = useState<BoardView>("board");
+  const [groupBy, setGroupByState] = useState<TableGroupBy | null>(null);
+  const [tableSort, setTableSortState] = useState<TableSort | null>(null);
+  // Read after mount: the server render has no storage, and a different first paint would fail
+  // hydration on the client's server-rendered page.
+  useEffect(() => {
+    const prefs = readBoardPrefs(boardKey);
+    if (prefs.view) setViewState(prefs.view);
+    if (prefs.groupBy) setGroupByState(prefs.groupBy);
+    if (prefs.sort !== undefined) setTableSortState(prefs.sort ?? null);
+  }, [boardKey]);
+  const remember = (next: { view?: BoardView; groupBy?: TableGroupBy | null; sort?: TableSort | null }) =>
+    writeBoardPrefs(boardKey, {
+      view: next.view ?? view,
+      groupBy: (next.groupBy !== undefined ? next.groupBy : groupBy) ?? undefined,
+      sort: next.sort !== undefined ? next.sort : tableSort,
+    });
+  const setView = (v: BoardView) => {
+    setViewState(v);
+    remember({ view: v });
+  };
+  const setGroupBy = (g: TableGroupBy) => {
+    setGroupByState(g);
+    remember({ groupBy: g });
+  };
+  const setTableSort = (s: TableSort | null) => {
+    setTableSortState(s);
+    remember({ sort: s });
+  };
 
   const visible = useMemo(() => {
     let list =
@@ -250,6 +282,7 @@ export function WikiBoardSectionView({
             onChange={setView}
             options={[
               { value: "board", label: "Board" },
+              { value: "table", label: "Table" },
               { value: "timeline", label: "Timeline" },
               { value: "calendar", label: "Calendar" },
             ]}
@@ -318,6 +351,32 @@ export function WikiBoardSectionView({
         ) : null}
         {view === "calendar" ? (
           <WikiBoardCalendar cards={visible} releases={section.releases} readOnly={readOnly} onOpen={setOpenId} />
+        ) : null}
+        {view === "table" ? (
+          <WikiBoardTable
+            cards={visible}
+            allCards={cards}
+            section={section}
+            target={target}
+            asClient={audience === "client" || mode === "client"}
+            addLanes={addLanes}
+            canAdd={canAdd && mode !== "client"}
+            canDelete={mode !== "client" && (audience === "client" ? target.mode === "public" : target.mode === "internal")}
+            hiddenCount={section.lanes.reduce(
+              (n, l) => n + (mode === "cards" || (mode === "client" && !section.showAllTasks) ? l.hidden.cards : l.hidden.cards + l.hidden.other),
+              0,
+            )}
+            groupBy={groupBy}
+            onGroupBy={setGroupBy}
+            sort={tableSort}
+            onSort={setTableSort}
+            onOpen={setOpenId}
+            onMove={(card, lane) => void move(card, lane)}
+            setCards={setCards}
+            onPlace={place}
+            onRemoved={(ids) => setCards((list) => list.filter((c) => !ids.includes(c.id)))}
+            refresh={refresh}
+          />
         ) : null}
 
         <DndContext id={dndId} sensors={sensors} onDragEnd={onDragEnd}>
@@ -923,6 +982,7 @@ function CardDetail({
 
   const meta = [
     card.release?.label,
+    card.list ? `List: ${card.list}` : null,
     card.area,
     TASK_PRIORITY_LABELS[card.priority as TaskPriority],
     card.estimateHours !== null ? `${card.estimateHours}h estimate` : null,
@@ -1151,6 +1211,7 @@ const EMPTY_FORM: BoardCardForm = {
   releaseId: null,
   tier: null,
   area: null,
+  list: null,
   priority: "MEDIUM",
   estimateHours: null,
   dueDate: null,
@@ -1170,6 +1231,7 @@ function formFromCard(card: WikiBoardCard): BoardCardForm {
     releaseId: card.release?.id ?? null,
     tier: card.tier,
     area: card.area,
+    list: card.list,
     priority: card.priority,
     estimateHours: card.estimateHours,
     dueDate: card.dueDate ? card.dueDate.slice(0, 10) : null,
@@ -1249,8 +1311,10 @@ function CardForm({
       } else {
         // Only what changed goes up, so the thread records what was really edited.
         const patch: Record<string, unknown> = {};
-        for (const k of ["title", "itemType", "releaseId", "tier", "area", "priority", "estimateHours", "dueDate", "description", "links", "dependsOn"] as const) {
-          if (JSON.stringify(next[k] ?? null) !== JSON.stringify(initial[k] ?? null)) patch[k] = k === "area" ? next.area?.trim() || null : next[k];
+        for (const k of ["title", "itemType", "releaseId", "tier", "area", "list", "priority", "estimateHours", "dueDate", "description", "links", "dependsOn"] as const) {
+          if (JSON.stringify(next[k] ?? null) !== JSON.stringify(initial[k] ?? null)) {
+            patch[k] = k === "area" || k === "list" ? next[k]?.trim() || null : next[k];
+          }
         }
         saved = Object.keys(patch).length ? await updateBoardCardApi(target, card!.id, patch) : card!;
       }
@@ -1355,6 +1419,22 @@ function CardForm({
             <datalist id="board-areas">
               {section.areas.map((a) => (
                 <option key={a} value={a} />
+              ))}
+            </datalist>
+          </label>
+          <label className="block">
+            <span className="widget-data-label text-[var(--text-4)]">List</span>
+            <input
+              className={field}
+              list="board-lists"
+              value={form.list ?? ""}
+              maxLength={BOARD_LIST_MAX}
+              onChange={(e) => set("list", e.target.value)}
+              placeholder="Optional, e.g. QA review"
+            />
+            <datalist id="board-lists">
+              {boardLists(cards).map((l) => (
+                <option key={l} value={l} />
               ))}
             </datalist>
           </label>

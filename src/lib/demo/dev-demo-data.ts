@@ -265,6 +265,16 @@ export const demoBoardTasks: TaskDTO[] = [
   mkTask({ id: "c8", release: REL.v150, title: "Export chart as image", dueDate: atDays(12), clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
   mkTask({ id: "c9", release: REL.v200, title: "Offline mode for saved reports", clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feature", tier: "scoping", area: "Mobile" } }),
 ];
+// Two named lists, as Wedge's sheets became on the Board (§127), so the Table view groups.
+for (const [id, list] of [
+  ["c2", "QA review: 20 Oct"],
+  ["c7", "QA review: 20 Oct"],
+  ["c3", "Front-end backlog"],
+  ["c8", "Front-end backlog"],
+  ["c9", "Front-end backlog"],
+] as const) {
+  demoBoardTasks.find((t) => t.id === id)!.boardList = list;
+}
 // Which dev tasks deliver which card.
 for (const [devId, cardId] of [["t13", "c1"], ["t14", "c1"], ["t19", "c1"], ["t20", "c2"]] as const) {
   const card = demoBoardTasks.find((t) => t.id === cardId)!;
@@ -4259,6 +4269,7 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
     itemType: t.itemType,
     tier: t.tier,
     area: t.area,
+    list: isCard || addedByClient ? (t.boardList ?? null) : null,
     priority: t.priority,
     estimateHours: isCard || addedByClient ? t.estimateHours : null,
     status: t.status,
@@ -4326,6 +4337,7 @@ function demoCardFields(t: TaskDTO): CardFields {
     itemType: t.itemType,
     tier: t.tier,
     area: t.area,
+    list: t.boardList ?? null,
     priority: t.priority,
     estimateHours: t.estimateHours,
     dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
@@ -4433,6 +4445,7 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
     task.boardColumnId = lane.columnId;
     task.dueDate = typeof body.dueDate === "string" ? `${body.dueDate.slice(0, 10)}T12:00:00.000Z` : null;
     task.parentId = parent?.id ?? null;
+    task.boardList = typeof body.list === "string" && body.list.trim() ? body.list.trim().slice(0, 80) : null;
     task.metadata = {
       ...(team ? {} : { createdByClient: { name: who } }),
       ...(Array.isArray(body.dependsOn) && body.dependsOn.length ? { dependsOn: body.dependsOn } : {}),
@@ -4478,6 +4491,7 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
       if (typeof body.itemType === "string") task.itemType = body.itemType;
       if ("tier" in body) task.tier = (body.tier as string | null) ?? null;
       if ("area" in body) task.area = (body.area as string | null) ?? null;
+      if ("list" in body) task.boardList = typeof body.list === "string" && body.list.trim() ? body.list.trim().slice(0, 80) : null;
       if (typeof body.priority === "string") task.priority = body.priority as TaskDTO["priority"];
       if ("estimateHours" in body) task.estimateHours = (body.estimateHours as number | null) ?? null;
       if ("dueDate" in body) task.dueDate = typeof body.dueDate === "string" ? `${body.dueDate.slice(0, 10)}T12:00:00.000Z` : null;

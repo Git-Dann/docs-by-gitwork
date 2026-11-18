@@ -15,6 +15,11 @@ export interface WikiBoardCard {
   itemType: string | null;
   tier: string | null;
   area: string | null;
+  /**
+   * The named list the card belongs to (`Task.boardList`), e.g. "QA review: 20 Oct 2026": the
+   * Table view groups by it. What Sheets used to hold lives here now (§127). Null = no list.
+   */
+  list: string | null;
   priority: TaskPriority;
   /** Hours estimated for the card, or null. */
   estimateHours: number | null;

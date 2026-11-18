@@ -404,6 +404,7 @@ function card(over: Partial<WikiBoardCard>): WikiBoardCard {
     itemType: null,
     tier: null,
     area: null,
+    list: null,
     priority: "MEDIUM",
     status: "BACKLOG",
     laneKey: "BACKLOG",

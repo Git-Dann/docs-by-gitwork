@@ -96,6 +96,7 @@ function card(id: string, over: Partial<WikiBoardCard> = {}): WikiBoardCard {
     itemType: "feature",
     tier: null,
     area: null,
+    list: null,
     priority: "MEDIUM",
     status: "BACKLOG",
     laneKey: "BACKLOG",

@@ -23,6 +23,8 @@ export interface CardFields {
   itemType: string | null;
   tier: string | null;
   area: string | null;
+  /** The named list (`Task.boardList`). */
+  list: string | null;
   priority: TaskPriority;
   estimateHours: number | null;
   /** YYYY-MM-DD, or null. */
@@ -73,6 +75,9 @@ export function describeCardChanges(
   out.push(change("type", typeLabel(before.itemType), typeLabel(after.itemType)));
   out.push(change("tier", tierLabel(before.tier), tierLabel(after.tier)));
   out.push(change("area", before.area, after.area));
+  if ((before.list ?? "") !== (after.list ?? "")) {
+    out.push(after.list ? `moved it to the list “${after.list}”` : "took it off its list");
+  }
   out.push(change("priority", TASK_PRIORITY_LABELS[before.priority], TASK_PRIORITY_LABELS[after.priority]));
   out.push(change("estimate", hours(before.estimateHours), hours(after.estimateHours)));
   out.push(change("due date", plainDay(before.dueDate), plainDay(after.dueDate)));
