@@ -1626,7 +1626,7 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
                 );
               }
               const m = row.m;
-              const chip = meetingStatusChip(m.status);
+              const chip = meetingStatusChip(m.status, m.summaryError);
               const ready = m.status === "SUMMARISED";
               const retryable = m.status === "NO_TRANSCRIPT" || m.status === "ERROR";
               const busy = busyId === m.calendarEventId;

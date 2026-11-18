@@ -4416,6 +4416,13 @@ model Meeting {
   summary              String?             @db.Text
   decisions            Json? // string[]
   modelUsed            String?
+  /// Why the last summary attempt failed, as one plain sentence (null once it succeeds). ERROR is
+  /// only ever set after the notes were READ — it means the AI summary failed, not Drive.
+  summaryError         String?
+  /// Summary attempts since the last success, and when the last one ran. Bounds the cron's
+  /// automatic retries (src/lib/meeting-summary.ts summaryRetryDue).
+  summaryAttempts      Int                 @default(0)
+  summaryAttemptedAt   DateTime?
   // Whose Google account surfaced the transcript (per-user OAuth).
   ownerUserId          String?
   owner                User?               @relation("MeetingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)

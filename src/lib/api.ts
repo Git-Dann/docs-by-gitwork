@@ -2648,6 +2648,8 @@ export interface ScribeMeeting {
   summary: string | null;
   decisions: string[] | null;
   modelUsed: string | null;
+  /** Why the last summary failed, in plain words; null when it hasn't. */
+  summaryError?: string | null;
   createdAt: string;
   updatedAt: string;
   actionItems: ScribeActionItem[];
