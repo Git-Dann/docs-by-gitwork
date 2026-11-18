@@ -257,6 +257,14 @@ export const demoBoardTasks: TaskDTO[] = [
   mkTask({ id: "c1", release: REL.v140, title: "Saved searches", clientSlug: "northwind", status: "DOING", priority: "HIGH", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Search & discovery", estimateHours: 24 } }),
   mkTask({ id: "c2", release: REL.v140, title: "Search paging breaks on iOS", clientSlug: "northwind", status: "IN_REVIEW", priority: "HIGH", unassigned: true, card: { itemType: "bug", area: "Search & discovery" } }),
   mkTask({ id: "c3", title: "Let users pin a favourite report", clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
+  // More cards across the releases, so the Board's Timeline has a real shape: one release under
+  // way, one done, one ahead, with each card type.
+  mkTask({ id: "c4", release: REL.v140, title: "Search suggestions as you type", clientSlug: "northwind", status: "DONE", unassigned: true, completedAt: atDays(-2), card: { itemType: "feature", tier: "free", area: "Search & discovery" } }),
+  mkTask({ id: "c5", release: REL.v140, title: "Recent searches list", clientSlug: "northwind", status: "DONE", unassigned: true, completedAt: atDays(-1), card: { itemType: "subitem", area: "Search & discovery" } }),
+  mkTask({ id: "c6", release: REL.v150, title: "Weekly usage report", clientSlug: "northwind", status: "TODO", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Analytics" } }),
+  mkTask({ id: "c7", release: REL.v150, title: "Charts are blank in Safari 17", clientSlug: "northwind", status: "BACKLOG", priority: "HIGH", unassigned: true, card: { itemType: "bug", area: "Analytics" } }),
+  mkTask({ id: "c8", release: REL.v150, title: "Export chart as image", clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
+  mkTask({ id: "c9", release: REL.v200, title: "Offline mode for saved reports", clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feature", tier: "scoping", area: "Mobile" } }),
 ];
 // Which dev tasks deliver which card.
 for (const [devId, cardId] of [["t13", "c1"], ["t14", "c1"], ["t19", "c1"], ["t20", "c2"]] as const) {

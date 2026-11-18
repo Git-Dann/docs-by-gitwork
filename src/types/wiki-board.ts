@@ -65,6 +65,13 @@ export interface WikiBoardRelease {
   label: string;
   startDate: string | null;
   endDate: string | null;
+  /**
+   * The client's cards in this release, and how many are done. Counted from every card, before a
+   * Done column is capped, so the timeline's "% done" isn't understated. Cards the client sees
+   * (product cards and cards they added) only, never the team's dev tasks.
+   */
+  cards: number;
+  done: number;
 }
 
 export interface WikiBoardSection {

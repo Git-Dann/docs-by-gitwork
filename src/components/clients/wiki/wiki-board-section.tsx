@@ -34,6 +34,7 @@ import { fuzzySearch } from "@/lib/fuzzy-search";
 import { Markdown } from "@/lib/markdown";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
+import { WikiBoardTimeline } from "@/components/clients/wiki/wiki-board-timeline";
 import { useToast } from "@/components/ui/toast";
 import { CardProgressChip, ItemTypeChip, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
 import { ITEM_TYPE_LABELS, isItemType } from "@/lib/tasks/product-cards";
@@ -130,6 +131,8 @@ export function WikiBoardSectionView({
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null); // lane key, or "" for the toolbar
   const [phoneLane, setPhoneLane] = useState<string>(section.lanes[0]?.key ?? "");
+  // The same cards two ways: columns (the Board) or releases on a calendar (the Timeline).
+  const [view, setView] = useState<"board" | "timeline">("board");
 
   const visible = useMemo(() => {
     let list =
@@ -204,6 +207,16 @@ export function WikiBoardSectionView({
         </span>
       </div>
       <div className="widget-body space-y-4">
+        <Segmented
+          label="View"
+          className="h-9"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "board", label: "Board" },
+            { value: "timeline", label: "Timeline" },
+          ]}
+        />
         {/* Toolbar: narrowing down on the left, actions on the right; wraps on a phone. */}
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -288,7 +301,15 @@ export function WikiBoardSectionView({
         {audience === "team" && target.mode === "internal" ? (
           <ClientSeesSetting slug={target.slug} on={section.showAllTasks} onChanged={refresh} previewing={mode === "client"} onPreview={() => setShow("client")} />
         ) : null}
-        {audience === "client" ? (
+        {view === "timeline" ? (
+          <WikiBoardTimeline
+            cards={visible}
+            releases={section.releases}
+            readOnly={(c) => (audience === "client" || mode === "client") && !clientMayActOn(c)}
+            onOpen={setOpenId}
+          />
+        ) : null}
+        {view === "board" && audience === "client" ? (
           <p className="text-[12px] text-[var(--text-3)]">
             <span className="hidden sm:inline">Drag cards between columns. </span>
             <span className="sm:hidden">Open a card to move it to another column. </span>
@@ -299,7 +320,7 @@ export function WikiBoardSectionView({
 
         <DndContext id={dndId} sensors={sensors} onDragEnd={onDragEnd}>
           {/* Desktop and tablet: every column side by side, in one scroller with its header. */}
-          <div className="hidden overflow-x-auto pb-2 sm:block" data-board-scroller>
+          <div className={cn("hidden overflow-x-auto pb-2", view === "board" && "sm:block")} data-board-scroller>
             <div className="flex items-start gap-3">
               {section.lanes.map((lane) => (
                 <Lane
@@ -322,7 +343,7 @@ export function WikiBoardSectionView({
         </DndContext>
 
         {/* Phone: one column at a time, picked from a list, with its cards stacked. */}
-        <div className="space-y-3 sm:hidden">
+        <div className={cn("space-y-3 sm:hidden", view !== "board" && "hidden")}>
           <select
             className="app-select h-10 w-full text-[16px]"
             aria-label="Column"
