@@ -14,7 +14,7 @@
  * opens in its dialog to edit.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowDownTrayIcon,
@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/format";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { ItemTypeChip } from "@/components/tasks/product-card-parts";
+import { ItemTypeChip, TierChip } from "@/components/tasks/product-card-parts";
 import { BOARD_LIST_MAX, TIERS, TIER_LABELS } from "@/lib/tasks/product-cards";
 import { BOARD_LIMITS } from "@/lib/wiki-board";
 import {
@@ -678,6 +678,8 @@ function Cell({
   }
 
   if (!editable) {
+    if (column === "type" && card.itemType) return <span className="flex h-8 items-center px-2"><ItemTypeChip itemType={card.itemType} /></span>;
+    if (column === "tier" && card.tier) return <span className="flex h-8 items-center px-2"><TierChip tier={card.tier} /></span>;
     return (
       <span className={cn(pad, "text-[var(--text-2)]", !text && "text-[var(--text-4)]")} title={text || undefined}>
         {text || "—"}
@@ -685,58 +687,61 @@ function Cell({
     );
   }
 
-  const select = "app-select app-select-compact h-8 w-full text-[13px]";
   switch (column) {
     case "type":
       return (
-        <select className={select} aria-label="Type" value={card.itemType ?? ""} onChange={(e) => onSave(e.target.value)}>
-          {card.itemType && !["feature", "bug", "feedback"].includes(card.itemType) ? <option value={card.itemType}>{text}</option> : null}
-          <option value="feature">Feature</option>
-          <option value="bug">Bug</option>
-          <option value="feedback">Feedback</option>
-        </select>
+        <CellSelect
+          label="Type"
+          value={card.itemType ?? ""}
+          onChange={onSave}
+          display={card.itemType ? <ItemTypeChip itemType={card.itemType} /> : null}
+          options={[
+            ...(card.itemType && !["feature", "bug", "feedback"].includes(card.itemType) ? [{ value: card.itemType, label: text }] : []),
+            { value: "feature", label: "Feature" },
+            { value: "bug", label: "Bug" },
+            { value: "feedback", label: "Feedback" },
+          ]}
+        />
       );
     case "lane":
       return (
-        <select className={select} aria-label="Column" value={card.laneKey} onChange={(e) => onSave(e.target.value)}>
-          {section.lanes.map((l) => (
-            <option key={l.key} value={l.key}>
-              {l.label}
-            </option>
-          ))}
-        </select>
+        <CellSelect
+          label="Column"
+          value={card.laneKey}
+          onChange={onSave}
+          display={text}
+          options={section.lanes.map((l) => ({ value: l.key, label: l.label }))}
+        />
       );
     case "release":
       return (
-        <select className={select} aria-label="Release" value={card.release?.id ?? ""} onChange={(e) => onSave(e.target.value)}>
-          <option value="">No release</option>
-          {section.releases.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label}
-            </option>
-          ))}
-        </select>
+        <CellSelect
+          label="Release"
+          value={card.release?.id ?? ""}
+          onChange={onSave}
+          display={card.release ? card.release.label : null}
+          options={[{ value: "", label: "No release" }, ...section.releases.map((r) => ({ value: r.id, label: r.label }))]}
+        />
       );
     case "priority":
       return (
-        <select className={select} aria-label="Priority" value={card.priority} onChange={(e) => onSave(e.target.value)}>
-          {TASK_PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {TASK_PRIORITY_LABELS[p]}
-            </option>
-          ))}
-        </select>
+        <CellSelect
+          label="Priority"
+          value={card.priority}
+          onChange={onSave}
+          display={<span className={PRIORITY_TONE[card.priority] ?? "text-[var(--text-2)]"}>{TASK_PRIORITY_LABELS[card.priority] ?? text}</span>}
+          options={TASK_PRIORITIES.map((p) => ({ value: p, label: TASK_PRIORITY_LABELS[p] }))}
+        />
       );
     case "tier":
       return (
-        <select className={select} aria-label="Tier" value={card.tier ?? ""} onChange={(e) => onSave(e.target.value)}>
-          <option value="">No tier</option>
-          {TIERS.map((t) => (
-            <option key={t} value={t}>
-              {TIER_LABELS[t]}
-            </option>
-          ))}
-        </select>
+        <CellSelect
+          label="Tier"
+          value={card.tier ?? ""}
+          onChange={onSave}
+          display={card.tier ? <TierChip tier={card.tier} /> : null}
+          options={[{ value: "", label: "No tier" }, ...TIERS.map((t) => ({ value: t, label: TIER_LABELS[t] }))]}
+        />
       );
     default:
       break;
@@ -767,6 +772,56 @@ function Cell({
     >
       {text || "—"}
     </button>
+  );
+}
+
+/** Urgent and High stand out; the rest read as plain text. -700 shades, as the chips use. */
+const PRIORITY_TONE: Record<string, string> = {
+  URGENT: "font-medium text-red-700",
+  HIGH: "font-medium text-amber-700",
+};
+
+/**
+ * A pick-one cell that reads like a spreadsheet: the value as text or a chip, no box. The native
+ * <select> lies invisibly over the cell, so a click or the keyboard opens the system picker; the
+ * chevron and a tint appear only on hover or focus, so a column of them isn't a wall of controls.
+ */
+function CellSelect({
+  label,
+  value,
+  onChange,
+  display,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  display: ReactNode;
+  options: Array<{ value: string; label: string }>;
+}) {
+  const current = options.find((o) => o.value === value)?.label ?? "";
+  return (
+    <span className="group/cell relative flex h-8 items-center gap-1 rounded-[4px] px-2 text-[13px] focus-within:bg-[var(--surface-2)] focus-within:ring-2 focus-within:ring-[var(--brand-focus-ring)] hover:bg-[var(--surface-2)]">
+      <span className="min-w-0 flex-1 truncate text-[var(--text-2)]" title={current || undefined}>
+        {display ?? <span className="text-[var(--text-4)]">—</span>}
+      </span>
+      <ChevronDownIcon
+        aria-hidden
+        className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)] opacity-0 group-hover/row:opacity-100 group-focus-within/cell:opacity-100"
+      />
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }
 
