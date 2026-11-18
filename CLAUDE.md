@@ -10251,3 +10251,22 @@ all; releases that ended over a week ago start folded. Clicking a card opens the
   browser has would understate a release with more than 50 cards live. Only cards the client sees
   are counted, never the team's dev tasks.
 - One scroller holds the header and every row (§45.2), and the name rail is sticky on the left.
+
+### 126.2 Calendar, card images, straight side stroke
+
+- **Calendar** (Board | Timeline | **Calendar**, `wiki-board-calendar.tsx`, maths in
+  `src/lib/wiki-board-calendar.ts`): a Monday-first month or week, today circled, cards on their
+  due date (no due date → not on the calendar, never an invented date), each release a thin span
+  across its days with "starts"/"ends" markers, "+N more" opening the day's list. Phone: an agenda
+  of the days with something on them.
+- **Images:** the Forge import copies each item's screenshots onto its card as task attachments
+  (`src/server/forge-images.ts`, rules in `src/lib/forge-import/images.ts`). After the import's
+  transaction, never inside it; 3 at a time, 120 s budget, SSRF guard, 10 MB cap, PNG/JPEG/GIF/WebP
+  by magic bytes (no SVG). Recorded per card in `metadata.forge.images` (URL → attachment id), so a
+  re-run copies nothing twice; a failed image is reported, not thrown. Cards carry `images`
+  (attachment ids, cards the client may act on only); the client's dialog reads them through
+  `GET /api/wiki/[token]/board/tasks/[taskId]/images/[attachmentId]` (same access as the thread,
+  nosniff + sandbox CSP).
+- **Side stroke:** back, but straight: `rounded-l-none` wherever `border-l-[3px]` is drawn
+  (`straight-side-stroke.test.ts`). A stroke that bends round a rounded corner is what Dan ruled out.
+- **Sheets** sit under Working together (QA lists and dev tasks shared with the client).

@@ -53,6 +53,9 @@ export const TaskCard = memo(function TaskCard({
       onClick={onClick}
       className={cn(
         "group rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white p-3 text-left transition",
+        // A blocked task gets a red stroke down the left, straight: square corners on that side so
+        // it never bends round the card's rounded corner (Dan, Nov 2026).
+        task.blockedReason && "rounded-l-none border-l-[3px] border-l-red-400 hover:border-l-red-400",
         onClick && "cursor-pointer hover:border-[var(--brand-300)] hover:shadow-[0_1px_3px_rgba(0,0,0,0.04)]",
         dragging && "rotate-1 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]",
         className,

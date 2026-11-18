@@ -406,6 +406,7 @@ export function WikiSidebar({
         {group("together", [
           navItem("intake", "Requests", <FlagIcon />),
           navItem("board", "Board", <RectangleStackIcon />),
+          navItem("sheets", "Sheets", <ViewColumnsIcon />),
           navItem("launchpad", "Launchpad", <RocketLaunchIcon />),
           navItem("support", "Support", <LifebuoyIcon />),
           COURSE_REQUESTS_SLUGS.includes(slug) && navItem("course-requests", "Course Requests", <FlagIcon />),
@@ -413,7 +414,6 @@ export function WikiSidebar({
         {group("numbers", [
           navItem("metrics", "Metrics", <PresentationChartLineIcon />),
           navItem("insights", "Charts", <ChartPieIcon />),
-          navItem("sheets", "Sheets", <ViewColumnsIcon />),
           navItem("comparisons", "Comparisons", <TableCellsIcon />),
           navItem("estimates", "Estimates", <CalculatorIcon />),
           navItem("costs", "Running costs", <BanknotesIcon />),

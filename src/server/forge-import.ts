@@ -21,6 +21,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parseBoardColumns, columnNameKey } from "@/lib/tasks/board-columns";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
+import { copyForgeImages, type ImageCopyResult } from "@/server/forge-images";
+import { copiedImages } from "@/lib/forge-import/images";
 import { recordAuditEntry } from "@/server/audit-log";
 import { parseForgeFeed, parseForgeJson, type ForgeFeed } from "@/lib/forge-import/feed";
 import {
@@ -149,6 +151,7 @@ async function loadBoard(db: Db, workspaceId: string, clientId: string) {
     area: t.area,
     estimateHours: t.estimateHours,
     forgeFilled: forgeFilledOf(t.metadata),
+    forgeImages: Object.keys(copiedImages(t.metadata)),
   }));
   return { columns: parseBoardColumns(client.taskBoardColumns), tasks, rows, releases };
 }
@@ -205,6 +208,10 @@ export interface ForgeApplyResult {
   waiting: number;
   skipped: number;
   alreadyImported: number;
+  /** Screenshots copied onto cards after the import, and any that couldn't be (tried again next run). */
+  imagesCopied: number;
+  imagesFailed: ImageCopyResult["failed"];
+  imagesDeferred: number;
 }
 
 /** Features before sub-items, so a sub-item is made as its feature's subtask. */
@@ -260,7 +267,7 @@ export async function applyForgeImport(input: {
         throw new ForgeImportError(`Add these board columns first: ${plan.missingColumns.join(", ")}.`, 409);
       }
 
-      const out: ForgeApplyResult = {
+      const out: Omit<ForgeApplyResult, "imagesCopied" | "imagesFailed" | "imagesDeferred"> = {
         created: 0,
         linked: 0,
         devLinked: 0,
@@ -448,12 +455,20 @@ export async function applyForgeImport(input: {
     { maxWait: 10_000, timeout: 300_000 },
   );
 
+  // Screenshots, after the transaction: downloads never hold the lock.
+  const images = await copyForgeImages({ workspaceId, clientId, feed });
+  const full: ForgeApplyResult = {
+    ...result,
+    imagesCopied: images.copied,
+    imagesFailed: images.failed,
+    imagesDeferred: images.deferred,
+  };
   await recordAuditEntry({
     workspaceId,
     actorId: input.actorId,
     action: "tasks.forge_import.applied",
     target: clientId,
-    metadata: { ...result, decisions: input.approvedReviewLinks.length },
+    metadata: { ...result, imagesCopied: images.copied, imagesFailed: images.failed.length, decisions: input.approvedReviewLinks.length },
   });
-  return result;
+  return full;
 }

@@ -29,6 +29,18 @@ function feedbackUrl(target: BoardTarget, taskId: string): string {
     : `/api/tasks/${encodeURIComponent(taskId)}/client-feedback`;
 }
 
+/**
+ * A card image's address. The client's page reads it through its own link; the team's wiki reads
+ * the task's attachment. A value that's already a path (the demo's sample image) is used as is.
+ */
+export function boardImageUrl(target: BoardTarget, taskId: string, image: string, thumb: boolean): string {
+  if (image.startsWith("/")) return image;
+  const q = thumb ? "?thumb=1" : "";
+  return target.mode === "public"
+    ? `/api/wiki/${encodeURIComponent(target.token)}/board/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(image)}${q}`
+    : `/api/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(image)}${q}`;
+}
+
 /** Re-read the board after a write: the internal wiki is a query, the public page is server-rendered. */
 export function useBoardRefresh(target: BoardTarget): () => void {
   const queryClient = useQueryClient();

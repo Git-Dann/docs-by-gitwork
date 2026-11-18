@@ -33,13 +33,14 @@ export const SECTION_GROUP = {
 
   intake: "together",
   board: "together",
+  // Sheets are mostly QA lists and tasks for the devs, worked on with the client (Dan, Nov 2026).
+  sheets: "together",
   launchpad: "together",
   support: "together",
   "course-requests": "together",
 
   metrics: "numbers",
   insights: "numbers",
-  sheets: "numbers",
   comparisons: "numbers",
   estimates: "numbers",
   costs: "numbers",
