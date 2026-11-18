@@ -26,7 +26,7 @@ import {
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { boardLanes, laneKeyFor, parseBoardColumns, type BoardLane } from "@/lib/tasks/board-columns";
 import { layoutBoard } from "@/lib/wiki-board-layout";
-import { cardProgress, isProductCard } from "@/lib/tasks/product-cards";
+import { BOARD_LIST_MAX, cardProgress, isProductCard } from "@/lib/tasks/product-cards";
 import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
 import {
   BOARD_LIMITS,
@@ -101,6 +101,7 @@ const TASK_SELECT = {
   itemType: true,
   tier: true,
   area: true,
+  boardList: true,
   releaseId: true,
   metadata: true,
   assignee: { select: { name: true, email: true } },
@@ -185,6 +186,7 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     itemType: row.itemType,
     tier: row.tier,
     area: row.area,
+    list: row.boardList,
     priority: row.priority as TaskPriority,
     estimateHours: row.estimateHours ?? null,
     status,
@@ -406,6 +408,7 @@ function publicCard(c: WikiBoardCard, visible: ReadonlySet<string>): WikiBoardCa
     itemType: c.itemType,
     tier: c.tier,
     area: c.area,
+    list: c.list,
     priority: c.priority,
     estimateHours: c.estimateHours,
     status: c.status,
@@ -436,6 +439,7 @@ function titleOnlyCard(c: WikiBoardCard): WikiBoardCard {
     itemType: null,
     tier: null,
     area: null,
+    list: null,
     priority: c.priority,
     estimateHours: null,
     status: c.status,
@@ -614,6 +618,8 @@ export interface BoardCardInput {
   releaseId?: string | null;
   tier?: string | null;
   area?: string | null;
+  /** The named list it belongs to (the Table view groups by it). */
+  list?: string | null;
   priority?: TaskPriority;
   estimateHours?: number | null;
   /** YYYY-MM-DD. */
@@ -659,6 +665,11 @@ function dueDateValue(day: string | null | undefined): Date | null {
 function cleanArea(area: string | null | undefined): string | null {
   const a = area?.trim().replace(/\s+/g, " ") ?? "";
   return a ? a.slice(0, BOARD_LIMITS.area) : null;
+}
+
+function cleanList(list: string | null | undefined): string | null {
+  const a = list?.trim().replace(/\s+/g, " ") ?? "";
+  return a ? a.slice(0, BOARD_LIST_MAX) : null;
 }
 
 export async function createBoardCard(writer: BoardWriter, input: BoardCardInput): Promise<WikiBoardCard> {
@@ -711,6 +722,7 @@ export async function createBoardCard(writer: BoardWriter, input: BoardCardInput
       itemType: input.itemType,
       tier: input.tier ?? null,
       area: cleanArea(input.area),
+      boardList: cleanList(input.list),
       estimateHours: input.estimateHours ?? null,
       dueDate: dueDateValue(input.dueDate),
       releaseId,
@@ -738,6 +750,7 @@ async function loadEditableTask(writer: BoardWriter, taskId: string) {
       itemType: true,
       tier: true,
       area: true,
+      boardList: true,
       priority: true,
       estimateHours: true,
       dueDate: true,
@@ -763,6 +776,7 @@ function fieldsOf(task: EditableTask): CardFields {
     itemType: task.itemType,
     tier: task.tier,
     area: task.area,
+    list: task.boardList,
     priority: task.priority as TaskPriority,
     estimateHours: task.estimateHours ?? null,
     dueDate: task.dueDate ? task.dueDate.toISOString().slice(0, 10) : null,
@@ -871,6 +885,7 @@ export async function updateBoardCard(writer: BoardWriter, taskId: string, patch
     itemType: patch.itemType !== undefined ? patch.itemType : before.itemType,
     tier: patch.tier !== undefined ? patch.tier : before.tier,
     area: patch.area !== undefined ? cleanArea(patch.area) : before.area,
+    list: patch.list !== undefined ? cleanList(patch.list) : before.list,
     priority: patch.priority ?? before.priority,
     estimateHours: patch.estimateHours !== undefined ? patch.estimateHours : before.estimateHours,
     dueDate: patch.dueDate !== undefined ? (patch.dueDate ? patch.dueDate.slice(0, 10) : null) : before.dueDate,
@@ -906,6 +921,7 @@ export async function updateBoardCard(writer: BoardWriter, taskId: string, patch
       itemType: after.itemType,
       tier: after.tier,
       area: after.area,
+      boardList: after.list,
       priority: after.priority,
       estimateHours: after.estimateHours,
       dueDate: dueDateValue(after.dueDate),

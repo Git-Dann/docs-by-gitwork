@@ -10282,7 +10282,7 @@ Dan: "the top section needs a lot of love… too much going on", and Big Wedge (
 everything on Foundry's Board that he did on his own ops board. Dan's ruling: **"he needs full
 control over the tasks basically… what he can't do is assign it to a dev."**
 
-- **One toolbar row** (`wiki-board-section.tsx`): Board | Timeline | Calendar on the left; search,
+- **One toolbar row** (`wiki-board-section.tsx`): Board | Table | Timeline | Calendar on the left (Table: §127.1); search,
   **Filters** (an anchored popover with Type, Release, Area, and Cards / Everything where both
   exist, plus a count badge) and **+ Add card** on the right. Team only: a **⋯ Client view** menu
   holding "Client sees: Their cards only / Cards and dev task titles" and **Preview as client**,
@@ -10374,8 +10374,7 @@ fails when the fix is reverted:
 Only Wedge ever used Sheets: a QA review (47 rows, 26 already sent to the board and done) and a
 front-end backlog (18 rows, none sent). Both were lists of work kept beside the Board, so the work
 had two homes. Dan's call: "remove sheets as an entity — sheets is just a view", with a Table view
-on the Board for generic lists. This change does the move; the Table view comes after the Board
-update that's in flight (it shares the Board's files).
+on the Board for generic lists. This change does the move; the Table view is §127.1.
 
 - **`Task.boardList`** (additive, `@@index([clientId, boardList])`, never unique): a named list of
   cards, e.g. "QA review: 20 Oct 2026". At most `BOARD_LIST_MAX` (80) characters. Set through the
@@ -10418,4 +10417,36 @@ update that's in flight (it shares the Board's files).
   sort, undo history, media links, column widths) with their tests, for the Table view.
 - ⚠️ The wiki DTO still sends `sheets: { enabled: false, sheets: [] }`, always empty, so an app
   build that decodes the field doesn't fail. Drop it once no build reads it.
+
+### 127.1 The Table view: the grid, over the Board's own cards
+
+The Board's view switch is **Board · Table · Timeline · Calendar**. The Table shows the same
+cards, with the same search, filters and "Client sees" rules, as spreadsheet rows. Rules are in
+`src/lib/wiki-board-table.ts` (pure); the component is `wiki-board-table.tsx`.
+
+- **`list` on the card** (`WikiBoardCard.list` ← `Task.boardList`). The client sees it, the add
+  and edit dialogs set it (free text, suggested from the lists in use), and it's in the board
+  card schemas (`.strict()`, ≤ `BOARD_LIST_MAX`). A list change is a change entry: "Luke moved it
+  to the list “QA review”".
+- **Grouping** by List (the default whenever any card has one; "No list" last), Column, Release
+  or none. Groups fold. **Sorting** reuses the sheet sorter: blanks last both ways; priority,
+  column, release, type and tier sort by rank.
+- **Editing a cell** sends ONE field through the card dialog's own routes, so every server rule
+  applies (`cellPatch`); a column change is the Board's move. It's optimistic, with a rollback
+  and a sentence if it fails. ⚠️ People is never a cell (`EDITABLE_COLUMNS` has no assignee),
+  and a team dev task is only ever moved from here: its fields are edited on the task board
+  (`cellEditable`). The client gets the client's answer, and so does the team while previewing.
+- **Adding:** a row at the foot of each group creates a card in that list / release / column.
+  **Paste rows** takes up to 200 rows from Google Sheets or Excel, guesses which column is which
+  card field (changeable), and puts every unmatched cell, or a value that doesn't fit its field,
+  into the description as `**Column:** value`. A row naming a later column is added early and then
+  moved there. **Copy** (TSV) and **CSV** export what's shown, with formula injection neutralised.
+- **Bulk:** tick rows, then set list, column, release, area, priority or tier, or delete.
+  `bulkTargets` limits it to cards the viewer may change (deleting never reaches a dev task, even
+  for the team) and the result says how many were left alone. Three writes at a time, because a
+  client's edits are rate limited.
+- The view, grouping and sort are remembered per viewer per board (`foundry.board.prefs.v1.*`,
+  localStorage, read after mount so the server render matches).
+- Done columns carry their newest 50 cards; the Table says how many older ones aren't shown.
+- Demo: `/demo/wiki#board` → Table (two lists seeded).
 

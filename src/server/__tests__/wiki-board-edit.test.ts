@@ -517,3 +517,29 @@ describe("screenshots, all or nothing", () => {
     expect(db.attachments).toHaveLength(0);
   });
 });
+
+describe("lists (the Table view's groups)", () => {
+  it("a client puts a card in a list, and the thread says so in words", async () => {
+    await updateBoardCard(client, "card", { list: "  QA   review " });
+    expect(db.tasks.find((t) => t.id === "card")!.boardList).toBe("QA review");
+    expect(changes()).toEqual(["Luke M. moved it to the list “QA review”."]);
+  });
+
+  it("clearing it takes the card off its list", async () => {
+    db.tasks.find((t) => t.id === "card")!.boardList = "QA review";
+    await updateBoardCard(client, "card", { list: null });
+    expect(db.tasks.find((t) => t.id === "card")!.boardList).toBeNull();
+    expect(changes()).toEqual(["Luke M. took it off its list."]);
+  });
+
+  it("a client's table cell on a team dev task is refused, and the task is untouched", async () => {
+    await expect(updateBoardCard(client, "dev", { list: "Mine" })).rejects.toMatchObject({ status: 404 });
+    expect(db.tasks.find((t) => t.id === "dev")!.boardList).toBeUndefined();
+    expect(db.updateManyCalls).toHaveLength(0);
+  });
+
+  it("a card added with a list is stored in it", async () => {
+    await createBoardCard(client, { title: "From a paste", itemType: "bug", laneKey: "col_ideas000", list: "QA review: 21 Nov" });
+    expect(db.tasks.at(-1)).toMatchObject({ title: "From a paste", boardList: "QA review: 21 Nov" });
+  });
+});

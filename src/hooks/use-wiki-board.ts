@@ -116,6 +116,8 @@ export interface BoardCardForm {
   releaseId: string | null;
   tier: string | null;
   area: string | null;
+  /** The named list the card belongs to; the Table view groups by it. */
+  list: string | null;
   priority: TaskPriority;
   estimateHours: number | null;
   dueDate: string | null;
@@ -143,6 +145,7 @@ export async function addBoardCardApi(target: BoardTarget, input: BoardCardForm)
       parentId: input.itemType === "subitem" ? input.parentId : null,
       releaseId: input.releaseId || null,
       area: input.area?.trim() || null,
+      list: input.list?.trim() || null,
       description: input.description.trim() || null,
     }),
   );

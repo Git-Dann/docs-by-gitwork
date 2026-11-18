@@ -12,7 +12,7 @@ import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
 import { BOARD_EDIT_TYPES, BOARD_LIMITS, CLIENT_CARD_TYPES, FEEDBACK_KINDS } from "@/lib/wiki-board";
-import { TIERS } from "@/lib/tasks/product-cards";
+import { BOARD_LIST_MAX, TIERS } from "@/lib/tasks/product-cards";
 import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
 import {
   LIST_AREA_MAX,
@@ -2602,6 +2602,7 @@ const boardCardFields = {
   releaseId: z.string().min(1).max(40).nullish(),
   tier: z.enum(TIERS).nullish(),
   area: z.string().trim().max(BOARD_LIMITS.area, `Keep the area under ${BOARD_LIMITS.area} characters.`).nullish(),
+  list: z.string().trim().max(BOARD_LIST_MAX, `Keep the list name under ${BOARD_LIST_MAX} characters.`).nullish(),
   priority: taskPrioritySchema.optional(),
   estimateHours: z
     .number()

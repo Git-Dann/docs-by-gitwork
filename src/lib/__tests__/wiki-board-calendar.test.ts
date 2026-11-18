@@ -19,7 +19,7 @@ const d = (iso: string) => dayOf(iso);
 
 function card(id: string, dueDate: string | null, title = id): WikiBoardCard {
   return {
-    id, title, itemType: "feature", tier: null, area: null, priority: "MEDIUM", status: "TODO", laneKey: "TODO", orderKey: 0,
+    id, title, itemType: "feature", tier: null, area: null, list: null, priority: "MEDIUM", status: "TODO", laneKey: "TODO", orderKey: 0,
     release: null, progress: null, dueDate, people: [], signOff: null, feedbackCount: 0, description: null, subtasks: [],
     isCard: true, addedByClient: false, updatedAt: "2026-11-01T00:00:00.000Z", images: [], stageHistory: [], estimateHours: null, dependsOn: [],
   } as WikiBoardCard;

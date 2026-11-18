@@ -16,6 +16,7 @@ const base: CardFields = {
   itemType: "feature",
   tier: "free",
   area: "Bags",
+  list: null,
   priority: "MEDIUM",
   estimateHours: 4,
   dueDate: "2026-12-04",
