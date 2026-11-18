@@ -14,7 +14,7 @@
  * opens in its dialog to edit.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowDownTrayIcon,
@@ -30,6 +30,7 @@ import { cn } from "@/lib/format";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { ItemTypeChip, TierChip } from "@/components/tasks/product-card-parts";
+import { PickCell, PRIORITY_TONE, TextEditor } from "@/components/clients/wiki/board-pick";
 import { BOARD_LIST_MAX, TIERS, TIER_LABELS } from "@/lib/tasks/product-cards";
 import { BOARD_LIMITS } from "@/lib/wiki-board";
 import {
@@ -690,7 +691,8 @@ function Cell({
   switch (column) {
     case "type":
       return (
-        <CellSelect
+        <PickCell
+          reveal="row"
           label="Type"
           value={card.itemType ?? ""}
           onChange={onSave}
@@ -705,7 +707,8 @@ function Cell({
       );
     case "lane":
       return (
-        <CellSelect
+        <PickCell
+          reveal="row"
           label="Column"
           value={card.laneKey}
           onChange={onSave}
@@ -715,7 +718,8 @@ function Cell({
       );
     case "release":
       return (
-        <CellSelect
+        <PickCell
+          reveal="row"
           label="Release"
           value={card.release?.id ?? ""}
           onChange={onSave}
@@ -725,7 +729,8 @@ function Cell({
       );
     case "priority":
       return (
-        <CellSelect
+        <PickCell
+          reveal="row"
           label="Priority"
           value={card.priority}
           onChange={onSave}
@@ -735,7 +740,8 @@ function Cell({
       );
     case "tier":
       return (
-        <CellSelect
+        <PickCell
+          reveal="row"
           label="Tier"
           value={card.tier ?? ""}
           onChange={onSave}
@@ -772,112 +778,6 @@ function Cell({
     >
       {text || "—"}
     </button>
-  );
-}
-
-/** Urgent and High stand out; the rest read as plain text. -700 shades, as the chips use. */
-const PRIORITY_TONE: Record<string, string> = {
-  URGENT: "font-medium text-red-700",
-  HIGH: "font-medium text-amber-700",
-};
-
-/**
- * A pick-one cell that reads like a spreadsheet: the value as text or a chip, no box. The native
- * <select> lies invisibly over the cell, so a click or the keyboard opens the system picker; the
- * chevron and a tint appear only on hover or focus, so a column of them isn't a wall of controls.
- */
-function CellSelect({
-  label,
-  value,
-  onChange,
-  display,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  display: ReactNode;
-  options: Array<{ value: string; label: string }>;
-}) {
-  const current = options.find((o) => o.value === value)?.label ?? "";
-  return (
-    <span className="group/cell relative flex h-8 items-center gap-1 rounded-[4px] px-2 text-[13px] focus-within:bg-[var(--surface-2)] focus-within:ring-2 focus-within:ring-[var(--brand-focus-ring)] hover:bg-[var(--surface-2)]">
-      <span className="min-w-0 flex-1 truncate text-[var(--text-2)]" title={current || undefined}>
-        {display ?? <span className="text-[var(--text-4)]">—</span>}
-      </span>
-      <ChevronDownIcon
-        aria-hidden
-        className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)] opacity-0 group-hover/row:opacity-100 group-focus-within/cell:opacity-100"
-      />
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </span>
-  );
-}
-
-/** A text box over the cell: Enter or leaving it saves, Escape keeps the old value. */
-function TextEditor({
-  initial,
-  onDone,
-  type = "text",
-  suggestions,
-  maxLength,
-}: {
-  initial: string;
-  onDone: (value: string | null) => void;
-  type?: "text" | "number" | "date";
-  suggestions?: string[];
-  maxLength?: number;
-}) {
-  const [value, setValue] = useState(initial);
-  const ref = useRef<HTMLInputElement>(null);
-  const done = useRef(false);
-  const listId = useMemo(() => (suggestions ? `table-sugg-${Math.random().toString(36).slice(2, 8)}` : undefined), [suggestions]);
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select?.();
-  }, []);
-  const finish = (v: string | null) => {
-    if (done.current) return;
-    done.current = true;
-    onDone(v === null || v === initial ? null : v);
-  };
-  return (
-    <>
-      <input
-        ref={ref}
-        className="app-input h-8 w-full px-2 text-[13px]"
-        type={type}
-        step={type === "number" ? 0.5 : undefined}
-        min={type === "number" ? 0 : undefined}
-        value={value}
-        maxLength={maxLength}
-        list={listId}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => finish(value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") finish(value);
-          if (e.key === "Escape") finish(null);
-        }}
-      />
-      {suggestions && listId ? (
-        <datalist id={listId}>
-          {suggestions.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
-      ) : null}
-    </>
   );
 }
 
