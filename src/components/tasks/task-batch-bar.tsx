@@ -5,6 +5,7 @@ import {
   UserPlusIcon,
   FlagIcon,
   Squares2X2Icon,
+  RocketLaunchIcon,
   CalendarDaysIcon,
   TrashIcon,
   XMarkIcon,
@@ -14,7 +15,8 @@ import {
   ArchiveBoxXMarkIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import { useBatchUpdateTasks, useBatchDeleteTasks } from "@/hooks/use-tasks";
+import { useBatchUpdateTasks, useBatchDeleteTasks, useReleases } from "@/hooks/use-tasks";
+import { releaseLabel } from "@/lib/tasks/releases";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { isAtLeast } from "@/types/auth";
 import { TASK_STATUSES, type TaskStatus, type TaskPriority, type FeatureBlockDTO } from "@/types/tasks";
@@ -105,6 +107,7 @@ export function TaskBatchBar({
 }) {
   const batchUpdate = useBatchUpdateTasks();
   const batchDelete = useBatchDeleteTasks();
+  const releases = useReleases(clientId ?? null).data ?? [];
   const team = useBackstageTeam();
   const allMembers = team.data ?? [];
   // Scope assignees to the client's team — devs assigned to this client, plus admins/super-admins
@@ -306,6 +309,35 @@ export function TaskBatchBar({
             </div>
           )}
         </Pop>
+
+        {/* Put in a release (only when this client has any) */}
+        {releases.length > 0 ? (
+          <Pop label="Release" icon={<RocketLaunchIcon className="h-3.5 w-3.5" />} disabled={busy}>
+            {(close) => (
+              <div className="max-h-60 overflow-y-auto">
+                <MenuButton
+                  onClick={() => {
+                    void apply({ releaseId: null });
+                    close();
+                  }}
+                >
+                  <span className="text-[var(--text-4)]">No release</span>
+                </MenuButton>
+                {releases.map((r) => (
+                  <MenuButton
+                    key={r.id}
+                    onClick={() => {
+                      void apply({ releaseId: r.id });
+                      close();
+                    }}
+                  >
+                    <span className="truncate" title={releaseLabel(r)}>{releaseLabel(r)}</span>
+                  </MenuButton>
+                ))}
+              </div>
+            )}
+          </Pop>
+        ) : null}
 
         {/* Due date */}
         <Pop label="Due date" icon={<CalendarDaysIcon className="h-3.5 w-3.5" />} disabled={busy}>

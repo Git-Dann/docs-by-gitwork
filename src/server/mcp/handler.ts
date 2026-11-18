@@ -120,6 +120,8 @@ import { proposalListSelect, serializeProposalListItem } from "@/server/proposal
 import { listClientMeetings } from "@/server/meetings";
 import { allocateDocumentNumber, updateDocument } from "@/server/documents";
 import { prisma } from "@/lib/prisma";
+import { createRelease, listReleases } from "@/server/releases";
+import { findReleaseByVersion, releaseLabel } from "@/lib/tasks/releases";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
@@ -569,6 +571,7 @@ const createTaskSchema = z.object({
   assigneeIds: z.array(z.string()).optional(),
   dueDate: z.string().optional(),
   featureBlockId: z.string().optional(),
+  release: z.string().max(80).optional(),
 });
 
 const updateTaskSchema = z.object({
@@ -580,8 +583,44 @@ const updateTaskSchema = z.object({
   priority: TASK_PRIORITY.optional(),
   assigneeIds: z.array(z.string()).optional(),
   featureBlockId: z.string().optional(),
+  release: z.string().max(80).optional(),
   dueDate: z.string().optional(),
 });
+
+const listReleasesSchema = z.object({ client: z.string() });
+function releaseCreateMcpParse(args: unknown) {
+  const parsed = createReleaseSchema.parse(args);
+  for (const d of [parsed.startDate, parsed.endDate]) {
+    if (d !== undefined && Number.isNaN(new Date(d).getTime())) throw new Error(`"${d}" isn't a date. Use ISO, e.g. 2026-12-01.`);
+  }
+  if (parsed.startDate && parsed.endDate && new Date(parsed.endDate) < new Date(parsed.startDate)) {
+    throw new Error("The end date must be on or after the start date.");
+  }
+  return parsed;
+}
+const createReleaseSchema = z.object({
+  client: z.string(),
+  version: z.string().trim().min(1).max(40),
+  name: z.string().trim().max(120).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
+/**
+ * A release named by an MCP caller: its id, or its version ("v2.0.0", or "2.0.0" for "v2.0.0").
+ * '' detaches. A version that matches no release, or more than one, is an error naming the
+ * releases there are, never a guess.
+ */
+async function resolveReleaseRef(user: EffectiveUser, clientId: string, ref: string): Promise<string | null> {
+  if (ref.trim() === "") return null;
+  const releases = await listReleases(user, clientId);
+  const byId = releases.find((r) => r.id === ref.trim());
+  if (byId) return byId.id;
+  const match = findReleaseByVersion(releases, ref);
+  if (match) return match.id;
+  const known = releases.map((r) => r.version).join(", ") || "none yet";
+  throw new Error(`No single release matches "${ref}". This client's releases: ${known}.`);
+}
 
 const findMeetingsSchema = z.object({
   client: z.string(),
@@ -2262,6 +2301,10 @@ const TOOLS: ToolDef[] = [
         },
         dueDate: { type: "string", description: "ISO date, e.g. '2026-07-01'." },
         featureBlockId: { type: "string", description: "Cuid of feature block to attach to." },
+        release: {
+          type: "string",
+          description: "The release it ships in: a version like 'v2.0.0' (from list_releases) or a release id.",
+        },
       },
       required: ["client", "title"],
       additionalProperties: false,
@@ -2278,6 +2321,7 @@ const TOOLS: ToolDef[] = [
         priority: parsed.priority,
         assigneeIds: parsed.assigneeIds,
         featureBlockId: parsed.featureBlockId ?? null,
+        releaseId: parsed.release !== undefined ? await resolveReleaseRef(user, c.id, parsed.release) : null,
         dueDate: parsed.dueDate ?? null,
       });
       return textResult(
@@ -2290,7 +2334,7 @@ const TOOLS: ToolDef[] = [
     name: "update_task",
     description:
       "Update an existing task by id. Any subset of fields may be supplied. " +
-      "Pass featureBlockId: '' to detach. Honors your client-scoping.",
+      "Pass featureBlockId: '' or release: '' to detach. Honors your client-scoping.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2305,6 +2349,10 @@ const TOOLS: ToolDef[] = [
           type: "string",
           description: "Cuid, or empty string to detach.",
         },
+        release: {
+          type: "string",
+          description: "A version like 'v2.0.0' or a release id; empty string takes it out of its release.",
+        },
         dueDate: { type: "string", description: "ISO date." },
       },
       required: ["taskId"],
@@ -2312,12 +2360,72 @@ const TOOLS: ToolDef[] = [
     },
     handler: async (user, args) => {
       const parsed = updateTaskSchema.parse(args);
-      const { taskId, featureBlockId, ...rest } = parsed;
+      const { taskId, featureBlockId, release, ...rest } = parsed;
+      let releaseId: string | null | undefined;
+      if (release !== undefined) {
+        const t = await prisma.task.findFirst({ where: { id: taskId, workspaceId: user.workspaceId }, select: { clientId: true } });
+        if (!t) throw new Error("Task not found.");
+        releaseId = await resolveReleaseRef(user, t.clientId, release);
+      }
       const updated = await updateTask(user, taskId, {
         ...rest,
         featureBlockId: featureBlockId === "" ? null : featureBlockId,
+        releaseId,
       });
       return textResult(updated, `Updated task "${updated.title}" (status: ${updated.status}).`);
+    },
+  },
+  {
+    name: "list_releases",
+    description:
+      "List a client's releases (version, name, dates, how many tasks and how many done), in release order. " +
+      "Use the version with create_task / update_task's `release`.",
+    inputSchema: {
+      type: "object",
+      properties: { client: { type: "string", description: "Client slug, name, or cuid." } },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = listReleasesSchema.parse(args);
+      const c = await resolveClient(user, parsed.client);
+      const releases = await listReleases(user, c.id);
+      return textResult(
+        releases,
+        releases.length
+          ? `${c.name} has ${releases.length} release${releases.length === 1 ? "" : "s"}: ${releases.map((r) => releaseLabel(r)).join("; ")}.`
+          : `${c.name} has no releases yet.`,
+      );
+    },
+  },
+  {
+    name: "create_release",
+    description:
+      "Add a release to a client (e.g. version 'v2.0.0', name 'Q4: Refinement Session', optional ISO start/end dates). " +
+      "Tasks are then put in it with create_task / update_task's `release`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid." },
+        version: { type: "string", description: "e.g. 'v2.0.0'." },
+        name: { type: "string", description: "Optional session or theme name." },
+        startDate: { type: "string", description: "ISO date, optional." },
+        endDate: { type: "string", description: "ISO date, optional." },
+      },
+      required: ["client", "version"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = releaseCreateMcpParse(args);
+      const c = await resolveClient(user, parsed.client);
+      const created = await createRelease(user, {
+        clientId: c.id,
+        version: parsed.version,
+        name: parsed.name ?? null,
+        startDate: parsed.startDate ?? null,
+        endDate: parsed.endDate ?? null,
+      });
+      return textResult(created, `Added release ${releaseLabel(created)} to ${c.name}.`);
     },
   },
   {

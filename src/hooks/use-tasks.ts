@@ -36,6 +36,10 @@ import {
   listMemberClients,
   setMemberClients,
   listFeatureBlocks,
+  listReleases,
+  createRelease,
+  updateRelease,
+  deleteRelease,
   getBoardColumns,
   saveBoardColumns,
   createFeatureBlock,
@@ -68,6 +72,7 @@ const QK = {
   roster: ["tasks", "rollup"] as const,
   memberClients: (memberId: string) => ["tasks", "member-clients", memberId] as const,
   blocks: (clientId: string) => ["tasks", "blocks", clientId] as const,
+  releases: (clientId: string) => ["tasks", "releases", clientId] as const,
   columns: (clientId: string) => ["tasks", "columns", clientId] as const,
   milestones: (clientId: string) => ["tasks", "milestones", clientId] as const,
   share: (slug: string) => ["tasks", "share", slug] as const,
@@ -531,6 +536,42 @@ export function useDeleteFeatureBlock() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteFeatureBlock(id),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+// ─── Releases (ClientRelease) ────────────────────────────────────────────────
+
+export function useReleases(clientId: string | null) {
+  return useQuery({
+    queryKey: QK.releases(clientId ?? ""),
+    queryFn: () => listReleases(clientId as string),
+    enabled: Boolean(clientId),
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCreateRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createRelease>[0]) => createRelease(input),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useUpdateRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateRelease>[1] }) => updateRelease(id, input),
+    onSuccess: () => invalidateAll(qc),
+  });
+}
+
+export function useDeleteRelease() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteRelease(id),
     onSuccess: () => invalidateAll(qc),
   });
 }

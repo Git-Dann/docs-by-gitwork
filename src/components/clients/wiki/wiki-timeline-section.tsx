@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Segmented } from "@/components/ui/segmented";
 import { GanttChart, type GanttBlock, type GanttMilestone } from "@/components/tasks/gantt-chart";
 import type { WikiLinkedWork, WikiTimeline } from "@/server/wiki";
 
@@ -13,7 +15,13 @@ const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, mo
  * with the standalone /timeline/[token] share.
  */
 export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
-  const blocks: GanttBlock[] = timeline.blocks.map((b) => ({
+  // Categories (what the work is about) or Releases (when it ships). The switch only shows
+  // when the client has releases.
+  const [group, setGroup] = useState<"categories" | "releases">("categories");
+  const hasReleases = (timeline.releases ?? []).length > 0;
+  const byRelease = group === "releases" && hasReleases;
+  const source = byRelease ? (timeline.releases ?? []) : timeline.blocks;
+  const blocks: GanttBlock[] = source.map((b) => ({
     id: b.id,
     name: b.name,
     startDate: b.startDate,
@@ -31,10 +39,12 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
     color: m.color,
   }));
 
+  // The headline figure is the plan's (the categories), whichever way the chart is grouped,
+  // so switching the view never changes the number above it.
   const overall =
-    blocks.length === 0
+    timeline.blocks.length === 0
       ? 0
-      : Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
+      : Math.round(timeline.blocks.reduce((sum, b) => sum + b.progress, 0) / timeline.blocks.length);
 
   return (
     // ⚠️ The spacing lives HERE, not in the parents. `wiki-public-view` renders this
@@ -47,7 +57,7 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
           <span className="widget-header__label--number">01</span>
           {" // TIMELINE"}
         </span>
-        {blocks.length > 0 && (
+        {timeline.blocks.length > 0 && (
           <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
             {overall}% COMPLETE
           </span>
@@ -72,6 +82,20 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
           blocks={blocks}
           milestones={milestones}
           slippage={false}
+          railLabel={byRelease ? "Releases" : "Categories"}
+          controls={
+            hasReleases ? (
+              <Segmented
+                label="Group the timeline by"
+                value={byRelease ? "releases" : "categories"}
+                onChange={setGroup}
+                options={[
+                  { value: "categories", label: "Categories" },
+                  { value: "releases", label: "Releases" },
+                ]}
+              />
+            ) : null
+          }
           emptyHint="The timeline will appear here once project phases are scheduled."
         />
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/format";
 import { GANTT_SCALE_LABELS, TASK_STATUS_LABELS, type GanttScale, type TaskStatus } from "@/types/tasks";
@@ -169,6 +169,8 @@ export function GanttChart({
   onMilestoneClick,
   emptyHint = "No categories yet — add one to start the timeline.",
   slippage = true,
+  railLabel = "Categories",
+  controls,
 }: {
   blocks: GanttBlock[];
   milestones?: GanttMilestone[];
@@ -179,6 +181,10 @@ export function GanttChart({
   /** Show the slip/slippage overlay + its toggle. Internal PM signal — the public
    *  client timeline passes false so clients don't see "behind schedule" bars. */
   slippage?: boolean;
+  /** The heading over the rows: "Categories" by default, "Releases" when grouped by release. */
+  railLabel?: string;
+  /** Extra controls at the start of the controls bar, e.g. the Categories | Releases switch. */
+  controls?: ReactNode;
 }) {
   const [scale, setScale] = useState<GanttScale>(initialScale);
   // Section ids whose task list is expanded. Default: all collapsed (compact rows).
@@ -330,7 +336,8 @@ export function GanttChart({
     <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[rgba(0,0,0,0.08)] px-3 py-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {controls}
           <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-4)]">
             <span className="inline-block h-2.5 w-0.5 bg-red-500" />
             Today
@@ -433,7 +440,7 @@ export function GanttChart({
                   className="sticky left-0 z-[60] flex shrink-0 border-r border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)] text-[10px] font-medium uppercase tracking-[1px] text-[var(--text-4)]"
                   style={{ width: RAIL_W, height: HEADER_H, top: 0, fontFamily: "var(--font-mono)" }}
                 >
-                  <div className="flex flex-1 items-center px-3">Categories</div>
+                  <div className="flex flex-1 items-center px-3">{railLabel}</div>
                   {showDue && (
                     <div
                       className="flex shrink-0 items-center justify-end border-l border-[rgba(0,0,0,0.08)] px-2"

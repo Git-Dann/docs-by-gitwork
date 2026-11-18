@@ -25,6 +25,7 @@ import {
   XMarkIcon,
   PencilSquareIcon,
   TrashIcon,
+  RocketLaunchIcon,
 } from "@heroicons/react/24/outline";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ import {
   useUpdateTask,
   useFeatureBlocks,
   useBoardColumns,
+  useReleases,
   useDeleteFeatureBlock,
   useMilestones,
   useTimelineShare,
@@ -50,6 +52,9 @@ import { TaskFormModal } from "@/components/tasks/task-form";
 import { TaskDetailDrawer } from "@/components/tasks/task-detail-drawer";
 import { FeatureBlockFormModal } from "@/components/tasks/feature-block-form";
 import { MilestoneFormModal } from "@/components/tasks/milestone-form";
+import { ReleasesModal } from "@/components/tasks/releases-modal";
+import { Segmented } from "@/components/ui/segmented";
+import { releaseLabel, releaseSpan } from "@/lib/tasks/releases";
 import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
 import { TaskImportModal } from "@/components/tasks/task-import-modal";
 import { ProjectUpdateComposer } from "@/components/tasks/project-update-composer";
@@ -96,6 +101,8 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const [importing, setImporting] = useState(false);
   const [managingCategories, setManagingCategories] = useState(false);
   const [managingColumns, setManagingColumns] = useState(false);
+  const [managingReleases, setManagingReleases] = useState(false);
+  const [ganttGroup, setGanttGroup] = useState<"categories" | "releases">("categories");
   const [pushingToSlack, setPushingToSlack] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [scribeSourceTask, setScribeSourceTask] = useState<TaskDTO | null>(null);
@@ -145,6 +152,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const updateTask = useUpdateTask();
   const { data: blocks = [] } = useFeatureBlocks(clientId);
   const { data: boardColumns = NO_COLUMNS } = useBoardColumns(clientId);
+  const { data: releases = [] } = useReleases(clientId);
   const { data: milestones = [] } = useMilestones(clientId);
   const { data: meetingsData } = useClientMeetings(slug, Boolean(clientId));
   // Archived tab: only-archived tasks, fetched lazily when the tab is open.
@@ -216,6 +224,35 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         .filter((b): b is GanttBlock => b !== null),
     [blocks, tasks],
   );
+
+  // The same timeline, grouped by the release a task ships in (src/lib/tasks/releases.ts).
+  const releaseGanttBlocks: GanttBlock[] = useMemo(
+    () =>
+      releases
+        .map((r): GanttBlock | null => {
+          const releaseTasks = tasks.filter((t) => t.release?.id === r.id && !t.parentId);
+          const span = releaseSpan(r, releaseTasks);
+          if (!span) return null;
+          const statusCounts = buildTaskStatusCounts(releaseTasks);
+          // Same reason as the categories above: DONE is windowed in the fetch, the release's
+          // own count is all-time.
+          statusCounts.DONE = r.doneCount;
+          return {
+            id: r.id,
+            name: releaseLabel(r),
+            startDate: span.startDate,
+            endDate: span.endDate,
+            estimated: span.estimated,
+            progress: r.taskCount ? Math.round((r.doneCount / r.taskCount) * 100) : 0,
+            tasks: releaseTasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+            statusCounts,
+          };
+        })
+        .filter((b): b is GanttBlock => b !== null),
+    [releases, tasks],
+  );
+  // Grouping by release only makes sense once the client has releases.
+  const byRelease = ganttGroup === "releases" && releases.length > 0;
 
   const ganttMilestones: GanttMilestone[] = useMemo(
     () => milestones.map((m) => ({ id: m.id, name: m.name, date: m.date, color: m.color })),
@@ -334,6 +371,16 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           >
             Categories
           </Button>
+          {clientId ? (
+            <Button
+              type="button"
+              variant="secondary"
+              leadingIcon={<RocketLaunchIcon className="h-4 w-4" />}
+              onClick={() => setManagingReleases(true)}
+            >
+              Releases
+            </Button>
+          ) : null}
           {view === "board" && clientId ? (
             <Button
               type="button"
@@ -405,9 +452,27 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         />
       ) : (
         <GanttChart
-          blocks={ganttBlocks}
+          blocks={byRelease ? releaseGanttBlocks : ganttBlocks}
+          railLabel={byRelease ? "Releases" : "Categories"}
+          controls={
+            releases.length > 0 ? (
+              <Segmented
+                label="Group the timeline by"
+                value={byRelease ? "releases" : "categories"}
+                onChange={setGanttGroup}
+                options={[
+                  { value: "categories", label: "Categories" },
+                  { value: "releases", label: "Releases" },
+                ]}
+              />
+            ) : null
+          }
           milestones={ganttMilestones}
           onBlockClick={(id) => {
+            if (byRelease) {
+              setManagingReleases(true);
+              return;
+            }
             const block = blocks.find((b) => b.id === id) ?? null;
             setBlockModal({ open: true, block });
           }}
@@ -467,6 +532,9 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           tasks={tasks}
           onClose={() => setPushingToSlack(false)}
         />
+      ) : null}
+      {managingReleases && clientId ? (
+        <ReleasesModal clientId={clientId} onClose={() => setManagingReleases(false)} />
       ) : null}
       {managingColumns && clientId ? (
         <BoardColumnsModal clientId={clientId} columns={boardColumns} onClose={() => setManagingColumns(false)} />

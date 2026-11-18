@@ -3,6 +3,7 @@ import { ChatBubbleLeftIcon, VideoCameraIcon } from "@heroicons/react/24/outline
 import { FlagIcon, CalendarDaysIcon } from "@heroicons/react/16/solid";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
+import { releaseLabel } from "@/lib/tasks/releases";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
 import { TaskPriorityDot, TaskStatusBadge, TaskLabelBadge, TaskBlockedBadge } from "@/components/tasks/task-badges";
 
@@ -121,6 +122,16 @@ export const TaskCard = memo(function TaskCard({
         {task.featureBlock ? (
           <span className="inline-flex max-w-[140px] items-center truncate rounded-[4px] bg-[var(--surface-brand)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]">
             {task.featureBlock.name}
+          </span>
+        ) : null}
+
+        {task.release ? (
+          <span
+            className="inline-flex max-w-[120px] items-center truncate rounded-[4px] border border-[var(--border-2)] px-1.5 py-0.5 text-[10px] text-[var(--text-3)]"
+            style={{ fontFamily: "var(--font-mono)" }}
+            title={releaseLabel(task.release)}
+          >
+            {task.release.version}
           </span>
         ) : null}
 

@@ -69,6 +69,22 @@ export type TaskClientRef = { id: string; name: string; slug: string };
 
 export type TaskBlockRef = { id: string; name: string };
 
+/** The release a task ships in (ClientRelease). See src/lib/tasks/releases.ts. */
+export type TaskReleaseRef = { id: string; version: string; name: string | null };
+
+/** A client's release, as the board and timeline read it. Dates are ISO strings. */
+export type ReleaseDTO = {
+  id: string;
+  clientId: string;
+  version: string;
+  name: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  orderKey: number;
+  taskCount: number;
+  doneCount: number;
+};
+
 export type TaskScribeSourceRef = {
   kind: "ACTION_ITEM" | "MANUAL";
   meetingId: string;
@@ -86,6 +102,8 @@ export type TaskDTO = {
   assignees: TaskUserRef[];
   createdBy: TaskUserRef | null;
   featureBlock: TaskBlockRef | null;
+  /** The release this task ships in, if any. */
+  release: TaskReleaseRef | null;
   parentId: string | null;
   title: string;
   description: string | null;

@@ -60,6 +60,7 @@ vi.mock("@/components/ui/toast", () => ({ useToast: () => ({ success: () => {}, 
 vi.mock("@/components/proposals/markdown-field", () => ({ MarkdownField: () => null }));
 vi.mock("@/hooks/use-tasks", () => ({
   useTasks: () => ({ data: BOARD }),
+  useReleases: () => ({ data: [] }),
   useFeatureBlocks: () => ({
     data: [
       { id: "new", name: "New Work" },
