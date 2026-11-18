@@ -12,6 +12,8 @@ import { useCreateTask, useUpdateTask, useFeatureBlocks, useReleases, useTasks }
 import { releaseLabel } from "@/lib/tasks/releases";
 import { matchPlannedTasks, suggestCategory } from "@/lib/tasks/plan-match";
 import { PlanMatchList } from "@/components/tasks/plan-matches";
+import { CardPicker } from "@/components/tasks/product-card-parts";
+import { ITEM_TYPES, ITEM_TYPE_LABELS, TIERS, TIER_LABELS } from "@/lib/tasks/product-cards";
 import type { BackstageMember } from "@/types/backstage";
 import {
   TASK_STATUSES,
@@ -108,6 +110,13 @@ export function TaskFormModal({
   );
   // The release it ships in: optional, "" = none.
   const [releaseId, setReleaseId] = useState(task?.release?.id ?? "");
+  // Product card fields (CLAUDE.md §124). A type makes the task a card the client plans; a
+  // dev task names the card it delivers instead. "" = not set.
+  const [itemType, setItemType] = useState(task?.itemType ?? "");
+  const [tier, setTier] = useState(task?.tier ?? "");
+  const [area, setArea] = useState(task?.area ?? "");
+  const [estimate, setEstimate] = useState(task?.estimateHours != null ? String(task.estimateHours) : "");
+  const [productCardId, setProductCardId] = useState(task?.productCard?.id ?? "");
   // Once the user picks a category themselves, suggestions stop overwriting it.
   const [categoryTouched, setCategoryTouched] = useState(isEdit);
   // "It's new" on the suggestion list hides it until the title changes.
@@ -128,9 +137,11 @@ export function TaskFormModal({
 
   // ── Plan-first: is this already a task? Which category does it belong in? ──────────
   // The client's board (the same cached query the board uses). Only fetched on create.
-  const boardQuery = useTasks(
-    { clientId: clientId || undefined },
-    { enabled: !isEdit && Boolean(clientId) },
+  // Also the source of the client's product cards for "Delivers card", so it loads on edit too.
+  const boardQuery = useTasks({ clientId: clientId || undefined }, { enabled: Boolean(clientId) });
+  const productCards = useMemo(
+    () => (boardQuery.data ?? []).filter((t) => t.itemType && !t.archivedAt),
+    [boardQuery.data],
   );
   const deferredTitle = useDeferredValue(title);
   const clientName = clients.find((c) => c.id === clientId)?.name;
@@ -209,6 +220,19 @@ export function TaskFormModal({
       return;
     }
     const blockId = featureBlockId && featureBlockId !== NOT_PLANNED ? featureBlockId : null;
+    const hours = estimate.trim() === "" ? null : Number(estimate);
+    if (hours !== null && (!Number.isFinite(hours) || hours < 0)) {
+      setError("The estimate is a number of hours, 0 or more.");
+      return;
+    }
+    const cardFields = {
+      itemType: itemType || null,
+      tier: itemType ? tier || null : null,
+      area: itemType ? area.trim() || null : null,
+      estimateHours: hours,
+      // A card can't deliver another card, so a typed task is never linked.
+      productCardId: itemType ? null : productCardId || null,
+    };
     try {
       if (isEdit && task) {
         const saved = await update.mutateAsync({
@@ -224,6 +248,7 @@ export function TaskFormModal({
             featureBlockId: blockId,
             releaseId: releaseId || null,
             dueDate: dueDate || null,
+            ...cardFields,
           },
         });
         onSaved?.(saved);
@@ -240,6 +265,7 @@ export function TaskFormModal({
           featureBlockId: blockId,
           releaseId: releaseId || null,
           dueDate: dueDate || null,
+          ...cardFields,
         });
         onSaved?.(saved);
         if (options.addAnother) {
@@ -436,6 +462,72 @@ export function TaskFormModal({
                 </select>
               </div>
             ) : null}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                  Type <span className="text-[var(--text-4)]">(product card)</span>
+                </label>
+                <select className="app-select w-full" value={itemType} onChange={(e) => setItemType(e.target.value)}>
+                  <option value="">Dev task</option>
+                  {ITEM_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {ITEM_TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                  Estimate <span className="text-[var(--text-4)]">(hours)</span>
+                </label>
+                <input
+                  className="app-input w-full text-base sm:text-sm"
+                  inputMode="decimal"
+                  value={estimate}
+                  onChange={(e) => setEstimate(e.target.value)}
+                  placeholder="—"
+                />
+              </div>
+              {itemType ? (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Tier</label>
+                    <select className="app-select w-full" value={tier} onChange={(e) => setTier(e.target.value)}>
+                      <option value="">No tier</option>
+                      {TIERS.map((t) => (
+                        <option key={t} value={t}>
+                          {TIER_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Area</label>
+                    <input
+                      className="app-input w-full text-base sm:text-sm"
+                      value={area}
+                      maxLength={80}
+                      onChange={(e) => setArea(e.target.value)}
+                      placeholder="e.g. GPS & Shot Tracking"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                    Delivers card <span className="text-[var(--text-4)]">(optional)</span>
+                  </label>
+                  <CardPicker
+                    cards={productCards}
+                    value={productCardId}
+                    onChange={setProductCardId}
+                    disabled={!clientId}
+                    excludeId={task?.id}
+                  />
+                </div>
+              )}
+            </div>
 
             <div className="flex min-h-[220px] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] lg:flex-1">
               <div className="border-b border-[var(--border-2)] px-3 py-2.5">

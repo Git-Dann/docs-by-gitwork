@@ -17,6 +17,12 @@ export interface BoardColumnDef {
   name: string;
   /** The status a task in this column has. */
   stage: TaskStatus;
+  /**
+   * This column replaces its status's own column: the status column is not shown, and a task of
+   * that status with no column (or a stale one) sits here. At most one per status. Lets a client's
+   * board be entirely their own workflow (Wedge's 12 columns) without re-filing every task.
+   */
+  isDefault?: boolean;
 }
 
 /** A move or edit that names a column the board no longer has. 409: refresh and retry. */
@@ -38,17 +44,24 @@ export function parseBoardColumns(raw: unknown): BoardColumnDef[] {
   const seen = new Set<string>();
   // Two columns called "QA", or one called "Done", would read as the same lane.
   const names = new Set(TASK_STATUSES.map((s) => columnNameKey(TASK_STATUS_LABELS[s])));
+  const defaults = new Set<string>();
   const out: BoardColumnDef[] = [];
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
-    const { id, name, stage } = item as Record<string, unknown>;
+    const { id, name, stage, isDefault } = item as Record<string, unknown>;
     if (typeof id !== "string" || !ID.test(id) || seen.has(id)) continue;
     if (typeof name !== "string" || !name.trim()) continue;
     if (typeof stage !== "string" || !(TASK_STATUSES as string[]).includes(stage)) continue;
     if (names.has(columnNameKey(name))) continue;
     names.add(columnNameKey(name));
     seen.add(id);
-    out.push({ id, name: name.trim().slice(0, BOARD_COLUMN_LIMITS.name), stage: stage as TaskStatus });
+    const col: BoardColumnDef = { id, name: name.trim().slice(0, BOARD_COLUMN_LIMITS.name), stage: stage as TaskStatus };
+    // One default per status: a second would leave it ambiguous where an unplaced task goes.
+    if (isDefault === true && !defaults.has(stage)) {
+      defaults.add(stage);
+      col.isDefault = true;
+    }
+    out.push(col);
     if (out.length === BOARD_COLUMN_LIMITS.columns) break;
   }
   return out;
@@ -69,11 +82,21 @@ export interface BoardLane {
   columnId: string | null;
 }
 
-/** Status columns in their fixed order, each followed by its custom lanes in the order they were added. */
+/** The column that replaces a status's own column, if the client has set one. */
+export function defaultColumnFor(status: TaskStatus, columns: readonly BoardColumnDef[]): BoardColumnDef | undefined {
+  return columns.find((c) => c.stage === status && c.isDefault);
+}
+
+/**
+ * Status columns in their fixed order, each followed by its custom lanes in the order they were
+ * added. A status with a default column has no lane of its own: the default stands in for it.
+ */
 export function boardLanes(columns: readonly BoardColumnDef[]): BoardLane[] {
   const lanes: BoardLane[] = [];
   for (const status of TASK_STATUSES) {
-    lanes.push({ key: status, label: TASK_STATUS_LABELS[status], stage: status, columnId: null });
+    if (!defaultColumnFor(status, columns)) {
+      lanes.push({ key: status, label: TASK_STATUS_LABELS[status], stage: status, columnId: null });
+    }
     for (const c of columns) {
       if (c.stage === status) lanes.push({ key: c.id, label: c.name, stage: status, columnId: c.id });
     }
@@ -81,13 +104,17 @@ export function boardLanes(columns: readonly BoardColumnDef[]): BoardLane[] {
   return lanes;
 }
 
-/** The lane a task belongs in. A column that is gone, or no longer matches the task's status, is ignored. */
+/**
+ * The lane a task belongs in. A column that is gone, or no longer matches the task's status, is
+ * ignored: the task falls back to its status's default column if there is one, else its status.
+ */
 export function laneKeyFor(
   task: { status: TaskStatus; boardColumnId?: string | null },
   columns: readonly BoardColumnDef[],
 ): string {
   const col = task.boardColumnId ? columns.find((c) => c.id === task.boardColumnId) : undefined;
-  return col && col.stage === task.status ? col.id : task.status;
+  if (col && col.stage === task.status) return col.id;
+  return defaultColumnFor(task.status, columns)?.id ?? task.status;
 }
 
 /** The custom column a task sits in, by name — for Slack lines and anything else that lists tasks. */

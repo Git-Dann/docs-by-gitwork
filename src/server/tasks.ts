@@ -31,6 +31,7 @@ import type {
 } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
 import { BoardColumnError, parseBoardColumns } from "@/lib/tasks/board-columns";
+import { cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
@@ -118,6 +119,14 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     attachmentCount: row._count.attachments,
     metadata: (row.metadata as Record<string, unknown> | null) ?? null,
     scribeSource: null,
+    itemType: row.itemType,
+    tier: row.tier,
+    area: row.area,
+    estimateHours: row.estimateHours,
+    externalRef: row.externalRef,
+    // Title and progress are filled in by attachCardInfo (one query each per list).
+    productCard: row.productCardId ? { id: row.productCardId, title: "", itemType: null } : null,
+    cardProgress: null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -162,6 +171,13 @@ function taskListDTO(task: TaskDTO): TaskDTO {
     attachmentCount: task.attachmentCount,
     metadata: null,
     scribeSource: task.scribeSource,
+    itemType: task.itemType,
+    tier: task.tier,
+    area: task.area,
+    estimateHours: task.estimateHours,
+    externalRef: task.externalRef,
+    productCard: task.productCard,
+    cardProgress: task.cardProgress,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   };
@@ -266,11 +282,57 @@ async function attachScribeSources<T extends TaskDTO>(
   // imported tasks carry large metadata payloads, which bloated /api/tasks to
   // tens of MB and made the tasks screen crawl. scribeSource is already resolved
   // by this point, so nulling metadata here is lossless for the client.
-  return tasks.map((task) => ({
-    ...task,
-    metadata: null,
-    scribeSource: byTaskId.get(task.id) ?? task.scribeSource,
-  }));
+  return attachCardInfo(
+    workspaceId,
+    tasks.map((task) => ({
+      ...task,
+      metadata: null,
+      scribeSource: byTaskId.get(task.id) ?? task.scribeSource,
+    })),
+  );
+}
+
+/**
+ * Fill in each dev task's card title and each card's progress: one query for the titles and one
+ * groupBy for the progress, however many tasks are in the list. Archived dev tasks don't count
+ * towards a card's progress; an archived card still shows as the card a task delivers.
+ */
+async function attachCardInfo<T extends TaskDTO>(workspaceId: string, tasks: T[]): Promise<T[]> {
+  const cardIds = [...new Set(tasks.map((t) => t.productCard?.id).filter((x): x is string => Boolean(x)))];
+  const ownCardIds = tasks.filter((t) => isProductCard(t)).map((t) => t.id);
+  if (cardIds.length === 0 && ownCardIds.length === 0) return tasks;
+  const [cards, counts] = await Promise.all([
+    cardIds.length
+      ? prisma.task.findMany({
+          where: { id: { in: cardIds }, workspaceId },
+          select: { id: true, title: true, itemType: true },
+        })
+      : Promise.resolve([]),
+    ownCardIds.length
+      ? prisma.task.groupBy({
+          by: ["productCardId", "status"],
+          where: { workspaceId, productCardId: { in: ownCardIds }, archivedAt: null },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const cardById = new Map(cards.map((c) => [c.id, c]));
+  const statusesByCard = new Map<string, TaskStatus[]>();
+  for (const row of counts) {
+    if (!row.productCardId) continue;
+    const list = statusesByCard.get(row.productCardId) ?? [];
+    for (let i = 0; i < row._count._all; i++) list.push(row.status as TaskStatus);
+    statusesByCard.set(row.productCardId, list);
+  }
+  return tasks.map((t) => {
+    const card = t.productCard ? cardById.get(t.productCard.id) : undefined;
+    return {
+      ...t,
+      // A link to a card that's gone reads as no link, never as a nameless card.
+      productCard: t.productCard && card ? { id: card.id, title: card.title, itemType: card.itemType } : null,
+      cardProgress: isProductCard(t) ? cardProgress(statusesByCard.get(t.id) ?? []) : null,
+    };
+  });
 }
 
 function commentRowToDTO(row: CommentRow): TaskCommentDTO {
@@ -382,7 +444,7 @@ export async function listTasks(
     blocked?: boolean;
     /** Only tasks nobody is assigned to (neither the m-n join nor the legacy column). */
     unassignedOnly?: boolean;
-    /** Only tasks in a category (feature block) — "on the plan". */
+    /** Only tasks on the plan: in a category (feature block) or a release. */
     plannedOnly?: boolean;
     /** Exclude DONE. */
     openOnly?: boolean;
@@ -408,7 +470,11 @@ export async function listTasks(
   }
   if (opts.status) where.status = opts.status;
   else if (opts.openOnly) where.status = { not: "DONE" };
-  if (opts.plannedOnly) where.featureBlockId = { not: null };
+  // "On the plan" = in a category or in a release (CLAUDE.md §124).
+  if (opts.plannedOnly) {
+    const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+    where.AND = [...existingAnd, { OR: [{ featureBlockId: { not: null } }, { releaseId: { not: null } }] }];
+  }
   if (opts.unassignedOnly) {
     const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
     where.AND = [...existingAnd, { assigneeId: null, assignees: { none: {} } }];
@@ -639,6 +705,61 @@ export async function assertReleaseInClient(
   if (!release) throw new ForbiddenError("That release isn't on this client");
 }
 
+/** A dev task linked to a card it can't deliver. 409 with the reason as a sentence. */
+export class ProductCardLinkError extends Error {
+  status = 409;
+}
+
+/**
+ * Check a dev task may deliver this card (src/lib/tasks/product-cards.ts → linkProblem): same
+ * client, a real card, not itself, and one level only. Throws with the reason otherwise.
+ */
+export async function assertCardLink(
+  workspaceId: string,
+  task: { id: string | null; clientId: string; isCard: boolean },
+  productCardId: string,
+): Promise<void> {
+  const card = await prisma.task.findFirst({
+    where: { id: productCardId, workspaceId },
+    select: { id: true, clientId: true, itemType: true, productCardId: true },
+  });
+  const problem = linkProblem(task, card);
+  if (problem) throw new ProductCardLinkError(problem);
+}
+
+/** A card can't be turned back into a dev task-delivering task while tasks still point at it. */
+async function assertNotLinkedTo(workspaceId: string, taskId: string): Promise<void> {
+  const linked = await prisma.task.count({ where: { workspaceId, productCardId: taskId } });
+  if (linked > 0) {
+    throw new ProductCardLinkError(
+      `${linked} dev task${linked === 1 ? " delivers" : "s deliver"} this card. Unlink them before removing its type.`,
+    );
+  }
+}
+
+/** The card fields as written, trimmed. Undefined keys are left out so an update only touches what it names. */
+function cardFieldsData(input: {
+  itemType?: string | null;
+  tier?: string | null;
+  area?: string | null;
+  estimateHours?: number | null;
+  externalRef?: string | null;
+}): {
+  itemType?: string | null;
+  tier?: string | null;
+  area?: string | null;
+  estimateHours?: number | null;
+  externalRef?: string | null;
+} {
+  const out: ReturnType<typeof cardFieldsData> = {};
+  if (input.itemType !== undefined) out.itemType = input.itemType || null;
+  if (input.tier !== undefined) out.tier = input.tier || null;
+  if (input.area !== undefined) out.area = input.area?.trim() ? input.area.trim().slice(0, 80) : null;
+  if (input.estimateHours !== undefined) out.estimateHours = input.estimateHours ?? null;
+  if (input.externalRef !== undefined) out.externalRef = input.externalRef?.trim() || null;
+  return out;
+}
+
 async function nextOrderKey(workspaceId: string, clientId: string, status: TaskStatus): Promise<number> {
   const top = await prisma.task.findFirst({
     where: { workspaceId, clientId, status },
@@ -673,9 +794,22 @@ export async function createTask(
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
     clickupId?: string | null;
+    itemType?: string | null;
+    tier?: string | null;
+    area?: string | null;
+    estimateHours?: number | null;
+    externalRef?: string | null;
+    productCardId?: string | null;
   },
 ): Promise<TaskDTO> {
   await assertClientInScope(user, input.clientId);
+  if (input.productCardId) {
+    await assertCardLink(
+      user.workspaceId,
+      { id: null, clientId: input.clientId, isCard: isProductCard({ itemType: input.itemType ?? null }) },
+      input.productCardId,
+    );
+  }
   if (input.featureBlockId) {
     await assertBlockInClient(user.workspaceId, input.clientId, input.featureBlockId);
   }
@@ -723,6 +857,12 @@ export async function createTask(
       startedAt: ts.startedAt ?? null,
       completedAt: ts.completedAt ?? null,
       clickupId: input.clickupId ?? null,
+      itemType: input.itemType || null,
+      tier: input.tier || null,
+      area: input.area?.trim() ? input.area.trim().slice(0, 80) : null,
+      estimateHours: input.estimateHours ?? null,
+      externalRef: input.externalRef?.trim() || null,
+      productCardId: input.productCardId || null,
       ...(input.metadata !== undefined && input.metadata !== null
         ? { metadata: input.metadata as Prisma.InputJsonValue }
         : {}),
@@ -852,6 +992,13 @@ export async function updateTask(
     archived?: boolean;
     /** Set/clear the blocked flag. Empty/null clears the block (and its client response). */
     blockedReason?: string | null;
+    itemType?: string | null;
+    tier?: string | null;
+    area?: string | null;
+    estimateHours?: number | null;
+    externalRef?: string | null;
+    /** The card this task delivers; null or "" unlinks. */
+    productCardId?: string | null;
   },
 ): Promise<TaskDTO> {
   const existing = await prisma.task.findFirst({
@@ -862,10 +1009,31 @@ export async function updateTask(
       startedAt: true,
       assigneeId: true,
       assignees: { select: { id: true } },
+      itemType: true,
+      productCardId: true,
     },
   });
   if (!existing) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, existing.clientId);
+
+  // Product card rules (src/lib/tasks/product-cards.ts). Checked against the task as it will be
+  // after this edit, so "give it a type and link it" in one save is refused just the same.
+  const nextItemType = input.itemType !== undefined ? input.itemType || null : existing.itemType;
+  const nextCardId = input.productCardId !== undefined ? input.productCardId || null : existing.productCardId;
+  if (existing.itemType && !nextItemType) await assertNotLinkedTo(user.workspaceId, id);
+  if (nextCardId && (input.productCardId !== undefined || input.itemType !== undefined)) {
+    await assertCardLink(
+      user.workspaceId,
+      { id, clientId: existing.clientId, isCard: isProductCard({ itemType: nextItemType }) },
+      nextCardId,
+    );
+  }
+  if (nextItemType && !existing.itemType) {
+    // A task that dev tasks will point at must not itself point at a card.
+    if (nextCardId) {
+      throw new ProductCardLinkError("A product card can't deliver another card. Unlink it first.");
+    }
+  }
 
   const data: Prisma.TaskUpdateInput = {};
   if (input.title !== undefined) data.title = input.title;
@@ -899,6 +1067,8 @@ export async function updateTask(
     }
   }
   if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
+  Object.assign(data, cardFieldsData(input));
+  if (input.productCardId !== undefined) data.productCardId = input.productCardId || null;
   if (input.archived !== undefined) data.archivedAt = input.archived ? new Date() : null;
   if (input.blockedReason !== undefined) {
     const reason = input.blockedReason?.trim() || null;
@@ -1037,7 +1207,8 @@ export async function moveTask(
     }
   }
 
-  return taskRowToDTO(row);
+  const [moved] = await attachCardInfo(user.workspaceId, [taskRowToDTO(row)]);
+  return moved;
 }
 
 export async function deleteTask(user: EffectiveUser, id: string): Promise<void> {
@@ -1047,7 +1218,12 @@ export async function deleteTask(user: EffectiveUser, id: string): Promise<void>
   });
   if (!existing) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, existing.clientId);
-  await prisma.task.delete({ where: { id } });
+  // Deleting a product card leaves the dev tasks that delivered it exactly where they are:
+  // they just stop pointing at it. Archiving a card does not unlink (it can be restored).
+  await prisma.$transaction([
+    prisma.task.updateMany({ where: { workspaceId: user.workspaceId, productCardId: id }, data: { productCardId: null } }),
+    prisma.task.delete({ where: { id } }),
+  ]);
 }
 
 // ─── Batch (select-all + bulk edit/delete) ───────────────────────────────────
@@ -1060,16 +1236,21 @@ export interface TaskBatchPatch {
   releaseId?: string | null;
   dueDate?: string | null;
   archived?: boolean;
+  itemType?: string | null;
+  tier?: string | null;
+  area?: string | null;
+  /** The card every selected task delivers; null unlinks. One client only. */
+  productCardId?: string | null;
 }
 
 /** Load the requested tasks that exist in this workspace; throw if any is out of scope. */
 async function loadTasksInScope(
   user: EffectiveUser,
   ids: string[],
-): Promise<{ id: string; clientId: string; status: string; startedAt: Date | null }[]> {
+): Promise<{ id: string; clientId: string; status: string; startedAt: Date | null; itemType: string | null }[]> {
   const rows = await prisma.task.findMany({
     where: { id: { in: ids }, workspaceId: user.workspaceId },
-    select: { id: true, clientId: true, status: true, startedAt: true },
+    select: { id: true, clientId: true, status: true, startedAt: true, itemType: true },
   });
   if (!canSeeAllClients(user)) {
     const allowed = new Set(await assignedClientIds(user));
@@ -1106,6 +1287,19 @@ export async function batchUpdateTasks(
     }
     await assertReleaseInClient(user.workspaceId, rows[0].clientId, patch.releaseId);
   }
+  // Linking to a card: one client, and every selected task must be allowed to deliver it.
+  if (patch.productCardId) {
+    if (new Set(rows.map((r) => r.clientId)).size > 1) {
+      throw new ProductCardLinkError("Selected tasks span multiple clients, so they can't deliver one card.");
+    }
+    const nextType = (r: { itemType: string | null }) => (patch.itemType !== undefined ? patch.itemType || null : r.itemType);
+    for (const r of rows) {
+      await assertCardLink(user.workspaceId, { id: r.id, clientId: r.clientId, isCard: isProductCard({ itemType: nextType(r) }) }, patch.productCardId);
+    }
+  }
+  if (patch.itemType === null || patch.itemType === "") {
+    for (const r of rows) if (r.itemType) await assertNotLinkedTo(user.workspaceId, r.id);
+  }
 
   let updated = 0;
   for (const r of rows) {
@@ -1125,6 +1319,8 @@ export async function batchUpdateTasks(
     if (patch.releaseId !== undefined) {
       data.release = patch.releaseId ? { connect: { id: patch.releaseId } } : { disconnect: true };
     }
+    Object.assign(data, cardFieldsData(patch));
+    if (patch.productCardId !== undefined) data.productCardId = patch.productCardId || null;
     if (patch.status !== undefined && patch.status !== r.status) {
       data.status = patch.status;
       Object.assign(data, statusTimestamps(r.status as TaskStatus, patch.status, r));
@@ -1140,7 +1336,15 @@ export async function batchDeleteTasks(user: EffectiveUser, ids: string[]): Prom
   if (!ids.length) return { deleted: 0 };
   const rows = await loadTasksInScope(user, ids);
   if (!rows.length) return { deleted: 0 };
-  const res = await prisma.task.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+  const deleting = rows.map((r) => r.id);
+  // Dev tasks of a deleted card stay; they just stop pointing at it (see deleteTask).
+  const [, res] = await prisma.$transaction([
+    prisma.task.updateMany({
+      where: { workspaceId: user.workspaceId, productCardId: { in: deleting }, id: { notIn: deleting } },
+      data: { productCardId: null },
+    }),
+    prisma.task.deleteMany({ where: { id: { in: deleting } } }),
+  ]);
   return { deleted: res.count };
 }
 

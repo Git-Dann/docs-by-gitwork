@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BOARD_COLUMN_LIMITS,
   boardLanes,
+  columnNameFor,
   laneKeyFor,
   newBoardColumnId,
   parseBoardColumns,
@@ -117,5 +118,39 @@ describe("column names", () => {
         { id: "col_rev00001", name: "In review", stage: "DOING" },
       ]),
     ).toEqual([QA]);
+  });
+});
+
+describe("default columns (CLAUDE.md §124)", () => {
+  const FUTURE: BoardColumnDef = { id: "col_future01", name: "Future Idea", stage: "BACKLOG", isDefault: true };
+  const TRIAGE: BoardColumnDef = { id: "col_triage01", name: "Triage", stage: "BACKLOG" };
+
+  it("a client with no default column sees exactly what they did before", () => {
+    expect(boardLanes([QA, BLOCKED]).map((l) => l.key)).toEqual(["BACKLOG", "TODO", "DOING", BLOCKED.id, "IN_REVIEW", QA.id, "DONE"]);
+    expect(laneKeyFor({ status: "IN_REVIEW", boardColumnId: null }, [QA])).toBe("IN_REVIEW");
+  });
+
+  it("a default column replaces its status's own column", () => {
+    const keys = boardLanes([FUTURE, TRIAGE, QA]).map((l) => l.key);
+    expect(keys).not.toContain("BACKLOG");
+    expect(keys.slice(0, 2)).toEqual([FUTURE.id, TRIAGE.id]);
+    expect(keys).toContain("IN_REVIEW");
+  });
+
+  it("an unplaced task, or one in a stale column, lands in the default", () => {
+    expect(laneKeyFor({ status: "BACKLOG", boardColumnId: null }, [FUTURE, TRIAGE])).toBe(FUTURE.id);
+    expect(laneKeyFor({ status: "BACKLOG", boardColumnId: "col_gone0001" }, [FUTURE, TRIAGE])).toBe(FUTURE.id);
+    expect(laneKeyFor({ status: "BACKLOG", boardColumnId: TRIAGE.id }, [FUTURE, TRIAGE])).toBe(TRIAGE.id);
+    // A column of another status is ignored, so the task still finds its own default.
+    expect(laneKeyFor({ status: "BACKLOG", boardColumnId: QA.id }, [FUTURE, QA])).toBe(FUTURE.id);
+  });
+
+  it("names the default column in Slack lines, since that is where the task shows", () => {
+    expect(columnNameFor({ status: "BACKLOG", boardColumnId: null }, [FUTURE])).toBe("Future Idea");
+  });
+
+  it("keeps only the first default per status", () => {
+    const parsed = parseBoardColumns([FUTURE, { ...TRIAGE, isDefault: true }]);
+    expect(parsed.map((c) => Boolean(c.isDefault))).toEqual([true, false]);
   });
 });

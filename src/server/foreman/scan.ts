@@ -49,6 +49,8 @@ export interface RawTask {
   assignees: RawAssignee[];
   /** The category (feature block) it's planned in, or null for work outside the plan. */
   featureBlockId: string | null;
+  /** The release it ships in. A task in a release is on the plan too (CLAUDE.md §124). */
+  releaseId?: string | null;
   updatedAt: Date;
 }
 /** A top-level task completed in the plan-drift window. */
@@ -119,6 +121,7 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
         dueDate: true,
         startedAt: true,
         featureBlockId: true,
+        releaseId: true,
         updatedAt: true,
         assigneeId: true,
         assignee: { select: { id: true, name: true } },
@@ -149,7 +152,7 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
         status: "DONE",
         completedAt: { gte: new Date(Date.now() - PLAN_DRIFT_WINDOW_DAYS * DAY_MS) },
       },
-      select: { clientId: true, featureBlockId: true },
+      select: { clientId: true, featureBlockId: true, releaseId: true },
     }),
   ]);
 
@@ -166,6 +169,7 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
       startedAt: t.startedAt,
       assignees: assignees.map((a) => ({ id: a.id, name: a.name })),
       featureBlockId: t.featureBlockId,
+      releaseId: t.releaseId,
       updatedAt: t.updatedAt,
     };
   });
@@ -189,7 +193,7 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
 
   const recentDone: RawRecentDone[] = recentDoneRows.map((r) => ({
     clientId: r.clientId,
-    planned: r.featureBlockId !== null,
+    planned: r.featureBlockId !== null || r.releaseId !== null,
   }));
 
   return { clients: clientRows, tasks, blocks, milestones, recentDone };
@@ -434,7 +438,7 @@ export function detectFindings(
     {
       const done = recentDoneByClient.get(client.id) ?? [];
       const unplannedDone = done.filter((d) => !d.planned).length;
-      const plannedOpen = openTasks.filter((t) => t.featureBlockId);
+      const plannedOpen = openTasks.filter((t) => t.featureBlockId || t.releaseId);
       const staleCutoff = startToday - PLAN_DRIFT_STALE_DAYS * DAY_MS;
       const stale = plannedOpen.filter((t) => t.updatedAt.getTime() < staleCutoff);
       const share = done.length === 0 ? 0 : unplannedDone / done.length;
@@ -443,10 +447,13 @@ export function detectFindings(
         share >= PLAN_DRIFT_MIN_SHARE &&
         stale.length >= PLAN_DRIFT_MIN_STALE
       ) {
+        // Only categorised tasks name a category: one planned by release alone has none.
         const perBlock = new Map<string, number>();
-        for (const t of stale) perBlock.set(t.featureBlockId!, (perBlock.get(t.featureBlockId!) ?? 0) + 1);
-        const [topBlockId, topCount] = [...perBlock.entries()].sort((a, b) => b[1] - a[1])[0];
-        const topBlock = clientBlocks.find((b) => b.id === topBlockId);
+        for (const t of stale) {
+          if (t.featureBlockId) perBlock.set(t.featureBlockId, (perBlock.get(t.featureBlockId) ?? 0) + 1);
+        }
+        const [topBlockId, topCount] = [...perBlock.entries()].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+        const topBlock = topBlockId ? clientBlocks.find((b) => b.id === topBlockId) : undefined;
         const oldest = [...stale].sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())[0];
         const evidence = [
           `${unplannedDone} of ${done.length} tasks completed in the last ${PLAN_DRIFT_WINDOW_DAYS} days were outside the plan`,

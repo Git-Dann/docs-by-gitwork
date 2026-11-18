@@ -133,9 +133,23 @@ export type TaskDTO = {
   attachmentCount: number;
   metadata: Record<string, unknown> | null;
   scribeSource: TaskScribeSourceRef | null;
+  /** Product card fields (src/lib/tasks/product-cards.ts). A task with an itemType is a card. */
+  itemType: string | null;
+  tier: string | null;
+  area: string | null;
+  estimateHours: number | null;
+  /** The item's id in an outside planning tool (e.g. "forge:247"). */
+  externalRef: string | null;
+  /** The card this dev task delivers, if linked. */
+  productCard: TaskCardRef | null;
+  /** On a card: progress of its linked dev tasks. Null on a dev task, or a card with none linked. */
+  cardProgress: { linked: number; done: number; doing: number } | null;
   createdAt: string;
   updatedAt: string;
 };
+
+/** The product card a dev task delivers. */
+export type TaskCardRef = { id: string; title: string; itemType: string | null };
 
 export type TaskCommentDTO = {
   id: string;

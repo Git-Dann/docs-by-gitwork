@@ -1103,6 +1103,18 @@ export const taskPrioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
 export const taskLabelSchema = z.enum(["BACKEND", "FRONTEND", "UI_UX", "RESEARCH", "DESIGN", "SUPPORT"]);
 
+/** Product card fields (src/lib/tasks/product-cards.ts). "" clears, like null. */
+const itemTypeSchema = z.union([z.enum(["feature", "subitem", "bug", "feedback"]), z.literal("")]).nullable().optional();
+const tierSchema = z.union([z.enum(["free", "premium", "scoping"]), z.literal("")]).nullable().optional();
+const cardFields = {
+  itemType: itemTypeSchema,
+  tier: tierSchema,
+  area: z.string().trim().max(80, "Keep the area under 80 characters").nullable().optional(),
+  estimateHours: z.number().min(0).max(10_000).nullable().optional(),
+  externalRef: z.string().trim().max(120).nullable().optional(),
+  productCardId: z.union([z.string().cuid(), z.literal("")]).nullable().optional(),
+};
+
 export const taskInputSchema = z.object({
   clientId: z.string().cuid(),
   title: z.string().min(1).max(200),
@@ -1117,6 +1129,7 @@ export const taskInputSchema = z.object({
   parentId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  ...cardFields,
 });
 
 export const taskUpdateSchema = z.object({
@@ -1135,6 +1148,7 @@ export const taskUpdateSchema = z.object({
   archived: z.boolean().optional(),
   // Blocked flag: a non-empty string blocks (the client-facing ask); "" or null clears it.
   blockedReason: z.string().max(2000).nullable().optional(),
+  ...cardFields,
 });
 
 /**
@@ -1156,9 +1170,22 @@ export const boardColumnsSchema = z.object({
         id: z.string().regex(/^col_[a-z0-9]{6,24}$/),
         name: z.string().trim().min(1, "Name the column").max(40),
         stage: z.enum(["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"]),
+        isDefault: z.boolean().optional(),
       }),
     )
-    .max(12, "A board can have up to 12 extra columns"),
+    .max(12, "A board can have up to 12 extra columns")
+    .refine(
+      (cols) => {
+        const seen = new Set<string>();
+        for (const c of cols) {
+          if (!c.isDefault) continue;
+          if (seen.has(c.stage)) return false;
+          seen.add(c.stage);
+        }
+        return true;
+      },
+      { message: "Only one column can be the default for each status" },
+    ),
 });
 
 export const taskCommentSchema = z.object({
@@ -1194,6 +1221,10 @@ export const taskBatchUpdateSchema = z.object({
       releaseId: z.string().cuid().nullable().optional(),
       dueDate: isoDateString.nullable().optional(),
       archived: z.boolean().optional(),
+      itemType: itemTypeSchema,
+      tier: tierSchema,
+      area: cardFields.area,
+      productCardId: cardFields.productCardId,
     })
     .refine((p) => Object.keys(p).length > 0, { message: "Patch must set at least one field" }),
 });

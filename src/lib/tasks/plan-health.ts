@@ -26,6 +26,8 @@ export interface PlanHealthTask {
   completedAt: string | null;
   updatedAt: string;
   featureBlock: { id: string; name: string } | null;
+  /** A task in a release is on the plan too (CLAUDE.md §124). */
+  release?: { id: string } | null;
 }
 
 export interface PlanHealth {
@@ -67,7 +69,7 @@ export function computePlanHealth(
 
   for (const t of tasks) {
     if (t.parentId) continue;
-    const planned = Boolean(t.featureBlock);
+    const planned = Boolean(t.featureBlock || t.release);
     if (t.status === "DONE") {
       const at = t.completedAt ? Date.parse(t.completedAt) : NaN;
       if (Number.isFinite(at) && at >= windowStart) {

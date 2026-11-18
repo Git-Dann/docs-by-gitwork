@@ -30,6 +30,7 @@ import {
   useDeleteTask,
   useAddTaskComment,
   useCreateTask,
+  useTasks,
 } from "@/hooks/use-tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDTO, type TaskDetailDTO, type TaskStatus } from "@/types/tasks";
 import { TaskAvatar, AssigneeStack } from "@/components/tasks/task-avatar";
@@ -41,6 +42,9 @@ import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useAccount } from "@/hooks/use-account";
 import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
 import { releaseLabel } from "@/lib/tasks/releases";
+import { CardPicker, CardProgressChip, ItemTypeChip, TierChip } from "@/components/tasks/product-card-parts";
+import { isProductCard } from "@/lib/tasks/product-cards";
+import Link from "next/link";
 
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
 
@@ -266,6 +270,96 @@ function ScribeSourcePanel({ task }: { task: TaskDetailDTO }) {
   );
 }
 
+/**
+ * On a product card: the dev tasks that deliver it (CLAUDE.md §124). Linking never moves a dev
+ * task. It stays on the board, assigned as it was; it just points at this card. Read from the
+ * board's own cached list, so it shows what the board shows (archived dev tasks are left out).
+ */
+function DevTasksSection({ card }: { card: TaskDetailDTO }) {
+  const board = useTasks({ clientId: card.client.id });
+  const update = useUpdateTask();
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const all = board.data ?? [];
+  const linked = all.filter((t) => t.productCard?.id === card.id);
+  // Candidates: this client's dev tasks (not cards) not already delivering something.
+  const candidates = all.filter((t) => !t.itemType && !t.productCard && t.id !== card.id && !t.archivedAt);
+
+  async function setLink(taskId: string, productCardId: string | null) {
+    setError(null);
+    try {
+      await update.mutateAsync({ id: taskId, input: { productCardId } });
+      setLinking(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't change the link");
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="app-eyebrow flex items-center gap-2">
+          Dev tasks <CardProgressChip progress={card.cardProgress} />
+        </p>
+        <button type="button" className="text-xs font-medium text-[var(--brand-600)] hover:underline" onClick={() => setLinking((v) => !v)}>
+          {linking ? "Cancel" : "Link a task"}
+        </button>
+      </div>
+      {linking ? (
+        <div className="mb-2">
+          <TaskLinkPicker tasks={candidates} onPick={(id) => void setLink(id, card.id)} />
+          <p className="mt-1 text-[11px] text-[var(--text-4)]">
+            The task stays where it is on the board; it just counts towards this card.
+          </p>
+        </div>
+      ) : null}
+      {error ? <p className="mb-2 text-xs text-red-700">{error}</p> : null}
+      <div className="space-y-1.5">
+        {linked.map((t) => (
+          <div key={t.id} className="group flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2">
+            <span
+              className={cn("min-w-0 flex-1 truncate text-sm", t.status === "DONE" ? "text-[var(--text-4)] line-through" : "text-[var(--text-1)]")}
+              title={t.title}
+            >
+              {t.title}
+            </span>
+            <span className="shrink-0 text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]" style={MONO}>
+              {TASK_STATUS_LABELS[t.status]}
+            </span>
+            <AssigneeStack users={t.assignees} size={18} />
+            <button
+              type="button"
+              onClick={() => void setLink(t.id, null)}
+              aria-label={`Unlink ${t.title}`}
+              title="Unlink"
+              className="shrink-0 rounded-[5px] p-1 text-[var(--text-4)] opacity-0 transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)] focus:opacity-100 group-hover:opacity-100"
+            >
+              <XMarkIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+        {linked.length === 0 ? (
+          <p className="text-xs text-[var(--text-4)]">No dev tasks linked yet. Link the work that delivers this card.</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Pick a dev task to link to a card. Same anchored combobox as the card picker, over tasks. */
+function TaskLinkPicker({ tasks, onPick }: { tasks: TaskDTO[]; onPick: (taskId: string) => void }) {
+  return (
+    <CardPicker
+      cards={tasks}
+      value=""
+      onChange={(id) => id && onPick(id)}
+      label="Link a dev task"
+      placeholder="Search this client's tasks"
+      emptyText="No unlinked dev tasks on this client."
+    />
+  );
+}
+
 export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   const { data: task, isPending } = useTask(taskId);
   const update = useUpdateTask();
@@ -457,6 +551,31 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                     <span className="text-[var(--text-4)]">—</span>
                   )}
                 </MetaRow>
+                {isProductCard(task) ? (
+                  <MetaRow icon={<TagIcon className="h-3.5 w-3.5" />} label="Card">
+                    <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      <ItemTypeChip itemType={task.itemType} />
+                      <TierChip tier={task.tier} />
+                      {task.area ? <span className="truncate text-[var(--text-2)]" title={task.area}>{task.area}</span> : null}
+                    </span>
+                  </MetaRow>
+                ) : task.productCard ? (
+                  <MetaRow icon={<RocketLaunchIcon className="h-3.5 w-3.5" />} label="Delivers">
+                    <Link
+                      href={`/app/portal/${task.client.slug}/tasks?task=${task.productCard.id}`}
+                      className="flex min-w-0 items-center gap-1.5 hover:underline"
+                      title={task.productCard.title}
+                    >
+                      <ItemTypeChip itemType={task.productCard.itemType} />
+                      <span className="truncate">{task.productCard.title}</span>
+                    </Link>
+                  </MetaRow>
+                ) : null}
+                {task.estimateHours != null ? (
+                  <MetaRow icon={<ClockIcon className="h-3.5 w-3.5" />} label="Estimate">
+                    <span style={MONO}>{task.estimateHours}h</span>
+                  </MetaRow>
+                ) : null}
                 <MetaRow icon={<TagIcon className="h-3.5 w-3.5" />} label="Label">
                   {task.label ? <TaskLabelBadge label={task.label} /> : <span className="text-[var(--text-4)]">—</span>}
                 </MetaRow>
@@ -490,6 +609,8 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                   <Markdown compact>{task.acceptanceCriteria}</Markdown>
                 </div>
               ) : null}
+
+              {isProductCard(task) ? <DevTasksSection card={task} /> : null}
 
               {/* Subtasks */}
               <div>

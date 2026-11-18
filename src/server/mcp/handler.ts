@@ -572,6 +572,11 @@ const createTaskSchema = z.object({
   dueDate: z.string().optional(),
   featureBlockId: z.string().optional(),
   release: z.string().max(80).optional(),
+  itemType: z.enum(["feature", "subitem", "bug", "feedback", ""]).optional(),
+  tier: z.enum(["free", "premium", "scoping", ""]).optional(),
+  area: z.string().max(80).optional(),
+  estimateHours: z.number().min(0).max(10000).optional(),
+  productCard: z.string().max(200).optional(),
 });
 
 const updateTaskSchema = z.object({
@@ -585,6 +590,11 @@ const updateTaskSchema = z.object({
   featureBlockId: z.string().optional(),
   release: z.string().max(80).optional(),
   dueDate: z.string().optional(),
+  itemType: z.enum(["feature", "subitem", "bug", "feedback", ""]).optional(),
+  tier: z.enum(["free", "premium", "scoping", ""]).optional(),
+  area: z.string().max(80).optional(),
+  estimateHours: z.number().min(0).max(10000).optional(),
+  productCard: z.string().max(200).optional(),
 });
 
 const listReleasesSchema = z.object({ client: z.string() });
@@ -621,6 +631,41 @@ async function resolveReleaseRef(user: EffectiveUser, clientId: string, ref: str
   const known = releases.map((r) => r.version).join(", ") || "none yet";
   throw new Error(`No single release matches "${ref}". This client's releases: ${known}.`);
 }
+
+/**
+ * A product card named by an MCP caller (CLAUDE.md §124): its id, or its exact title on that
+ * client. '' unlinks. A title that matches no card, or more than one, is an error, never a guess.
+ */
+async function resolveCardRef(user: EffectiveUser, clientId: string, ref: string): Promise<string | null> {
+  const want = ref.trim();
+  if (want === "") return null;
+  const cards = await prisma.task.findMany({
+    where: { workspaceId: user.workspaceId, clientId, itemType: { not: null }, OR: [{ id: want }, { title: { equals: want, mode: "insensitive" } }] },
+    select: { id: true, title: true },
+    take: 3,
+  });
+  const byId = cards.find((c) => c.id === want);
+  if (byId) return byId.id;
+  if (cards.length === 1) return cards[0].id;
+  if (cards.length > 1) throw new Error(`More than one card on this client is called "${want}". Pass its id instead.`);
+  throw new Error(`No product card on this client matches "${want}". A card is a task with an itemType (feature, sub-item, bug, feedback).`);
+}
+
+/** The JSON-schema properties for the product card fields, shared by create_task and update_task. */
+const CARD_PROPERTIES = {
+  itemType: {
+    type: "string",
+    enum: ["feature", "subitem", "bug", "feedback", ""],
+    description: "Makes the task a PRODUCT CARD (what the client plans). '' clears it.",
+  },
+  tier: { type: "string", enum: ["free", "premium", "scoping", ""], description: "Product tier of a card." },
+  area: { type: "string", description: "Product area of a card, e.g. 'GPS & Shot Tracking'." },
+  estimateHours: { type: "number", description: "Estimate in hours." },
+  productCard: {
+    type: "string",
+    description: "The product card this dev task delivers: the card's id or exact title on the same client. '' unlinks.",
+  },
+} as const;
 
 const findMeetingsSchema = z.object({
   client: z.string(),
@@ -2305,6 +2350,7 @@ const TOOLS: ToolDef[] = [
           type: "string",
           description: "The release it ships in: a version like 'v2.0.0' (from list_releases) or a release id.",
         },
+        ...CARD_PROPERTIES,
       },
       required: ["client", "title"],
       additionalProperties: false,
@@ -2323,6 +2369,11 @@ const TOOLS: ToolDef[] = [
         featureBlockId: parsed.featureBlockId ?? null,
         releaseId: parsed.release !== undefined ? await resolveReleaseRef(user, c.id, parsed.release) : null,
         dueDate: parsed.dueDate ?? null,
+        itemType: parsed.itemType || null,
+        tier: parsed.tier || null,
+        area: parsed.area ?? null,
+        estimateHours: parsed.estimateHours ?? null,
+        productCardId: parsed.productCard !== undefined ? await resolveCardRef(user, c.id, parsed.productCard) : null,
       });
       return textResult(
         created,
@@ -2334,7 +2385,7 @@ const TOOLS: ToolDef[] = [
     name: "update_task",
     description:
       "Update an existing task by id. Any subset of fields may be supplied. " +
-      "Pass featureBlockId: '' or release: '' to detach. Honors your client-scoping.",
+      "Pass featureBlockId: '' or release: '' to detach, productCard: '' to unlink. Honors your client-scoping.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2354,23 +2405,29 @@ const TOOLS: ToolDef[] = [
           description: "A version like 'v2.0.0' or a release id; empty string takes it out of its release.",
         },
         dueDate: { type: "string", description: "ISO date." },
+        ...CARD_PROPERTIES,
       },
       required: ["taskId"],
       additionalProperties: false,
     },
     handler: async (user, args) => {
       const parsed = updateTaskSchema.parse(args);
-      const { taskId, featureBlockId, release, ...rest } = parsed;
+      const { taskId, featureBlockId, release, productCard, itemType, tier, ...rest } = parsed;
       let releaseId: string | null | undefined;
-      if (release !== undefined) {
+      let productCardId: string | null | undefined;
+      if (release !== undefined || productCard !== undefined) {
         const t = await prisma.task.findFirst({ where: { id: taskId, workspaceId: user.workspaceId }, select: { clientId: true } });
         if (!t) throw new Error("Task not found.");
-        releaseId = await resolveReleaseRef(user, t.clientId, release);
+        if (release !== undefined) releaseId = await resolveReleaseRef(user, t.clientId, release);
+        if (productCard !== undefined) productCardId = await resolveCardRef(user, t.clientId, productCard);
       }
       const updated = await updateTask(user, taskId, {
         ...rest,
         featureBlockId: featureBlockId === "" ? null : featureBlockId,
         releaseId,
+        productCardId,
+        itemType: itemType === undefined ? undefined : itemType || null,
+        tier: tier === undefined ? undefined : tier || null,
       });
       return textResult(updated, `Updated task "${updated.title}" (status: ${updated.status}).`);
     },

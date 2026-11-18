@@ -3113,7 +3113,17 @@ export function getTaskCounts(): Promise<TaskCounts> {
   return apiFetch("/api/tasks/counts");
 }
 
-export function createTask(input: {
+/** Product card fields on a task (src/lib/tasks/product-cards.ts). */
+export interface TaskCardFieldsInput {
+  itemType?: string | null;
+  tier?: string | null;
+  area?: string | null;
+  estimateHours?: number | null;
+  externalRef?: string | null;
+  productCardId?: string | null;
+}
+
+export function createTask(input: TaskCardFieldsInput & {
   clientId: string;
   title: string;
   description?: string;
@@ -3137,7 +3147,7 @@ export function createTask(input: {
 
 export function updateTask(
   id: string,
-  input: {
+  input: TaskCardFieldsInput & {
     title?: string;
     description?: string | null;
     acceptanceCriteria?: string | null;
@@ -3202,6 +3212,10 @@ export interface TaskBatchPatch {
   releaseId?: string | null;
   dueDate?: string | null;
   archived?: boolean;
+  itemType?: string | null;
+  tier?: string | null;
+  area?: string | null;
+  productCardId?: string | null;
 }
 
 export function batchUpdateTasks(ids: string[], patch: TaskBatchPatch): Promise<{ updated: number }> {
