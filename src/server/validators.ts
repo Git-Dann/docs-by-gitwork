@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RELEASE_LIMITS } from "@/lib/tasks/releases";
 import {
   HANDOVER_ITEM_KINDS,
   HANDOVER_ITEM_STATUSES,
@@ -1112,6 +1113,7 @@ export const taskInputSchema = z.object({
   label: taskLabelSchema.nullable().optional(),
   assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
+  releaseId: z.string().cuid().nullable().optional(),
   parentId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -1126,6 +1128,7 @@ export const taskUpdateSchema = z.object({
   label: taskLabelSchema.nullable().optional(),
   assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
+  releaseId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   // Soft-archive toggle: true archives (stamps archivedAt), false unarchives (clears it).
@@ -1188,6 +1191,7 @@ export const taskBatchUpdateSchema = z.object({
       priority: taskPrioritySchema.optional(),
       assigneeIds: z.array(z.string().cuid()).optional(),
       featureBlockId: z.string().cuid().nullable().optional(),
+      releaseId: z.string().cuid().nullable().optional(),
       dueDate: isoDateString.nullable().optional(),
       archived: z.boolean().optional(),
     })
@@ -1308,6 +1312,33 @@ export const featureBlockUpdateSchema = z.object({
   color: z.string().max(20).nullable().optional(),
   orderKey: z.number().finite().optional(),
 });
+
+// ── Releases (ClientRelease — src/lib/tasks/releases.ts) ─────────────────
+export const releaseInputSchema = z
+  .object({
+    clientId: z.string().cuid(),
+    version: z.string().trim().min(1).max(RELEASE_LIMITS.version),
+    name: z.string().trim().max(RELEASE_LIMITS.name).nullable().optional(),
+    startDate: isoDateString.nullable().optional(),
+    endDate: isoDateString.nullable().optional(),
+  })
+  .refine((v) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate), {
+    message: "The end date must be on or after the start date",
+    path: ["endDate"],
+  });
+
+export const releaseUpdateSchema = z
+  .object({
+    version: z.string().trim().min(1).max(RELEASE_LIMITS.version).optional(),
+    name: z.string().trim().max(RELEASE_LIMITS.name).nullable().optional(),
+    startDate: isoDateString.nullable().optional(),
+    endDate: isoDateString.nullable().optional(),
+    orderKey: z.number().finite().optional(),
+  })
+  .refine((v) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate), {
+    message: "The end date must be on or after the start date",
+    path: ["endDate"],
+  });
 
 export const timelineShareSchema = z.object({
   enabled: z.boolean(),

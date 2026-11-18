@@ -16,6 +16,7 @@ function taskListResponse(task: TaskDTO): TaskDTO {
     assignees: task.assignees,
     createdBy: task.createdBy,
     featureBlock: task.featureBlock,
+    release: task.release,
     parentId: task.parentId,
     title: task.title,
     description: null,

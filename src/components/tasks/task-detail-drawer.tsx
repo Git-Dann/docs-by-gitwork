@@ -9,6 +9,7 @@ import {
   UserGroupIcon,
   FlagIcon,
   TagIcon,
+  RocketLaunchIcon,
   CalendarDaysIcon,
   UserIcon,
   ClockIcon,
@@ -39,6 +40,7 @@ import { MentionInput, MentionText, type MentionCandidate } from "@/components/t
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useAccount } from "@/hooks/use-account";
 import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
+import { releaseLabel } from "@/lib/tasks/releases";
 
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
 
@@ -325,6 +327,7 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
       title: subtaskTitle.trim(),
       parentId: task.id,
       featureBlockId: task.featureBlock?.id ?? null,
+      releaseId: task.release?.id ?? null,
     });
     setSubtaskTitle("");
   }
@@ -444,6 +447,15 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                 </MetaRow>
                 <MetaRow icon={<TagIcon className="h-3.5 w-3.5" />} label="Category">
                   {task.featureBlock?.name ?? <span className="text-[var(--text-4)]">—</span>}
+                </MetaRow>
+                <MetaRow icon={<RocketLaunchIcon className="h-3.5 w-3.5" />} label="Release">
+                  {task.release ? (
+                    <span style={MONO} title={releaseLabel(task.release)}>
+                      {task.release.version}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--text-4)]">—</span>
+                  )}
                 </MetaRow>
                 <MetaRow icon={<TagIcon className="h-3.5 w-3.5" />} label="Label">
                   {task.label ? <TaskLabelBadge label={task.label} /> : <span className="text-[var(--text-4)]">—</span>}

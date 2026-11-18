@@ -43,6 +43,7 @@ const taskInclude = {
   assignees: userSelect,
   createdBy: userSelect,
   featureBlock: { select: { id: true, name: true } },
+  release: { select: { id: true, version: true, name: true } },
   _count: { select: { comments: true, subtasks: true, attachments: true } },
 } satisfies Prisma.TaskInclude;
 
@@ -88,6 +89,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     assignees,
     createdBy: userRef(row.createdBy),
     featureBlock: row.featureBlock ? { id: row.featureBlock.id, name: row.featureBlock.name } : null,
+    release: row.release ? { id: row.release.id, version: row.release.version, name: row.release.name } : null,
     parentId: row.parentId,
     title: row.title,
     description: row.description,
@@ -136,6 +138,7 @@ function taskListDTO(task: TaskDTO): TaskDTO {
     assignees: task.assignees,
     createdBy: task.createdBy,
     featureBlock: task.featureBlock,
+    release: task.release,
     parentId: task.parentId,
     title: task.title,
     description: null,
@@ -623,6 +626,19 @@ async function assertBlockInClient(
   if (!block) throw new ForbiddenError("Feature block not found for this client");
 }
 
+/** Ensure a release exists under the given client + workspace (ClientRelease). */
+export async function assertReleaseInClient(
+  workspaceId: string,
+  clientId: string,
+  releaseId: string,
+): Promise<void> {
+  const release = await prisma.clientRelease.findFirst({
+    where: { id: releaseId, workspaceId, clientId },
+    select: { id: true },
+  });
+  if (!release) throw new ForbiddenError("That release isn't on this client");
+}
+
 async function nextOrderKey(workspaceId: string, clientId: string, status: TaskStatus): Promise<number> {
   const top = await prisma.task.findFirst({
     where: { workspaceId, clientId, status },
@@ -652,6 +668,7 @@ export async function createTask(
     label?: TaskLabel | null;
     assigneeIds?: string[];
     featureBlockId?: string | null;
+    releaseId?: string | null;
     parentId?: string | null;
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
@@ -661,6 +678,9 @@ export async function createTask(
   await assertClientInScope(user, input.clientId);
   if (input.featureBlockId) {
     await assertBlockInClient(user.workspaceId, input.clientId, input.featureBlockId);
+  }
+  if (input.releaseId) {
+    await assertReleaseInClient(user.workspaceId, input.clientId, input.releaseId);
   }
   // A subtask with no explicit assignees inherits the parent's current assignees
   // (falling back to the legacy single-assignee column) so "assign the parent,
@@ -690,6 +710,7 @@ export async function createTask(
       clientId: input.clientId,
       createdById: user.id,
       featureBlockId: input.featureBlockId ?? null,
+      releaseId: input.releaseId ?? null,
       parentId: input.parentId ?? null,
       title: input.title,
       description: input.description ?? null,
@@ -825,6 +846,7 @@ export async function updateTask(
     label?: TaskLabel | null;
     assigneeIds?: string[];
     featureBlockId?: string | null;
+    releaseId?: string | null;
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
     archived?: boolean;
@@ -866,6 +888,14 @@ export async function updateTask(
       data.featureBlock = { connect: { id: input.featureBlockId } };
     } else {
       data.featureBlock = { disconnect: true };
+    }
+  }
+  if (input.releaseId !== undefined) {
+    if (input.releaseId) {
+      await assertReleaseInClient(user.workspaceId, existing.clientId, input.releaseId);
+      data.release = { connect: { id: input.releaseId } };
+    } else {
+      data.release = { disconnect: true };
     }
   }
   if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
@@ -1027,6 +1057,7 @@ export interface TaskBatchPatch {
   priority?: TaskPriority;
   assigneeIds?: string[];
   featureBlockId?: string | null;
+  releaseId?: string | null;
   dueDate?: string | null;
   archived?: boolean;
 }
@@ -1067,6 +1098,14 @@ export async function batchUpdateTasks(
     }
     await assertBlockInClient(user.workspaceId, rows[0].clientId, patch.featureBlockId);
   }
+  // A release belongs to ONE client too.
+  if (patch.releaseId) {
+    const clientsInSelection = new Set(rows.map((r) => r.clientId));
+    if (clientsInSelection.size > 1) {
+      throw new ForbiddenError("Selected tasks span multiple clients — can't put them in one release");
+    }
+    await assertReleaseInClient(user.workspaceId, rows[0].clientId, patch.releaseId);
+  }
 
   let updated = 0;
   for (const r of rows) {
@@ -1082,6 +1121,9 @@ export async function batchUpdateTasks(
       data.featureBlock = patch.featureBlockId
         ? { connect: { id: patch.featureBlockId } }
         : { disconnect: true };
+    }
+    if (patch.releaseId !== undefined) {
+      data.release = patch.releaseId ? { connect: { id: patch.releaseId } } : { disconnect: true };
     }
     if (patch.status !== undefined && patch.status !== r.status) {
       data.status = patch.status;

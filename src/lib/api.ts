@@ -3073,6 +3073,7 @@ import type {
   RollupRosterDTO,
   ClientAssignmentDTO,
   FeatureBlockDTO,
+  ReleaseDTO,
   TimelineShareDTO,
   MilestoneDTO,
   SlackPushPrefs,
@@ -3122,6 +3123,7 @@ export function createTask(input: {
   label?: TaskLabel | null;
   assigneeIds?: string[];
   featureBlockId?: string | null;
+  releaseId?: string | null;
   parentId?: string | null;
   dueDate?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -3144,6 +3146,7 @@ export function updateTask(
     label?: TaskLabel | null;
     assigneeIds?: string[];
     featureBlockId?: string | null;
+    releaseId?: string | null;
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
     archived?: boolean;
@@ -3196,6 +3199,7 @@ export interface TaskBatchPatch {
   priority?: TaskPriority;
   assigneeIds?: string[];
   featureBlockId?: string | null;
+  releaseId?: string | null;
   dueDate?: string | null;
   archived?: boolean;
 }
@@ -3487,6 +3491,40 @@ export function updateFeatureBlock(
 
 export function deleteFeatureBlock(id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/feature-blocks/${id}`, { method: "DELETE" });
+}
+
+// ─── Releases (ClientRelease) ─────────────────────────────────────────────────
+
+export function listReleases(clientId: string): Promise<ReleaseDTO[]> {
+  return apiFetch(`/api/releases?clientId=${encodeURIComponent(clientId)}`);
+}
+
+export type ReleaseInput = {
+  version?: string;
+  name?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  orderKey?: number;
+};
+
+export function createRelease(input: ReleaseInput & { clientId: string; version: string }): Promise<ReleaseDTO> {
+  return apiFetch("/api/releases", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateRelease(id: string, input: ReleaseInput): Promise<ReleaseDTO> {
+  return apiFetch(`/api/releases/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteRelease(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/releases/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export function getTimelineShare(slug: string): Promise<TimelineShareDTO> {

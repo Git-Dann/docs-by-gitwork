@@ -10055,3 +10055,30 @@ sign in after a month away.
   their current password hash, so removing a client user or resetting their password still signs
   them out at once.
 - Only page visits renew, not `/api/wiki` fetches.
+
+## 123. Recent Changes (November 2026) — Releases: the version a task ships in
+
+Big Wedge plans by release (Luke's own Gantt groups every item under one, e.g.
+"v2.0.0 | Q4: Refinement Session"), so a client's tasks can now belong to a **release** as well
+as a category. A category says what a task is about; a release says when it ships.
+
+- **Model:** `ClientRelease` (version, optional name, optional start/end dates, orderKey) per
+  client, and `Task.releaseId` (nullable, `SetNull`). Additive. Deleting a release keeps its
+  tasks; they just leave it.
+- **Rules** (pure, `src/lib/tasks/releases.ts`): the label ("v2.0.0 · Q4 Refinement Session"),
+  the order (start date, undated last, then version compared **numerically**, so 2.9 comes before
+  2.10, then orderKey), the span (own dates, else estimated from task due dates via `blockSpan`,
+  drawn dashed), progress (0% with no tasks, never 100%), and `findReleaseByVersion` ("2.0.0"
+  finds "v2.0.0"; two loose matches is an error, never a guess).
+- **Where it shows:** a Release select on the task form, a Release row in the drawer, a mono
+  version chip on board cards, a Release menu on the bulk bar, and a **Releases** dialog beside
+  Categories on a client's tasks page. The internal Gantt and the client's wiki Timeline get a
+  **Categories | Releases** switch (shown only when the client has releases). The wiki's
+  `timeline.releases` carries the same client-safe fields as `blocks`: titles, done, timestamps.
+  The headline "% complete" stays the plan's, whichever way the chart is grouped.
+- **Scoping:** `/api/releases` is scoped like feature blocks (`assertClientInScope`). Every task
+  write that sets a release checks it belongs to that task's client (`assertReleaseInClient`),
+  and a bulk "set release" refuses a selection that spans clients.
+- **MCP:** `create_task` / `update_task` take `release` (a version or an id; '' detaches), plus
+  `list_releases` and `create_release`.
+- Not wired: the CSV import, Sheets "send to board", and the public `/timeline/[token]` share.

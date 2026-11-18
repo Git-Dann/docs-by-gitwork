@@ -471,6 +471,7 @@ model Workspace {
   tasks                       Task[]
   dailyUpdates                DailyUpdate[]
   featureBlocks               FeatureBlock[]
+  clientReleases              ClientRelease[]
   milestones                  Milestone[]
   contentSnippets             ContentSnippet[]
   starters                    Starter[]
@@ -1239,6 +1240,7 @@ model WorkspaceClient {
   assignments              ClientAssignment[]
   tasks                    Task[]
   featureBlocks            FeatureBlock[]
+  clientReleases           ClientRelease[]
   milestones               Milestone[]
   absenceCovers            Absence[]                @relation("AbsenceCoverClient")
   wikiLinkedInto           ClientWikiLink[]         @relation("WikiLinkedClient")
@@ -4708,6 +4710,8 @@ model Task {
   /// Optional "list" / feature block this task belongs to. Loose tasks (null)
   /// show on the board but not the Gantt.
   featureBlockId     String?
+  /// The release this task ships in (ClientRelease, per client). Null = not in a release.
+  releaseId          String?
   /// Parent task for subtasks (one level deep). Null = top-level task.
   parentId           String?
   title              String
@@ -4758,6 +4762,7 @@ model Task {
   assignees        User[]            @relation("TaskAssignees")
   createdBy        User?             @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
   featureBlock     FeatureBlock?     @relation(fields: [featureBlockId], references: [id], onDelete: SetNull)
+  release          ClientRelease?    @relation(fields: [releaseId], references: [id], onDelete: SetNull)
   parent           Task?             @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
   subtasks         Task[]            @relation("Subtasks")
   comments         TaskComment[]
@@ -4768,6 +4773,7 @@ model Task {
   @@index([assigneeId, status])
   @@index([clientId, status, orderKey])
   @@index([featureBlockId])
+  @@index([releaseId])
   @@index([parentId])
   @@index([clickupId])
   // Cross-client dashboard reads: the existing [workspaceId, clientId, status]
@@ -4929,6 +4935,31 @@ model FeatureBlock {
   @@index([workspaceId, clientId])
   @@index([clientId, startDate])
   @@index([clickupId])
+}
+
+/// A release a client's tasks ship in ("v2.0.0 · Q4 Refinement Session"). Tasks are grouped by
+/// it on the board, the timeline and the client's wiki. Deleting one detaches its tasks
+/// (SetNull); it never deletes them. See src/lib/tasks/releases.ts.
+model ClientRelease {
+  id          String          @id @default(cuid())
+  workspaceId String
+  clientId    String
+  /// "v2.0.0", "2.1", "Build 412": whatever the client calls it.
+  version     String
+  /// Optional session or theme name ("Q4: Refinement Session").
+  name        String?
+  /// Optional. Without both dates the timeline estimates the bar from its tasks' due dates.
+  startDate   DateTime?
+  endDate     DateTime?
+  orderKey    Float           @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client      WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+
+  @@index([clientId])
+  @@index([workspaceId, clientId])
 }
 
 /// A single-date timeline marker (separate from feature-block bars). Renders as

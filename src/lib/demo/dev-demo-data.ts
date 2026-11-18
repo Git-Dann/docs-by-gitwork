@@ -13,6 +13,7 @@
  * is safe and never causes SSR/CSR drift.
  */
 
+import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
 import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
 import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
 import { demoAiAnswersReport, demoSaveAiAnswersConfig, demoStartAiAnswersRun } from "@/lib/demo/demo-ai-answers";
@@ -32,6 +33,8 @@ import type {
   TaskPriority,
   MyDayDTO,
   TaskAttentionDTO,
+  ReleaseDTO,
+  TaskReleaseRef,
 } from "@/types/tasks";
 import type { GanttBlock, GanttMilestone } from "@/components/tasks/gantt-chart";
 import type { ClientDetailRecord } from "@/types/client";
@@ -124,6 +127,15 @@ const byClient = Object.fromEntries(CLIENTS.map((c) => [c.slug, c])) as Record<
   (typeof CLIENTS)[number]
 >;
 
+// ─── Releases (Northwind) ────────────────────────────────────────────────────────
+// Three, as Luke plans Big Wedge: a shipped one, the current one, and one with no dates yet,
+// whose bar is estimated from its tasks' due dates.
+const REL = {
+  v140: { id: "rel-140", version: "v1.4.0", name: "Search refresh" },
+  v150: { id: "rel-150", version: "v1.5.0", name: "Analytics" },
+  v200: { id: "rel-200", version: "v2.0.0", name: "Mobile polish" },
+} as const satisfies Record<string, TaskReleaseRef>;
+
 // ─── Task factory ────────────────────────────────────────────────────────────────
 
 let orderSeq = 0;
@@ -143,6 +155,8 @@ function mkTask(
     commentCount?: number;
     /** The category (feature block) it is planned in — Northwind's Gantt blocks. */
     block?: { id: string; name: string } | null;
+    /** The release it ships in (Northwind's demo releases). */
+    release?: TaskReleaseRef | null;
     /** Planned work nobody has picked up yet. */
     unassigned?: boolean;
     /** Days ago it was last touched (default yesterday). */
@@ -157,6 +171,7 @@ function mkTask(
     assignees: partial.unassigned ? [] : [{ id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl }],
     createdBy: { id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl },
     featureBlock: partial.block ?? null,
+    release: partial.release ?? null,
     parentId: null,
     title: partial.title,
     description: partial.description ?? null,
@@ -187,31 +202,31 @@ function mkTask(
 
 /** The master task list — powers the board, dashboard "My Tasks", standup + attention. */
 export const demoBoardTasks: TaskDTO[] = [
-  mkTask({ id: "t1", title: "Harden webhook retry handling", clientSlug: "northwind", status: "DOING", priority: "HIGH", dueDate: atDays(2), startedAt: atDays(-1), commentCount: 3, subtaskCount: 4, subtaskDoneCount: 1, description: "Add idempotent retry handling for dropped delivery webhooks." }),
+  mkTask({ id: "t1", release: REL.v140, title: "Harden webhook retry handling", clientSlug: "northwind", status: "DOING", priority: "HIGH", dueDate: atDays(2), startedAt: atDays(-1), commentCount: 3, subtaskCount: 4, subtaskDoneCount: 1, description: "Add idempotent retry handling for dropped delivery webhooks." }),
   mkTask({ id: "t2", title: "Fix mobile nav overflow on iOS Safari", clientSlug: "cadenza", status: "DOING", priority: "HIGH", dueDate: atDays(-1), startedAt: atDays(-2), commentCount: 1 }),
   mkTask({ id: "t3", title: "Booking calendar timezone bug", clientSlug: "fairway-nine", status: "DOING", priority: "MEDIUM", dueDate: atDays(-2), startedAt: atDays(-3), commentCount: 5, subtaskCount: 2, subtaskDoneCount: 2 }),
   mkTask({ id: "t4", title: "Add rounds-played analytics endpoint", clientSlug: "fairway-nine", status: "IN_REVIEW", priority: "MEDIUM", dueDate: atDays(1), commentCount: 2 }),
   mkTask({ id: "t5", title: "Accessibility pass on onboarding forms", clientSlug: "cadenza", status: "IN_REVIEW", priority: "LOW", dueDate: atDays(2) }),
-  mkTask({ id: "t6", title: "Migrate image uploads to R2", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", dueDate: atDays(5), subtaskCount: 3 }),
+  mkTask({ id: "t6", release: REL.v150, title: "Migrate image uploads to R2", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", dueDate: atDays(5), subtaskCount: 3 }),
   mkTask({ id: "t7", title: "Cache PGA leaderboard responses", clientSlug: "fairway-nine", status: "TODO", priority: "MEDIUM", dueDate: atDays(3) }),
   mkTask({ id: "t8", title: "Onboarding email drip copy", clientSlug: "cadenza", status: "TODO", priority: "LOW", dueDate: atDays(7) }),
-  mkTask({ id: "t9", title: "Dark-mode audit across dashboard", clientSlug: "northwind", status: "BACKLOG", priority: "LOW" }),
+  mkTask({ id: "t9", release: REL.v200, title: "Dark-mode audit across dashboard", clientSlug: "northwind", status: "BACKLOG", priority: "LOW" }),
   mkTask({ id: "t10", title: "Refactor auth middleware", clientSlug: "fairway-nine", status: "BACKLOG", priority: "MEDIUM" }),
   mkTask({ id: "t11", title: "Ship v2 pricing page", clientSlug: "cadenza", status: "DONE", priority: "HIGH", completedAt: todayAt(9, 40) }),
-  mkTask({ id: "t12", title: "Add e2e tests for onboarding", clientSlug: "northwind", status: "DONE", priority: "MEDIUM", completedAt: todayAt(11, 15) }),
+  mkTask({ id: "t12", release: REL.v140, title: "Add e2e tests for onboarding", clientSlug: "northwind", status: "DONE", priority: "MEDIUM", completedAt: todayAt(11, 15) }),
   // Planned work nobody has picked up — what My Day's "From the plan" offers before a dev
   // creates something new (the October 2026 audit: planned tasks sat unassigned while the
   // same work was logged as fresh tasks outside the plan).
-  mkTask({ id: "t13", title: "Saved searches with email alerts", clientSlug: "northwind", status: "TODO", priority: "HIGH", dueDate: atDays(4), block: { id: "b2", name: "Search & discovery" }, unassigned: true }),
-  mkTask({ id: "t14", title: "Search results relevance tuning", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", block: { id: "b2", name: "Search & discovery" }, unassigned: true }),
-  mkTask({ id: "t15", title: "Weekly usage chart on the analytics dashboard", clientSlug: "northwind", status: "BACKLOG", priority: "MEDIUM", dueDate: atDays(9), block: { id: "b3", name: "Analytics dashboard" }, unassigned: true }),
-  mkTask({ id: "t16", title: "CSV export for analytics reports", clientSlug: "northwind", status: "BACKLOG", priority: "LOW", block: { id: "b3", name: "Analytics dashboard" }, unassigned: true, touchedDaysAgo: 34 }),
-  mkTask({ id: "t17", title: "Haptics on primary mobile actions", clientSlug: "northwind", status: "BACKLOG", priority: "LOW", block: { id: "b4", name: "Mobile polish" }, unassigned: true, touchedDaysAgo: 41 }),
-  mkTask({ id: "t18", title: "Offline mode for saved lists", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", block: { id: "b4", name: "Mobile polish" }, unassigned: true, touchedDaysAgo: 28 }),
+  mkTask({ id: "t13", release: REL.v140, title: "Saved searches with email alerts", clientSlug: "northwind", status: "TODO", priority: "HIGH", dueDate: atDays(4), block: { id: "b2", name: "Search & discovery" }, unassigned: true }),
+  mkTask({ id: "t14", release: REL.v140, title: "Search results relevance tuning", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", block: { id: "b2", name: "Search & discovery" }, unassigned: true }),
+  mkTask({ id: "t15", release: REL.v150, title: "Weekly usage chart on the analytics dashboard", clientSlug: "northwind", status: "BACKLOG", priority: "MEDIUM", dueDate: atDays(9), block: { id: "b3", name: "Analytics dashboard" }, unassigned: true }),
+  mkTask({ id: "t16", release: REL.v150, title: "CSV export for analytics reports", clientSlug: "northwind", status: "BACKLOG", priority: "LOW", block: { id: "b3", name: "Analytics dashboard" }, unassigned: true, touchedDaysAgo: 34 }),
+  mkTask({ id: "t17", release: REL.v200, dueDate: atDays(24), title: "Haptics on primary mobile actions", clientSlug: "northwind", status: "BACKLOG", priority: "LOW", block: { id: "b4", name: "Mobile polish" }, unassigned: true, touchedDaysAgo: 41 }),
+  mkTask({ id: "t18", release: REL.v200, dueDate: atDays(31), title: "Offline mode for saved lists", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", block: { id: "b4", name: "Mobile polish" }, unassigned: true, touchedDaysAgo: 28 }),
   // …and the same-day log that grew beside it: real work, filed in no category.
-  mkTask({ id: "t19", title: "Search filters: date range picker", clientSlug: "northwind", status: "DONE", completedAt: atDays(-3) }),
-  mkTask({ id: "t20", title: "Fix search result paging on mobile", clientSlug: "northwind", status: "DONE", completedAt: atDays(-5) }),
-  mkTask({ id: "t21", title: "Analytics dashboard loading skeletons", clientSlug: "northwind", status: "DONE", completedAt: atDays(-8) }),
+  mkTask({ id: "t19", release: REL.v140, title: "Search filters: date range picker", clientSlug: "northwind", status: "DONE", completedAt: atDays(-3) }),
+  mkTask({ id: "t20", release: REL.v140, title: "Fix search result paging on mobile", clientSlug: "northwind", status: "DONE", completedAt: atDays(-5) }),
+  mkTask({ id: "t21", release: REL.v150, title: "Analytics dashboard loading skeletons", clientSlug: "northwind", status: "DONE", completedAt: atDays(-8) }),
 ];
 
 const mine = demoBoardTasks.filter((t) => t.assignees.some((a) => a.id === DEV.id));
@@ -757,8 +772,33 @@ function wikiTimelineFromGantt(): WikiDTO["timeline"] {
       },
     };
   });
+  // The same plan grouped by release: the shipped one, the current one, and one with no dates
+  // whose bar is estimated from its tasks (dashed), the three shapes the view has to draw.
+  const flat = blocks.flatMap((b) => b.tasks);
+  const third = Math.ceil(flat.length / 3);
+  const releaseDefs = [
+    { ...REL.v140, tasks: flat.slice(0, third), startDate: atDays(-35), endDate: atDays(-4), estimated: false },
+    { ...REL.v150, tasks: flat.slice(third, third * 2), startDate: atDays(-3), endDate: atDays(18), estimated: false },
+    { ...REL.v200, tasks: flat.slice(third * 2), startDate: atDays(19), endDate: atDays(40), estimated: true },
+  ];
+  const releases = releaseDefs.map((r) => {
+    const done = r.tasks.filter((t) => t.done).length;
+    const doing = r.tasks.filter((t) => t.startedAt && !t.done).length;
+    return {
+      id: r.id,
+      name: releaseLabel(r),
+      startDate: r.startDate,
+      endDate: r.endDate,
+      estimated: r.estimated,
+      color: null,
+      progress: r.tasks.length ? Math.round((done / r.tasks.length) * 100) : 0,
+      tasks: r.tasks,
+      statusCounts: { BACKLOG: r.tasks.length - done - doing, TODO: 0, DOING: doing, IN_REVIEW: 0, UI_DONE: 0, DONE: done },
+    };
+  });
   return {
     blocks,
+    releases,
     milestones: demoGanttMilestones as WikiDTO["timeline"]["milestones"],
     // ⚠️ Live work attached to no phase — the exact shape that made RoundUp render an
     // empty "ON NOW" on GAIA Bloom while two tasks were in progress. A demo without it
@@ -2295,6 +2335,48 @@ const demoFeatureBlocks = demoGanttBlocks.map((b, i) => ({
   doneCount: b.tasks.filter((t) => t.done).length,
   progress: b.progress,
 }));
+
+// The releases list the tasks page reads. Counts come from the board tasks so the two agree;
+// writes from the Releases dialog land here, so an edit survives the refetch.
+function releaseCounts(id: string) {
+  const ts = demoBoardTasks.filter((t) => t.release?.id === id);
+  return { taskCount: ts.length, doneCount: ts.filter((t) => t.status === "DONE").length };
+}
+let demoReleases: ReleaseDTO[] = [
+  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, ...releaseCounts(REL.v140.id) },
+  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, ...releaseCounts(REL.v150.id) },
+  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, ...releaseCounts(REL.v200.id) },
+];
+
+function demoReleasesApi(pathname: string, init?: { method?: string; body?: unknown }): unknown {
+  const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Partial<ReleaseDTO>) : {};
+  const one = pathname.match(/^\/api\/releases\/([^/?#]+)$/);
+  if (one) {
+    const id = decodeURIComponent(one[1]);
+    if (init?.method === "DELETE") {
+      demoReleases = demoReleases.filter((r) => r.id !== id);
+      return { ok: true };
+    }
+    demoReleases = demoReleases.map((r) => (r.id === id ? { ...r, ...body, id } : r));
+    return demoReleases.find((r) => r.id === id) ?? null;
+  }
+  if (init?.method === "POST") {
+    const created: ReleaseDTO = {
+      id: `rel-${demoReleases.length + 1}-${Date.now()}`,
+      clientId: WIKI_CLIENT.id,
+      version: String(body.version ?? "v0.0.0"),
+      name: body.name ?? null,
+      startDate: body.startDate ?? null,
+      endDate: body.endDate ?? null,
+      orderKey: demoReleases.length + 1,
+      taskCount: 0,
+      doneCount: 0,
+    };
+    demoReleases = [...demoReleases, created];
+    return created;
+  }
+  return sortReleases(demoReleases);
+}
 
 const demoMilestones = demoGanttMilestones.map((m) => ({
   id: m.id,
@@ -4485,6 +4567,7 @@ export function resolveDemoApi(
 
   // Tasks — feature blocks + milestones (per-client tasks page).
   if (pathname === "/api/feature-blocks") return demoFeatureBlocks;
+  if (pathname === "/api/releases" || pathname.startsWith("/api/releases/")) return demoReleasesApi(pathname, init);
   if (pathname === "/api/board-columns") {
     // Writes land in the fixture, so a column added in the demo survives the refetch.
     if (init?.method === "PUT" && typeof init.body === "string") {

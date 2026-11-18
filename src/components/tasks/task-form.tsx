@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { MarkdownField } from "@/components/proposals/markdown-field";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
-import { useCreateTask, useUpdateTask, useFeatureBlocks, useTasks } from "@/hooks/use-tasks";
+import { useCreateTask, useUpdateTask, useFeatureBlocks, useReleases, useTasks } from "@/hooks/use-tasks";
+import { releaseLabel } from "@/lib/tasks/releases";
 import { matchPlannedTasks, suggestCategory } from "@/lib/tasks/plan-match";
 import { PlanMatchList } from "@/components/tasks/plan-matches";
 import type { BackstageMember } from "@/types/backstage";
@@ -105,6 +106,8 @@ export function TaskFormModal({
   const [featureBlockId, setFeatureBlockId] = useState(
     task ? (task.featureBlock?.id ?? NOT_PLANNED) : "",
   );
+  // The release it ships in: optional, "" = none.
+  const [releaseId, setReleaseId] = useState(task?.release?.id ?? "");
   // Once the user picks a category themselves, suggestions stop overwriting it.
   const [categoryTouched, setCategoryTouched] = useState(isEdit);
   // "It's new" on the suggestion list hides it until the title changes.
@@ -120,6 +123,8 @@ export function TaskFormModal({
   const clients = clientsQuery.data?.clients ?? [];
   const blocksQuery = useFeatureBlocks(clientId || null);
   const blocks = useMemo(() => blocksQuery.data ?? [], [blocksQuery.data]);
+  const releasesQuery = useReleases(clientId || null);
+  const releases = releasesQuery.data ?? [];
 
   // ── Plan-first: is this already a task? Which category does it belong in? ──────────
   // The client's board (the same cached query the board uses). Only fetched on create.
@@ -217,6 +222,7 @@ export function TaskFormModal({
             label: label || null,
             assigneeIds,
             featureBlockId: blockId,
+            releaseId: releaseId || null,
             dueDate: dueDate || null,
           },
         });
@@ -232,6 +238,7 @@ export function TaskFormModal({
           label: label || null,
           assigneeIds,
           featureBlockId: blockId,
+          releaseId: releaseId || null,
           dueDate: dueDate || null,
         });
         onSaved?.(saved);
@@ -336,7 +343,10 @@ export function TaskFormModal({
                 <select
                   className="app-select w-full"
                   value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
+                  onChange={(e) => {
+                    setClientId(e.target.value);
+                    setReleaseId("");
+                  }}
                   disabled={isEdit}
                 >
                   <option value="">Select a client…</option>
@@ -410,6 +420,22 @@ export function TaskFormModal({
                 </select>
               </div>
             </div>
+
+            {releases.length > 0 ? (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                  Release <span className="text-[var(--text-4)]">(optional)</span>
+                </label>
+                <select className="app-select w-full" value={releaseId} onChange={(e) => setReleaseId(e.target.value)}>
+                  <option value="">No release</option>
+                  {releases.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {releaseLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
 
             <div className="flex min-h-[220px] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] lg:flex-1">
               <div className="border-b border-[var(--border-2)] px-3 py-2.5">

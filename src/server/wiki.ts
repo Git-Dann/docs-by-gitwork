@@ -6,6 +6,7 @@
  * design-system `shareToken`).
  */
 
+import { releaseLabel, releaseProgress, releaseSpan, releaseStatusCounts, sortReleases } from "@/lib/tasks/releases";
 import { publicTeamAvatarUrl } from "@/lib/wiki-team-avatar";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
@@ -307,6 +308,12 @@ export interface WikiLinkedWork {
 
 export interface WikiTimeline {
   blocks: WikiTimelineBlock[];
+  /**
+   * The same work grouped by the release it ships in (ClientRelease), in release order,
+   * with the same client-safe fields as `blocks`. Absent or empty when the client has no
+   * releases, and the timeline then offers no Releases view.
+   */
+  releases?: WikiTimelineBlock[];
   /** Other clients' work, shown under this client's own. Empty unless linked. */
   linked?: WikiLinkedWork[];
   milestones: WikiTimelineMilestone[];
@@ -887,6 +894,16 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
       orderBy: { orderKey: "asc" },
     }),
   ]);
+  const releaseRows = await prisma.clientRelease.findMany({
+    where: { clientId },
+    include: {
+      tasks: {
+        where: { parentId: null, archivedAt: null },
+        select: { title: true, status: true, dueDate: true, completedAt: true, startedAt: true },
+        orderBy: { orderKey: "asc" },
+      },
+    },
+  });
 
   const timelineBlocks: WikiTimelineBlock[] = blocks
     .map((b) => {
@@ -933,8 +950,32 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
       startedAt: t.startedAt?.toISOString() ?? null,
     }));
 
+  const releases: WikiTimelineBlock[] = sortReleases(releaseRows)
+    .map((r): WikiTimelineBlock | null => {
+      const span = releaseSpan(r, r.tasks);
+      if (!span) return null;
+      return {
+        id: r.id,
+        name: releaseLabel(r),
+        startDate: span.startDate,
+        endDate: span.endDate,
+        estimated: span.estimated,
+        color: null,
+        progress: releaseProgress(r.tasks),
+        tasks: r.tasks.map((t) => ({
+          title: t.title,
+          done: t.status === "DONE",
+          completedAt: t.completedAt?.toISOString() ?? null,
+          startedAt: t.startedAt?.toISOString() ?? null,
+        })),
+        statusCounts: releaseStatusCounts(r.tasks),
+      };
+    })
+    .filter((b): b is WikiTimelineBlock => b !== null);
+
   return {
     blocks: timelineBlocks,
+    releases,
     unassigned,
     milestones: milestones.map((m) => ({
       id: m.id,

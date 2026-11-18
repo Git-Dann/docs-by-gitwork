@@ -375,6 +375,16 @@ const TOOLS: Tool[] = [
     ],
   },
   {
+    name: "list_releases",
+    blurb: "List a client's releases (version, name, dates and progress) in release order.",
+    examples: ["What releases does Big Wedge have?", "How far along is v2.0.0?"],
+  },
+  {
+    name: "create_release",
+    blurb: "Add a release to a client, with optional start and end dates. Put tasks in it with create_task or update_task.",
+    examples: ["Add release v2.1.0 'Q1 Social' to Big Wedge, 5–19 January.", "Put the onboarding task in v2.1.0."],
+  },
+  {
     name: "list_members",
     blurb:
       "List Gitwork workspace members. Useful for finding the user id Claude needs when assigning tasks.",
