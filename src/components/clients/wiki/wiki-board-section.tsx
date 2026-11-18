@@ -729,6 +729,21 @@ function CardDetail({
               </div>
             </div>
           ) : null}
+          {card.stageHistory.length ? (
+            <div>
+              <p className="widget-data-label text-[var(--text-4)]">Stage history</p>
+              <ul className="mt-1 space-y-1">
+                {card.stageHistory.map((h, i) => (
+                  <li key={i} className="flex items-center gap-3 text-[13px] text-[var(--text-2)]">
+                    <span className="w-[88px] shrink-0 tabular-nums text-[var(--text-3)]" style={MONO}>
+                      {h.date}
+                    </span>
+                    <span className="rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5">{h.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {card.subtasks.length ? (
             <div>
               <p className="widget-data-label text-[var(--text-4)]">Sub-items</p>

@@ -4274,6 +4274,7 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
     description: isCard || addedByClient ? t.description : null,
     subtasks: [],
     images: isCard || addedByClient ? (demoBoardImages.get(t.id) ?? []) : [],
+    stageHistory: isCard ? [{ label: "Scoping", date: "2026-05-18" }, { label: "Future Idea", date: "2026-05-21" }] : [],
     isCard,
     addedByClient,
     updatedAt: t.updatedAt,

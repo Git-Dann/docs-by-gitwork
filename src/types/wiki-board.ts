@@ -35,6 +35,11 @@ export interface WikiBoardCard {
    * or added by the team. Cards the client may act on only; a dev task's are never sent.
    */
   images: string[];
+  /**
+   * When the card entered each stage on the client's own planning tool (imported), oldest first.
+   * Empty for cards made in Foundry. Cards the client may act on only.
+   */
+  stageHistory: Array<{ label: string; date: string }>;
   /** A product card (has an item type). The board shows cards by default; dev tasks on request. */
   isCard: boolean;
   /** Added by the client from their board. */

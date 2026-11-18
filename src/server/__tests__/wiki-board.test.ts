@@ -411,6 +411,7 @@ function card(over: Partial<WikiBoardCard>): WikiBoardCard {
     description: null,
     subtasks: [],
     images: [],
+    stageHistory: [],
     isCard: false,
     addedByClient: false,
     updatedAt: "2026-11-18T00:00:00.000Z",

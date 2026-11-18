@@ -8,6 +8,7 @@
  * can be lost between the two.
  */
 
+import { stageHistoryOf } from "@/lib/wiki-board-stage-history";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
@@ -166,6 +167,7 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     description: ctx.descriptions.get(row.id) ?? null,
     subtasks: row.subtasks.map((s) => ({ title: s.title, done: s.status === "DONE" })),
     images: ctx.images.get(row.id) ?? [],
+    stageHistory: stageHistoryOf(row.metadata),
     isCard,
     addedByClient: addedByClient(row.metadata),
     updatedAt: row.updatedAt.toISOString(),
@@ -330,6 +332,7 @@ function publicCard(c: WikiBoardCard): WikiBoardCard {
     description: c.description,
     subtasks: c.subtasks,
     images: c.images,
+    stageHistory: c.stageHistory,
     isCard: c.isCard,
     addedByClient: c.addedByClient,
     updatedAt: c.updatedAt,
@@ -357,6 +360,7 @@ function titleOnlyCard(c: WikiBoardCard): WikiBoardCard {
     description: null,
     subtasks: [],
     images: [],
+    stageHistory: [],
     isCard: false,
     addedByClient: false,
     updatedAt: c.updatedAt,
