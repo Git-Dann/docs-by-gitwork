@@ -14,7 +14,7 @@
  * opens in its dialog to edit.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowDownTrayIcon,
@@ -29,7 +29,8 @@ import {
 import { cn } from "@/lib/format";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { ItemTypeChip } from "@/components/tasks/product-card-parts";
+import { ItemTypeChip, TierChip } from "@/components/tasks/product-card-parts";
+import { PickCell, PRIORITY_TONE, TextEditor } from "@/components/clients/wiki/board-pick";
 import { BOARD_LIST_MAX, TIERS, TIER_LABELS } from "@/lib/tasks/product-cards";
 import { BOARD_LIMITS } from "@/lib/wiki-board";
 import {
@@ -678,6 +679,8 @@ function Cell({
   }
 
   if (!editable) {
+    if (column === "type" && card.itemType) return <span className="flex h-8 items-center px-2"><ItemTypeChip itemType={card.itemType} /></span>;
+    if (column === "tier" && card.tier) return <span className="flex h-8 items-center px-2"><TierChip tier={card.tier} /></span>;
     return (
       <span className={cn(pad, "text-[var(--text-2)]", !text && "text-[var(--text-4)]")} title={text || undefined}>
         {text || "—"}
@@ -685,58 +688,66 @@ function Cell({
     );
   }
 
-  const select = "app-select app-select-compact h-8 w-full text-[13px]";
   switch (column) {
     case "type":
       return (
-        <select className={select} aria-label="Type" value={card.itemType ?? ""} onChange={(e) => onSave(e.target.value)}>
-          {card.itemType && !["feature", "bug", "feedback"].includes(card.itemType) ? <option value={card.itemType}>{text}</option> : null}
-          <option value="feature">Feature</option>
-          <option value="bug">Bug</option>
-          <option value="feedback">Feedback</option>
-        </select>
+        <PickCell
+          reveal="row"
+          label="Type"
+          value={card.itemType ?? ""}
+          onChange={onSave}
+          display={card.itemType ? <ItemTypeChip itemType={card.itemType} /> : null}
+          options={[
+            ...(card.itemType && !["feature", "bug", "feedback"].includes(card.itemType) ? [{ value: card.itemType, label: text }] : []),
+            { value: "feature", label: "Feature" },
+            { value: "bug", label: "Bug" },
+            { value: "feedback", label: "Feedback" },
+          ]}
+        />
       );
     case "lane":
       return (
-        <select className={select} aria-label="Column" value={card.laneKey} onChange={(e) => onSave(e.target.value)}>
-          {section.lanes.map((l) => (
-            <option key={l.key} value={l.key}>
-              {l.label}
-            </option>
-          ))}
-        </select>
+        <PickCell
+          reveal="row"
+          label="Column"
+          value={card.laneKey}
+          onChange={onSave}
+          display={text}
+          options={section.lanes.map((l) => ({ value: l.key, label: l.label }))}
+        />
       );
     case "release":
       return (
-        <select className={select} aria-label="Release" value={card.release?.id ?? ""} onChange={(e) => onSave(e.target.value)}>
-          <option value="">No release</option>
-          {section.releases.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.label}
-            </option>
-          ))}
-        </select>
+        <PickCell
+          reveal="row"
+          label="Release"
+          value={card.release?.id ?? ""}
+          onChange={onSave}
+          display={card.release ? card.release.label : null}
+          options={[{ value: "", label: "No release" }, ...section.releases.map((r) => ({ value: r.id, label: r.label }))]}
+        />
       );
     case "priority":
       return (
-        <select className={select} aria-label="Priority" value={card.priority} onChange={(e) => onSave(e.target.value)}>
-          {TASK_PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {TASK_PRIORITY_LABELS[p]}
-            </option>
-          ))}
-        </select>
+        <PickCell
+          reveal="row"
+          label="Priority"
+          value={card.priority}
+          onChange={onSave}
+          display={<span className={PRIORITY_TONE[card.priority] ?? "text-[var(--text-2)]"}>{TASK_PRIORITY_LABELS[card.priority] ?? text}</span>}
+          options={TASK_PRIORITIES.map((p) => ({ value: p, label: TASK_PRIORITY_LABELS[p] }))}
+        />
       );
     case "tier":
       return (
-        <select className={select} aria-label="Tier" value={card.tier ?? ""} onChange={(e) => onSave(e.target.value)}>
-          <option value="">No tier</option>
-          {TIERS.map((t) => (
-            <option key={t} value={t}>
-              {TIER_LABELS[t]}
-            </option>
-          ))}
-        </select>
+        <PickCell
+          reveal="row"
+          label="Tier"
+          value={card.tier ?? ""}
+          onChange={onSave}
+          display={card.tier ? <TierChip tier={card.tier} /> : null}
+          options={[{ value: "", label: "No tier" }, ...TIERS.map((t) => ({ value: t, label: TIER_LABELS[t] }))]}
+        />
       );
     default:
       break;
@@ -767,62 +778,6 @@ function Cell({
     >
       {text || "—"}
     </button>
-  );
-}
-
-/** A text box over the cell: Enter or leaving it saves, Escape keeps the old value. */
-function TextEditor({
-  initial,
-  onDone,
-  type = "text",
-  suggestions,
-  maxLength,
-}: {
-  initial: string;
-  onDone: (value: string | null) => void;
-  type?: "text" | "number" | "date";
-  suggestions?: string[];
-  maxLength?: number;
-}) {
-  const [value, setValue] = useState(initial);
-  const ref = useRef<HTMLInputElement>(null);
-  const done = useRef(false);
-  const listId = useMemo(() => (suggestions ? `table-sugg-${Math.random().toString(36).slice(2, 8)}` : undefined), [suggestions]);
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select?.();
-  }, []);
-  const finish = (v: string | null) => {
-    if (done.current) return;
-    done.current = true;
-    onDone(v === null || v === initial ? null : v);
-  };
-  return (
-    <>
-      <input
-        ref={ref}
-        className="app-input h-8 w-full px-2 text-[13px]"
-        type={type}
-        step={type === "number" ? 0.5 : undefined}
-        min={type === "number" ? 0 : undefined}
-        value={value}
-        maxLength={maxLength}
-        list={listId}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => finish(value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") finish(value);
-          if (e.key === "Escape") finish(null);
-        }}
-      />
-      {suggestions && listId ? (
-        <datalist id={listId}>
-          {suggestions.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
-      ) : null}
-    </>
   );
 }
 
