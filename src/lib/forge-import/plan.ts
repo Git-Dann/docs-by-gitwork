@@ -306,12 +306,79 @@ export function fillFor(t: BoardTask, card: CardFields, releaseResolvable: boole
 /** Plan actions after which an item has a card on the board (made now, linked, or made before). */
 const HAS_CARD: ReadonlySet<PlanAction> = new Set(["create", "link", "already-imported"]);
 
+export type TitleMatchRow = { t: BoardTask; kind: MatchKind; score: number; why: string };
+export interface FeedMatches {
+  matches: Map<string, TitleMatchRow[]>;
+  byTask: Map<string, string[]>;
+}
+
+/** Forge items whose card already exists (it carries the Forge id). */
+export function importedCards(tasks: BoardTask[]): Map<string, BoardTask> {
+  const imported = new Map<string, BoardTask>();
+  for (const t of tasks) {
+    if (t.externalRef?.startsWith(FORGE_REF_PREFIX)) imported.set(t.externalRef.slice(FORGE_REF_PREFIX.length), t);
+  }
+  return imported;
+}
+
+/**
+ * Title matches against the team's own tasks. Cards are never matched: they're the plan, not
+ * the work, and a card can't deliver another card.
+ *
+ * This is n × m, the expensive half of the plan. `onItem` lets the server hand control back
+ * between items so a big board never freezes it (Nov 2026: the first live dry run did, and took
+ * the site down for minutes). Return false from it to stop early.
+ */
+export function matchFeedToTasks(
+  feed: ForgeFeed,
+  tasks: BoardTask[],
+  imported: Map<string, BoardTask> = importedCards(tasks),
+): FeedMatches {
+  const run = matchFeedSteps(feed, tasks, imported);
+  for (let step = run.next(); !step.done; step = run.next()) {
+    /* run to completion */
+  }
+  return run.result();
+}
+
+/** The same matching, one feed item per step, so a caller can pause between items. */
+export function matchFeedSteps(feed: ForgeFeed, tasks: BoardTask[], imported: Map<string, BoardTask> = importedCards(tasks)) {
+  const devTasks = tasks.filter((t) => !t.itemType && !t.externalRef);
+  const devTitled: Array<{ t: BoardTask; tt: Titled }> = devTasks.map((t) => ({ t, tt: titled(t.title) }));
+  const matches = new Map<string, TitleMatchRow[]>();
+  const byTask = new Map<string, string[]>();
+  let i = 0;
+  return {
+    next(): { done: boolean } {
+      if (i >= feed.items.length) return { done: true };
+      const item = feed.items[i++];
+      if (!imported.has(item.id)) {
+        const it = titled(item.title);
+        const found: TitleMatchRow[] = [];
+        for (const { t, tt } of devTitled) {
+          const m = compareTitles(it, tt);
+          if (m) found.push({ t, ...m });
+        }
+        found.sort((a, b) => b.score - a.score);
+        matches.set(item.id, found);
+        for (const f of found) byTask.set(f.t.id, [...(byTask.get(f.t.id) ?? []), item.id]);
+      }
+      return { done: i >= feed.items.length };
+    },
+    result(): FeedMatches {
+      return { matches, byTask };
+    },
+  };
+}
+
 export function buildForgePlan(input: {
   feed: ForgeFeed;
   tasks: BoardTask[];
   releases: BoardRelease[];
   columns: BoardColumnDef[];
   decisions?: ReviewDecision[];
+  /** Matches already worked out (by the server, pausing between items). */
+  matched?: FeedMatches;
 }): ForgePlan {
   const { feed, tasks } = input;
   const have = new Set(input.columns.map((c) => columnNameKey(c.name)));
@@ -322,29 +389,10 @@ export function buildForgePlan(input: {
   const taskById = new Map(tasks.map((t) => [t.id, t]));
 
   // 1. Already imported: the card carries the Forge id.
-  const imported = new Map<string, BoardTask>();
-  for (const t of tasks) {
-    if (t.externalRef?.startsWith(FORGE_REF_PREFIX)) imported.set(t.externalRef.slice(FORGE_REF_PREFIX.length), t);
-  }
+  const imported = importedCards(tasks);
 
-  // 2. Title matches against the team's own tasks. Cards are never matched: they're the plan,
-  // not the work, and a card can't deliver another card.
-  const devTasks = tasks.filter((t) => !t.itemType && !t.externalRef);
-  const devTitled: Array<{ t: BoardTask; tt: Titled }> = devTasks.map((t) => ({ t, tt: titled(t.title) }));
-  const matches = new Map<string, Array<{ t: BoardTask; kind: MatchKind; score: number; why: string }>>();
-  const byTask = new Map<string, string[]>();
-  for (const item of feed.items) {
-    if (imported.has(item.id)) continue;
-    const it = titled(item.title);
-    const found: Array<{ t: BoardTask; kind: MatchKind; score: number; why: string }> = [];
-    for (const { t, tt } of devTitled) {
-      const m = compareTitles(it, tt);
-      if (m) found.push({ t, ...m });
-    }
-    found.sort((a, b) => b.score - a.score);
-    matches.set(item.id, found);
-    for (const f of found) byTask.set(f.t.id, [...(byTask.get(f.t.id) ?? []), item.id]);
-  }
+  // 2. Title matches against the team's own tasks (see matchFeedToTasks).
+  const { matches, byTask } = input.matched ?? matchFeedToTasks(feed, tasks, imported);
 
   const claimed = new Set<string>();
   const items: PlanItem[] = [];
