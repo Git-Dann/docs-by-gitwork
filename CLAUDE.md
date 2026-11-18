@@ -10111,3 +10111,36 @@ and two more on the board. Both levels now live on one board.
   lets a client's whole board be their own workflow (Wedge's 12 columns) without re-filing tasks.
 - **A task in a release counts as planned** (plan health, My Day "From the plan", Foreman
   PLAN_DRIFT), not only one in a category.
+
+## 125 (Forge import). Recent Changes (November 2026) — Importing a client's plan from their planning tool
+
+Big Wedge plans in a WordPress "Forge" board that publishes the whole plan as public JSON
+(`https://ops.bigwedgegolf.com/wp-json/forge/v1/items`: features, sub-items, bugs, feedback,
+releases). `src/lib/forge-import/` (pure) and `src/server/forge-import.ts` import it onto the Wedge
+board as product cards (§124). Admin-only: `POST /api/clients/[slug]/forge-import/plan` (dry run)
+and `/apply`, and MCP `forge_import_plan` / `forge_import_apply`. Audited as
+`tasks.forge_import.applied`.
+
+- **The dry run writes nothing.** Apply re-plans against the live board first, so a re-run or a
+  crash half-way only does what's left. Each card carries `externalRef` "forge:<id>" and is never
+  imported twice; on a re-run it only gets fields that are still empty.
+- **Only an exact title match is acted on** (`src/lib/forge-import/match.ts`, a port of the
+  hand-checked comparison, incl. difflib's ratio). A live, top-level team task becomes the card;
+  an archived task or a subtask stays where it is and is linked to a new card. Anything looser, or
+  not one-to-one, waits in the review list for a decision (a task id, `create` or `skip`).
+- ⚠️ **Apply never deletes, archives, reparents, renames or re-statuses a team task**, and every
+  update is `updateMany` scoped to the client. A linked task keeps its own status; the dry run says
+  where Big Wedge's stage differs.
+- **Stages → columns** (`stages.ts`): the importer only references Wedge's columns by name and
+  refuses to run until all eleven exist. ⚠️ There is no "In Review" column: a board column may not
+  repeat a status's own name, so that stage is the In Review status lane.
+- **Product cards are no longer auto-archived** after 30 days done (`autoArchiveDoneTasks`), or
+  Live Features would empty overnight.
+- **The real-data test** (`plan-real-data.test.ts`) runs only with `FORGE_FIXTURES_DIR` set. The
+  repo is public, so the client's plan and our task list are never committed as fixtures.
+- `scripts/forge-import-report.ts` renders a plan as the markdown summary that gets approved.
+
+Same change: releases in the CSV import and Sheets "send to board" (validated to the client, team
+only), releases on the public `/timeline/[token]` link with the Categories | Releases switch, and a
+card's dev tasks read from the server (`GET /api/tasks/[id]/linked`, archived included) instead of
+the board's cached list.
