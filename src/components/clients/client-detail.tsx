@@ -4,13 +4,13 @@ import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   BanknotesIcon,
-  BeakerIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   LifebuoyIcon,
   CheckCircleIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  ClipboardDocumentListIcon,
   CodeBracketIcon,
   ExclamationTriangleIcon,
   EyeIcon,
@@ -24,7 +24,6 @@ import {
   PencilIcon,
   PlayCircleIcon,
   PlusIcon,
-  SignalIcon,
   SparklesIcon,
   TrashIcon,
   VideoCameraIcon,
@@ -37,6 +36,10 @@ import { useEffect, useRef, useState } from "react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/motion/spinner";
+import { StatusDot } from "@/components/ui/motion/status-dot";
+import { Skeleton, SkeletonWidget } from "@/components/ui/motion/skeleton";
+import { Avatar } from "@/components/ui/avatar";
+import { useCountUp } from "@/components/ui/motion/use-count-up";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
@@ -51,6 +54,7 @@ import {
   useClientDetail,
   useClientMeetings,
   useClientSlackActivity,
+  useRetryClientSlackDigest,
   useIngestClientMeeting,
   useLinkMeetingActionItemTask,
   useUpdateMeetingDecision,
@@ -65,14 +69,19 @@ import {
   useUpdateClientPlatform,
   useTeamMembers,
   useUpdateClientProductTeam,
+  type ClientSlackActivity,
 } from "@/hooks/use-proposals";
 import { useCreateTask, useDeleteTask, useTasks } from "@/hooks/use-tasks";
-import { useClientActiveCovers } from "@/hooks/use-backstage";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
 import { ClientDriveFiles } from "@/components/clients/client-drive-files";
 import { driveFolderIdFromUrl } from "@/lib/client-drive";
+import { portalSectionNumbers } from "@/lib/client-portal-layout";
+import { meetingStatusChip } from "@/lib/meeting-status";
+import { ClientDevelopersCard } from "@/components/clients/client-developers-card";
+import { ClientLifecycleCard } from "@/components/clients/client-lifecycle";
+import { ClientPulseCard, ClientStudiesCard } from "@/components/clients/client-portal-cards";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import type {
@@ -157,6 +166,36 @@ function SlackGlyph({ className }: { className?: string }) {
   );
 }
 
+const ENGAGEMENT_LABEL: Record<ClientEngagementType, string> = {
+  FIXED_SCOPE: "Fixed scope",
+  PHASED: "Phased",
+  ROLLING: "Rolling",
+  RETAINER: "Retainer",
+};
+
+const heroLink =
+  "inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1 text-[12px] font-medium text-[var(--text-2)] transition-colors hover:border-[var(--brand-400)] hover:text-[var(--brand-700)] [&>*:last-child]:truncate";
+
+/** The client's status as a dot and a word. Active is quiet; paused and pending ask for a look. */
+function ClientStatusChip({ status }: { status: ClientDetailRecord["client"]["status"] }) {
+  const map: Record<string, { label: string; tone: "success" | "warning" | "info" | "neutral" | "brand"; text: string }> = {
+    ACTIVE: { label: "Active", tone: "success", text: "text-emerald-700" },
+    INACTIVE: { label: "Paused", tone: "warning", text: "text-amber-700" },
+    PENDING_REVIEW: { label: "Pending review", tone: "info", text: "text-blue-700" },
+    LEAD: { label: "Lead", tone: "brand", text: "text-[var(--brand-700)]" },
+  };
+  const m = map[status] ?? { label: status.toLowerCase().replace(/_/g, " "), tone: "neutral" as const, text: "text-[var(--text-3)]" };
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1.5 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]", m.text)}
+      style={{ fontFamily: "var(--font-mono)" }}
+    >
+      <StatusDot tone={m.tone} size="xs" />
+      {m.label}
+    </span>
+  );
+}
+
 const actionMenuPanel =
   "z-50 mt-1.5 w-56 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
 const actionMenuItem =
@@ -194,6 +233,7 @@ export function ClientDetail({ slug }: { slug: string }) {
   const createPlatformMutation = useCreateClientPlatform(slug);
   const createDesignMutation = useCreateClientDesign(slug);
   const slackActivity = useClientSlackActivity(slug);
+  const retrySlackDigest = useRetryClientSlackDigest(slug);
   const setStatus = useSetClientStatus(slug);
   const { canViewPulse, canManageClients } = usePermissions();
   // Pause (→ INACTIVE) modal state.
@@ -205,10 +245,19 @@ export function ClientDetail({ slug }: { slug: string }) {
   const [converting, setConverting] = useState(false);
 
   if (isPending) {
+    // The page's own shape, so nothing jumps when it arrives (docs/motion.md: a skeleton should
+    // look like what replaces it).
     return (
-      <div className="widget-card">
-        <div className="widget-body py-16 text-center">
-          <p className="widget-data-label animate-pulse">Loading client…</p>
+      <div className="space-y-5" role="status" aria-label="Loading client">
+        <SkeletonWidget className="h-[176px] rounded-[10px]" />
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+          {Array.from({ length: 5 }, (_, i) => (
+            <SkeletonWidget key={i} className="h-[118px] rounded-[10px]" />
+          ))}
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SkeletonWidget className="h-[220px] rounded-[10px]" />
+          <SkeletonWidget className="h-[220px] rounded-[10px]" />
         </div>
       </div>
     );
@@ -235,7 +284,36 @@ export function ClientDetail({ slug }: { slug: string }) {
   // Leads show only the lead workspace + contact/notes — project/delivery info is hidden
   // until they become a client (status flips to ACTIVE via "Convert to client").
   const isLead = client.status === "LEAD";
-  const activeDevCount = (placements ?? []).filter((p) => !p.endDate).length;
+  const activeDevCount = new Set((placements ?? []).filter((p) => !p.endDate).map((p) => p.candidateId)).size;
+
+  // Which optional cards show, so the numbers run in sequence with no gaps.
+  const showBilling = Boolean(
+    client.legalCompanyName || client.vatNumber || client.companyNumber || client.invoiceEmail || client.billingAddressLine1,
+  );
+  const showStudies = !isSuggested;
+  const sideCards = (canViewPulse ? 1 : 0) + (showStudies ? 1 : 0) + (client.notes ? 1 : 0);
+  const num = portalSectionNumbers((section) => {
+    switch (section) {
+      case "statPulse":
+      case "pulse":
+        return canViewPulse;
+      case "billing":
+        return showBilling;
+      case "studies":
+        return showStudies;
+      case "notes":
+        return Boolean(client.notes);
+      case "proof":
+        return proofDocuments.length > 0;
+      case "lifecycle":
+        return lifecycle.length > 0;
+      default:
+        return true;
+    }
+  });
+  // Cards rise in one after another, in page order (docs/motion.md: motion-rise).
+  let riseIndex = 0;
+  const rise = () => ({ animationDelay: `${Math.min(riseIndex++, 10) * 40}ms` });
 
   async function changeStatus(
     status: "ACTIVE" | "INACTIVE" | "LEAD",
@@ -487,83 +565,115 @@ export function ClientDetail({ slug }: { slug: string }) {
           <div className="border-t border-[var(--border-3)] bg-rose-50 px-6 py-2 text-sm text-rose-700">{statusError}</div>
         )}
 
-        <div className="p-6">
-          <div className="flex flex-wrap items-start gap-5">
-            {/* Avatar */}
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-1)]">
+        <div className="relative overflow-hidden">
+          {/* A quiet brand wash behind the identity, so the record reads as the page's hero. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,var(--surface-brand-soft)_0%,transparent_55%)]"
+          />
+          <div className="relative flex flex-wrap items-start gap-5 p-6">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[12px] sm:h-[72px] sm:w-[72px] border border-[var(--border-2)] bg-[var(--surface-0)] shadow-[var(--shadow-xs)]">
               {client.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={client.logoUrl}
-                  alt={`${client.name} logo`}
-                  className="h-full w-full object-cover"
-                />
+                <img src={client.logoUrl} alt={`${client.name} logo`} className="h-full w-full object-cover" />
               ) : (
-                <span className="text-2xl font-semibold text-[var(--text-2)]">
+                <span className="text-2xl font-semibold text-[var(--brand-700)]" style={{ fontFamily: "var(--font-display)" }}>
                   {client.name.charAt(0).toUpperCase()}
                 </span>
               )}
             </div>
 
-            {/* Identity */}
-            <div className="flex-1">
-              <h2
-                className="text-3xl leading-none tracking-[-0.03em] text-[var(--text-1)]"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
-                {client.name}
-              </h2>
+            <div className="min-w-0 flex-1 basis-[240px]">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <h2
+                  className="min-w-0 text-[32px] leading-none tracking-[-0.03em] text-[var(--text-1)] [overflow-wrap:anywhere]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {client.name}
+                </h2>
+                <ClientStatusChip status={client.status} />
+              </div>
 
-              {/* External links */}
-              {(client.website || client.googleDriveFolderUrl) && (
-                <div className="mt-3 flex flex-wrap items-center gap-3">
+              {/* Key facts, in the readout voice. */}
+              <p
+                className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] uppercase tracking-[0.08em] text-[var(--text-3)]"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                <span>Client since {new Date(client.createdAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}</span>
+                {client.engagementType ? (
+                  <>
+                    <span aria-hidden className="text-[var(--text-4)]">·</span>
+                    <span>{ENGAGEMENT_LABEL[client.engagementType]}</span>
+                  </>
+                ) : null}
+                {client.endDate ? (
+                  <>
+                    <span aria-hidden className="text-[var(--text-4)]">·</span>
+                    <span>Ends {formatDate(client.endDate)}</span>
+                  </>
+                ) : null}
+                {!isLead && activeDevCount > 0 ? (
+                  <>
+                    <span aria-hidden className="text-[var(--text-4)]">·</span>
+                    <span>
+                      {activeDevCount} dev{activeDevCount === 1 ? "" : "s"} on it
+                    </span>
+                  </>
+                ) : null}
+              </p>
+
+              {/* Where the client lives elsewhere. */}
+              {(client.website || client.googleDriveFolderUrl || client.slackInternalChannelName) && (
+                <div className="mt-3.5 flex flex-wrap items-center gap-2">
                   {client.website && (
                     <a
                       href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-[var(--brand-700)] hover:underline"
+                      className={heroLink}
                     >
-                      <GlobeAltIcon className="h-4 w-4" />
-                      {client.website.replace(/^https?:\/\//, "")}
+                      <GlobeAltIcon className="h-3.5 w-3.5 text-[var(--brand-700)]" />
+                      {client.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
                     </a>
                   )}
                   {client.googleDriveFolderUrl && (
+                    <a href={client.googleDriveFolderUrl} target="_blank" rel="noreferrer" className={heroLink}>
+                      <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
+                      Google Drive
+                    </a>
+                  )}
+                  {client.slackInternalChannelName && (client.slackInternalChannelId ?? client.slackChannelId) && (
                     <a
-                      href={client.googleDriveFolderUrl}
+                      href={`https://slack.com/app_redirect?channel=${client.slackInternalChannelId ?? client.slackChannelId}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
+                      className={heroLink}
                     >
-                      <ArrowTopRightOnSquareIcon className="h-4 w-4" />
-                      Google Drive
+                      <SlackGlyph className="h-3.5 w-3.5" />#{client.slackInternalChannelName}
                     </a>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Right-side action stack — bottom-aligned. */}
-            <div className="ml-auto flex flex-col items-end justify-end gap-2 self-stretch">
+            {/* Quick actions. */}
+            <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:justify-end sm:self-end">
               {client.bank?.onFile && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setBankOpen(true)}
-                >
+                <Button type="button" variant="secondary" size="sm" onClick={() => setBankOpen(true)}>
                   <BanknotesIcon className="h-4 w-4 text-[var(--brand-700)]" />
                   Bank details
                 </Button>
               )}
               {!isLead && (
-                <Link
-                  href={`/app/portal/${slug}/wiki`}
-                  title="Open knowledge wiki"
-                  className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-                >
-                  <BookOpenIcon className="h-3.5 w-3.5" />
-                  Wiki →
+                <Link href={`/app/portal/${slug}/tasks`} className={buttonStyles({ variant: "secondary", size: "sm" })}>
+                  <ClipboardDocumentListIcon className="h-4 w-4 text-[var(--text-3)]" />
+                  Tasks
+                </Link>
+              )}
+              {!isLead && (
+                <Link href={`/app/portal/${slug}/wiki`} title="Open knowledge wiki" className={buttonStyles({ variant: "primary", size: "sm" })}>
+                  <BookOpenIcon className="h-4 w-4" />
+                  Open wiki
                 </Link>
               )}
             </div>
@@ -574,69 +684,6 @@ export function ClientDetail({ slug }: { slug: string }) {
       {/* Lead CRM (LEAD only) — 02 pipeline · 03 next steps · 04 automation · 05 activity. */}
       {isLead && (
         <LeadCrm slug={slug} client={client} touchpoints={touchpoints} canManage={canManageClients} />
-      )}
-
-      {!isLead && (
-        <>
-      {/* ── 02-06 // STATS ── */}
-      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", canViewPulse ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
-        <StatCard number="02" label="DOCS" value={proposals.length} />
-        <StatCard number="03" label="PLATFORMS" value={platforms.length} />
-        <StatCard number="04" label="DESIGNS" value={designs.length} />
-        {canViewPulse ? <StatCard number="05" label="PULSE SCANS" value={pulseScans.length} /> : null}
-        <StatCard
-          number="06"
-          label="DEVS"
-          value={activeDevCount}
-          href={`/app/portal/${slug}/tasks`}
-          action={<span className="text-[11px] font-medium text-[var(--brand-700)]">Tasks →</span>}
-        />
-      </div>
-
-      {/* ── 07 // SLACK ACTIVITY (digest) + 08 // CONTACT — compact 2-col ── */}
-      <div className="grid items-stretch gap-4 lg:grid-cols-2">
-      <section className="widget-card flex h-full flex-col">
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">07</span>
-            {" // SLACK ACTIVITY"}
-          </span>
-          <div className="flex items-center gap-2">
-            {slackActivity.data?.channelName && client.slackChannelId && (
-              <a
-                href={`https://slack.com/app_redirect?channel=${client.slackChannelId}`}
-                target="_blank"
-                rel="noreferrer"
-                className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
-                title="Open in Slack"
-              >
-                <ChatBubbleLeftRightIcon className="h-3 w-3" />
-                {slackActivity.data.channelName}
-              </a>
-            )}
-            {slackActivity.data?.configured && (
-              <button
-                type="button"
-                onClick={() => void slackActivity.refetch()}
-                disabled={slackActivity.isFetching}
-                className="rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
-                title="Refresh"
-              >
-                <ArrowPathIcon className={cn("h-3.5 w-3.5", slackActivity.isFetching && "animate-spin")} />
-              </button>
-            )}
-          </div>
-        </div>
-        <SlackActivityBody
-          data={slackActivity.data}
-          isLoading={slackActivity.isPending}
-          onConfigureClick={canManageClients ? openEdit : undefined}
-          summaryOnly
-        />
-      </section>
-      <ContactCard client={client} number="08" onEdit={canManageClients ? openEdit : undefined} />
-      </div>
-        </>
       )}
 
       {/* ── 06 // CONTACT — lead standalone (clients show Contact beside Slack above) ── */}
@@ -752,16 +799,78 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       {!isLead && (
         <>
+      {/* ── STATS ── */}
+      <div className={cn("grid grid-cols-2 gap-3 sm:gap-4", canViewPulse ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
+        <StatCard number={num.statDocs} label="DOCS" value={proposals.length} style={rise()} />
+        <StatCard number={num.statPlatforms} label="PLATFORMS" value={platforms.length} style={rise()} />
+        <StatCard number={num.statDesigns} label="DESIGNS" value={designs.length} style={rise()} />
+        {canViewPulse ? <StatCard number={num.statPulse} label="PULSE SCANS" value={pulseScans.length} style={rise()} /> : null}
+        <StatCard
+          number={num.statDevs}
+          label="DEVS"
+          value={activeDevCount}
+          href={`/app/portal/${slug}/tasks`}
+          action={<span className="text-[11px] font-medium text-[var(--brand-700)]">Tasks →</span>}
+          style={rise()}
+        />
+      </div>
+
+      {/* ── SLACK ACTIVITY + CONTACT ── */}
+      <div className="grid items-stretch gap-4 lg:grid-cols-2">
+      <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
+        <div className="widget-header">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">{num.slack}</span>
+            {" // SLACK ACTIVITY"}
+          </span>
+          <div className="flex items-center gap-2">
+            {slackActivity.data?.channelName && client.slackChannelId && (
+              <a
+                href={`https://slack.com/app_redirect?channel=${client.slackChannelId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
+                title="Open in Slack"
+              >
+                <ChatBubbleLeftRightIcon className="h-3 w-3" />
+                {slackActivity.data.channelName}
+              </a>
+            )}
+            {slackActivity.data?.configured && (
+              <button
+                type="button"
+                onClick={() => void slackActivity.refetch()}
+                disabled={slackActivity.isFetching}
+                className="rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] transition-colors"
+                title="Refresh"
+              >
+                <ArrowPathIcon className={cn("h-3.5 w-3.5", slackActivity.isFetching && "animate-spin")} />
+              </button>
+            )}
+          </div>
+        </div>
+        <SlackActivityBody
+          data={slackActivity.data}
+          isLoading={slackActivity.isPending}
+          onConfigureClick={canManageClients ? openEdit : undefined}
+          onRetry={() => retrySlackDigest.mutate()}
+          retrying={retrySlackDigest.isPending}
+          summaryOnly
+        />
+      </section>
+      <ContactCard client={client} number={num.contact} onEdit={canManageClients ? openEdit : undefined} style={rise()} />
+      </div>
+
       {/* ── 09 // BILLING ── */}
       {(client.legalCompanyName ||
         client.vatNumber ||
         client.companyNumber ||
         client.invoiceEmail ||
         client.billingAddressLine1) && (
-        <section className="widget-card">
+        <section className="widget-card motion-rise" style={rise()}>
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">09</span>
+              <span className="widget-header__label--number">{num.billing}</span>
               {" // BILLING"}
             </span>
             <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
@@ -830,10 +939,10 @@ export function ClientDetail({ slug }: { slug: string }) {
       )}
 
       {/* ── 10 // PLATFORMS ── */}
-      <section className="widget-card">
+      <section className="widget-card motion-rise" style={rise()}>
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">10</span>
+            <span className="widget-header__label--number">{num.platforms}</span>
             {" // PLATFORMS"}
           </span>
           {!isSuggested && canManageClients && (
@@ -864,7 +973,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {platforms.map((platform) => (
                 <PlatformCard
                   key={platform.id}
@@ -879,13 +988,22 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* ── 11 // DESIGNS + 12 // MEETING NOTES (side by side on desktop, stacked on mobile) ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+
+      {/* ── DEVELOPERS — full width, a card per person ── */}
+      <div className="motion-rise" style={rise()}>
+        <ClientDevelopersCard number={num.developers} clientId={client.id} placements={placements ?? []} />
+      </div>
+
+      {/* ── MEETING NOTES + DESIGNS ── both stretch to the taller one, so neither leaves a hole. */}
+      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
+      <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
+        <MeetingNotesSection slug={slug} number={num.meetings} />
+      </section>
       {/* 11 // DESIGNS */}
-      <section className="widget-card flex flex-col">
+      <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
         <div className="widget-header">
           <span className="widget-header__label">
-            <span className="widget-header__label--number">11</span>
+            <span className="widget-header__label--number">{num.designs}</span>
             {" // DESIGNS"}
           </span>
           <div className="flex items-center gap-1">
@@ -933,45 +1051,16 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* 12 // MEETING NOTES (Scribe) — quiet, client-scoped Google Meet notes */}
-      <section className="widget-card">
-        <MeetingNotesSection slug={slug} />
-      </section>
       </div>
-        </>
-      )}
 
-      {!isLead && (
-        <>
-      {/* ── ACTIVITY — one packed 2-col grid on desktop, stacked on mobile ── */}
-      {/* Notes · Documents · Pulse · Developers · Studies all flow through a SINGLE grid so cards
-          pair up row-major and rows stretch to equal height. A lone trailing card (odd count — e.g.
-          Pulse hidden, or no notes) spans BOTH columns, so there is NEVER a large empty half-row,
-          whatever combination of sections is present. Leads show notes in the 03/04 row above. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*:last-child:nth-child(odd)]:lg:col-span-2">
-
-        {/* 13 // NOTES */}
-        {client.notes ? (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">13</span>
-                {" // NOTES"}
-              </span>
-            </div>
-            <div className="p-6">
-              <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-                {client.notes}
-              </p>
-            </div>
-          </section>
-        ) : null}
-
+      {/* ── DOCUMENTS + (PULSE · STUDIES · NOTES) ── the right column stacks, and its last card
+          takes the slack, so the pair ends level. With nothing on the right, Documents is full width. */}
+      <div className={cn("grid grid-cols-1 items-stretch gap-4", sideCards > 0 && "lg:grid-cols-2")}>
         {/* 14 // DOCUMENTS */}
-        <section className="widget-card">
+        <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">14</span>
+              <span className="widget-header__label--number">{num.documents}</span>
               {" // DOCUMENTS"}
             </span>
             <DocsTabs value={docsView} onChange={setDocsTab} linkedCount={proposals.length + documentLinks.length} />
@@ -1020,7 +1109,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                         <StatusBadge status={proposal.status} />
                       </td>
                       <td>
-                        <span className="widget-timestamp">{formatDate(proposal.updatedAt)}</span>
+                        <span className="widget-timestamp whitespace-nowrap">{formatDate(proposal.updatedAt)}</span>
                       </td>
                       <td>
                         <button
@@ -1049,6 +1138,44 @@ export function ClientDetail({ slug }: { slug: string }) {
           )}
         </section>
 
+
+
+
+        {sideCards > 0 ? (
+        <div className="flex min-w-0 flex-col gap-4">
+          {canViewPulse ? (
+            <ClientPulseCard
+              number={num.pulse}
+              scans={pulseScans}
+              pendingReview={client.status === "PENDING_REVIEW"}
+              grow={!showStudies && !client.notes}
+              style={rise()}
+            />
+          ) : null}
+          {showStudies ? (
+            <ClientStudiesCard number={num.studies} clientId={client.id} studies={studies} grow={!client.notes} style={rise()} />
+          ) : null}
+          {client.notes ? (
+            <section className="widget-card motion-rise flex flex-1 flex-col" style={rise()}>
+              <div className="widget-header">
+                <span className="widget-header__label">
+                  <span className="widget-header__label--number">{num.notes}</span>
+                  {" // NOTES"}
+                </span>
+                {canManageClients ? (
+                  <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+                    <PencilIcon className="h-3 w-3" />
+                    Edit
+                  </Button>
+                ) : null}
+              </div>
+              <p className="whitespace-pre-wrap p-5 text-sm leading-6 text-[var(--text-2)]">{client.notes}</p>
+            </section>
+          ) : null}
+        </div>
+        ) : null}
+      </div>
+
         <ClientDocActionsModal
           slug={slug}
           proposal={proposals.find((p) => p.id === docActionsId) ?? null}
@@ -1056,237 +1183,13 @@ export function ClientDetail({ slug }: { slug: string }) {
           onClose={() => setDocActionsId(null)}
         />
 
-
-        {/* 15 // PULSE SCANS */}
-        {canViewPulse ? (
-        <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">15</span>
-                {" // PULSE SCANS"}
-              </span>
-              {pulseScans.length > 0 && (
-                <span className="widget-header__status">
-                  <SignalIcon className="h-3 w-3" />
-                  {pulseScans.length} scan{pulseScans.length !== 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-            {pulseScans.length === 0 ? (
-              <div className="p-5">
-                {client.status === "PENDING_REVIEW" ? (
-                  <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
-                    <p className="px-6 text-sm text-[var(--text-4)]">
-                      Pulse scans run once this client is moved to workflow — keeps us
-                      from scanning a product URL before it&apos;s officially in our pipeline.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center">
-                    <p className="text-sm text-[var(--text-4)]">
-                      <Link href="/app/pulse" className="text-[var(--brand-700)] hover:underline">
-                        + Run a Pulse scan for this client
-                      </Link>
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="app-table min-w-full">
-                  <thead>
-                    <tr>
-                      <th className="text-left">Project</th>
-                      <th className="text-left">Score</th>
-                      <th className="text-left">Date</th>
-                      <th className="text-left">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pulseScans.map((scan) => (
-                      <tr key={scan.id}>
-                        <td className="font-medium text-[var(--text-1)]">{scan.projectName}</td>
-                        <td>
-                          {scan.healthScore !== null ? (
-                            <span
-                              className="text-xl leading-none text-[var(--text-1)]"
-                              style={{ fontFamily: "var(--font-display)" }}
-                            >
-                              {scan.healthScore}
-                            </span>
-                          ) : (
-                            <span className="text-[var(--text-4)]">—</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className="widget-timestamp">{formatDate(scan.createdAt)}</span>
-                        </td>
-                        <td>
-                          <Link
-                            href={`/app/pulse/${scan.id}`}
-                            className={buttonStyles({ variant: "secondary", size: "xs" })}
-                          >
-                            Open
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        ) : null}
-
-        {/* 16 // DEVELOPERS */}
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">16</span>
-              {" // DEVELOPERS"}
-            </span>
-            {placements && placements.length > 0 ? (
-              <span className="widget-header__status">
-                {placements.filter((p) => !p.endDate).length} active
-                {placements.filter((p) => p.endDate).length > 0 &&
-                  ` · ${placements.filter((p) => p.endDate).length} past`}
-              </span>
-            ) : (
-              <Link
-                href="/app/codeclear/candidates"
-                className="widget-header__status hover:text-[var(--brand-700)] transition-colors"
-              >
-                Assign in Code →
-              </Link>
-            )}
-          </div>
-          <ClientDevelopersSection
-            clientId={client.id}
-            clientName={client.name}
-            placements={placements ?? []}
-          />
-        </section>
-
-
-        {/* 17 // STUDIES */}
-        {!isSuggested && (
-          <section className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header__label">
-                <span className="widget-header__label--number">17</span>
-                {" // STUDIES"}
-              </span>
-              <div className="flex items-center gap-2">
-                {studies.length > 0 && (
-                  <span className="widget-header__status">
-                    <BeakerIcon className="h-3 w-3" />
-                    {studies.length} stud{studies.length !== 1 ? "ies" : "y"}
-                  </span>
-                )}
-                <Link
-                  href={`/app/study/new?clientId=${client.id}`}
-                  className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
-                  title="New study for this client"
-                >
-                  <PlusIcon className="h-3.5 w-3.5" />
-                </Link>
-              </div>
-            </div>
-            {studies.length === 0 ? (
-              <div className="p-4">
-                <div className="flex items-center justify-center rounded-[6px] border border-dashed border-[rgba(0,0,0,0.12)] py-10 text-center w-full">
-                  <p className="text-sm text-[var(--text-4)]">
-                    <Link
-                      href={`/app/study/new?clientId=${client.id}`}
-                      className="text-[var(--brand-700)] hover:underline"
-                    >
-                      + Start a research study for this client
-                    </Link>
-                  </p>
-                </div>
-              </div>
-            ) : (
-            <div className="overflow-x-auto">
-              <table className="app-table min-w-full">
-                <thead>
-                  <tr>
-                    <th className="text-left">Title</th>
-                    <th className="text-left">Mode</th>
-                    <th className="text-left">Personas</th>
-                    <th className="text-left">Sessions</th>
-                    <th className="text-left">Status</th>
-                    <th className="text-left">Created</th>
-                    <th className="text-left">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {studies.map((study) => (
-                    <tr key={study.id}>
-                      <td>
-                        <p className="font-medium text-[var(--text-1)]">{study.title}</p>
-                      </td>
-                      <td>
-                        <span
-                          className="inline-flex items-center rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]"
-                        >
-                          {study.sessionMode === "GROUP" ? "GROUP" : "1-ON-1"}
-                        </span>
-                      </td>
-                      <td className="text-[var(--text-3)]">
-                        {study.selectedPersonaIds.length}
-                      </td>
-                      <td className="text-[var(--text-3)]">
-                        {study.completedSessionCount}/{study.sessionCount}
-                      </td>
-                      <td>
-                        <span
-                          className={
-                            "inline-flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] " +
-                            (study.status === "COMPLETED"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : study.status === "RUNNING" || study.status === "PLAN_GENERATING"
-                              ? "bg-amber-50 text-amber-700"
-                              : study.status === "FAILED"
-                              ? "bg-red-50 text-red-700"
-                              : "bg-[var(--surface-1)] text-[var(--text-3)]")
-                          }
-                          style={{ fontFamily: "var(--font-mono)" }}
-                        >
-                          {(study.status === "RUNNING" || study.status === "PLAN_GENERATING") && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                          )}
-                          {study.status.toLowerCase().replace("_", " ")}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="widget-timestamp">{formatDate(study.createdAt)}</span>
-                      </td>
-                      <td>
-                        <Link
-                          href={`/app/study/${study.id}`}
-                          className={buttonStyles({ variant: "secondary", size: "xs" })}
-                        >
-                          Open
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            )}
-          </section>
-        )}
-
-      </div>
-
       {/* Full-width optionals */}
         {/* 18 // PROOF DOCUMENTS */}
         {proofDocuments.length > 0 && (
-          <section className="widget-card">
+          <section className="widget-card motion-rise" style={rise()}>
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">18</span>
+                <span className="widget-header__label--number">{num.proof}</span>
                 {" // PROOF DOCUMENTS"}
               </span>
             </div>
@@ -1326,36 +1229,16 @@ export function ClientDetail({ slug }: { slug: string }) {
           </section>
         )}
 
-      {/* ── 19 // LIFECYCLE ── */}
-      {lifecycle.length > 0 && (
-        <section className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header__label">
-              <span className="widget-header__label--number">19</span>
-              {" // LIFECYCLE"}
-            </span>
-          </div>
-          <div className="grid gap-2 p-5 md:grid-cols-2 xl:grid-cols-4">
-            {lifecycle.map((event) => (
-              <div key={event.id} className="rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      event.status === "done" ? "bg-emerald-500" : event.status === "ready" ? "bg-blue-500" : "bg-amber-400",
-                    )}
-                  />
-                  <p className="truncate text-xs font-semibold text-[var(--text-1)]">{event.label}</p>
-                </div>
-                <p className="mt-1 truncate text-[11px] text-[var(--text-3)]">{event.detail}</p>
-                <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]">
-                  {formatDate(event.at)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+
+      {lifecycle.length > 0 ? (
+        <div className="motion-rise" style={rise()}>
+          <ClientLifecycleCard
+            number={num.lifecycle}
+            // Pulse scans only for people who can see Pulse, as everywhere else on the page.
+            source={{ lifecycle, placements: placements ?? [], pulseScans: canViewPulse ? pulseScans : [], studies, platforms, designs, documentLinks, touchpoints }}
+          />
+        </div>
+      ) : null}
         </>
       )}
 
@@ -1461,21 +1344,6 @@ export function ClientDetail({ slug }: { slug: string }) {
 
 // ---------------------------------------------------------------------------
 // MeetingNotesSection — Scribe: client-scoped Google Meet notes, surfaced quietly here.
-function meetingStatusChip(status: ScribeMeeting["status"]): { label: string; cls: string } {
-  switch (status) {
-    case "SUMMARISED":
-      return { label: "Ready", cls: "bg-emerald-50 text-emerald-700" };
-    case "TRANSCRIBED":
-      return { label: "Summarising", cls: "bg-amber-50 text-amber-700" };
-    case "AWAITING_TRANSCRIPT":
-      return { label: "Awaiting", cls: "bg-[var(--surface-1)] text-[var(--text-3)]" };
-    case "ERROR":
-      return { label: "Error", cls: "bg-red-50 text-red-700" };
-    default:
-      return { label: "No notes", cls: "bg-[var(--surface-1)] text-[var(--text-3)]" };
-  }
-}
-
 function formatTimeRange(startISO?: string | null, endISO?: string | null): string {
   if (!startISO) return "";
   try {
@@ -1688,7 +1556,7 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
                 return (
                   <div key={c.calendarEventId} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-white">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[var(--text-1)]">{c.title}</p>
+                      <p className="truncate text-sm font-medium text-[var(--text-1)]" title={c.title}>{c.title}</p>
                       <p className="widget-timestamp mt-0.5">{formatDate(c.start)}</p>
                     </div>
                     <button type="button" disabled={busy || !c.meetingCode} onClick={() => void fetchNotes(c)}
@@ -1706,11 +1574,18 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
               return (
                 <div key={m.calendarEventId ?? m.id} className="flex items-center justify-between gap-3 px-3 py-2.5 bg-white">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-[var(--text-1)]">{m.title}</p>
+                    <p className="truncate text-sm font-medium text-[var(--text-1)]" title={m.title}>{m.title}</p>
                     <p className="widget-timestamp mt-0.5">{formatDate(m.startedAt ?? m.createdAt)}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <span className={cn("inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]", chip.cls)} style={{ fontFamily: "var(--font-mono)" }}>{chip.label}</span>
+                    <span
+                      title={chip.title}
+                      className={cn("inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]", chip.cls)}
+                      style={{ fontFamily: "var(--font-mono)" }}
+                    >
+                      {chip.working ? <StatusDot tone="warning" motion="pulse" size="xs" /> : null}
+                      {chip.label}
+                    </span>
                     {ready ? (
                       <button type="button" onClick={() => setViewing(m)}
                         className="inline-flex items-center gap-1 rounded-[6px] border border-[rgba(0,0,0,0.14)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]">
@@ -1886,7 +1761,7 @@ function GrabNoteModal({
                 return (
                   <li key={c.calendarEventId} className="flex items-center justify-between gap-3 bg-white px-3 py-2.5">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[var(--text-1)]">{c.title}</p>
+                      <p className="truncate text-sm font-medium text-[var(--text-1)]" title={c.title}>{c.title}</p>
                       <p className="widget-timestamp mt-0.5">{formatDate(c.start)}</p>
                     </div>
                     <button
@@ -2345,109 +2220,17 @@ function MeetingNotesTaskRail({
 
 // ClientDevelopersSection — compact name roster, Portal read-only view
 // ---------------------------------------------------------------------------
-function ClientDevelopersSection({
-  clientId,
-  placements,
-}: {
-  clientId: string;
-  clientName: string;
-  placements: import("@/types/client").ClientPlacementRecord[];
-}) {
-  // Active covers (stand-in devs) on this client — a temporary overlay on top of
-  // the placed devs; the placed dev is unchanged.
-  const covers = useClientActiveCovers(clientId);
-  const coverList = covers.data ?? [];
-
-  if (placements.length === 0 && coverList.length === 0) {
-    return (
-      <div className="p-5">
-        <p className="text-sm text-[var(--text-4)]">
-          No developers assigned yet. Open a developer in{" "}
-          <Link href="/app/codeclear/candidates" className="text-[var(--brand-700)] hover:underline">
-            Code
-          </Link>{" "}
-          and assign them here.
-        </p>
-      </div>
-    );
-  }
-
-  const active = placements.filter((p) => !p.endDate);
-
-  function Avatar({ name }: { name: string }) {
-    const initials = name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-    let h = 0;
-    for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
-    const colors = ["#1D4ED8","#0F766E","#7C3AED","#B45309","#DC2626","#16A34A"];
-    return (
-      <div
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
-        style={{ background: colors[Math.abs(h) % colors.length], fontFamily: "var(--font-mono)" }}
-      >
-        {initials}
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-5">
-      {active.length === 0 && coverList.length === 0 ? (
-        <p className="text-sm text-[var(--text-4)]">
-          No active developers.{" "}
-          <Link href="/app/codeclear/candidates" className="text-[var(--brand-700)] hover:underline">
-            Assign in Code →
-          </Link>
-        </p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {active.map((p) => (
-            <Link
-              key={p.id}
-              href={`/app/staff/${p.candidateId}`}
-              className="flex items-center gap-1.5 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-1)] hover:border-[var(--brand-700)] hover:text-[var(--brand-700)] transition-colors"
-            >
-              <Avatar name={p.candidateName} />
-              {p.candidateName}
-            </Link>
-          ))}
-          {coverList.map((c) => (
-            <div
-              key={c.absenceId}
-              className="flex items-center gap-1.5 rounded-[6px] border border-dashed border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900"
-              title={`Covering ${c.absentUserName}${
-                c.endDate
-                  ? ` until ${new Date(c.endDate).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                    })}`
-                  : " today"
-              }`}
-            >
-              <Avatar name={c.coverUserName ?? "Cover"} />
-              {c.coverUserName ?? "Cover"}
-              <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800">
-                cover
-              </span>
-              <span className="text-[10px] font-normal text-amber-700">
-                for {c.absentUserName.split(" ")[0]}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Contact widget-card — used in the client's Slack+Contact 2-col row. Self-contained. */
 function ContactCard({
   client,
   number,
   onEdit,
+  style,
 }: {
   client: ClientDetailRecord["client"];
   number: string;
   onEdit?: () => void;
+  style?: React.CSSProperties;
 }) {
   const addressLines = [client.addressLine1, client.addressLine2].filter(Boolean);
   const cityLine = [client.city, client.postcode].filter(Boolean).join(", ");
@@ -2455,7 +2238,7 @@ function ContactCard({
   const hasPrimary = Boolean(client.primaryContactName || client.primaryContactEmail || client.primaryContactPhone);
   const anyInfo = hasPrimary || Boolean(client.website) || hasAddress;
   return (
-    <section className="widget-card flex h-full flex-col">
+    <section className="widget-card motion-rise flex h-full flex-col" style={style}>
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{number}</span>
@@ -2527,6 +2310,7 @@ function StatCard({
   value,
   action,
   href,
+  style,
 }: {
   number: string;
   label: string;
@@ -2535,13 +2319,19 @@ function StatCard({
   action?: React.ReactNode;
   /** When provided, the whole metric card becomes a navigation target. */
   href?: string;
+  /** The entrance stagger (motion-rise). */
+  style?: React.CSSProperties;
 }) {
+  // Counts up when the page arrives (docs/motion.md); reduced motion shows the value at once.
+  const shown = useCountUp(value);
   const card = (
     <article
       className={cn(
-        "widget-card relative h-full",
+        "widget-card motion-rise relative h-full",
         href && "transition hover:border-[var(--brand-400)] hover:bg-[var(--surface-1)]",
       )}
+      style={style}
+      aria-label={`${label}: ${value}`}
     >
       <div className="widget-header">
         <span className="widget-header__label">
@@ -2553,10 +2343,13 @@ function StatCard({
         <p
           className="text-4xl leading-none tracking-tight text-[var(--text-1)] sm:text-5xl"
           style={{ fontFamily: "var(--font-display)" }}
+          aria-hidden
         >
-          {value}
+          {shown}
         </p>
-        <p className="widget-data-label mt-2">{label}</p>
+        <p className="widget-data-label mt-2" aria-hidden>
+          {label}
+        </p>
       </div>
       {action ? <div className="absolute bottom-3 right-3">{action}</div> : null}
     </article>
@@ -2612,31 +2405,46 @@ function formatSlackText(text: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// SlackActivityBody — content panel for the 07 // SLACK ACTIVITY widget
+// SlackActivityBody — the body of the SLACK ACTIVITY card: the AI digest, or, when there isn't
+// one, why not in plain words plus the latest messages, so the card is never a dead sentence
+// over a channel full of messages (src/server/slack-activity-digest.ts).
 // ---------------------------------------------------------------------------
+function slackNoDigestReason(data: ClientSlackActivity): string {
+  switch (data.reason) {
+    case "ai_failed":
+      return data.aiError ?? "The Slack digest couldn't be written this time.";
+    case "no_ai_key":
+      return "No AI provider is set up, so there's no digest. Add one in Settings → Integrations.";
+    case "stale":
+      return "No digest yet. It's written when someone who can use AI opens this page.";
+    default:
+      return "No digest yet.";
+  }
+}
+
 function SlackActivityBody({
   data,
   isLoading,
   onConfigureClick,
-  summaryOnly = false,
+  onRetry,
+  retrying = false,
 }: {
-  data: {
-    configured: boolean;
-    channelName: string | null;
-    summary: string | null;
-    generatedAt: string | null;
-    reason: string;
-    messages: Array<{ id: string; author: string; text: string; ts: string }>;
-  } | undefined;
+  data: ClientSlackActivity | undefined;
   isLoading: boolean;
   onConfigureClick?: () => void;
-  /** When true, render just the AI digest (no message list) — used in the compact 2-col row. */
+  /** "Try again" on a failed digest. Shown only when the viewer may use AI. */
+  onRetry?: () => void;
+  retrying?: boolean;
+  /** Kept for the call site; the card only ever shows the compact view. */
   summaryOnly?: boolean;
 }) {
   if (isLoading) {
     return (
-      <div className="p-5">
-        <p className="widget-data-label animate-pulse">Loading activity…</p>
+      <div className="space-y-2.5 p-5" aria-hidden>
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-3.5 w-full" />
+        <Skeleton className="h-3.5 w-5/6" />
+        <Skeleton className="h-3.5 w-2/3" />
       </div>
     );
   }
@@ -2644,26 +2452,23 @@ function SlackActivityBody({
   if (!data || !data.configured) {
     const reason = data?.reason;
     return (
-      <div className="p-5">
+      <div className="flex flex-1 items-center gap-3 p-5">
+        <ChatBubbleLeftRightIcon className="h-5 w-5 shrink-0 text-[var(--text-4)]" />
         {reason === "no_token" ? (
-          <p className="text-sm text-[var(--text-4)]">
-            No Slack bot token configured.{" "}
+          <p className="text-sm text-[var(--text-3)]">
+            No Slack bot token is set up.{" "}
             <Link href="/app/settings" className="text-[var(--brand-700)] hover:underline">
-              Add one in Settings →
+              Add one in Settings
             </Link>
           </p>
         ) : (
-          <p className="text-sm text-[var(--text-4)]">
-            No Slack channel linked.
+          <p className="text-sm text-[var(--text-3)]">
+            No Slack channel is linked.
             {onConfigureClick ? (
               <>
                 {" "}
-                <button
-                  type="button"
-                  onClick={onConfigureClick}
-                  className="text-[var(--brand-700)] hover:underline"
-                >
-                  Set one in Edit →
+                <button type="button" onClick={onConfigureClick} className="text-[var(--brand-700)] hover:underline">
+                  Link one
                 </button>
               </>
             ) : null}
@@ -2676,19 +2481,18 @@ function SlackActivityBody({
   if (data.reason === "not_in_channel") {
     return (
       <div className="p-5">
-        <p className="text-sm text-[var(--text-4)]">
+        <p className="text-sm text-[var(--text-3)]">
           The Foundry bot hasn&apos;t been invited to{" "}
-          <span className="font-medium text-[var(--text-2)]">{data.channelName}</span>.
-          Invite it in Slack then refresh.
+          <span className="font-medium text-[var(--text-2)]">{data.channelName}</span>. Invite it in Slack, then refresh.
         </p>
       </div>
     );
   }
 
-  if (data.messages.length === 0 && !summaryOnly) {
+  if (data.reason === "empty" || data.messages.length === 0) {
     return (
       <div className="p-5">
-        <p className="text-sm text-[var(--text-4)]">No recent messages in {data.channelName}.</p>
+        <p className="text-sm text-[var(--text-3)]">No messages in {data.channelName ?? "the channel"} yet.</p>
       </div>
     );
   }
@@ -2697,118 +2501,68 @@ function SlackActivityBody({
     ? data.summary.split("\n").map((l) => l.trim()).filter(Boolean)
     : [];
 
-  const digestBody =
-    summaryLines.length > 0 ? (
-      <ul className="space-y-2">
-        {summaryLines.map((line, i) => {
-          const clean = line.replace(/^\•\s*/, "").replace(/\*\*([^*]+)\*\*/g, "$1");
-          const colonIdx = clean.indexOf(":");
-          const label = colonIdx > 0 && colonIdx < 30 ? clean.slice(0, colonIdx) : null;
-          const body = label ? clean.slice(colonIdx + 1).trim() : clean;
-          return (
-            <li key={i} className="flex gap-2 text-sm leading-5 text-[var(--text-2)]">
-              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-600)]" />
-              <span>
-                {label && <span className="font-semibold text-[var(--text-1)]">{label}: </span>}
-                {body}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    ) : (
-      data.reason !== "empty" && (
-        <p className="text-sm text-[var(--text-4)]">
-          Digest will appear after the first messages are posted.
-        </p>
-      )
-    );
-  const generatedAtEl = data.generatedAt ? (
-    <p className="widget-timestamp mt-4 opacity-50">{formatDate(data.generatedAt)}</p>
-  ) : null;
-
-  // Compact digest-only mode for the 2-col Slack + Contact row.
-  if (summaryOnly) {
+  if (summaryLines.length > 0) {
     return (
       <div className="max-h-[360px] overflow-y-auto p-5">
-        <p className="widget-data-label mb-3">AI digest</p>
-        {digestBody}
-        {generatedAtEl}
+        <p className="widget-data-label mb-3 flex items-center gap-1.5">
+          <SparklesIcon className="h-3 w-3 text-[var(--brand-700)]" />
+          AI digest
+        </p>
+        <ul className="space-y-2">
+          {summaryLines.map((line, i) => {
+            const clean = line.replace(/^\•\s*/, "").replace(/\*\*([^*]+)\*\*/g, "$1");
+            const colonIdx = clean.indexOf(":");
+            const label = colonIdx > 0 && colonIdx < 30 ? clean.slice(0, colonIdx) : null;
+            const body = label ? clean.slice(colonIdx + 1).trim() : clean;
+            return (
+              <li key={i} className="flex gap-2 text-sm leading-5 text-[var(--text-2)]">
+                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-600)]" />
+                <span>
+                  {label && <span className="font-semibold text-[var(--text-1)]">{label}: </span>}
+                  {body}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        {data.generatedAt ? <p className="widget-timestamp mt-4 opacity-60">Written {formatDate(data.generatedAt)}</p> : null}
       </div>
     );
   }
 
-  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-  const recentMessages = data.messages
-    .filter((msg) => new Date(msg.ts).getTime() > oneDayAgo)
-    .reverse();
-  // Fall back to last 5 if nothing in 24 h
-  const displayMessages = recentMessages.length > 0
-    ? recentMessages
-    : data.messages.slice(-5).reverse();
-  const is24hView = recentMessages.length > 0;
-
+  // No digest: say why, then show what was actually said.
+  const recent = [...data.messages].sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 4);
+  const canRetry = Boolean(onRetry && data.canRefresh && data.reason === "ai_failed");
   return (
-    <div className="grid h-[360px] grid-cols-1 overflow-hidden sm:grid-cols-[2fr_3fr] sm:divide-x sm:divide-[rgba(0,0,0,0.06)]">
-
-      {/* ── Left: AI summary — min-h-0 lets the grid item shrink + scroll ── */}
-      <div className="relative min-h-0">
-        <div className="h-full overflow-y-auto p-5 pb-10">
-        <p className="widget-data-label mb-3">AI digest</p>
-        {digestBody}
-        {generatedAtEl}
-        </div>
-        {/* Fade gradient — no hard crop */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-0 left-0 right-0 h-10"
-          style={{ background: "linear-gradient(to bottom, transparent, var(--surface-0))" }}
-        />
-      </div>
-
-      {/* ── Right: Messages — hidden on mobile (the digest is enough on a small screen) ── */}
-      <div className="hidden min-h-0 divide-y divide-[rgba(0,0,0,0.05)] overflow-y-auto sm:block">
-        {!is24hView && (
-          <div className="px-4 py-2 bg-[var(--surface-1)]">
-            <p className="widget-data-label">No messages in last 24 h — showing recent</p>
-          </div>
+    <div className="flex max-h-[360px] flex-col overflow-y-auto">
+      <div className="flex items-start gap-2.5 border-b border-[var(--border-3)] bg-[var(--surface-1)] px-5 py-3">
+        {data.reason === "ai_failed" ? (
+          <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        ) : (
+          <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)]" />
         )}
-        {displayMessages.map((msg) => {
-          const initials = msg.author
-            .split(" ")
-            .map((w) => w[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase();
-          let h = 0;
-          for (let i = 0; i < msg.author.length; i++) h = msg.author.charCodeAt(i) + ((h << 5) - h);
-          const avatarColors = ["#1D4ED8", "#0F766E", "#7C3AED", "#B45309", "#DC2626", "#16A34A"];
-          const avatarBg = avatarColors[Math.abs(h) % avatarColors.length];
-
-          return (
-            <div key={msg.id} className="flex gap-2.5 px-4 py-3">
-              <div
-                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                style={{ background: avatarBg, fontFamily: "var(--font-mono)" }}
-              >
-                {initials}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-xs font-semibold text-[var(--text-1)]">{msg.author}</span>
-                  <span className="widget-timestamp text-[10px] opacity-50">
-                    {formatDate(msg.ts)}
-                  </span>
-                </div>
-                <p className="mt-0.5 text-xs leading-[1.55] text-[var(--text-3)] line-clamp-2">
-                  {formatSlackText(msg.text)}
-                </p>
-              </div>
-            </div>
-          );
-        })}
+        <p className="min-w-0 flex-1 text-[13px] leading-5 text-[var(--text-2)]">{slackNoDigestReason(data)}</p>
+        {canRetry ? (
+          <Button type="button" variant="secondary" size="xs" onClick={onRetry} loading={retrying}>
+            Try again
+          </Button>
+        ) : null}
       </div>
-
+      <p className="widget-data-label px-5 pb-1 pt-3">Latest messages</p>
+      <ul className="divide-y divide-[var(--border-3)]">
+        {recent.map((msg) => (
+          <li key={msg.id} className="flex gap-2.5 px-5 py-2.5">
+            <Avatar name={msg.author} size={24} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5">
+                <span className="truncate text-xs font-semibold text-[var(--text-1)]">{msg.author}</span>
+                <span className="widget-timestamp shrink-0 text-[10px] opacity-60">{formatDate(msg.ts)}</span>
+              </div>
+              <p className="mt-0.5 line-clamp-2 text-xs leading-[1.55] text-[var(--text-3)]">{formatSlackText(msg.text)}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -2867,7 +2621,7 @@ function PlatformCard({
   return (
     <>
       <article
-        className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
+        className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
         onClick={() => setEditing(true)}
       >
         {/* Icon badge */}
@@ -2880,9 +2634,9 @@ function PlatformCard({
 
         {/* Content */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]">{platform.name}</p>
+          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]" title={platform.name}>{platform.name}</p>
           {primaryUrl && (
-            <p className="truncate text-[11px] text-[var(--text-4)] leading-tight mt-0.5">
+            <p className="truncate text-[11px] text-[var(--text-4)] leading-tight mt-0.5" title={primaryUrl}>
               {primaryUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </p>
           )}
@@ -3040,7 +2794,7 @@ function DesignCard({
   return (
     <>
       <article
-        className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
+        className="group relative flex flex-row items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-3 cursor-pointer hover:border-[var(--brand-400)] hover:shadow-sm transition-all"
         onClick={() =>
           design.url
             ? window.open(design.url, "_blank", "noopener,noreferrer")
@@ -3057,14 +2811,14 @@ function DesignCard({
 
         {/* Content */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]">{design.name}</p>
+          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]" title={design.name}>{design.name}</p>
           {design.url && (
-            <p className="truncate text-[11px] text-[var(--text-4)] leading-tight mt-0.5">
+            <p className="truncate text-[11px] text-[var(--text-4)] leading-tight mt-0.5" title={design.url}>
               {design.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </p>
           )}
           {design.notes && (
-            <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]">{design.notes}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]" title={design.notes}>{design.notes}</p>
           )}
         </div>
 

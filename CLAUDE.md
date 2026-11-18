@@ -10544,3 +10544,46 @@ for a plan. The view switch is now **Board | Table | Timeline | Schedule**.
   finished card that fell off the board isn't shown. "Done" comes from `completedAt`; a card
   imported as done with no date has no finish event.
 
+
+## 129. Recent Changes (November 2026) — A refreshed Portal client page, and a Slack digest that says why
+
+Dan: the Portal client page (`/app/portal/[slug]`, `src/components/clients/client-detail.tsx`) felt
+stagnant. Every card was gone over; nothing it could do was removed and no permission changed.
+
+- **Numbers run in sequence.** `portalSectionNumbers` (`src/lib/client-portal-layout.ts`) hands out
+  `NN //` in render order from what is shown, so a hidden card (billing, Pulse, studies, notes,
+  proof) never leaves a gap. Before: 01–06, 07, 08, 10, 11, 12, 13, 14, 16, 17, 19.
+- **01 is a hero:** status as a dot and a word, "Client since", engagement, end date, devs on it,
+  links to the website, Drive and the internal Slack channel, and Tasks / Open wiki buttons.
+- **Stat tiles count up** (`useCountUp`); **cards rise in one after another** with the new
+  `motion-rise` class (docs/motion.md). ⚠️ It uses fill-mode `backwards` on purpose: `FadeIn` (or
+  `both`) leaves a transform on the card, which traps any `position: fixed` dialog opened inside it
+  (§108.3).
+- **No dead space:** Pulse and Studies are compact cards (the latest score leads; an empty card is
+  one line and one action) stacked beside Documents, with the last one taking the slack; Meeting
+  notes and Designs stretch to the taller of the two; Developers is full width.
+- **Developers are cards** (`client-developers-card.tsx`, rules in `src/lib/client-developers.ts`):
+  photo or initials, job title, stack, since when, share of time, projects, and "Off until … · X
+  covering" / "Covering for …". Leave is matched on the **account** (placement user id against the
+  cover's), never a name. Placements now carry `candidateJobTitle`, `candidateStack`,
+  `candidateAvatarUrl` (never a `data:` URL) and `candidateUserId`. No rates.
+- **Lifecycle is a slim timeline** with **View history**, the house two-column popup over
+  everything dated on the client (`src/lib/client-history.ts`: milestones, developers joining and
+  leaving, Pulse scans for those who can see Pulse, studies, platforms, designs, links, CRM
+  touchpoints). "Client active" with no recorded activation is `ongoing` and shown as "Now", not
+  as the date of the record's last edit.
+- **Meeting notes** say "Couldn't read" (amber, with a tooltip and Retry) or "Not ready yet",
+  never a bare red ERROR (`src/lib/meeting-status.ts`).
+
+**The Slack digest stuck on a failure** (`src/server/slack-activity-digest.ts`). Wedge's card said
+"Digest will appear after the first messages are posted" over a busy channel: one failed AI call
+(out of credit) was cached as `{ summary: null }` against the message ids, so it stuck until
+someone posted. Now only a real summary is cached, an old cached empty one counts as a miss, and
+the route returns `reason` `ok` · `stale` · `no_ai_key` · `ai_failed` with `aiError` in plain words
+(describeAiError, never the provider's text) and `canRefresh`. The card shows the reason, the
+latest four messages, and **Try again** (`?refresh=1`) for people who may use AI.
+
+Verified at `/demo/portal` at 1440 · 1024 · 768 · 390: 0 clipping findings, 0 page overflow, 0
+console errors. ⚠️ The demo shell ignores the theme switch, so dark mode was not seen; everything
+uses tokens. Not verified against live data: post-deploy, open Wedge and check the Slack card
+either shows a digest or says why, and press Try again.

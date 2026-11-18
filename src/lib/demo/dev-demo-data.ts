@@ -1969,9 +1969,11 @@ const demoClientDetail: ClientDetailRecord = {
     productTeamUserIds: [],
   },
   lifecycle: [
-    { id: "lc1", label: "Onboarded", detail: "Client created from onboarding", at: atDays(-120), status: "done" },
-    { id: "lc2", label: "Kickoff", detail: "Phase 1 scoped", at: atDays(-112), status: "done" },
-    { id: "lc3", label: "Beta launch", detail: "Scheduled", at: atDays(20), status: "waiting" },
+    // The shapes buildClientLifecycle really emits (src/server/clients.ts).
+    { id: "client:northwind", label: "Client record", detail: "Client exists in Portal.", at: atDays(-120), status: "done" },
+    { id: "onboarding:northwind", label: "Onboarding submitted", detail: "Client submitted onboarding.", at: atDays(-117), status: "done" },
+    { id: "signoff:pr1", label: "Commercial sign-off", detail: "Northwind — Phase 2 SOW is accepted or signed.", at: atDays(-30), status: "done" },
+    { id: "active:northwind", label: "Client active", detail: "Client is active in Portal.", at: atDays(0), status: "done", ongoing: true },
   ],
   platforms: [
     {
@@ -1992,6 +1994,10 @@ const demoClientDetail: ClientDetailRecord = {
       id: "ds1", clientId: WIKI_CLIENT.id, name: "Northwind — Figma", url: "https://figma.com/file/demo",
       notes: "Design system + screens", previewImageUrl: null, createdAt: atDays(-100), updatedAt: atDays(-7),
     },
+    {
+      id: "ds2", clientId: WIKI_CLIENT.id, name: "Search flows — Miro", url: "https://miro.com/app/board/demo-northwind",
+      notes: "User journeys for the new search", previewImageUrl: null, createdAt: atDays(-35), updatedAt: atDays(-12),
+    },
   ],
   proposals: [
     { id: "pr1", title: "Northwind — Phase 2 SOW", clientName: WIKI_CLIENT.name, status: "ACCEPTED", updatedAt: atDays(-30), documentType: "SOW", documentNumber: "SOW-024", sectionCount: 8 },
@@ -2007,10 +2013,14 @@ const demoClientDetail: ClientDetailRecord = {
   ],
   supportClient: { id: "sc1", name: WIKI_CLIENT.name, slug: WIKI_CLIENT.slug },
   placements: [
-    { id: "pl1", candidateId: "cand1", candidateName: "Alex Rivera", clientName: WIKI_CLIENT.name, projectName: "Northwind web", startDate: atDays(-110), endDate: null, allocationPercent: 100, notes: null, updatedAt: atDays(-3) },
-    { id: "pl2", candidateId: "cand2", candidateName: "Marco Bianchi", clientName: WIKI_CLIENT.name, projectName: "Northwind mobile", startDate: atDays(-70), endDate: null, allocationPercent: 60, notes: null, updatedAt: atDays(-3) },
+    { id: "pl1", candidateId: "cand1", candidateName: "Alex Rivera", candidateJobTitle: "Senior full-stack developer", candidateStack: ["Next.js", "TypeScript", "Postgres"], candidateAvatarUrl: null, candidateUserId: "u-alex", clientName: WIKI_CLIENT.name, projectName: "Northwind web", startDate: atDays(-110), endDate: null, allocationPercent: 100, notes: null, updatedAt: atDays(-3) },
+    { id: "pl2", candidateId: "cand2", candidateName: "Marco Bianchi", candidateJobTitle: "iOS developer", candidateStack: ["Swift", "SwiftUI"], candidateAvatarUrl: null, candidateUserId: "u-marco", clientName: WIKI_CLIENT.name, projectName: "Northwind mobile", startDate: atDays(-70), endDate: null, allocationPercent: 60, notes: null, updatedAt: atDays(-3) },
+    { id: "pl3", candidateId: "cand3", candidateName: "Priya Anand", candidateJobTitle: "Backend developer", candidateStack: ["Node.js", "Postgres", "AWS"], candidateAvatarUrl: null, candidateUserId: null, clientName: WIKI_CLIENT.name, projectName: "Northwind analytics", startDate: atDays(-24), endDate: null, allocationPercent: 50, notes: null, updatedAt: atDays(-2) },
+    { id: "pl4", candidateId: "cand4", candidateName: "Jamie Chen", candidateJobTitle: "Front-end developer", candidateStack: ["React", "Tailwind"], candidateAvatarUrl: null, candidateUserId: null, clientName: WIKI_CLIENT.name, projectName: "Northwind web", startDate: atDays(-118), endDate: atDays(-60), allocationPercent: 100, notes: null, updatedAt: atDays(-60) },
   ],
-  studies: [],
+  studies: [
+    { id: "st1", title: "Search: how do viewers look for a show?", problemStatement: "Find out how viewers search before we rebuild it.", status: "COMPLETED", sessionMode: "ONE_ON_ONE", selectedPersonaIds: ["p1", "p2", "p3"], createdAt: atDays(-40), sessionCount: 6, completedSessionCount: 6 },
+  ],
   touchpoints: [],
 };
 
@@ -2083,6 +2093,45 @@ const demoClientMeetings = {
       modelUsed: "gemini",
       createdAt: atDays(-8),
       updatedAt: atDays(-8),
+      actionItems: [],
+    },
+    // The two states a live client's list really shows (Wedge, Nov 2026): notes Meet hasn't
+    // saved yet, and notes Scribe found but couldn't read. A demo without them can't show
+    // how those rows read.
+    {
+      id: "mtg4",
+      clientId: WIKI_CLIENT.id,
+      calendarEventId: "ev-north-4",
+      meetingCode: "klm-nop-qrs",
+      conferenceRecordName: null,
+      title: "Priya × Alex — Search scope",
+      startedAt: atDays(-1),
+      endedAt: atDays(-1),
+      attendees: ["priya@northwind.co", "alex@gitwork.co.uk"],
+      status: "AWAITING_TRANSCRIPT",
+      summary: null,
+      decisions: null,
+      modelUsed: null,
+      createdAt: atDays(-1),
+      updatedAt: atDays(-1),
+      actionItems: [],
+    },
+    {
+      id: "mtg5",
+      clientId: WIKI_CLIENT.id,
+      calendarEventId: "ev-north-5",
+      meetingCode: "tuv-wxy-zab",
+      conferenceRecordName: null,
+      title: "Northwind — Analytics kickoff",
+      startedAt: atDays(-11),
+      endedAt: atDays(-11),
+      attendees: ["priya@northwind.co", "marco@gitwork.co.uk"],
+      status: "ERROR",
+      summary: null,
+      decisions: null,
+      modelUsed: null,
+      createdAt: atDays(-11),
+      updatedAt: atDays(-11),
       actionItems: [],
     },
   ],
@@ -4803,6 +4852,12 @@ export function resolveDemoApi(
       return demoAttention;
     case "/api/integrations/calendar":
       return demoCalendar;
+    // A stand-in on the client: Marco is off and Alex is covering, so the Portal's developer
+    // cards show both the "On leave" and the "Covering" states.
+    case "/api/backstage/absences/covers":
+      return [
+        { absenceId: "abs-demo-1", coverUserId: "u-alex", coverUserName: "Alex Rivera", absentUserId: "u-marco", absentUserName: "Marco Bianchi", endDate: atDays(2) },
+      ];
     case "/api/integrations/gmail":
       return demoGmail;
     case "/api/desk/action-items":
