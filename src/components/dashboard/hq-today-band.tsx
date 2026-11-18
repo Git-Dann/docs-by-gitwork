@@ -109,12 +109,12 @@ function Tile({
     </p>
   );
   return external ? (
-    <a href={href} target="_blank" rel="noreferrer" className={className}>
+    <a href={href} target="_blank" rel="noreferrer" className={className} data-hq-card="today">
       {head}
       {children}
     </a>
   ) : (
-    <Link href={href} className={className}>
+    <Link href={href} className={className} data-hq-card="today">
       {head}
       {children}
     </Link>

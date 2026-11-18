@@ -224,7 +224,7 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
   if (size === "sm") {
     return (
       <WidgetFrame index={index} status={stats.totalCriticalGaps > 0 ? `${stats.totalCriticalGaps} CRITICAL` : null}>
-        <div className="flex flex-1 flex-col overflow-hidden px-4 pb-3 pt-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-3 pt-3">
           <div className="flex items-baseline gap-2">
             <AnimatedScore value={stats.avgHealthScore} />
             <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
@@ -234,7 +234,7 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
           <div className="mt-2.5">
             <TierDistribution tiers={stats.healthTiers} />
           </div>
-          <div className="mt-2 min-h-0 flex-1 space-y-0.5 overflow-hidden">
+          <div className="mt-2 min-h-0 flex-1 space-y-0.5 overflow-y-auto">
             {stats.recentScans.slice(0, 2).map((scan) => (
               <ScanRow key={scan.id} scan={scan} size="sm" />
             ))}

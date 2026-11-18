@@ -4810,6 +4810,26 @@ function demoMonitorBoardBase() {
 }
 
 /**
+ * `/demo/hq?desk=long` shows a long desk (14 overdue, 8 in progress), like a real one after a
+ * busy fortnight, so the HQ layout can be checked with a long On your desk as well as a short one.
+ */
+function demoAttentionFor() {
+  const long = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("desk") === "long";
+  if (!long) return demoAttention;
+  const base = demoAttention as { overdue: Array<Record<string, unknown>>; doing: Array<Record<string, unknown>> } & Record<string, unknown>;
+  const seed = base.overdue[0] ?? base.doing[0];
+  if (!seed) return demoAttention;
+  const make = (n: number, prefix: string, daysAgo: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      ...seed,
+      id: `${prefix}${i + 1}`,
+      title: `${prefix === "lo" ? "Overdue" : "In progress"} task ${i + 1}: tidy the release checklist for the next build`,
+      dueDate: new Date(Date.now() - (daysAgo + i) * 86_400_000).toISOString(),
+    }));
+  return { ...base, overdue: make(6, "lo", 2), overdueCount: 14, doing: make(6, "ld", -3), doingCount: 8 };
+}
+
+/**
  * The DevOps roll-up roster for `/demo/hq`: a team mid-afternoon, most of whom have posted
  * their morning standup and some their end of day. Times are relative to now, so the demo
  * never shows a stale day.
@@ -4858,7 +4878,7 @@ export function resolveDemoApi(
     case "/api/tasks/standup":
       return demoMyDay;
     case "/api/tasks/attention":
-      return demoAttention;
+      return demoAttentionFor();
     case "/api/tasks/rollup":
       return demoRollupRoster();
     case "/api/integrations/calendar":

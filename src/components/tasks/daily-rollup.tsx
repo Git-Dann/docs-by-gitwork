@@ -106,7 +106,7 @@ export function DailyRollup({
   }
 
   return (
-    <section className={cn("widget-card", className)}>
+    <section className={cn("widget-card", className)} data-hq-card="rollup">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">

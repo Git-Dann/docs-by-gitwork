@@ -57,7 +57,7 @@ export default function ProposalsWidget({ size, index }: { size: WidgetSize; ind
           status={inReview > 0 ? `${inReview} IN REVIEW` : null}
           statusTone="brand"
         />
-        <div className="flex flex-1 flex-col overflow-hidden px-4 pb-3 pt-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-3 pt-3">
           <div className="flex items-baseline gap-2">
             <p className="text-2xl tabular-nums leading-none text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
               {count}

@@ -39,7 +39,7 @@ export default function HrWidget({ index }: { size: WidgetSize; index: number })
                 coming up · {missing.length} {missing.length === 1 ? "record" : "records"} missing details
               </span>
             </p>
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {comingUp.length === 0 ? (
                 <p className="text-xs text-[var(--text-3)]">Nothing due in the next 60 days.</p>
               ) : (

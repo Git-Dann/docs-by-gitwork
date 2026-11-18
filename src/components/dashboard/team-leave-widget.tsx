@@ -38,7 +38,7 @@ export default function TeamLeaveWidget({ index }: { size: WidgetSize; index: nu
             {waiting === 1 ? "leave request to approve" : "leave requests to approve"}
           </span>
         </p>
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <p className="widget-data-label text-[var(--text-4)]">Off next</p>
           {nextOff.length === 0 ? (
             <p className="mt-1 text-xs text-[var(--text-3)]">Nobody booked in the next 30 days.</p>

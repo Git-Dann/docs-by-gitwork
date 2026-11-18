@@ -112,13 +112,10 @@ export function DevOverview() {
     });
   const today = new Date().toISOString().slice(0, 10);
 
-  const [tasksPage, setTasksPage] = useState(0);
   const [clientsPage, setClientsPage] = useState(0);
 
-  const tasksTotalPages = Math.ceil(allTasks.length / PAGE_SIZE);
   const clientsTotalPages = Math.ceil(clients.length / PAGE_SIZE);
 
-  const pageTasks = allTasks.slice(tasksPage * PAGE_SIZE, (tasksPage + 1) * PAGE_SIZE);
   const pageClients = clients.slice(clientsPage * PAGE_SIZE, (clientsPage + 1) * PAGE_SIZE);
 
   return (
@@ -138,18 +135,21 @@ export function DevOverview() {
     <div className="space-y-4">
     {/* What needs you now: your tasks, your standup and your next meeting. */}
     <HqTodayBand access={{ tasks: true, tasksHref: "#dev-tasks", myStandup: true, rollup: false, care: false, pulse: false, calendar: true }} />
-    <div className="grid items-start gap-4 grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    <div className="grid items-stretch gap-4 grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       {/* Left — My Day standup */}
       <FadeIn>
-        <div id="dev-myday" className="scroll-mt-4">
+        <div id="dev-myday" className="scroll-mt-4" data-hq-card="myday">
           <MyDay />
         </div>
       </FadeIn>
 
       {/* Right — My Tasks + My Clients stacked */}
-      <FadeIn delayMs={60} className="space-y-4">
+      {/* My Day sets the row's height; this column fills it, with My Tasks scrolling inside, so
+          the row ends level and nothing is left empty under either column (§130). */}
+      <FadeIn delayMs={60} className="h-full lg:relative lg:min-h-[480px]">
+      <div className="flex flex-col gap-4 lg:absolute lg:inset-0">
         {/* 02 // MY TASKS */}
-        <section id="dev-tasks" className="widget-card scroll-mt-4">
+        <section id="dev-tasks" className="widget-card flex min-h-0 flex-1 scroll-mt-4 flex-col" data-hq-card="mytasks">
           <div className="widget-header">
             <span className="widget-header__label">
               <span className="widget-header__label--number">02</span>
@@ -174,9 +174,9 @@ export function DevOverview() {
             </div>
           ) : (
             <>
-              <div className="widget-body space-y-1.5">
+              <div className="widget-body max-h-[420px] min-h-0 flex-1 space-y-1.5 overflow-y-auto lg:max-h-none">
                 <TaskSplit tasks={allTasks} />
-                {pageTasks.map((t) => (
+                {allTasks.map((t) => (
                   <Link
                     key={t.id}
                     href={`/app/portal/${t.client.slug}/tasks?task=${t.id}`}
@@ -207,20 +207,12 @@ export function DevOverview() {
                   </Link>
                 ))}
               </div>
-              {allTasks.length > PAGE_SIZE && (
-                <Pager
-                  page={tasksPage}
-                  total={allTasks.length}
-                  onPrev={() => setTasksPage((p) => Math.max(0, p - 1))}
-                  onNext={() => setTasksPage((p) => Math.min(tasksTotalPages - 1, p + 1))}
-                />
-              )}
             </>
           )}
         </section>
 
         {/* 03 // MY CLIENTS */}
-        <section className="widget-card">
+        <section className="widget-card shrink-0" data-hq-card="myclients">
           <div className="widget-header">
             <span className="widget-header__label">
               <span className="widget-header__label--number">03</span>
@@ -274,6 +266,7 @@ export function DevOverview() {
             </>
           )}
         </section>
+      </div>
       </FadeIn>
     </div>
     </div>

@@ -24,7 +24,7 @@ export function BroadcastComposer({ index = 0, enabled = true }: { index?: numbe
     : "No broadcasts yet today.";
 
   return (
-    <section className="widget-card">
+    <section className="widget-card" data-hq-card="broadcast">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>

@@ -10584,6 +10584,18 @@ unchanged (admin bento, developer view, Siân's people-ops tiles, guests, "view 
 - **Numbering** is one running counter including the Agentic workflow card (it was hardcoded 09).
 - **Bento:** three tiles a row from `xl`, two from `lg` (`XL_SPAN` / `LG_SPAN`); the desk and
   roll-up sit side by side from `xl` only. At 1024 they squeezed task titles to nothing.
+- ⚠️ **No large gaps, by construction** (Dan: "we absolutely cannot have large gaps"):
+  - A bento row takes its **shortest** tile's natural height (`rowHeight` in `src/lib/hq-rows.ts`,
+    floored 228px feeds / 160px summaries, capped at the band height); taller tiles scroll inside.
+    `BentoBand` measures natural heights (cards at auto height, not stretched) on mount, on DOM
+    changes and on resize. A fixed height left short tiles mostly empty.
+  - Side by side, On your desk is absolutely positioned to fill the row and scrolls inside, so the
+    row ends level with the roll-up column however long the desk is; the roll-up flexes to fill.
+  - Tile bodies that can be shortened must scroll (`overflow-y-auto`), never `overflow-hidden`,
+    or the shorter row hides content.
+  - Measured in headless Chrome at 1440/1024/768/390 with a short and a long desk (`/demo/hq` and
+    `/demo/hq?desk=long`, 14 overdue): side-by-side bottoms within 0px, empty space under content
+    ≤ 48px per card. Data-attribute `data-hq-card` marks every card for that check.
 - **Tiles:** Clients show delivery-health dots and team faces; Mail shows people first and folds
   bot/no-reply/newsletter mail behind a remembered toggle (`src/lib/hq-mail.ts`, conservative: when
   unsure it's a person); Calendar leads with now/next and a Join button (`src/lib/hq-calendar.ts`);

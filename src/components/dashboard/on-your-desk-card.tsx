@@ -192,7 +192,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
   if (!hasAnything) return null;
 
   return (
-    <section className={cn("widget-card", className)}>
+    <section className={cn("widget-card", className)} data-hq-card="desk">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
@@ -214,7 +214,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
         </span>
       </div>
 
-      <div className="widget-body space-y-5">
+      <div className="widget-body min-h-0 flex-1 space-y-5 overflow-y-auto">
         {/* ─── Tasks ──────────────────────────────────────────────────────── */}
         {hasTasks ? (
           <div>

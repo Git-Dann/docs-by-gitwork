@@ -47,7 +47,7 @@ export default function ExpensesWidget({ index }: { size: WidgetSize; index: num
                 {totalLabel ? ` · ${totalLabel}` : ""}
               </span>
             </p>
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {rows.length === 0 ? (
                 <p className="text-xs text-[var(--text-3)]">Nothing waiting.</p>
               ) : (
