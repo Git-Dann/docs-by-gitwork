@@ -3524,6 +3524,7 @@ export type ReleaseInput = {
   name?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  docUrl?: string | null;
   orderKey?: number;
 };
 

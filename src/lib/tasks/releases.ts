@@ -17,7 +17,22 @@ export interface ReleaseLike {
 }
 
 /** Version limits, shared by the validator and the form. */
-export const RELEASE_LIMITS = { version: 40, name: 120 } as const;
+export const RELEASE_LIMITS = { version: 40, name: 120, docUrl: 2048 } as const;
+
+/**
+ * A release document link, if it's a plain http(s) URL. It's rendered as a link the client can
+ * click, so anything else (javascript:, data:) is refused on save and ignored on render.
+ */
+export function safeReleaseDocUrl(v: string | null | undefined): string | null {
+  const s = v?.trim();
+  if (!s || s.length > RELEASE_LIMITS.docUrl) return null;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 /** "v2.0.0 · Q4 Refinement Session", or just the version when there's no name. */
 export function releaseLabel(r: ReleaseLike): string {

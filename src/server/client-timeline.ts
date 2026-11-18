@@ -4,7 +4,7 @@
 // only. No assignees, notes, priorities, or internal status chatter.
 
 import { blockSpan } from "@/lib/gantt-span";
-import { releaseLabel, releaseProgress, releaseSpan, releaseStatusCounts, sortReleases } from "@/lib/tasks/releases";
+import { releaseLabel, releaseProgress, releaseSpan, releaseStatusCounts, safeReleaseDocUrl, sortReleases } from "@/lib/tasks/releases";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
@@ -139,6 +139,7 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
         progress: releaseProgress(r.tasks),
         tasks: r.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
         statusCounts: releaseStatusCounts(r.tasks),
+        docUrl: safeReleaseDocUrl(r.docUrl),
       };
     })
     .filter((b): b is PublicTimelineBlock => b !== null);

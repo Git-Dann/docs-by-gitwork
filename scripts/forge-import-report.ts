@@ -51,6 +51,7 @@ function offlinePlan(itemsPath: string, tasksPath: string): ForgePlan {
     tier: (t.tier as string | null) ?? null,
     area: (t.area as string | null) ?? null,
     estimateHours: (t.estimateHours as number | null) ?? null,
+    forgeFilled: [],
   }));
   return buildForgePlan({ feed, tasks, releases: [], columns: plannedColumns() });
 }

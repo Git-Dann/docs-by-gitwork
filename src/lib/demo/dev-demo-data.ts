@@ -887,6 +887,7 @@ function wikiTimelineFromGantt(): WikiDTO["timeline"] {
       progress: r.tasks.length ? Math.round((done / r.tasks.length) * 100) : 0,
       tasks: r.tasks,
       statusCounts: { BACKLOG: r.tasks.length - done - doing, TODO: 0, DOING: doing, IN_REVIEW: 0, UI_DONE: 0, DONE: done },
+      docUrl: r.id === REL.v140.id ? "https://docs.example.com/northwind/v1.4.0" : null,
     };
   });
   return {
@@ -2436,9 +2437,9 @@ function releaseCounts(id: string) {
   return { taskCount: ts.length, doneCount: ts.filter((t) => t.status === "DONE").length };
 }
 let demoReleases: ReleaseDTO[] = [
-  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, ...releaseCounts(REL.v140.id) },
-  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, ...releaseCounts(REL.v150.id) },
-  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, ...releaseCounts(REL.v200.id) },
+  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, docUrl: "https://docs.example.com/northwind/v1.4.0", ...releaseCounts(REL.v140.id) },
+  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, docUrl: null, ...releaseCounts(REL.v150.id) },
+  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, docUrl: null, ...releaseCounts(REL.v200.id) },
 ];
 
 function demoReleasesApi(pathname: string, init?: { method?: string; body?: unknown }): unknown {
@@ -2462,6 +2463,7 @@ function demoReleasesApi(pathname: string, init?: { method?: string; body?: unkn
       startDate: body.startDate ?? null,
       endDate: body.endDate ?? null,
       orderKey: demoReleases.length + 1,
+      docUrl: body.docUrl ?? null,
       taskCount: 0,
       doneCount: 0,
     };

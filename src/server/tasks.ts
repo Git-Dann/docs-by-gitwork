@@ -10,6 +10,7 @@ import { bytesForPrisma } from "@/lib/prisma-bytes";
 import {
   type EffectiveUser,
   ForbiddenError,
+  NotFoundError,
   canSeeAllClients,
 } from "@/server/auth/effective-user";
 import { placementClientIds } from "@/server/client-assignments";
@@ -552,7 +553,10 @@ export async function listCardLinks(
     where: { id: cardId, workspaceId: user.workspaceId },
     select: { id: true, clientId: true, itemType: true },
   });
-  if (!card) throw new ForbiddenError("Task not found");
+  // 404, not 403: the lookup is already limited to the caller's workspace, so "no such task" is
+  // the true answer, and 403 would confirm an id exists. A task on a client the caller can't
+  // reach is still refused by assertClientInScope.
+  if (!card) throw new NotFoundError("Task not found");
   await assertClientInScope(user, card.clientId);
   if (!card.itemType) return { linked: [], candidates: [] };
   const scope = { workspaceId: user.workspaceId, clientId: card.clientId };

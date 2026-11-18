@@ -9,11 +9,11 @@ const columns = Object.values(FORGE_STAGES)
   .map((p, i) => ({ id: `col_${String(i).padStart(6, "0")}`, name: p.column!, stage: p.status }));
 const it0 = (id: string, title: string, stage = "future-idea"): ForgeItem => ({
   id, title, stage, type: "feature", releaseId: null, category: null, price: null, priority: null, timeEstimate: null,
-  parentFeatureId: null, linkedFeatureId: null, linkedSubItemId: null, linkedBugId: null, dependsOn: [], links: [], images: [], date: null, stageDates: {},
+  parentFeatureId: null, linkedFeatureId: null, linkedSubItemId: null, linkedBugId: null, dependsOn: [], links: [], images: [], date: null, stageDates: {}, truncated: false,
 });
 const t0 = (id: string, title: string): BoardTask => ({
   id, title, status: "BACKLOG", parentId: null, archived: false, itemType: null, productCardId: null, externalRef: null,
-  description: null, releaseId: null, tier: null, area: null, estimateHours: null,
+  description: null, releaseId: null, tier: null, area: null, estimateHours: null, forgeFilled: [],
 });
 
 describe("the dry-run report", () => {

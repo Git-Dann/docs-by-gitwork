@@ -22,6 +22,7 @@ function item(over: Partial<ForgeItem> & Pick<ForgeItem, "id" | "title">): Forge
     images: [],
     date: null,
     stageDates: {},
+    truncated: false,
     ...over,
   };
 }
@@ -39,6 +40,7 @@ function task(over: Partial<BoardTask> & Pick<BoardTask, "id" | "title">): Board
     tier: null,
     area: null,
     estimateHours: null,
+    forgeFilled: [],
     ...over,
   };
 }
@@ -190,11 +192,67 @@ describe("what a card says", () => {
 describe("releases", () => {
   it("reuses a release with the same version AND name, and creates the rest", () => {
     const releases: ForgeFeed["releases"] = [
-      { id: "r1", version: "v2.0.0", name: "Q3: Premium", startDate: null, endDate: null, links: [] },
-      { id: "r2", version: "v2.0.0", name: "Q4: Refinement", startDate: null, endDate: null, links: [] },
+      { id: "r1", version: "v2.0.0", name: "Q3: Premium", startDate: null, endDate: null, links: [], docUrl: null },
+      { id: "r2", version: "v2.0.0", name: "Q4: Refinement", startDate: null, endDate: null, links: [], docUrl: null },
     ];
-    const p = buildForgePlan({ feed: feed([], releases), tasks: [], releases: [{ id: "x", version: "2.0.0", name: "q3: premium" }], columns });
+    const p = buildForgePlan({ feed: feed([], releases), tasks: [], releases: [{ id: "x", version: "2.0.0", name: "q3: premium", externalRef: null, docUrl: null }], columns });
     expect(p.releases.map((r) => r.existingId)).toEqual(["x", null]);
     expect(p.counts.releasesToCreate).toBe(1);
+  });
+});
+
+describe("sub-items wait for their feature's card", () => {
+  it("a sub-item whose feature is in review waits, and is not made top-level", () => {
+    const p = plan(
+      [item({ id: "f", title: "Swing Analysis" }), item({ id: "s", title: "Ai Swing Coach", type: "subitem", parentFeatureId: "f" })],
+      [task({ id: "t1", title: "Swing Analysis" }), task({ id: "t2", title: "Swing analysis!" })],
+    );
+    expect(one(p, "f").action).toBe("review");
+    expect(one(p, "s").action).toBe("waiting");
+    expect(p.counts.waiting).toBe(1);
+  });
+
+  it("is made once its feature has a card, and an orphaned one is attached on a later run", () => {
+    const items = [item({ id: "f", title: "Swing Analysis" }), item({ id: "s", title: "Ai Swing Coach", type: "subitem", parentFeatureId: "f" })];
+    expect(one(plan(items), "s").action).toBe("create");
+    const later = plan(items, [
+      task({ id: "cf", title: "Swing Analysis", itemType: "feature", externalRef: forgeRef("f") }),
+      task({ id: "cs", title: "Ai Swing Coach", itemType: "subitem", externalRef: forgeRef("s") }),
+    ]);
+    expect(one(later, "s").fill).toContain("parentId");
+    const undone = plan(items, [
+      task({ id: "cf", title: "Swing Analysis", itemType: "feature", externalRef: forgeRef("f") }),
+      task({ id: "cs", title: "Ai Swing Coach", itemType: "subitem", externalRef: forgeRef("s"), forgeFilled: ["parentId"] }),
+    ]);
+    expect(one(undone, "s").fill).not.toContain("parentId");
+  });
+});
+
+describe("values from the feed can't reach built-in object keys", () => {
+  it('a priority or stage of "constructor" falls back, with a warning', () => {
+    const p = plan([item({ id: "1", title: "A", priority: "constructor", stage: "constructor" })]);
+    const i = one(p, "1");
+    expect(i.card.priority).toBe("MEDIUM");
+    expect(i.card.status).toBe("BACKLOG");
+    expect(i.stageKnown).toBe(false);
+    expect(i.warnings.join(" ")).toMatch(/Priority/);
+  });
+});
+
+describe("matching on a platform tag", () => {
+  it("sends a one-platform task to review rather than making it the card", () => {
+    const p = plan([item({ id: "1", title: "Bag Management" })], [task({ id: "t", title: "Bag Management - iOS" })]);
+    expect(one(p, "1").action).toBe("review");
+  });
+});
+
+describe("filling a card a second time", () => {
+  it("never refills a field the importer filled before", () => {
+    const p = plan(
+      [item({ id: "1", title: "A", price: "free", category: "Area" })],
+      [task({ id: "c", title: "A", itemType: "feature", externalRef: forgeRef("1"), tier: null, area: null, forgeFilled: ["tier"] })],
+    );
+    expect(one(p, "1").fill).toEqual(expect.arrayContaining(["area"]));
+    expect(one(p, "1").fill).not.toContain("tier");
   });
 });

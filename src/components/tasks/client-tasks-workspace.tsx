@@ -246,6 +246,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
             progress: r.taskCount ? Math.round((r.doneCount / r.taskCount) * 100) : 0,
             tasks: releaseTasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
             statusCounts,
+            docUrl: r.docUrl,
           };
         })
         .filter((b): b is GanttBlock => b !== null),

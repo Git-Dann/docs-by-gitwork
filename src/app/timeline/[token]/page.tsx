@@ -34,6 +34,7 @@ export default async function PublicTimelinePage({
     progress: b.progress,
     tasks: b.tasks,
     statusCounts: b.statusCounts,
+    docUrl: b.docUrl ?? null,
   });
   const blocks: GanttBlock[] = timeline.blocks.map(toGantt);
   const releases: GanttBlock[] = (timeline.releases ?? []).map(toGantt);

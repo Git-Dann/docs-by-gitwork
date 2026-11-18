@@ -7,11 +7,13 @@
  *
  * Safety, in the order it matters:
  *   1. Planning writes NOTHING. The dry run is the plan.
- *   2. Applying re-plans against the live board first, so a re-run, or a crash half-way, only
- *      does what's left. A card carries "forge:<id>" and is never imported twice.
+ *   2. Applying re-plans against the live board inside ONE transaction, under a per-client lock,
+ *      so two applies can't both import everything, and a failure part-way leaves the board as
+ *      it was. A card carries "forge:<id>" (a release too) and is never imported twice.
  *   3. Applying only CREATES cards and releases, LINKS existing dev tasks to cards, and FILLS
- *      fields that are empty. It never deletes, archives, reparents, renames or re-statuses a
- *      task the team already has.
+ *      fields that are empty — each fill guarded in its WHERE, and each field filled at most once
+ *      (metadata.forge.filled), so a value the team set or cleared is never overwritten. It never
+ *      deletes, archives, reparents, renames, re-statuses or re-columns a task the team already has.
  *   4. It refuses to run until the board has every column it needs, rather than guessing.
  */
 
@@ -28,7 +30,6 @@ export const BIG_WEDGE_FORGE_FEED = "https://ops.bigwedgegolf.com/wp-json/forge/
 
 /** The feed is ~80KB today; a response this large is not a plan. */
 const MAX_FEED_BYTES = 5 * 1024 * 1024;
-const BATCH = 50;
 
 export class ForgeImportError extends Error {
   constructor(
@@ -101,8 +102,18 @@ const BOARD_TASK_SELECT = {
   metadata: true,
 } as const satisfies Prisma.TaskSelect;
 
-async function loadBoard(workspaceId: string, clientId: string) {
-  const client = await prisma.workspaceClient.findFirst({
+type Db = Pick<Prisma.TransactionClient, "workspaceClient" | "task" | "clientRelease">;
+
+function forgeFilledOf(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
+  const forge = (metadata as Record<string, unknown>).forge;
+  if (!forge || typeof forge !== "object" || Array.isArray(forge)) return [];
+  const filled = (forge as Record<string, unknown>).filled;
+  return Array.isArray(filled) ? filled.filter((f): f is string => typeof f === "string") : [];
+}
+
+async function loadBoard(db: Db, workspaceId: string, clientId: string) {
+  const client = await db.workspaceClient.findFirst({
     where: { id: clientId, workspaceId },
     select: { id: true, taskBoardColumns: true },
   });
@@ -110,8 +121,11 @@ async function loadBoard(workspaceId: string, clientId: string) {
   // Every task, archived included: an archived task that is the same work still gets linked,
   // and an archived card still counts as imported.
   const [rows, releases] = await Promise.all([
-    prisma.task.findMany({ where: { workspaceId, clientId }, select: BOARD_TASK_SELECT }),
-    prisma.clientRelease.findMany({ where: { workspaceId, clientId }, select: { id: true, version: true, name: true } }),
+    db.task.findMany({ where: { workspaceId, clientId }, select: BOARD_TASK_SELECT }),
+    db.clientRelease.findMany({
+      where: { workspaceId, clientId },
+      select: { id: true, version: true, name: true, externalRef: true, docUrl: true },
+    }),
   ]);
   const tasks: BoardTask[] = rows.map((t) => ({
     id: t.id,
@@ -127,6 +141,7 @@ async function loadBoard(workspaceId: string, clientId: string) {
     tier: t.tier,
     area: t.area,
     estimateHours: t.estimateHours,
+    forgeFilled: forgeFilledOf(t.metadata),
   }));
   return { columns: parseBoardColumns(client.taskBoardColumns), tasks, rows, releases };
 }
@@ -138,7 +153,7 @@ export async function planForgeImport(input: {
   decisions?: ReviewDecision[];
 }): Promise<ForgePlan> {
   const feed = await fetchForgeFeed(input.feedUrl ?? BIG_WEDGE_FORGE_FEED);
-  const board = await loadBoard(input.workspaceId, input.clientId);
+  const board = await loadBoard(prisma, input.workspaceId, input.clientId);
   return buildForgePlan({ feed, tasks: board.tasks, releases: board.releases, columns: board.columns, decisions: input.decisions });
 }
 
@@ -149,11 +164,27 @@ export interface ForgeApplyResult {
   filled: number;
   releasesCreated: number;
   pendingReview: number;
+  waiting: number;
   skipped: number;
   alreadyImported: number;
 }
 
-const ORDER: Record<string, number> = { feature: 0, subitem: 1, bug: 2, feedback: 3 };
+/** Features before sub-items, so a sub-item is made as its feature's subtask. */
+const ORDER = new Map<string, number>([
+  ["feature", 0],
+  ["subitem", 1],
+  ["bug", 2],
+  ["feedback", 3],
+]);
+
+/** The fields a fill may write. Each is written only where the task still has no value. */
+const FILL_FIELDS = ["itemType", "externalRef", "tier", "area", "estimateHours", "releaseId", "description", "parentId"] as const;
+type FillField = (typeof FILL_FIELDS)[number];
+
+/** "Still has no value", in the WHERE, so a value the team set a moment ago is never overwritten. */
+function emptyWhere(field: FillField): Prisma.TaskWhereInput {
+  return field === "description" ? { OR: [{ description: null }, { description: "" }] } : { [field]: null };
+}
 
 export async function applyForgeImport(input: {
   workspaceId: string;
@@ -163,159 +194,219 @@ export async function applyForgeImport(input: {
   approvedReviewLinks: ReviewDecision[];
 }): Promise<ForgeApplyResult> {
   const { workspaceId, clientId } = input;
+  // The feed is read first, outside the transaction: a network call has no business holding
+  // a database lock.
   const feed = await fetchForgeFeed(input.feedUrl ?? BIG_WEDGE_FORGE_FEED);
-  const board = await loadBoard(workspaceId, clientId);
-  const plan = buildForgePlan({
-    feed,
-    tasks: board.tasks,
-    releases: board.releases,
-    columns: board.columns,
-    decisions: input.approvedReviewLinks,
-  });
-  if (plan.missingColumns.length) {
-    throw new ForgeImportError(`Add these board columns first: ${plan.missingColumns.join(", ")}.`, 409);
-  }
+  const now = new Date().toISOString();
 
-  const result: ForgeApplyResult = {
-    created: 0,
-    linked: 0,
-    devLinked: 0,
-    filled: 0,
-    releasesCreated: 0,
-    pendingReview: plan.counts.review,
-    skipped: plan.counts.skip,
-    alreadyImported: plan.counts.alreadyImported,
-  };
+  // ONE transaction, under a per-client lock. Two applies at once (a double click, the app and
+  // Claude together) can't both see "nothing imported yet" and both make every card: the second
+  // waits for nothing and is refused. And because it's one transaction, a failure part-way
+  // leaves the board exactly as it was. Planning happens INSIDE, after the lock is held.
+  const result = await prisma.$transaction(
+    async (tx) => {
+      const lock = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(hashtext(${`forge:${clientId}`})) AS locked`;
+      if (!lock[0]?.locked) throw new ForgeImportError("An import for this client is already running. Try again when it has finished.", 409);
 
-  // Releases first, so cards can point at them.
-  const releaseIdByForge = new Map<string, string>();
-  const topRelease = await prisma.clientRelease.findFirst({ where: { workspaceId, clientId }, orderBy: { orderKey: "desc" }, select: { orderKey: true } });
-  let releaseOrder = topRelease?.orderKey ?? 0;
-  for (const r of plan.releases) {
-    if (r.existingId) {
-      releaseIdByForge.set(r.forgeId, r.existingId);
-      continue;
-    }
-    const created = await prisma.clientRelease.create({
-      data: {
-        workspaceId,
-        clientId,
-        version: r.version.slice(0, 40),
-        name: r.name ? r.name.slice(0, 120) : null,
-        startDate: r.startDate ? new Date(r.startDate) : null,
-        endDate: r.endDate ? new Date(r.endDate) : null,
-        orderKey: ++releaseOrder,
-      },
-      select: { id: true },
-    });
-    releaseIdByForge.set(r.forgeId, created.id);
-    result.releasesCreated++;
-  }
+      const board = await loadBoard(tx, workspaceId, clientId);
+      const plan = buildForgePlan({
+        feed,
+        tasks: board.tasks,
+        releases: board.releases,
+        columns: board.columns,
+        decisions: input.approvedReviewLinks,
+      });
+      if (plan.missingColumns.length) {
+        throw new ForgeImportError(`Add these board columns first: ${plan.missingColumns.join(", ")}.`, 409);
+      }
 
-  const columnIdByName = new Map(board.columns.map((c) => [columnNameKey(c.name), c]));
-  const columnFor = (name: string | null, status: string): string | null => {
-    if (!name) return null;
-    const col = columnIdByName.get(columnNameKey(name));
-    // A column belongs to one status; a mismatch leaves the task in its status's lane.
-    return col && col.stage === status ? col.id : null;
-  };
-  const rowById = new Map(board.rows.map((r) => [r.id, r]));
+      const out: ForgeApplyResult = {
+        created: 0,
+        linked: 0,
+        devLinked: 0,
+        filled: 0,
+        releasesCreated: 0,
+        pendingReview: plan.counts.review,
+        waiting: plan.counts.waiting,
+        skipped: plan.counts.skip,
+        alreadyImported: plan.counts.alreadyImported,
+      };
 
-  // New cards go to the bottom of their status, in the order Big Wedge lists them.
-  const tops = await prisma.task.groupBy({ by: ["status"], where: { workspaceId, clientId }, _max: { orderKey: true } });
-  const nextOrder = new Map(tops.map((t) => [t.status as string, (t._max.orderKey ?? 0) + 1]));
-  const takeOrder = (status: string) => {
-    const n = nextOrder.get(status) ?? 1;
-    nextOrder.set(status, n + 1);
-    return n;
-  };
-
-  // The card each Forge item became (made now, linked now, or imported before).
-  const taskIdByForge = new Map<string, string>();
-  for (const i of plan.items) if (i.target && (i.action === "link" || i.action === "already-imported")) taskIdByForge.set(i.forgeId, i.target.id);
-
-  // Features before their sub-items, so a sub-item can be made as its feature's subtask.
-  const work = plan.items
-    .filter((i) => i.action === "create" || i.action === "link" || i.action === "already-imported")
-    .sort((a, b) => ORDER[a.forgeType] - ORDER[b.forgeType]);
-
-  for (let start = 0; start < work.length; start += BATCH) {
-    const chunk = work.slice(start, start + BATCH);
-    await prisma.$transaction(
-      async (tx) => {
-        for (const item of chunk) {
-          const c = item.card;
-          const releaseId = c.releaseForgeId ? releaseIdByForge.get(c.releaseForgeId) ?? null : null;
-          const forgeMeta = c.metadata as Prisma.InputJsonObject;
-
-          if (item.action === "create") {
-            const parentId = c.parentForgeId ? taskIdByForge.get(c.parentForgeId) ?? null : null;
-            const created = await tx.task.create({
-              data: {
-                workspaceId,
-                clientId,
-                createdById: input.actorId,
-                title: c.title,
-                description: c.description,
-                status: c.status,
-                priority: c.priority,
-                orderKey: takeOrder(c.status),
-                boardColumnId: columnFor(c.column, c.status),
-                releaseId,
-                parentId,
-                itemType: c.itemType,
-                tier: c.tier,
-                area: c.area,
-                estimateHours: c.estimateHours,
-                externalRef: c.externalRef,
-                metadata: forgeMeta,
-                startedAt: c.startedAt ? new Date(c.startedAt) : c.completedAt ? new Date(c.completedAt) : null,
-                completedAt: c.completedAt ? new Date(c.completedAt) : null,
-              },
-              select: { id: true },
-            });
-            taskIdByForge.set(item.forgeId, created.id);
-            result.created++;
-            if (item.devLinks.length) {
-              // Only a team task that delivers no card yet; it is not otherwise touched.
-              const linked = await tx.task.updateMany({
-                where: { id: { in: item.devLinks.map((d) => d.id) }, workspaceId, clientId, itemType: null, productCardId: null },
-                data: { productCardId: created.id },
-              });
-              result.devLinked += linked.count;
-            }
-            continue;
+      // Releases first, so cards can point at them.
+      const releaseIdByForge = new Map<string, string>();
+      const topRelease = await tx.clientRelease.findFirst({ where: { workspaceId, clientId }, orderBy: { orderKey: "desc" }, select: { orderKey: true } });
+      let releaseOrder = topRelease?.orderKey ?? 0;
+      for (const r of plan.releases) {
+        if (r.existingId) {
+          releaseIdByForge.set(r.forgeId, r.existingId);
+          // Stamp the Forge id on a release recognised by version + name, and add its doc where
+          // it has none. Guarded in the WHERE, like every fill.
+          if (r.stampRef) {
+            await tx.clientRelease.updateMany({ where: { id: r.existingId, workspaceId, clientId, externalRef: null }, data: { externalRef: r.externalRef } });
           }
-
-          // link / already-imported: fill what's empty, nothing else.
-          const target = item.target ? rowById.get(item.target.id) : undefined;
-          if (!target) continue;
-          const data: Prisma.TaskUncheckedUpdateManyInput = {};
-          if (!target.itemType) data.itemType = c.itemType;
-          if (!target.externalRef) data.externalRef = c.externalRef;
-          if (!target.tier && c.tier) data.tier = c.tier;
-          if (!target.area && c.area) data.area = c.area;
-          if (target.estimateHours == null && c.estimateHours != null) data.estimateHours = c.estimateHours;
-          if (!target.releaseId && releaseId) data.releaseId = releaseId;
-          if (!target.description?.trim()) data.description = c.description;
-          if (!target.boardColumnId) {
-            const col = columnFor(c.column, target.status);
-            if (col) data.boardColumnId = col;
+          if (r.docUrl) {
+            await tx.clientRelease.updateMany({ where: { id: r.existingId, workspaceId, clientId, docUrl: null }, data: { docUrl: r.docUrl } });
           }
-          const meta = target.metadata && typeof target.metadata === "object" && !Array.isArray(target.metadata) ? (target.metadata as Prisma.JsonObject) : null;
-          if (!meta || !("forge" in meta)) data.metadata = { ...(meta ?? {}), ...forgeMeta };
-          if (Object.keys(data).length === 0) continue;
-          // updateMany scoped to the client: a stale id can never write to another client's task.
-          const done = await tx.task.updateMany({ where: { id: target.id, workspaceId, clientId }, data });
-          if (done.count) {
-            if (item.action === "link") result.linked++;
-            else result.filled++;
-          }
+          continue;
         }
-      },
-      { timeout: 60_000 },
-    );
-  }
+        const created = await tx.clientRelease.create({
+          data: {
+            workspaceId,
+            clientId,
+            version: r.version,
+            name: r.name,
+            startDate: r.startDate ? new Date(r.startDate) : null,
+            endDate: r.endDate ? new Date(r.endDate) : null,
+            orderKey: ++releaseOrder,
+            externalRef: r.externalRef,
+            docUrl: r.docUrl,
+          },
+          select: { id: true },
+        });
+        releaseIdByForge.set(r.forgeId, created.id);
+        out.releasesCreated++;
+      }
+
+      const columnIdByName = new Map(board.columns.map((c) => [columnNameKey(c.name), c]));
+      const columnFor = (name: string | null, status: string): string | null => {
+        if (!name) return null;
+        const col = columnIdByName.get(columnNameKey(name));
+        // A column belongs to one status; a mismatch leaves the task in its status's lane.
+        return col && col.stage === status ? col.id : null;
+      };
+      const rowById = new Map(board.rows.map((r) => [r.id, r]));
+
+      // New cards go to the bottom of their status, in the order Big Wedge lists them.
+      const tops = await tx.task.groupBy({ by: ["status"], where: { workspaceId, clientId }, _max: { orderKey: true } });
+      const nextOrder = new Map(tops.map((t) => [t.status as string, (t._max.orderKey ?? 0) + 1]));
+      const takeOrder = (status: string) => {
+        const n = nextOrder.get(status) ?? 1;
+        nextOrder.set(status, n + 1);
+        return n;
+      };
+
+      // The card each Forge item became (made now, linked now, or imported before), and whether
+      // that card is itself a subtask: a sub-item is never nested more than one level deep.
+      const taskIdByForge = new Map<string, string>();
+      const parentOfCard = new Map<string, string | null>();
+      for (const i of plan.items) {
+        if (i.target && (i.action === "link" || i.action === "already-imported")) {
+          taskIdByForge.set(i.forgeId, i.target.id);
+          parentOfCard.set(i.target.id, rowById.get(i.target.id)?.parentId ?? null);
+        }
+      }
+      /** The card a sub-item hangs under: its feature's card, or that card's own parent. */
+      const topCardFor = (forgeId: string | null): string | null => {
+        if (!forgeId) return null;
+        const id = taskIdByForge.get(forgeId);
+        if (!id) return null;
+        return parentOfCard.get(id) ?? id;
+      };
+
+      const work = plan.items
+        .filter((i) => i.action === "create" || i.action === "link" || i.action === "already-imported")
+        .sort((a, b) => (ORDER.get(a.forgeType) ?? 9) - (ORDER.get(b.forgeType) ?? 9));
+
+      for (const item of work) {
+        const c = item.card;
+        const releaseId = c.releaseForgeId ? releaseIdByForge.get(c.releaseForgeId) ?? null : null;
+
+        if (item.action === "create") {
+          const parentId = c.parentForgeId ? topCardFor(c.parentForgeId) : null;
+          const set: Partial<Record<FillField, unknown>> = {
+            itemType: c.itemType,
+            externalRef: c.externalRef,
+            tier: c.tier,
+            area: c.area,
+            estimateHours: c.estimateHours,
+            releaseId,
+            description: c.description,
+            parentId,
+          };
+          const filled = FILL_FIELDS.filter((f) => set[f] !== null && set[f] !== undefined);
+          const forgeMeta = (c.metadata.forge ?? {}) as Prisma.InputJsonObject;
+          const created = await tx.task.create({
+            data: {
+              workspaceId,
+              clientId,
+              createdById: input.actorId,
+              title: c.title,
+              description: c.description,
+              status: c.status,
+              priority: c.priority,
+              orderKey: takeOrder(c.status),
+              // Only a card the importer MAKES is placed in a column. A team task is never moved.
+              boardColumnId: columnFor(c.column, c.status),
+              releaseId,
+              parentId,
+              itemType: c.itemType,
+              tier: c.tier,
+              area: c.area,
+              estimateHours: c.estimateHours,
+              externalRef: c.externalRef,
+              metadata: { forge: { ...forgeMeta, filled, filledAt: now } },
+              startedAt: c.startedAt ? new Date(c.startedAt) : c.completedAt ? new Date(c.completedAt) : null,
+              completedAt: c.completedAt ? new Date(c.completedAt) : null,
+            },
+            select: { id: true },
+          });
+          taskIdByForge.set(item.forgeId, created.id);
+          parentOfCard.set(created.id, parentId);
+          out.created++;
+          if (item.devLinks.length) {
+            // Only a team task that delivers no card yet; it is not otherwise touched.
+            const linked = await tx.task.updateMany({
+              where: { id: { in: item.devLinks.map((d) => d.id) }, workspaceId, clientId, itemType: null, productCardId: null },
+              data: { productCardId: created.id },
+            });
+            out.devLinked += linked.count;
+          }
+          continue;
+        }
+
+        // link / already-imported: fill what's empty, one field at a time, each guarded in its
+        // WHERE. Never the column or status of a task the team already had.
+        const target = item.target ? rowById.get(item.target.id) : undefined;
+        if (!target) continue;
+        const values: Partial<Record<FillField, unknown>> = {
+          itemType: c.itemType,
+          externalRef: c.externalRef,
+          tier: c.tier,
+          area: c.area,
+          estimateHours: c.estimateHours,
+          releaseId,
+          description: c.description,
+          parentId: item.fill.includes("parentId") ? topCardFor(c.parentForgeId) : null,
+        };
+        const filledNow: FillField[] = [];
+        for (const field of FILL_FIELDS) {
+          if (!item.fill.includes(field)) continue;
+          const value = values[field];
+          if (value === null || value === undefined) continue;
+          if (field === "parentId" && value === target.id) continue;
+          const done = await tx.task.updateMany({
+            where: { AND: [{ id: target.id, workspaceId, clientId }, emptyWhere(field)] },
+            data: { [field]: value } as Prisma.TaskUncheckedUpdateManyInput,
+          });
+          if (done.count) filledNow.push(field);
+        }
+        const meta = target.metadata && typeof target.metadata === "object" && !Array.isArray(target.metadata) ? (target.metadata as Prisma.JsonObject) : {};
+        const prevForge = meta.forge && typeof meta.forge === "object" && !Array.isArray(meta.forge) ? (meta.forge as Prisma.JsonObject) : null;
+        if (filledNow.length || !prevForge) {
+          // Remember what was filled, so a later run never fills it again.
+          const filled = [...new Set([...forgeFilledOf(meta), ...filledNow])];
+          await tx.task.updateMany({
+            where: { id: target.id, workspaceId, clientId },
+            data: { metadata: { ...meta, forge: { ...(c.metadata.forge as Prisma.InputJsonObject), ...(prevForge ?? {}), filled, filledAt: now } } },
+          });
+        }
+        if (item.action === "link") out.linked++;
+        else if (filledNow.length) out.filled++;
+      }
+      return out;
+    },
+    { maxWait: 10_000, timeout: 300_000 },
+  );
 
   await recordAuditEntry({
     workspaceId,

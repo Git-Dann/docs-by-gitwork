@@ -53,3 +53,22 @@ describe("matching real Big Wedge titles to Wedge board tasks", () => {
     expect(cmp("Strokes Gained", "Calculate Strokes gained.")).toBeNull();
   });
 });
+
+describe("a platform's slice of the work is never an exact match", () => {
+  it('"Bag Management - iOS" is probable for the feature "Bag Management", never exact', () => {
+    const m = compareTitles(titled("Bag Management"), titled("Bag Management - iOS"));
+    expect(m).toMatchObject({ kind: "probable" });
+    expect(m!.why).toMatch(/platform/);
+  });
+
+  it("the same title with the same platform tag is still exact", () => {
+    expect(compareTitles(titled("Bag Management - iOS"), titled("bag management - IOS"))).toMatchObject({ kind: "exact" });
+  });
+
+  it("stays fast and bounded on a pathological title", () => {
+    const huge = "word ".repeat(5_000);
+    const t0 = performance.now();
+    compareTitles(titled(huge), titled(huge.slice(1)));
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+});

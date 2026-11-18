@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 type Call = { model: string; op: string; args: Record<string, unknown> };
 const calls = vi.hoisted(() => [] as Call[]);
 const state = vi.hoisted(() => ({
+  locked: true,
+  transactions: 0,
   columns: [] as unknown[],
   tasks: [] as Array<Record<string, unknown>>,
   releases: [] as Array<Record<string, unknown>>,
@@ -32,8 +34,26 @@ vi.mock("@/lib/prisma", () => {
         },
       },
     );
-  const client = { task: model("task"), clientRelease: model("clientRelease"), workspaceClient: model("workspaceClient"), auditLog: model("auditLog") };
-  return { prisma: { ...client, $transaction: async (fn: (tx: typeof client) => Promise<unknown>) => fn(client) } };
+  const client = {
+    task: model("task"),
+    clientRelease: model("clientRelease"),
+    workspaceClient: model("workspaceClient"),
+    auditLog: model("auditLog"),
+    // The per-client advisory lock (a tagged template in the code).
+    $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      calls.push({ model: "$queryRaw", op: "lock", args: { sql: strings.join("?"), values } });
+      return [{ locked: state.locked }];
+    },
+  };
+  return {
+    prisma: {
+      ...client,
+      $transaction: async (fn: (tx: typeof client) => Promise<unknown>) => {
+        state.transactions++;
+        return fn(client);
+      },
+    },
+  };
 });
 
 vi.mock("@/server/pulse-lite/url-guard", () => ({
@@ -68,6 +88,8 @@ function dbTask(over: Record<string, unknown>) {
 
 beforeEach(() => {
   calls.length = 0;
+  state.locked = true;
+  state.transactions = 0;
   state.columns = COLUMNS;
   state.releases = [];
   state.tasks = [
@@ -88,7 +110,12 @@ beforeEach(() => {
 });
 
 const base = { workspaceId: "ws1", clientId: "client1", actorId: "u1", approvedReviewLinks: [] };
-const writes = () => calls.filter((c) => !["findMany", "findFirst", "groupBy"].includes(c.op));
+const writes = () => calls.filter((c) => !["findMany", "findFirst", "groupBy", "lock"].includes(c.op));
+/** Every task write is scoped to this client, either directly or as the first AND clause. */
+const scopeOf = (where: Record<string, unknown>) =>
+  Array.isArray(where.AND) ? (where.AND as Array<Record<string, unknown>>)[0] : where;
+const taskUpdates = (id: string) =>
+  calls.filter((c) => c.model === "task" && c.op === "updateMany" && (scopeOf(c.args.where as Record<string, unknown>).id === id));
 
 describe("planning", () => {
   it("writes nothing at all", async () => {
@@ -109,9 +136,9 @@ describe("applying", () => {
       expect(["create", "updateMany"], `${c.model}.${c.op}`).toContain(c.op);
       if (c.model === "task" && c.op === "updateMany") {
         const data = c.args.data as Record<string, unknown>;
-        for (const k of ["archivedAt", "parentId", "status", "title", "deletedAt"]) expect(data, k).not.toHaveProperty(k);
+        for (const k of ["archivedAt", "parentId", "status", "title", "deletedAt", "boardColumnId"]) expect(data, k).not.toHaveProperty(k);
         // Every update is scoped to this client, so a stale id can't touch another client's task.
-        expect(c.args.where).toMatchObject({ workspaceId: "ws1", clientId: "client1" });
+        expect(scopeOf(c.args.where as Record<string, unknown>)).toMatchObject({ workspaceId: "ws1", clientId: "client1" });
       }
     }
   });
@@ -131,12 +158,84 @@ describe("applying", () => {
     expect(devLink!.args.where).toMatchObject({ id: { in: ["t_hazards"] }, itemType: null, productCardId: null });
   });
 
-  it("only fills what's empty on a task that becomes a card, keeping its own metadata", async () => {
+  it("fills a task that becomes a card one field at a time, each only where it is still empty", async () => {
     await applyForgeImport(base);
-    const link = calls.find((c) => c.op === "updateMany" && (c.args.where as Record<string, unknown>).id === "t_rate")!;
-    const data = link.args.data as Record<string, unknown>;
-    expect(data).toMatchObject({ itemType: "feature", externalRef: "forge:1", tier: "free", area: "Premium Perks" });
-    expect(data.metadata).toMatchObject({ clickup: { dept: "x" }, forge: { id: "1" } });
+    const fills = taskUpdates("t_rate").filter((c) => !("metadata" in (c.args.data as Record<string, unknown>)));
+    const byField = new Map(fills.map((c) => [Object.keys(c.args.data as Record<string, unknown>)[0], c]));
+    expect([...byField.keys()].sort()).toEqual(["area", "description", "externalRef", "itemType", "tier"]);
+    // The emptiness test is IN the WHERE, so a value set since the board was read is kept.
+    expect(byField.get("tier")!.args.where).toEqual({ AND: [{ id: "t_rate", workspaceId: "ws1", clientId: "client1" }, { tier: null }] });
+    expect(byField.get("description")!.args.where).toMatchObject({ AND: [{ id: "t_rate" }, { OR: [{ description: null }, { description: "" }] }] });
+  });
+
+  it("never moves a team task into a column, and records what it filled so a re-run never refills it", async () => {
+    await applyForgeImport(base);
+    for (const c of taskUpdates("t_rate")) expect(c.args.data).not.toHaveProperty("boardColumnId");
+    const meta = taskUpdates("t_rate").find((c) => "metadata" in (c.args.data as Record<string, unknown>))!;
+    const m = (meta.args.data as { metadata: Record<string, unknown> }).metadata;
+    expect(m).toMatchObject({ clickup: { dept: "x" }, forge: { id: "1" } });
+    expect(((m.forge as Record<string, unknown>).filled as string[]).sort()).toEqual(["area", "description", "externalRef", "itemType", "tier"]);
+  });
+
+  it("does not refill a field a card had filled before, even when the team has since cleared it", async () => {
+    state.tasks = [
+      dbTask({ id: "card1", title: "Rate Course", itemType: "feature", externalRef: "forge:1", tier: null, metadata: { forge: { id: "1", filled: ["tier", "area"] } } }),
+    ];
+    state.feed = { ...(state.feed as object), features: [{ id: "1", name: "Rate Course", workflowStage: "future-idea", category: "Premium Perks", featurePrice: "free" }], subitems: [] };
+    await applyForgeImport(base);
+    const fields = taskUpdates("card1").flatMap((c) => Object.keys(c.args.data as Record<string, unknown>));
+    expect(fields).not.toContain("tier");
+    expect(fields).not.toContain("area");
+  });
+
+  it("takes a per-client lock first, and plans only once it holds it", async () => {
+    await applyForgeImport(base);
+    const lockAt = calls.findIndex((c) => c.op === "lock");
+    const readAt = calls.findIndex((c) => c.model === "task" && c.op === "findMany");
+    expect(lockAt).toBeGreaterThanOrEqual(0);
+    expect(lockAt).toBeLessThan(readAt);
+    expect(calls[lockAt].args.values).toEqual(["forge:client1"]);
+    // One transaction: a failure part-way leaves the board as it was.
+    expect(state.transactions).toBe(1);
+  });
+
+  it("refuses a second import for the same client while one is running, writing nothing", async () => {
+    state.locked = false;
+    await expect(applyForgeImport(base)).rejects.toMatchObject({ status: 409 });
+    expect(writes()).toEqual([]);
+    expect(calls.some((c) => c.model === "task" && c.op === "findMany")).toBe(false);
+  });
+
+  it("keys releases on their Forge id: a renamed one is reused, and it is stamped and given its doc", async () => {
+    state.releases = [{ id: "rel_old", version: "v1.1.0", name: "Renamed in Foundry", externalRef: "forge:r1", docUrl: null }];
+    (state.feed as Record<string, unknown>).releases = [
+      { id: "r1", name: "v1.1.0 | Q2: Bags", versionNumber: "1.1.0", links: [{ label: "Release Doc", url: "https://docs.example/r1" }] },
+    ];
+    const r = await applyForgeImport(base);
+    expect(r.releasesCreated).toBe(0);
+    const doc = calls.find((c) => c.model === "clientRelease" && c.op === "updateMany")!;
+    expect(doc.args).toMatchObject({ where: { id: "rel_old", docUrl: null }, data: { docUrl: "https://docs.example/r1" } });
+  });
+
+  it("never folds two Forge releases with the same version and name into one", async () => {
+    state.releases = [{ id: "rel_plain", version: "v2.0.0", name: "Q4", externalRef: null, docUrl: null }];
+    (state.feed as Record<string, unknown>).releases = [
+      { id: "a", name: "v2.0.0 | Q4", versionNumber: "2.0.0" },
+      { id: "b", name: "v2.0.0 | Q4", versionNumber: "2.0.0" },
+    ];
+    const r = await applyForgeImport(base);
+    expect(r.releasesCreated).toBe(1);
+    const stamp = calls.find((c) => c.model === "clientRelease" && c.op === "updateMany" && (c.args.data as Record<string, unknown>).externalRef)!;
+    expect(stamp.args).toMatchObject({ where: { id: "rel_plain", externalRef: null }, data: { externalRef: "forge:a" } });
+    const made = calls.find((c) => c.model === "clientRelease" && c.op === "create")!;
+    expect(made.args.data).toMatchObject({ externalRef: "forge:b" });
+  });
+
+  it("hangs a sub-item one level deep: under its feature card's own parent when that card is a subtask", async () => {
+    state.tasks = [dbTask({ id: "card_feat", title: "Swing Analysis", itemType: "feature", externalRef: "forge:3", parentId: "top_card" })];
+    await applyForgeImport(base);
+    const coach = calls.find((c) => c.model === "task" && c.op === "create" && (c.args.data as Record<string, unknown>).title === "Ai Swing Coach")!;
+    expect((coach.args.data as Record<string, unknown>).parentId).toBe("top_card");
   });
 
   it("refuses to run until the board has every column it needs", async () => {

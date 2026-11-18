@@ -42,17 +42,24 @@ export interface BoardTask {
   tier: string | null;
   area: string | null;
   estimateHours: number | null;
+  /**
+   * Fields the importer has already filled on this task (metadata.forge.filled). Never filled
+   * again: a value the team CLEARED stays cleared.
+   */
+  forgeFilled: string[];
 }
 
 export interface BoardRelease {
   id: string;
   version: string;
   name: string | null;
+  externalRef: string | null;
+  docUrl: string | null;
 }
 
 export type ReviewDecision = { forgeId: string; decision: string };
 
-export type PlanAction = "create" | "link" | "already-imported" | "review" | "skip";
+export type PlanAction = "create" | "link" | "already-imported" | "review" | "skip" | "waiting";
 
 export interface TaskRef {
   id: string;
@@ -99,6 +106,8 @@ export interface PlanItem {
   card: CardFields;
   /** already-imported / link: the empty fields that would be filled. */
   fill: string[];
+  /** Things a person should know about this item (an odd value in the feed, a shortened title). */
+  warnings: string[];
 }
 
 export interface PlanRelease {
@@ -108,8 +117,16 @@ export interface PlanRelease {
   startDate: string | null;
   endDate: string | null;
   docLinks: string[];
-  /** The client's existing release with the same version and name, if any. */
+  /** The release document, kept on the release (ClientRelease.docUrl). */
+  docUrl: string | null;
+  externalRef: string;
+  /**
+   * The client's release this one IS: the one carrying its Forge id, or else the one release
+   * with the same version and name that came from nowhere else. Null → it will be created.
+   */
   existingId: string | null;
+  /** The existing release doesn't carry the Forge id yet; applying stamps it. */
+  stampRef: boolean;
 }
 
 export interface ForgePlan {
@@ -121,6 +138,7 @@ export interface ForgePlan {
     review: number;
     skip: number;
     devLinks: number;
+    waiting: number;
     releasesToCreate: number;
     unknownStages: number;
     skippedFromFeed: number;
@@ -131,7 +149,12 @@ export interface ForgePlan {
   items: PlanItem[];
 }
 
-const PRIORITY: Record<string, TaskPriority> = { high: "HIGH", medium: "MEDIUM", low: "LOW" };
+/** ⚠️ A Map, not an object: these keys come from someone else's feed ("constructor", "__proto__"). */
+const PRIORITY = new Map<string, TaskPriority>([
+  ["high", "HIGH"],
+  ["medium", "MEDIUM"],
+  ["low", "LOW"],
+]);
 const TIERS = new Set(["free", "premium", "scoping"]);
 
 function ref(t: BoardTask): TaskRef {
@@ -141,19 +164,48 @@ function ref(t: BoardTask): TaskRef {
 const normName = (s: string | null) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 const normVersion = (v: string) => v.trim().toLowerCase().replace(/^v(?=\d)/, "");
 
+/**
+ * Which of the client's releases each Forge release is.
+ *
+ * The Forge id is the key (ClientRelease.externalRef). Only a release that came from nowhere
+ * (no externalRef) can be recognised by version + name, and only one Forge release may claim
+ * it — so two Forge releases with the same version and name never collapse into one, and a
+ * release someone renamed in Foundry is still found by its id, not re-created.
+ */
 function planReleases(feed: ForgeFeed, existing: BoardRelease[]): PlanRelease[] {
+  const byRef = new Map(existing.filter((e) => e.externalRef).map((e) => [e.externalRef as string, e]));
+  const claimed = new Set<string>();
+  for (const r of feed.releases) {
+    const e = byRef.get(forgeRef(r.id));
+    if (e) claimed.add(e.id);
+  }
   return feed.releases.map((r: ForgeRelease) => {
-    // Version alone isn't enough: Big Wedge has five releases called v2.0.0, told apart by name.
-    const match = existing.filter((e) => normVersion(e.version) === normVersion(r.version) && normName(e.name) === normName(r.name));
-    return {
+    const externalRef = forgeRef(r.id);
+    const base = {
       forgeId: r.id,
       version: r.version,
       name: r.name,
       startDate: r.startDate,
       endDate: r.endDate,
       docLinks: r.links.map((l) => l.url),
-      existingId: match.length === 1 ? match[0].id : null,
+      docUrl: r.docUrl,
+      externalRef,
     };
+    const own = byRef.get(externalRef);
+    if (own) return { ...base, existingId: own.id, stampRef: false };
+    // Version alone isn't enough: Big Wedge has five releases called v2.0.0, told apart by name.
+    const match = existing.filter(
+      (e) =>
+        !e.externalRef &&
+        !claimed.has(e.id) &&
+        normVersion(e.version) === normVersion(r.version) &&
+        normName(e.name) === normName(r.name),
+    );
+    if (match.length === 1) {
+      claimed.add(match[0].id);
+      return { ...base, existingId: match[0].id, stampRef: true };
+    }
+    return { ...base, existingId: null, stampRef: false };
   });
 }
 
@@ -184,8 +236,17 @@ export function describeItem(item: ForgeItem, titleById: Map<string, string>): s
   return lines.join("\n");
 }
 
-function cardFor(item: ForgeItem, feed: ForgeFeed, titleById: Map<string, string>): { card: CardFields; known: boolean } {
+function cardFor(
+  item: ForgeItem,
+  feed: ForgeFeed,
+  titleById: Map<string, string>,
+): { card: CardFields; known: boolean; warnings: string[] } {
   const { placement, known } = placementFor(item.stage);
+  const warnings: string[] = [];
+  const priorityKey = (item.priority ?? "").toLowerCase();
+  const priority = PRIORITY.get(priorityKey);
+  if (item.priority && !priority) warnings.push(`Priority "${item.priority}" isn't high, medium or low, so it's Medium.`);
+  if (item.truncated) warnings.push("The title was very long and has been shortened.");
   const release = item.releaseId ? feed.releases.find((r) => r.id === item.releaseId) : undefined;
   const completedAt =
     placement.status === "DONE"
@@ -193,12 +254,13 @@ function cardFor(item: ForgeItem, feed: ForgeFeed, titleById: Map<string, string
       : null;
   return {
     known,
+    warnings,
     card: {
       title: item.title.slice(0, 200),
       description: describeItem(item, titleById),
       status: placement.status,
       column: placement.column,
-      priority: PRIORITY[(item.priority ?? "").toLowerCase()] ?? "MEDIUM",
+      priority: priority ?? "MEDIUM",
       itemType: item.type,
       tier: item.price && TIERS.has(item.price.toLowerCase()) ? item.price.toLowerCase() : null,
       area: item.category ? item.category.slice(0, 80) : null,
@@ -223,8 +285,12 @@ function cardFor(item: ForgeItem, feed: ForgeFeed, titleById: Map<string, string
   };
 }
 
-/** Fields of an existing card that are still empty and would be filled. */
-function fillFor(t: BoardTask, card: CardFields, releaseResolvable: boolean): string[] {
+/**
+ * Fields of an existing card that are still empty and would be filled. A field the importer
+ * filled before is never filled again (the team may have cleared it on purpose). The board
+ * column and status are never filled on an existing task: where a task sits is the team's call.
+ */
+export function fillFor(t: BoardTask, card: CardFields, releaseResolvable: boolean): string[] {
   const out: string[] = [];
   if (!t.itemType) out.push("itemType");
   if (!t.externalRef) out.push("externalRef");
@@ -233,8 +299,12 @@ function fillFor(t: BoardTask, card: CardFields, releaseResolvable: boolean): st
   if (t.estimateHours == null && card.estimateHours != null) out.push("estimateHours");
   if (!t.releaseId && card.releaseForgeId && releaseResolvable) out.push("releaseId");
   if (!t.description?.trim()) out.push("description");
-  return out;
+  const done = new Set(t.forgeFilled);
+  return out.filter((f) => !done.has(f));
 }
+
+/** Plan actions after which an item has a card on the board (made now, linked, or made before). */
+const HAS_CARD: ReadonlySet<PlanAction> = new Set(["create", "link", "already-imported"]);
 
 export function buildForgePlan(input: {
   feed: ForgeFeed;
@@ -280,8 +350,36 @@ export function buildForgePlan(input: {
   const items: PlanItem[] = [];
   let unknownStages = 0;
 
-  for (const item of feed.items) {
-    const { card, known } = cardFor(item, feed, titleById);
+  const actionByForge = new Map<string, PlanAction>();
+  const feedIds = new Set(feed.items.map((i) => i.id));
+  const push = (p: PlanItem) => {
+    // A sub-item becomes a SUBTASK of its feature's card, so it can't be made before that card
+    // exists. One whose feature is waiting in review (or skipped, or itself waiting) waits too,
+    // and is made on the run after its feature's card is.
+    if (p.forgeType === "subitem" && p.action === "create" && p.card.parentForgeId) {
+      const parent = p.card.parentForgeId;
+      if (feedIds.has(parent) && !HAS_CARD.has(actionByForge.get(parent) as PlanAction)) {
+        p = {
+          ...p,
+          action: "waiting",
+          devLinks: [],
+          reason: [p.reason, "Waiting for its feature's card, which hasn't been decided yet; it's made on the run after."]
+            .filter(Boolean)
+            .join(" "),
+        };
+      }
+    }
+    if (p.forgeType === "subitem" && p.card.parentForgeId && !feedIds.has(p.card.parentForgeId)) {
+      p = { ...p, warnings: [...p.warnings, "Its feature isn't in the feed, so it's a card of its own."] };
+    }
+    actionByForge.set(p.forgeId, p.action);
+    items.push(p);
+  };
+
+  // Features first, so a sub-item knows what happened to its feature.
+  const ordered = [...feed.items].sort((a, b) => Number(a.type === "subitem") - Number(b.type === "subitem"));
+  for (const item of ordered) {
+    const { card, known, warnings } = cardFor(item, feed, titleById);
     if (!known) unknownStages++;
     const base = {
       forgeId: item.id,
@@ -295,12 +393,25 @@ export function buildForgePlan(input: {
       reason: known ? null : `Stage "${item.stage}" isn't one of the twelve, so it goes in Future Idea.`,
       card,
       fill: [] as string[],
+      warnings,
     };
 
     const prev = imported.get(item.id);
     if (prev) {
       const releaseResolvable = Boolean(card.releaseForgeId);
-      items.push({ ...base, action: "already-imported", target: ref(prev), fill: fillFor(prev, card, releaseResolvable).filter((f) => f !== "itemType" && f !== "externalRef") });
+      const fill = fillFor(prev, card, releaseResolvable).filter((f) => f !== "itemType" && f !== "externalRef");
+      // A sub-item card left without its feature (made before its feature's card existed) is
+      // attached once the feature has a card — unless that was done before and undone.
+      if (
+        item.type === "subitem" &&
+        !prev.parentId &&
+        card.parentForgeId &&
+        HAS_CARD.has(actionByForge.get(card.parentForgeId) as PlanAction) &&
+        !prev.forgeFilled.includes("parentId")
+      ) {
+        fill.push("parentId");
+      }
+      push({ ...base, action: "already-imported", target: ref(prev), fill });
       continue;
     }
 
@@ -330,28 +441,28 @@ export function buildForgePlan(input: {
     const decision = decisions.get(item.id);
     if (decision) {
       if (decision === "skip") {
-        items.push({ ...base, action: "skip", candidates, reason: "Skipped in review." });
+        push({ ...base, action: "skip", candidates, reason: "Skipped in review." });
         continue;
       }
       if (decision === "create") {
-        items.push({ ...base, action: "create", candidates, reason: "New card, as decided in review." });
+        push({ ...base, action: "create", candidates, reason: "New card, as decided in review." });
         continue;
       }
       const chosen = taskById.get(decision);
       if (!chosen || chosen.itemType || chosen.externalRef) {
-        items.push({ ...base, action: "review", candidates, reason: "The task chosen in review isn't a team task on this board." });
+        push({ ...base, action: "review", candidates, reason: "The task chosen in review isn't a team task on this board." });
         continue;
       }
       if (claimed.has(chosen.id)) {
-        items.push({ ...base, action: "review", candidates, reason: `"${chosen.title}" was already chosen for another item.` });
+        push({ ...base, action: "review", candidates, reason: `"${chosen.title}" was already chosen for another item.` });
         continue;
       }
-      items.push(accept(chosen, "Matched in review."));
+      push(accept(chosen, "Matched in review."));
       continue;
     }
 
     if (found.length === 0) {
-      items.push({ ...base, action: "create", reason: base.reason });
+      push({ ...base, action: "create", reason: base.reason });
       continue;
     }
     const sharedTask = found.some((f) => (byTask.get(f.t.id) ?? []).length > 1);
@@ -360,18 +471,18 @@ export function buildForgePlan(input: {
         found.length > 1
           ? `${found.length} tasks look like this item.`
           : "The matching task also looks like another item.";
-      items.push({ ...base, action: "review", candidates, reason: why });
+      push({ ...base, action: "review", candidates, reason: why });
       continue;
     }
     if (claimed.has(found[0].t.id)) {
-      items.push({ ...base, action: "review", candidates, reason: `"${found[0].t.title}" was already chosen for another item.` });
+      push({ ...base, action: "review", candidates, reason: `"${found[0].t.title}" was already chosen for another item.` });
       continue;
     }
     if (found[0].kind !== "exact") {
-      items.push({ ...base, action: "review", candidates, reason: `Close but not the same title (${found[0].why}).` });
+      push({ ...base, action: "review", candidates, reason: `Close but not the same title (${found[0].why}).` });
       continue;
     }
-    items.push(accept(found[0].t, "Same title as an existing task."));
+    push(accept(found[0].t, "Same title as an existing task."));
   }
 
   const count = (a: PlanAction) => items.filter((i) => i.action === a).length;
@@ -384,6 +495,7 @@ export function buildForgePlan(input: {
       review: count("review"),
       skip: count("skip"),
       devLinks: items.reduce((n, i) => n + i.devLinks.length, 0),
+      waiting: count("waiting"),
       releasesToCreate: releases.filter((r) => !r.existingId).length,
       unknownStages,
       skippedFromFeed: feed.skipped,

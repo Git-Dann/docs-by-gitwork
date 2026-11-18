@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RELEASE_LIMITS } from "@/lib/tasks/releases";
+import { RELEASE_LIMITS, safeReleaseDocUrl } from "@/lib/tasks/releases";
 import {
   HANDOVER_ITEM_KINDS,
   HANDOVER_ITEM_STATUSES,
@@ -1346,6 +1346,15 @@ export const featureBlockUpdateSchema = z.object({
 });
 
 // ── Releases (ClientRelease — src/lib/tasks/releases.ts) ─────────────────
+/** The release doc: an http(s) link or nothing. "" clears it. */
+const releaseDocUrl = z
+  .string()
+  .trim()
+  .max(RELEASE_LIMITS.docUrl)
+  .nullable()
+  .optional()
+  .refine((v) => !v || safeReleaseDocUrl(v) !== null, { message: "Use a link that starts with https://" });
+
 export const releaseInputSchema = z
   .object({
     clientId: z.string().cuid(),
@@ -1353,6 +1362,7 @@ export const releaseInputSchema = z
     name: z.string().trim().max(RELEASE_LIMITS.name).nullable().optional(),
     startDate: isoDateString.nullable().optional(),
     endDate: isoDateString.nullable().optional(),
+    docUrl: releaseDocUrl,
   })
   .refine((v) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate), {
     message: "The end date must be on or after the start date",
@@ -1365,6 +1375,7 @@ export const releaseUpdateSchema = z
     name: z.string().trim().max(RELEASE_LIMITS.name).nullable().optional(),
     startDate: isoDateString.nullable().optional(),
     endDate: isoDateString.nullable().optional(),
+    docUrl: releaseDocUrl,
     orderKey: z.number().finite().optional(),
   })
   .refine((v) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate), {

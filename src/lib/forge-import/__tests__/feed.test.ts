@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseForgeFeed, parseForgeJson, safeHttpUrl } from "../feed";
+import { FEED_LIMITS, parseForgeFeed, parseForgeJson, safeHttpUrl } from "../feed";
 
 const raw = {
   features: [
@@ -52,8 +52,44 @@ describe("reading Big Wedge's Forge feed", () => {
   it("turns a release's full name into its version and its session name", () => {
     const feed = parseForgeFeed(raw);
     expect(feed.releases).toEqual([
-      { id: "244", version: "v1.1.0", name: "Q2: Bag Management System (Weeks 27 -> 30)", startDate: "2026-06-30", endDate: "2026-07-21", links: [] },
+      { id: "244", version: "v1.1.0", name: "Q2: Bag Management System (Weeks 27 -> 30)", startDate: "2026-06-30", endDate: "2026-07-21", links: [], docUrl: null },
     ]);
+  });
+
+  it("keeps a release's doc link, preferring one labelled as a doc", () => {
+    const feed = parseForgeFeed({
+      releases: [
+        {
+          id: "9",
+          versionNumber: "2.0.0",
+          name: "v2.0.0 | Q4",
+          links: [
+            { label: "Figma", url: "https://figma.com/x" },
+            { label: "Release Doc", url: "https://docs.google.com/document/d/abc" },
+            { label: "Bad", url: "javascript:alert(1)" },
+          ],
+        },
+        { id: "10", versionNumber: "2.0.1", name: "v2.0.1 | Q4", links: [{ label: "", url: "https://example.com/notes" }] },
+      ],
+    });
+    expect(feed.releases.map((r) => r.docUrl)).toEqual(["https://docs.google.com/document/d/abc", "https://example.com/notes"]);
+  });
+
+  it("caps what the feed may hand us: a huge title is shortened and flagged, never dropped", () => {
+    const long = "Leaderboard ".repeat(400);
+    const feed = parseForgeFeed({
+      features: [{ id: "1", name: long, workflowStage: "x".repeat(500), category: "c".repeat(500) }],
+      releases: [{ id: "r", versionNumber: "9".repeat(80), name: `v9 | ${"n".repeat(400)}` }],
+    });
+    const [i] = feed.items;
+    expect(i.title.length).toBeLessThanOrEqual(FEED_LIMITS.title);
+    expect(i.truncated).toBe(true);
+    expect(i.stage.length).toBeLessThanOrEqual(FEED_LIMITS.stage);
+    expect(i.category!.length).toBeLessThanOrEqual(FEED_LIMITS.category);
+    // Capped at the release's own column lengths, so the value stored is the value read.
+    expect(feed.releases[0].version.length).toBeLessThanOrEqual(FEED_LIMITS.version);
+    expect(feed.releases[0].name!.length).toBeLessThanOrEqual(FEED_LIMITS.releaseName);
+    expect(parseForgeFeed({ features: [{ id: "2", name: "Short" }] }).items[0].truncated).toBe(false);
   });
 
   it("returns an empty feed for nonsense rather than throwing", () => {

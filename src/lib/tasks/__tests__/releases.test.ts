@@ -67,3 +67,22 @@ describe("releases", () => {
     expect(findReleaseByVersion([{ version: "V2.0" }, { version: "v2.0" }], "2.0")).toBeNull();
   });
 });
+
+describe("the release doc link", () => {
+  it("keeps only plain http(s) links, so a client can never be handed a javascript: link", async () => {
+    const { safeReleaseDocUrl } = await import("../releases");
+    expect(safeReleaseDocUrl("https://docs.google.com/document/d/abc")).toBe("https://docs.google.com/document/d/abc");
+    expect(safeReleaseDocUrl("  http://example.com/x  ")).toBe("http://example.com/x");
+    for (const bad of ["javascript:alert(1)", "data:text/html,<b>x</b>", "ftp://x.com/y", "not a url", "", null, undefined, `https://x.com/${"a".repeat(3000)}`]) {
+      expect(safeReleaseDocUrl(bad as string | null | undefined), String(bad).slice(0, 30)).toBeNull();
+    }
+  });
+
+  it("the API refuses a non-http doc link, and accepts clearing it", async () => {
+    const { releaseUpdateSchema } = await import("@/server/validators");
+    expect(releaseUpdateSchema.safeParse({ docUrl: "javascript:alert(1)" }).success).toBe(false);
+    expect(releaseUpdateSchema.safeParse({ docUrl: "https://docs.example.com/v2" }).success).toBe(true);
+    expect(releaseUpdateSchema.safeParse({ docUrl: null }).success).toBe(true);
+    expect(releaseUpdateSchema.safeParse({ docUrl: "" }).success).toBe(true);
+  });
+});

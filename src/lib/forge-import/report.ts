@@ -6,7 +6,13 @@
 
 import type { ForgePlan, PlanItem } from "./plan";
 
-const TYPE_LABEL: Record<string, string> = { feature: "Feature", subitem: "Sub-item", bug: "Bug", feedback: "Feedback" };
+const TYPE_LABEL = new Map<string, string>([
+  ["feature", "Feature"],
+  ["subitem", "Sub-item"],
+  ["bug", "Bug"],
+  ["feedback", "Feedback"],
+]);
+const typeLabel = (t: string) => TYPE_LABEL.get(t) ?? t;
 const esc = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 const where = (i: PlanItem) => i.card.column ?? i.card.status.replace("_", " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 const task = (t: { title: string; status: string; archived: boolean }) => `${esc(t.title)} (${t.status}${t.archived ? ", archived" : ""})`;
@@ -27,6 +33,7 @@ export function renderForgePlanMarkdown(plan: ForgePlan, opts: { title?: string;
     `| Dev tasks linked to a card | ${c.devLinks} |`,
     `| Already imported (only empty fields filled) | ${c.alreadyImported} |`,
     `| **Waiting for your decision** | **${c.review}** |`,
+    `| Sub-items waiting for their feature's card | ${c.waiting} |`,
     `| Skipped in review | ${c.skip} |`,
     `| Releases to create | ${c.releasesToCreate} |`,
     "",
@@ -41,9 +48,23 @@ export function renderForgePlanMarkdown(plan: ForgePlan, opts: { title?: string;
   L.push(`## Waiting for your decision (${review.length})`, "");
   if (!review.length) L.push("Nothing.", "");
   for (const i of review) {
-    L.push(`### ${esc(i.title)}`, `${TYPE_LABEL[i.forgeType]} · ${i.stage} · Forge #${i.forgeId}. ${i.reason ?? ""}`, "");
+    L.push(`### ${esc(i.title)}`, `${typeLabel(i.forgeType)} · ${i.stage} · Forge #${i.forgeId}. ${i.reason ?? ""}`, "");
     for (const cand of i.candidates) L.push(`- ${task(cand)}: ${cand.kind}, ${esc(cand.why)}`);
     L.push(`- Or: a new card, or skip it.`, "");
+  }
+
+  const waiting = plan.items.filter((i) => i.action === "waiting");
+  if (waiting.length) {
+    L.push(`## Sub-items waiting for their feature (${waiting.length})`, "", "Made on the run after their feature's card is decided.", "");
+    for (const i of waiting) L.push(`- ${esc(i.title)}`);
+    L.push("");
+  }
+
+  const warned = plan.items.filter((i) => i.warnings.length);
+  if (warned.length) {
+    L.push(`## Worth knowing (${warned.length})`, "");
+    for (const i of warned) L.push(`- **${esc(i.title)}**: ${esc(i.warnings.join(" "))}`);
+    L.push("");
   }
 
   const linked = plan.items.filter((i) => i.action === "link");
@@ -53,7 +74,7 @@ export function renderForgePlanMarkdown(plan: ForgePlan, opts: { title?: string;
 
   const withDev = plan.items.filter((i) => i.devLinks.length);
   L.push(`## New card with a dev task linked to it (${withDev.length})`, "");
-  for (const i of withDev) L.push(`- **${esc(i.title)}** (${TYPE_LABEL[i.forgeType]}, ${where(i)}) ← ${i.devLinks.map(task).join(", ")}`);
+  for (const i of withDev) L.push(`- **${esc(i.title)}** (${typeLabel(i.forgeType)}, ${where(i)}) ← ${i.devLinks.map(task).join(", ")}`);
   L.push("");
 
   const creates = plan.items.filter((i) => i.action === "create");
@@ -62,13 +83,14 @@ export function renderForgePlanMarkdown(plan: ForgePlan, opts: { title?: string;
   for (const i of creates) byColumn.set(where(i), [...(byColumn.get(where(i)) ?? []), i]);
   for (const [col, list] of byColumn) {
     L.push(`### ${col} (${list.length})`, "");
-    for (const i of list) L.push(`- ${esc(i.title)} · ${TYPE_LABEL[i.forgeType]}${i.card.tier ? ` · ${i.card.tier}` : ""}${i.card.area ? ` · ${esc(i.card.area)}` : ""}`);
+    for (const i of list) L.push(`- ${esc(i.title)} · ${typeLabel(i.forgeType)}${i.card.tier ? ` · ${i.card.tier}` : ""}${i.card.area ? ` · ${esc(i.card.area)}` : ""}`);
     L.push("");
   }
 
   L.push(`## Releases (${plan.releases.length})`, "", "| Version | Name | Dates | |", "|---|---|---|---|");
   for (const r of plan.releases) {
-    L.push(`| ${esc(r.version)} | ${esc(r.name ?? "")} | ${r.startDate ?? "?"} → ${r.endDate ?? "?"} | ${r.existingId ? "already on the board" : "new"} |`);
+    const doc = r.docUrl ? ` · [release doc](${r.docUrl})` : "";
+    L.push(`| ${esc(r.version)} | ${esc(r.name ?? "")} | ${r.startDate ?? "?"} → ${r.endDate ?? "?"} | ${r.existingId ? "already on the board" : "new"}${doc} |`);
   }
   L.push("");
 

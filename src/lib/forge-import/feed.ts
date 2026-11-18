@@ -6,7 +6,28 @@
  * counted, so the report can say what was left out rather than losing it silently.
  */
 
+import { RELEASE_LIMITS } from "@/lib/tasks/releases";
+
 export type ForgeItemType = "feature" | "subitem" | "bug" | "feedback";
+
+/**
+ * Hard caps on what the feed may hand us. The feed is someone else's site: a single 4MB title
+ * would otherwise be compared against every task on the board (matching costs length × length),
+ * and a value longer than its column would be cut on save and never match itself again. A title
+ * over its cap is shortened and FLAGGED, never dropped, so no item goes missing.
+ */
+export const FEED_LIMITS = {
+  title: 500,
+  id: 40,
+  stage: 60,
+  category: 80,
+  shortValue: 20,
+  label: 200,
+  url: 2048,
+  version: RELEASE_LIMITS.version,
+  releaseName: RELEASE_LIMITS.name,
+  listLength: 200,
+} as const;
 
 export interface ForgeLink {
   label: string;
@@ -36,6 +57,8 @@ export interface ForgeItem {
   /** createdDate (features) or reportedDate (bugs, feedback). */
   date: string | null;
   stageDates: Record<string, string>;
+  /** The title was longer than FEED_LIMITS.title and has been shortened (the plan says so). */
+  truncated: boolean;
 }
 
 export interface ForgeRelease {
@@ -46,6 +69,8 @@ export interface ForgeRelease {
   startDate: string | null;
   endDate: string | null;
   links: ForgeLink[];
+  /** The release document: the first link labelled like one ("Release Doc"), else the first link. */
+  docUrl: string | null;
 }
 
 export interface ForgeFeed {
@@ -61,8 +86,19 @@ export function parseForgeJson(text: string): unknown {
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : typeof v === "number" ? String(v) : null);
+/** A string capped at `max` characters (a value is never longer than where it's stored). */
+const capped = (v: unknown, max: number): string | null => {
+  const s = str(v);
+  return s === null ? null : s.slice(0, max).trim() || null;
+};
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
-const ids = (v: unknown): string[] => (Array.isArray(v) ? v.map(str).filter((x): x is string => x !== null) : []);
+const ids = (v: unknown): string[] =>
+  Array.isArray(v)
+    ? v
+        .slice(0, FEED_LIMITS.listLength)
+        .map((x) => capped(x, FEED_LIMITS.id))
+        .filter((x): x is string => x !== null)
+    : [];
 const isoDate = (v: unknown): string | null => {
   const s = str(v);
   return s && /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
@@ -71,7 +107,7 @@ const isoDate = (v: unknown): string | null => {
 /** Only http(s) links survive: they go into a task description, where a javascript: URL would be live. */
 export function safeHttpUrl(v: unknown): string | null {
   const s = str(v);
-  if (!s) return null;
+  if (!s || s.length > FEED_LIMITS.url) return null;
   try {
     const u = new URL(s);
     return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
@@ -83,10 +119,10 @@ export function safeHttpUrl(v: unknown): string | null {
 function links(v: unknown): ForgeLink[] {
   if (!Array.isArray(v)) return [];
   const out: ForgeLink[] = [];
-  for (const l of v) {
+  for (const l of v.slice(0, FEED_LIMITS.listLength)) {
     if (!l || typeof l !== "object") continue;
     const url = safeHttpUrl((l as Record<string, unknown>).url);
-    if (url) out.push({ label: str((l as Record<string, unknown>).label) ?? "", url });
+    if (url) out.push({ label: capped((l as Record<string, unknown>).label, FEED_LIMITS.label) ?? "", url });
   }
   return out;
 }
@@ -94,9 +130,9 @@ function links(v: unknown): ForgeLink[] {
 function stageDates(v: unknown): Record<string, string> {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {};
   const out: Record<string, string> = {};
-  for (const [k, d] of Object.entries(v as Record<string, unknown>)) {
+  for (const [k, d] of Object.entries(v as Record<string, unknown>).slice(0, FEED_LIMITS.listLength)) {
     const iso = isoDate(d);
-    if (iso) out[k] = iso;
+    if (iso) out[k.slice(0, FEED_LIMITS.stage)] = iso;
   }
   return out;
 }
@@ -120,31 +156,35 @@ export function parseForgeFeed(raw: unknown): ForgeFeed {
         continue;
       }
       const e = entry as Record<string, unknown>;
-      const id = str(e.id);
-      const title = str(e[c.titleKey]);
-      if (!id || !title) {
+      const id = capped(e.id, FEED_LIMITS.id);
+      const rawTitle = str(e[c.titleKey]);
+      if (!id || !rawTitle) {
         skipped++;
         continue;
       }
+      const truncated = rawTitle.length > FEED_LIMITS.title;
       items.push({
         id,
         type: c.type,
-        title,
-        stage: str(e.workflowStage) ?? "",
-        releaseId: str(e.releaseId),
-        category: str(e.category),
-        price: str(e.featurePrice),
-        priority: str(e.priority),
+        title: truncated ? rawTitle.slice(0, FEED_LIMITS.title).trim() : rawTitle,
+        stage: capped(e.workflowStage, FEED_LIMITS.stage) ?? "",
+        releaseId: capped(e.releaseId, FEED_LIMITS.id),
+        category: capped(e.category, FEED_LIMITS.category),
+        price: capped(e.featurePrice, FEED_LIMITS.shortValue),
+        priority: capped(e.priority, FEED_LIMITS.shortValue),
         timeEstimate: num(e.timeEstimate),
-        parentFeatureId: str(e.parentFeatureId),
-        linkedFeatureId: str(e.linkedFeatureId),
-        linkedSubItemId: str(e.linkedSubItemId),
-        linkedBugId: str(e.linkedBugId),
+        parentFeatureId: capped(e.parentFeatureId, FEED_LIMITS.id),
+        linkedFeatureId: capped(e.linkedFeatureId, FEED_LIMITS.id),
+        linkedSubItemId: capped(e.linkedSubItemId, FEED_LIMITS.id),
+        linkedBugId: capped(e.linkedBugId, FEED_LIMITS.id),
         dependsOn: ids(e.dependsOn),
         links: links(e.links),
-        images: (Array.isArray(e.images) ? e.images : []).map(safeHttpUrl).filter((u): u is string => u !== null),
+        images: (Array.isArray(e.images) ? e.images.slice(0, FEED_LIMITS.listLength) : [])
+          .map(safeHttpUrl)
+          .filter((u): u is string => u !== null),
         date: isoDate(e[c.dateKey]),
         stageDates: stageDates(e.stageDates),
+        truncated,
       });
     }
   }
@@ -152,19 +192,23 @@ export function parseForgeFeed(raw: unknown): ForgeFeed {
   for (const entry of Array.isArray(root.releases) ? root.releases : []) {
     if (!entry || typeof entry !== "object") continue;
     const e = entry as Record<string, unknown>;
-    const id = str(e.id);
+    const id = capped(e.id, FEED_LIMITS.id);
     const versionNumber = str(e.versionNumber);
     if (!id || !versionNumber) continue;
     const full = str(e.name);
     // "v2.0.0 | Q4: Refinement Session (Weeks 48 -> 49)" → "Q4: Refinement Session (Weeks 48 -> 49)".
     const name = full && full.includes("|") ? full.slice(full.indexOf("|") + 1).trim() : str(e.releaseName);
+    const releaseLinks = links(e.links);
     releases.push({
       id,
-      version: /^v/i.test(versionNumber) ? versionNumber : `v${versionNumber}`,
-      name: name || null,
+      // Capped here, to the column's own length, so the value stored is the value read: a value
+      // cut only on save would never match the feed again.
+      version: (/^v/i.test(versionNumber) ? versionNumber : `v${versionNumber}`).slice(0, FEED_LIMITS.version),
+      name: name ? name.slice(0, FEED_LIMITS.releaseName).trim() || null : null,
       startDate: isoDate(e.startWeek),
       endDate: isoDate(e.endWeek),
-      links: links(e.links),
+      links: releaseLinks,
+      docUrl: (releaseLinks.find((l) => /\bdoc/i.test(l.label)) ?? releaseLinks[0])?.url ?? null,
     });
   }
   return { items, releases, skipped };

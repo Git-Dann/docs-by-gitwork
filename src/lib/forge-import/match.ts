@@ -17,11 +17,15 @@ const STOP = new Set(
   ),
 );
 
-/** Case, punctuation, spacing, "&" and a trailing platform tag (" - IOS") don't count. */
-export function normaliseTitle(s: string | null | undefined): string {
+/**
+ * Case, punctuation, spacing, "&" and a trailing platform tag (" - IOS") don't count.
+ * With `keepPlatform`, the platform tag DOES count: that's the form an exact match uses, because
+ * "Bag Management - iOS" is one platform's slice of the work, not the feature itself.
+ */
+export function normaliseTitle(s: string | null | undefined, opts: { keepPlatform?: boolean } = {}): string {
   let t = (s ?? "").normalize("NFKC").toLowerCase();
   t = t.replace(/&/g, " and ").replace(/[’‘]/g, "'");
-  t = t.replace(TRAILING_PLATFORM, "");
+  if (!opts.keepPlatform) t = t.replace(TRAILING_PLATFORM, "");
   t = t.replace(/[^a-z0-9' ]+/g, " ").replace(/'/g, "");
   return t.replace(/\s+/g, " ").trim();
 }
@@ -93,6 +97,9 @@ export function sequenceRatio(a: string, b: string): number {
 
 export type MatchKind = "exact" | "probable";
 
+/** Longest title spelling similarity is computed for (see compareTitles). */
+const SPELLING_CAP = 160;
+
 export interface TitleMatch {
   kind: MatchKind;
   score: number;
@@ -100,14 +107,26 @@ export interface TitleMatch {
 }
 
 export interface Titled {
+  /** Normalised, platform tag kept: the only form an exact match may use. */
+  x: string;
+  /** Normalised, platform tag dropped. */
   n: string;
   ns: string;
   tk: Set<string>;
 }
 
+/**
+ * Matching compares every feed item with every task (n × m), and the cost of comparing two
+ * titles grows with the product of their lengths. Feed titles are capped at parse time
+ * (FEED_LIMITS.title); task titles are capped at 200 by the validator. This cap holds the
+ * comparison bounded whatever reaches it.
+ */
+export const MATCH_TITLE_CAP = 500;
+
 export function titled(title: string): Titled {
-  const ns = strippedTitle(title);
-  return { n: normaliseTitle(title), ns, tk: titleTokens(ns) };
+  const t = title.slice(0, MATCH_TITLE_CAP);
+  const ns = strippedTitle(t);
+  return { x: normaliseTitle(t, { keepPlatform: true }), n: normaliseTitle(t), ns, tk: titleTokens(ns) };
 }
 
 function escapeRegExp(s: string): string {
@@ -116,10 +135,14 @@ function escapeRegExp(s: string): string {
 
 /** Exact, probable, or no match at all. Only "exact" is ever acted on without review. */
 export function compareTitles(a: Titled, b: Titled): TitleMatch | null {
-  if (a.n && a.n === b.n) return { kind: "exact", score: 1, why: "same title" };
+  if (a.x && a.x === b.x) return { kind: "exact", score: 1, why: "same title" };
+  // Equal only once a platform tag is dropped: one platform's slice of the work, so a person
+  // decides, never the importer.
+  if (a.n && a.n === b.n) return { kind: "probable", score: 0.995, why: "same title apart from a platform tag" };
   if (a.ns && a.ns === b.ns) return { kind: "probable", score: 0.99, why: 'same title once a prefix like "Review Item:" is removed' };
   const j = jaccard(a.tk, b.tk);
-  const r = sequenceRatio(a.ns, b.ns);
+  // Spelling similarity is for titles; past a paragraph it's both meaningless and slow.
+  const r = a.ns.length <= SPELLING_CAP && b.ns.length <= SPELLING_CAP ? sequenceRatio(a.ns, b.ns) : 0;
   const union = new Set([...a.tk, ...b.tk]).size;
   if ((j >= 0.85 && union >= 2) || (r >= 0.85 && Math.min(a.ns.length, b.ns.length) >= 8)) {
     const why = j >= 0.85 && union >= 2 ? "the same key words" : `similar spelling (${Math.round(r * 100)}%)`;

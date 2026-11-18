@@ -38,9 +38,14 @@ export const FORGE_STAGES: Record<string, StagePlacement> = {
 /** An item whose stage we don't recognise is not dropped: it goes to Future Idea and is flagged. */
 export const UNKNOWN_STAGE: StagePlacement = { status: "BACKLOG", column: "Future Idea" };
 
+/**
+ * ⚠️ Own properties only. The stage comes from someone else's feed, and a plain object lookup
+ * answers "constructor" or "__proto__" with something that isn't a placement.
+ */
 export function placementFor(stage: string): { placement: StagePlacement; known: boolean } {
-  const p = FORGE_STAGES[stage];
-  return p ? { placement: p, known: true } : { placement: UNKNOWN_STAGE, known: false };
+  return Object.hasOwn(FORGE_STAGES, stage)
+    ? { placement: FORGE_STAGES[stage], known: true }
+    : { placement: UNKNOWN_STAGE, known: false };
 }
 
 /** Column names the board must have before an import can run. */

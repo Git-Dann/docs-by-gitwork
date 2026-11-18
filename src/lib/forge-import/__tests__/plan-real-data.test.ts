@@ -36,6 +36,7 @@ function load() {
     tier: null,
     area: null,
     estimateHours: null,
+    forgeFilled: [],
   }));
   const columns = Object.values(FORGE_STAGES)
     .filter((p) => p.column)
@@ -57,6 +58,8 @@ describe.skipIf(!have)("the plan against Big Wedge's real feed and the Wedge boa
   it("acts on every exact match from the hand-checked comparison, and on nothing looser", () => {
     for (const r of report.items) {
       const i = byId.get(r.id)!;
+      // A sub-item waits (unmade, untouched) until its feature has a card; checked below.
+      if (i.action === "waiting") continue;
       if (r.verdict === "exact") {
         const touched = [i.target?.id, ...i.devLinks.map((d) => d.id)];
         expect(touched, r.id).toContain(r.matches[0].taskId);
@@ -67,6 +70,16 @@ describe.skipIf(!have)("the plan against Big Wedge's real feed and the Wedge boa
         expect(i.devLinks, r.id).toEqual([]);
       }
     }
+  });
+
+  it("only ever holds back a sub-item, and only while its feature has no card", () => {
+    const hasCard = new Set(["create", "link", "already-imported"]);
+    const waiting = plan.items.filter((x) => x.action === "waiting");
+    for (const i of waiting) {
+      expect(i.forgeType, i.forgeId).toBe("subitem");
+      expect(hasCard.has(byId.get(i.card.parentForgeId!)?.action ?? ""), i.forgeId).toBe(false);
+    }
+    expect(plan.counts.waiting).toBe(waiting.length);
   });
 
   it("puts every Live Features item in Done", () => {
