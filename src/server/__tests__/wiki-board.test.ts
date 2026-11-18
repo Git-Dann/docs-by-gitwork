@@ -104,7 +104,7 @@ vi.mock("@/server/wiki-access", () => ({
 vi.mock("@/auth", () => ({ auth: spies.staff }));
 vi.mock("@/server/rate-limit", () => ({ assertWithinRateLimit: vi.fn(async () => undefined), clientIpFrom: () => "1.2.3.4" }));
 
-import { resolveBoardWriter } from "../wiki-board-access";
+import { readBoardImageForm, resolveBoardWriter } from "../wiki-board-access";
 import {
   addBoardFeedback,
   createBoardCard,
@@ -504,5 +504,31 @@ describe("a link for one section", () => {
 
   it("the whole-wiki link carries it", () => {
     expect(scopeBoardToSection(dto, null).board.lanes).toHaveLength(1);
+  });
+});
+
+describe("an upload's size is checked before its body is read", () => {
+  const upload = (length: string | null) => {
+    const formData = vi.fn(async () => new FormData());
+    const headers = new Headers(length === null ? {} : { "content-length": length });
+    return { req: { headers, formData } as unknown as Request, formData };
+  };
+
+  it("refuses a body over the request limit without reading it", async () => {
+    const { req, formData } = upload(String(30 * 1024 * 1024));
+    await expect(readBoardImageForm(req)).rejects.toMatchObject({ status: 413 });
+    expect(formData).not.toHaveBeenCalled();
+  });
+
+  it("refuses a body that doesn't say how big it is", async () => {
+    const { req, formData } = upload(null);
+    await expect(readBoardImageForm(req)).rejects.toMatchObject({ status: 411 });
+    expect(formData).not.toHaveBeenCalled();
+  });
+
+  it("reads one within the limit", async () => {
+    const { req, formData } = upload(String(5 * 1024 * 1024));
+    await expect(readBoardImageForm(req)).rejects.toMatchObject({ status: 400 }); // empty form: no file
+    expect(formData).toHaveBeenCalled();
   });
 });

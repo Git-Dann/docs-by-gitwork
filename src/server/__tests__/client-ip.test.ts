@@ -14,7 +14,8 @@ const h = (init: Record<string, string>) => new Headers(init);
 
 describe("the client IP for rate limits", () => {
   it("uses X-Real-IP, which our proxy sets and the client can't", () => {
-    expect(clientIpFrom(h({ "x-real-ip": "203.0.113.7", "x-forwarded-for": "1.1.1.1, 203.0.113.7" }))).toBe("203.0.113.7");
+    // Behind another hop the last X-Forwarded-For entry is that hop, not the visitor.
+    expect(clientIpFrom(h({ "x-real-ip": "203.0.113.7", "x-forwarded-for": "1.1.1.1, 10.0.0.2" }))).toBe("203.0.113.7");
   });
 
   it("a leading X-Forwarded-For entry the client wrote never changes the key", () => {

@@ -1029,13 +1029,18 @@ async function prepareBoardImages(
     const name = f.name || "That image";
     const bytes = Buffer.from(f.bytes);
     try {
-      const img = sharp(bytes, { limitInputPixels: BOARD_LIMITS.imagePixels, failOn: "error" });
-      const meta = await img.metadata();
+      // The header alone: metadata() reads the size without decoding any pixels, so it needs no
+      // pixel limit (sharp's default would refuse a huge header with a less useful message).
+      const meta = await sharp(bytes, { limitInputPixels: false }).metadata();
       if (!meta.width || !meta.height) throw new BoardError(`“${name}” couldn't be read as an image.`, 400);
       if (meta.width * meta.height > BOARD_LIMITS.imagePixels) {
         throw new BoardError(`“${name}” is ${meta.width} × ${meta.height} pixels, more than the board takes. Resize it and try again.`, 400);
       }
-      const thumb = await img.rotate().resize(320, 320, { fit: "inside" }).jpeg({ quality: 80 }).toBuffer();
+      const thumb = await sharp(bytes, { limitInputPixels: BOARD_LIMITS.imagePixels, failOn: "error" })
+        .rotate()
+        .resize(320, 320, { fit: "inside" })
+        .jpeg({ quality: 80 })
+        .toBuffer();
       out.push({ name: f.name, bytes, thumb });
     } catch (err) {
       if (err instanceof BoardError) throw err;

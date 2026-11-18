@@ -102,3 +102,24 @@ describe("screenshots", () => {
     expect(checkBoardImages(0, [])).toMatchObject({ ok: false });
   });
 });
+
+describe("upload batches", () => {
+  const MB = 1024 * 1024;
+  it("splits a selection into requests under the request limit, in order, never splitting a file", async () => {
+    const { uploadBatches } = await import("../wiki-board-edit");
+    const files = [9, 9, 9, 3, 10, 10].map((n, i) => ({ name: `f${i}`, size: n * MB }));
+    const batches = uploadBatches(files);
+    // 9+9 = 18 (another 9 would be 27); 9+3+10 = 22 (another 10 would be 32); then 10.
+    expect(batches.map((b) => b.map((f) => f.name))).toEqual([["f0", "f1"], ["f2", "f3", "f4"], ["f5"]]);
+    for (const b of batches) expect(b.reduce((n, f) => n + f.size, 0)).toBeLessThanOrEqual(24 * MB);
+    expect(batches.flat()).toHaveLength(files.length);
+  });
+
+  it("one request can't carry more than the limit", async () => {
+    const { checkBoardImages } = await import("../wiki-board-edit");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const three = [1, 2, 3].map((i) => ({ name: `f${i}`, size: 9 * MB, head: png }));
+    expect(checkBoardImages(0, three)).toMatchObject({ ok: false, error: expect.stringContaining("24 MB") });
+    expect(checkBoardImages(0, three.slice(0, 2))).toMatchObject({ ok: true });
+  });
+});

@@ -10306,8 +10306,7 @@ control over the tasks basically… what he can't do is assign it to a dev."**
   archivedAt: null }`; 0 rows is a 409. Releases and "depends on" are checked against the same
   client (a client may only depend on cards they can see). An edit that changes nothing writes
   nothing.
-- **Every change is a readable entry in the card's thread**: `TaskClientFeedback.kind = "change"`
-  (no schema change), body one sentence from `describeCardChanges` + `changeSentence`
+- **Every change is a readable entry in the card's thread**: `TaskClientFeedback.kind = "change"`, body one sentence from `describeCardChanges` + `changeSentence`
   (`src/lib/wiki-board-edit.ts`, pure): "Luke changed the priority from Medium to High and set
   the due date to 4 Dec 2026." Never JSON. Change entries don't count as feedback or sign-off and
   don't count against the feedback limit. A client's edit notifies the card's people (or the
@@ -10335,10 +10334,40 @@ control over the tasks basically… what he can't do is assign it to a dev."**
   `resolveInternalBoardWriter`: `requireAuthedUser`, Developer or above, client in scope, and
   'Manage clients' to delete or restore. The internal Board lists **Deleted from the board** with
   Restore (`WikiBoardSection.deleted`, team copy only; `forPublicBoard` never sends it).
-- **Limits** (`wiki-board-limit.ts`, pure, tested): edits 120 an hour per wiki (counted from
-  change entries), screenshots 50 an hour and 200 a day per wiki (counted per file in
-  `RateLimitHit` under `board:upload:<wikiId>`), on top of the card and comment limits.
+- **Limits** (`wiki-board-limit.ts`, pure, tested), per wiki, counted in `RateLimitHit` under
+  `board:<action>:<wikiId>`: edits 120 an hour, moves 200 an hour, deletes 30 an hour / 100 a day,
+  screenshots 50 an hour / 200 a day (one hit per file), on top of the card and comment limits.
 - Demo: `/demo/wiki#board` adds (with an image), edits, deletes and restores in memory.
+
+**Security review fixes (same PR).** An independent review found these; each has a test that
+fails when the fix is reverted:
+- **Client write responses are the client's copy.** Every write a client makes answers with
+  `loadBoardCard(…, forClient)` → `publicCard`: "depends on" names only cards the client may act on.
+  It used to return the team copy, so a move or an upload leaked the titles of dev tasks the team
+  had made a card depend on, even with "Their cards only".
+- **One per-wiki lock for client writes** (`withBoardLock`: a transaction taking
+  `pg_advisory_xact_lock` via `$executeRaw`). The quota count, the hits (`consumeBoardQuota`) and
+  the write they pay for land together, so parallel requests can't all pass the same count and a
+  failed write takes its hits with it. Edits, deletes, uploads and card creates run inside it;
+  a move takes its quota under it, then moves.
+- **Uploads are all or nothing:** every image is decoded and thumbnailed before any is stored;
+  the card's room is counted again under the lock; attachments + hits + thread entry are one
+  transaction. An image whose header declares more than 40 MP (`BOARD_LIMITS.imagePixels`) is
+  refused before decoding, and the decode itself runs with `limitInputPixels`.
+- **Upload size before the body:** `readBoardImageForm` refuses on `Content-Length` (411 if
+  missing, 413 over `uploadRequestBytes` = 24 MB) before `formData()` buffers anything. nginx caps
+  bodies at 25 MB, so the form sends a big selection in batches (`uploadBatches`).
+- **Rate-limit IPs can't be spoofed:** `clientIpFrom` (`src/server/rate-limit.ts`, which Pulse's
+  copy now re-exports) uses `X-Real-IP` (nginx sets it to `$remote_addr`), else the RIGHTMOST
+  `X-Forwarded-For` hop. It used the first hop, which is whatever the client sent. This applies
+  to every rate limit in the app.
+- **A client's dependency edit keeps the team's hidden links** (`hiddenDependsOn`): the client
+  only sees, and sends, the cards they may act on.
+- **Traceable:** a client's edit stores the title/description it replaced on the change entry
+  (`TaskClientFeedback.previous`, additive; team reads only, shown as "Previous version"), and a
+  move to another column writes "Luke moved this to Live Features."
+- **Delete is one transaction** (archive, unlink, notes, thread entry). The team's Deleted list
+  shows up to 1,000 with the total, instead of a silent 50.
 
 ## 127. Recent Changes (November 2026) — Sheets is retired: its rows become Board cards
 

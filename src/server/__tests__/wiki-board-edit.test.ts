@@ -127,7 +127,17 @@ vi.mock("@/server/wiki-board-limit", () => ({
   shouldNotifyCardChange: (last: Date | null, now: Date) => !last || now.getTime() - last.getTime() >= 600_000,
 }));
 
-import { addBoardCardImages, createBoardCard, deleteBoardCard, restoreBoardCard, updateBoardCard, type BoardWriter } from "../wiki-board";
+import { crc32 } from "node:zlib";
+import {
+  addBoardCardImages,
+  createBoardCard,
+  deleteBoardCard,
+  listBoardFeedback,
+  moveBoardCard,
+  restoreBoardCard,
+  updateBoardCard,
+  type BoardWriter,
+} from "../wiki-board";
 
 const COLUMNS = [{ id: "col_ideas000", name: "Ideas", stage: "BACKLOG", isDefault: true }];
 const client: BoardWriter = { wikiId: "w1", clientId: "c1", clientSlug: "wedge", name: "Luke M.", wikiUserId: "wu1", userId: null };
@@ -357,5 +367,153 @@ describe("screenshots", () => {
 
   it("never onto a team dev task", async () => {
     await expect(addBoardCardImages(client, "dev", [{ name: "a.png", bytes: png }])).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+/* ── Security review of PR #833 (Nov 2026) ─────────────────────────────────────────────── */
+
+const prismaMock = async () => (await import("@/lib/prisma")).prisma as unknown as {
+  task: { updateMany: ReturnType<typeof vi.fn> };
+  taskAttachment: { count: ReturnType<typeof vi.fn> };
+  taskComment: { createMany: ReturnType<typeof vi.fn> };
+  taskClientFeedback: { findMany: ReturnType<typeof vi.fn> };
+};
+
+describe("what a client's write answers with", () => {
+  beforeEach(() => {
+    // The team made the card depend on one of its own dev tasks, and on a card.
+    db.tasks.find((t) => t.id === "card")!.metadata = { dependsOn: ["dev", "bug"] };
+  });
+
+  it("never names a team dev task the card depends on — edit, no-op edit, move, upload, sub-item", async () => {
+    const answers = [
+      await updateBoardCard(client, "card", { title: "Bags v2" }),
+      await updateBoardCard(client, "card", { priority: "MEDIUM" }),
+      await moveBoardCard(client, "card", { laneKey: "DONE", orderKey: 1 }),
+      await addBoardCardImages(client, "card", [{ name: "a.png", bytes: png }]),
+      await createBoardCard(client, { title: "Sub", itemType: "subitem", laneKey: "col_ideas000", parentId: "card" }),
+    ];
+    for (const card of answers) {
+      expect(card.id).toBe("card");
+      expect(card.dependsOn.map((d) => d.id)).toEqual(["bug"]);
+      expect(JSON.stringify(card)).not.toContain("Backend: rounds endpoint");
+    }
+  });
+
+  it("the team's own copy still lists it", async () => {
+    const card = await updateBoardCard(team, "card", { title: "Bags v2" });
+    expect(card.dependsOn.map((d) => d.id).sort()).toEqual(["bug", "dev"]);
+  });
+});
+
+describe("a client's dependency edit keeps the team's hidden links", () => {
+  it("adds what the client chose to the dev tasks they can't see, rather than dropping them", async () => {
+    db.tasks.find((t) => t.id === "card")!.metadata = { dependsOn: ["dev", "bug"] };
+    await updateBoardCard(client, "card", { dependsOn: ["forge"] });
+    expect((db.tasks.find((t) => t.id === "card")!.metadata as Row).dependsOn).toEqual(["forge", "dev"]);
+  });
+
+  it("re-sending what they can see is no change at all", async () => {
+    db.tasks.find((t) => t.id === "card")!.metadata = { dependsOn: ["dev", "bug"] };
+    await updateBoardCard(client, "card", { dependsOn: ["bug"] });
+    expect(db.updateManyCalls).toHaveLength(0);
+    expect(changes()).toHaveLength(0);
+  });
+});
+
+describe("what a client's edits replaced, for the team", () => {
+  it("keeps the old title and description on the change entry", async () => {
+    db.tasks.find((t) => t.id === "card")!.description = "Old words";
+    await updateBoardCard(client, "card", { title: "Bags v2", description: "New words" });
+    expect(db.feedback.at(-1)).toMatchObject({ kind: "change", previous: { title: "Bag management", description: "Old words" } });
+  });
+
+  it("the team's own edits don't store one, and only the team reads it back", async () => {
+    await updateBoardCard(team, "card", { title: "Team rename" });
+    expect(db.feedback.at(-1)!.previous).toBeUndefined();
+    const row = { id: "fb", kind: "change", body: "x", authorName: "Luke M.", authorWikiUserId: "wu1", authorUserId: null, createdAt: new Date(), previous: { title: "Old" } };
+    const { taskClientFeedback } = await prismaMock();
+    taskClientFeedback.findMany.mockResolvedValueOnce([row]).mockResolvedValueOnce([row]);
+    const [forClient] = await listBoardFeedback(client, "card");
+    const [forTeam] = await listBoardFeedback(team, "card");
+    expect(forClient.previous).toBeUndefined();
+    expect(forTeam.previous).toEqual({ title: "Old" });
+  });
+});
+
+describe("moves", () => {
+  it("a client's move to another column is recorded on the card and taken from their quota", async () => {
+    await moveBoardCard(client, "card", { laneKey: "DONE", orderKey: 1 });
+    expect(changes()).toEqual(["Luke M. moved this to Done."]);
+    expect(spies.consume).toHaveBeenCalledWith(expect.anything(), "w1", "move");
+    // Moving within the same column is a reorder: nothing to record.
+    await moveBoardCard(client, "card", { laneKey: "col_ideas000", orderKey: 2 });
+    expect(changes()).toHaveLength(1);
+  });
+
+  it("over the move limit nothing moves", async () => {
+    const tasks = await import("@/server/tasks");
+    const move = vi.mocked(tasks.moveTaskForClient);
+    move.mockClear();
+    spies.consume.mockRejectedValueOnce(Object.assign(new Error("That would be more than 200 moves"), { status: 429 }));
+    await expect(moveBoardCard(client, "card", { laneKey: "DONE", orderKey: 1 })).rejects.toMatchObject({ status: 429 });
+    expect(move).not.toHaveBeenCalled();
+  });
+});
+
+describe("deletes", () => {
+  it("a client's delete is taken from their delete quota; over it, nothing is deleted", async () => {
+    spies.consume.mockRejectedValueOnce(Object.assign(new Error("That would be more than 30 deleted cards"), { status: 429 }));
+    await expect(deleteBoardCard(client, "card")).rejects.toMatchObject({ status: 429 });
+    expect(db.tasks.find((t) => t.id === "card")!.archivedAt).toBeNull();
+    await deleteBoardCard(client, "bug");
+    expect(spies.consume).toHaveBeenLastCalledWith(expect.anything(), "w1", "delete");
+  });
+
+  it("is all or nothing: a failure part-way leaves the card, its links and its thread as they were", async () => {
+    const { taskComment } = await prismaMock();
+    taskComment.createMany.mockRejectedValueOnce(new Error("db down"));
+    await expect(deleteBoardCard(client, "card")).rejects.toThrow("db down");
+    expect(db.tasks.find((t) => t.id === "card")!.archivedAt).toBeNull();
+    expect(db.tasks.find((t) => t.id === "devlinked")!.productCardId).toBe("card");
+    expect(changes()).toHaveLength(0);
+  });
+});
+
+describe("screenshots, all or nothing", () => {
+  it("one file that isn't really an image stores nothing and counts nothing", async () => {
+    // Passes the byte sniff (PNG signature), fails to decode.
+    const fake = new Uint8Array([...png.subarray(0, 16), 1, 2, 3, 4, 5, 6, 7, 8]);
+    await expect(
+      addBoardCardImages(client, "card", [
+        { name: "good.png", bytes: png },
+        { name: "bad.png", bytes: fake },
+      ]),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(db.attachments).toHaveLength(0);
+    expect(spies.consume).not.toHaveBeenCalled();
+    expect(changes()).toHaveLength(0);
+  });
+
+  it("the card's room is counted again under the lock, so a parallel upload can't overfill it", async () => {
+    const { taskAttachment } = await prismaMock();
+    // 8 when first checked; 10 by the time the lock is held.
+    taskAttachment.count.mockResolvedValueOnce(8).mockResolvedValueOnce(10);
+    await expect(addBoardCardImages(client, "card", [{ name: "a.png", bytes: png }])).rejects.toMatchObject({ status: 400 });
+    expect(db.attachments).toHaveLength(0);
+    expect(spies.consume).not.toHaveBeenCalled();
+  });
+
+  it.each([7_000, 20_000])("an image declaring %i × %i pixels is refused from its header, before it is decoded", async (n) => {
+    // 7,000² (49 MP) is under sharp's own default limit, so only the board's limit stops it.
+    const bomb = Buffer.from(png);
+    bomb.writeUInt32BE(n, 16); // IHDR width
+    bomb.writeUInt32BE(n, 20); // IHDR height
+    bomb.writeUInt32BE(crc32(bomb.subarray(12, 29)), 29); // keep the chunk valid
+    await expect(addBoardCardImages(client, "card", [{ name: "huge.png", bytes: new Uint8Array(bomb) }])).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining(`${n} × ${n} pixels`),
+    });
+    expect(db.attachments).toHaveLength(0);
   });
 });
