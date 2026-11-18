@@ -36,6 +36,7 @@ export function renderForgePlanMarkdown(plan: ForgePlan, opts: { title?: string;
     `| Sub-items waiting for their feature's card | ${c.waiting} |`,
     `| Skipped in review | ${c.skip} |`,
     `| Releases to create | ${c.releasesToCreate} |`,
+    `| Screenshots to copy onto cards | ${c.imagesToCopy ?? 0} |`,
     "",
   );
   if (c.unknownStages) L.push(`⚠️ ${c.unknownStages} item(s) have a stage we don't recognise and would go in Future Idea.`, "");

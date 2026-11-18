@@ -18,6 +18,7 @@ import type { BoardColumnDef } from "@/lib/tasks/board-columns";
 import { columnNameKey } from "@/lib/tasks/board-columns";
 import type { TaskPriority, TaskStatus } from "@/types/tasks";
 import type { ForgeFeed, ForgeItem, ForgeItemType, ForgeRelease } from "./feed";
+import { isFetchableImageUrl } from "./images";
 import { compareTitles, titled, type MatchKind, type Titled } from "./match";
 import { placementFor, requiredColumns } from "./stages";
 
@@ -47,6 +48,8 @@ export interface BoardTask {
    * again: a value the team CLEARED stays cleared.
    */
   forgeFilled: string[];
+  /** Source URLs of the images already copied onto this task (metadata.forge.images). */
+  forgeImages?: string[];
 }
 
 export interface BoardRelease {
@@ -140,6 +143,8 @@ export interface ForgePlan {
     devLinks: number;
     waiting: number;
     releasesToCreate: number;
+    /** Screenshots on the items that aren't on their card yet (copied after the import). */
+    imagesToCopy: number;
     unknownStages: number;
     skippedFromFeed: number;
   };
@@ -534,6 +539,13 @@ export function buildForgePlan(input: {
   }
 
   const count = (a: PlanAction) => items.filter((i) => i.action === a).length;
+  const feedById = new Map(feed.items.map((i) => [i.id, i]));
+  const imagesToCopy = items.reduce((n, i) => {
+    if (i.action !== "create" && i.action !== "link" && i.action !== "already-imported") return n;
+    const copied = new Set((i.target ? taskById.get(i.target.id)?.forgeImages : undefined) ?? []);
+    const urls = new Set((feedById.get(i.forgeId)?.images ?? []).filter((u) => isFetchableImageUrl(u) && !copied.has(u)));
+    return n + urls.size;
+  }, 0);
   return {
     counts: {
       considered: feed.items.length,
@@ -545,6 +557,7 @@ export function buildForgePlan(input: {
       devLinks: items.reduce((n, i) => n + i.devLinks.length, 0),
       waiting: count("waiting"),
       releasesToCreate: releases.filter((r) => !r.existingId).length,
+      imagesToCopy,
       unknownStages,
       skippedFromFeed: feed.skipped,
     },

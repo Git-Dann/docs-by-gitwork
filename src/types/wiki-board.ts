@@ -30,6 +30,11 @@ export interface WikiBoardCard {
   feedbackCount: number;
   description: string | null;
   subtasks: Array<{ title: string; done: boolean }>;
+  /**
+   * The card's image attachments (ids), oldest first: screenshots from the client's planning tool
+   * or added by the team. Cards the client may act on only; a dev task's are never sent.
+   */
+  images: string[];
   /** A product card (has an item type). The board shows cards by default; dev tasks on request. */
   isCard: boolean;
   /** Added by the client from their board. */

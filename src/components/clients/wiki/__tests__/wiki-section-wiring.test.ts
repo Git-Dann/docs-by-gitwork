@@ -391,6 +391,15 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
     "app/api/wiki/[token]/board/tasks/[taskId]/move/route.ts",
     "app/api/wiki/[token]/board/tasks/[taskId]/feedback/route.ts",
   ];
+  /** Read-only: a card's image. Same access check as the writes, but no body and nothing written. */
+  const readRoutes = ["app/api/wiki/[token]/board/tasks/[taskId]/images/[attachmentId]/route.ts"];
+
+  it.each(readRoutes)("%s only reads (GET), behind the same access check", (rel) => {
+    const src = read(rel);
+    expect(src).toMatch(/export async function GET/);
+    expect(src).not.toMatch(/export async function (POST|PATCH|PUT|DELETE)/);
+    expect(src).toContain("resolveBoardWriter(req, token)");
+  });
 
   it.each(routes)("%s resolves the writer + rate-limits before reading the body", (rel) => {
     const src = read(rel);
@@ -403,7 +412,7 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
   it("every handler under the board's token routes resolves the writer first", () => {
     const dir = join(ROOT, "app/api/wiki/[token]/board");
     const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
-    expect(files.length).toBe(routes.length);
+    expect(files.length).toBe(routes.length + readRoutes.length);
     for (const f of files) {
       const src = readFileSync(join(dir, f), "utf8");
       const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];

@@ -34,7 +34,7 @@ const HEADER_H = 56;
 const ROW_H = 40;
 
 /** The bar and rail tones per card type: the same families as the type chips on the Board. */
-const BAR_TONE: Record<string, string> = {
+export const BAR_TONE: Record<string, string> = {
   feature: "border-blue-200 bg-blue-50 text-blue-700",
   subitem: "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-2)]",
   bug: "border-red-200 bg-red-50 text-red-700",
@@ -46,7 +46,7 @@ const RAIL_TONE: Record<string, string> = {
   bug: "text-red-700",
   feedback: "text-amber-700",
 };
-const DEV_TONE = "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]";
+export const DEV_TONE = "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]";
 
 function typeKey(c: WikiBoardCard): string {
   return c.isCard && isItemType(c.itemType) ? c.itemType : "dev";

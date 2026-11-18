@@ -254,16 +254,16 @@ export const demoBoardTasks: TaskDTO[] = [
   mkTask({ id: "t21", release: REL.v150, title: "Analytics dashboard loading skeletons", clientSlug: "northwind", status: "DONE", completedAt: atDays(-8) }),
   // Product cards (CLAUDE.md §124): what the client plans, with the dev tasks above linked
   // to the card they deliver. The dev tasks stay where they are on the board.
-  mkTask({ id: "c1", release: REL.v140, title: "Saved searches", clientSlug: "northwind", status: "DOING", priority: "HIGH", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Search & discovery", estimateHours: 24 } }),
-  mkTask({ id: "c2", release: REL.v140, title: "Search paging breaks on iOS", clientSlug: "northwind", status: "IN_REVIEW", priority: "HIGH", unassigned: true, card: { itemType: "bug", area: "Search & discovery" } }),
-  mkTask({ id: "c3", title: "Let users pin a favourite report", clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
+  mkTask({ id: "c1", release: REL.v140, title: "Saved searches", dueDate: atDays(4), clientSlug: "northwind", status: "DOING", priority: "HIGH", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Search & discovery", estimateHours: 24 } }),
+  mkTask({ id: "c2", release: REL.v140, title: "Search paging breaks on iOS", dueDate: atDays(1), clientSlug: "northwind", status: "IN_REVIEW", priority: "HIGH", unassigned: true, card: { itemType: "bug", area: "Search & discovery" } }),
+  mkTask({ id: "c3", title: "Let users pin a favourite report", dueDate: atDays(-3), clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
   // More cards across the releases, so the Board's Timeline has a real shape: one release under
   // way, one done, one ahead, with each card type.
   mkTask({ id: "c4", release: REL.v140, title: "Search suggestions as you type", clientSlug: "northwind", status: "DONE", unassigned: true, completedAt: atDays(-2), card: { itemType: "feature", tier: "free", area: "Search & discovery" } }),
   mkTask({ id: "c5", release: REL.v140, title: "Recent searches list", clientSlug: "northwind", status: "DONE", unassigned: true, completedAt: atDays(-1), card: { itemType: "subitem", area: "Search & discovery" } }),
-  mkTask({ id: "c6", release: REL.v150, title: "Weekly usage report", clientSlug: "northwind", status: "TODO", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Analytics" } }),
-  mkTask({ id: "c7", release: REL.v150, title: "Charts are blank in Safari 17", clientSlug: "northwind", status: "BACKLOG", priority: "HIGH", unassigned: true, card: { itemType: "bug", area: "Analytics" } }),
-  mkTask({ id: "c8", release: REL.v150, title: "Export chart as image", clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
+  mkTask({ id: "c6", release: REL.v150, title: "Weekly usage report", dueDate: atDays(9), clientSlug: "northwind", status: "TODO", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Analytics" } }),
+  mkTask({ id: "c7", release: REL.v150, title: "Charts are blank in Safari 17", dueDate: atDays(0), clientSlug: "northwind", status: "BACKLOG", priority: "HIGH", unassigned: true, card: { itemType: "bug", area: "Analytics" } }),
+  mkTask({ id: "c8", release: REL.v150, title: "Export chart as image", dueDate: atDays(12), clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
   mkTask({ id: "c9", release: REL.v200, title: "Offline mode for saved reports", clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feature", tier: "scoping", area: "Mobile" } }),
 ];
 // Which dev tasks deliver which card.
@@ -4228,6 +4228,8 @@ let demoBoardColumns: BoardColumnDef[] = [
 let demoBoardEnabled = true;
 /** The team's "show all tasks to the client" switch, in memory like the rest of the demo board. */
 let demoBoardShowAllTasks = false;
+/** Demo screenshots on cards. A path rather than an attachment id: the demo has no database to serve one from. */
+const demoBoardImages = new Map<string, string[]>([["c1", ["/demo/board-screenshot.png"]]]);
 
 /** The demo's client feedback, per task. Seeded so the thread and the sign-off chips show. */
 const demoBoardFeedback = new Map<string, WikiBoardFeedback[]>([
@@ -4271,6 +4273,7 @@ function demoBoardCard(t: TaskDTO, cols: BoardColumnDef[]): WikiBoardCard {
     // Same rule as the server (`descriptionsFor`): a dev task's description never reaches the board.
     description: isCard || addedByClient ? t.description : null,
     subtasks: [],
+    images: isCard || addedByClient ? (demoBoardImages.get(t.id) ?? []) : [],
     isCard,
     addedByClient,
     updatedAt: t.updatedAt,

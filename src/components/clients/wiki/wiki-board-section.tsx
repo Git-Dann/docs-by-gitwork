@@ -35,6 +35,7 @@ import { Markdown } from "@/lib/markdown";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { WikiBoardTimeline } from "@/components/clients/wiki/wiki-board-timeline";
+import { WikiBoardCalendar } from "@/components/clients/wiki/wiki-board-calendar";
 import { useToast } from "@/components/ui/toast";
 import { CardProgressChip, ItemTypeChip, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
 import { ITEM_TYPE_LABELS, isItemType } from "@/lib/tasks/product-cards";
@@ -55,6 +56,7 @@ import {
   useBoardRefresh,
   useSendBoardFeedback,
   useSetWikiBoardShowAllTasks,
+  boardImageUrl,
   type BoardTarget,
 } from "@/hooks/use-wiki-board";
 import { TASK_PRIORITY_LABELS, type TaskPriority } from "@/types/tasks";
@@ -131,8 +133,9 @@ export function WikiBoardSectionView({
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null); // lane key, or "" for the toolbar
   const [phoneLane, setPhoneLane] = useState<string>(section.lanes[0]?.key ?? "");
-  // The same cards two ways: columns (the Board) or releases on a calendar (the Timeline).
-  const [view, setView] = useState<"board" | "timeline">("board");
+  // The same cards three ways: columns (the Board), releases over time (the Timeline), or by
+  // date (the Calendar).
+  const [view, setView] = useState<"board" | "timeline" | "calendar">("board");
 
   const visible = useMemo(() => {
     let list =
@@ -215,6 +218,7 @@ export function WikiBoardSectionView({
           options={[
             { value: "board", label: "Board" },
             { value: "timeline", label: "Timeline" },
+            { value: "calendar", label: "Calendar" },
           ]}
         />
         {/* Toolbar: narrowing down on the left, actions on the right; wraps on a phone. */}
@@ -303,6 +307,14 @@ export function WikiBoardSectionView({
         ) : null}
         {view === "timeline" ? (
           <WikiBoardTimeline
+            cards={visible}
+            releases={section.releases}
+            readOnly={(c) => (audience === "client" || mode === "client") && !clientMayActOn(c)}
+            onOpen={setOpenId}
+          />
+        ) : null}
+        {view === "calendar" ? (
+          <WikiBoardCalendar
             cards={visible}
             releases={section.releases}
             readOnly={(c) => (audience === "client" || mode === "client") && !clientMayActOn(c)}
@@ -526,9 +538,10 @@ function CardFace({ card, onOpen, readOnly = false }: { card: WikiBoardCard; onO
       data-board-card={card.id}
       data-board-readonly={readOnly ? "" : undefined}
       className={cn(
-        // One even border. The type chip (Bug in red) says what the card is; a coloured stroke
-        // down one side is decoration Dan has ruled out (Nov 2026).
-        "block w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-2.5 text-left shadow-[var(--shadow-xs)] transition-colors hover:border-[var(--border-1)]",
+        // A coloured stroke down the left says what the card is at a glance. It's a straight line:
+        // the left corners are square so it never bends round a rounded corner (Dan, Nov 2026).
+        "block w-full rounded-l-none rounded-r-[8px] border border-l-[3px] border-[var(--border-2)] bg-[var(--surface-0)] p-2.5 text-left shadow-[var(--shadow-xs)] transition-colors hover:border-y-[var(--border-1)] hover:border-r-[var(--border-1)]",
+        card.itemType === "bug" ? "border-l-red-500" : card.isCard ? "border-l-[var(--brand-500)]" : "border-l-[var(--border-1)]",
       )}
     >
       <span className="flex flex-wrap items-center gap-1">
@@ -691,6 +704,31 @@ function CardDetail({
           ) : (
             <p className="text-[13px] text-[var(--text-4)]">No description.</p>
           )}
+          {card.images.length ? (
+            <div>
+              <p className="widget-data-label text-[var(--text-4)]">Images</p>
+              <div className="mt-1.5 grid grid-cols-3 gap-2">
+                {card.images.map((img, i) => (
+                  <a
+                    key={img}
+                    href={boardImageUrl(target, card.id, img, false)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block overflow-hidden rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] hover:border-[var(--border-1)]"
+                    title="Open the full image"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={boardImageUrl(target, card.id, img, true)}
+                      alt={`Image ${i + 1} on ${card.title}`}
+                      loading="lazy"
+                      className="aspect-[4/3] w-full object-cover"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {card.subtasks.length ? (
             <div>
               <p className="widget-data-label text-[var(--text-4)]">Sub-items</p>

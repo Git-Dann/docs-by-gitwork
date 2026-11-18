@@ -106,6 +106,20 @@ async function descriptionsFor(rows: TaskRow[]): Promise<Map<string, string | nu
   return new Map(found.map((r) => [r.id, r.description]));
 }
 
+/** Image attachment ids for the same cards `descriptionsFor` covers, oldest first. One query. */
+async function imagesFor(rows: TaskRow[]): Promise<Map<string, string[]>> {
+  const ids = rows.filter((r) => clientMayActOn({ isCard: isProductCard(r), addedByClient: addedByClient(r.metadata) })).map((r) => r.id);
+  if (!ids.length) return new Map();
+  const found = await prisma.taskAttachment.findMany({
+    where: { taskId: { in: ids } },
+    select: { id: true, taskId: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const out = new Map<string, string[]>();
+  for (const a of found) out.set(a.taskId, [...(out.get(a.taskId) ?? []), a.id]);
+  return out;
+}
+
 function addedByClient(metadata: unknown): boolean {
   return Boolean(metadata && typeof metadata === "object" && "createdByClient" in (metadata as Record<string, unknown>));
 }
@@ -125,6 +139,8 @@ interface CardContext {
   progress: Map<string, TaskStatus[]>;
   /** Cards' descriptions only (`descriptionsFor`); a dev task has none here. */
   descriptions: Map<string, string | null>;
+  /** Cards' image attachment ids only (`imagesFor`); a dev task has none here. */
+  images: Map<string, string[]>;
 }
 
 function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
@@ -149,6 +165,7 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     feedbackCount: entries.length,
     description: ctx.descriptions.get(row.id) ?? null,
     subtasks: row.subtasks.map((s) => ({ title: s.title, done: s.status === "DONE" })),
+    images: ctx.images.get(row.id) ?? [],
     isCard,
     addedByClient: addedByClient(row.metadata),
     updatedAt: row.updatedAt.toISOString(),
@@ -164,7 +181,7 @@ async function cardContext(
 ): Promise<CardContext & { releases: Array<{ id: string; label: string; startDate: Date | null; endDate: Date | null }> }> {
   const ids = rows.map((r) => r.id);
   const cardIds = rows.filter((r) => isProductCard(r)).map((r) => r.id);
-  const [releaseRows, feedbackRows, linked, descriptions] = await Promise.all([
+  const [releaseRows, feedbackRows, linked, descriptions, images] = await Promise.all([
     prisma.clientRelease.findMany({
       where: { clientId },
       select: { id: true, version: true, name: true, startDate: true, endDate: true, orderKey: true },
@@ -183,6 +200,7 @@ async function cardContext(
         })
       : Promise.resolve([]),
     descriptionsFor(rows),
+    imagesFor(rows),
   ]);
   const releases = sortReleases(releaseRows).map((r) => ({
     id: r.id,
@@ -210,6 +228,7 @@ async function cardContext(
     feedback,
     progress,
     descriptions,
+    images,
   };
 }
 
@@ -310,6 +329,7 @@ function publicCard(c: WikiBoardCard): WikiBoardCard {
     feedbackCount: c.feedbackCount,
     description: c.description,
     subtasks: c.subtasks,
+    images: c.images,
     isCard: c.isCard,
     addedByClient: c.addedByClient,
     updatedAt: c.updatedAt,
@@ -336,6 +356,7 @@ function titleOnlyCard(c: WikiBoardCard): WikiBoardCard {
     feedbackCount: 0,
     description: null,
     subtasks: [],
+    images: [],
     isCard: false,
     addedByClient: false,
     updatedAt: c.updatedAt,
@@ -567,6 +588,27 @@ const FEEDBACK_SELECT = {
   authorUserId: true,
   createdAt: true,
 } as const satisfies Prisma.TaskClientFeedbackSelect;
+
+/**
+ * One of a card's images, for the client's Board. The same rule as the thread: only a card the
+ * client may act on (a product card or one they added), only that card's own attachment.
+ */
+export async function boardCardImage(
+  writer: BoardWriter,
+  taskId: string,
+  attachmentId: string,
+  variant: "full" | "thumb",
+): Promise<{ bytes: Buffer; mime: string }> {
+  const task = await loadOwnTask(writer.clientId, taskId);
+  assertClientMayAct(writer, task);
+  const row = await prisma.taskAttachment.findFirst({
+    where: { id: attachmentId, taskId: task.id },
+    select: { image: true, thumb: true, mime: true },
+  });
+  if (!row) throw new BoardError("Not found", 404);
+  if (variant === "thumb" && row.thumb) return { bytes: Buffer.from(row.thumb), mime: "image/jpeg" };
+  return { bytes: Buffer.from(row.image), mime: row.mime };
+}
 
 export async function listBoardFeedback(writer: BoardWriter, taskId: string): Promise<WikiBoardFeedback[]> {
   const task = await loadOwnTask(writer.clientId, taskId);
