@@ -47,6 +47,7 @@ function taskListResponse(task: TaskDTO): TaskDTO {
     externalRef: task.externalRef,
     productCard: task.productCard,
     cardProgress: task.cardProgress,
+    clientSignOff: task.clientSignOff,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   };

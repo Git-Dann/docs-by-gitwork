@@ -107,6 +107,11 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         label: "Client request",
         description: "A client submitted a request/task in their wiki for review.",
       },
+      {
+        id: "tasks.client_feedback",
+        label: "Client feedback",
+        description: "A client left feedback on a card on their Board, or approved it or asked for changes.",
+      },
     ],
   },
   {

@@ -41,6 +41,7 @@ export const NOTIFICATION_EVENTS = [
   "tasks.mentioned",
   "tasks.blocker_response",
   "tasks.client_request",
+  "tasks.client_feedback",
   // Backstage
   "backstage.leave_submitted",
   "backstage.leave_decided",
@@ -102,6 +103,7 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   "tasks.mentioned": ["inApp", "push"],
   "tasks.blocker_response": ["inApp", "push"],
   "tasks.client_request": ["inApp", "push"],
+  "tasks.client_feedback": ["inApp", "push"],
   "backstage.leave_submitted": ["inApp", "email"],
   "backstage.leave_decided": ["inApp", "push"],
   "backstage.expense_submitted": ["inApp", "email"],

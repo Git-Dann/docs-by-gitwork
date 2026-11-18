@@ -67,10 +67,11 @@ const SECTIONS = [
   { id: "platforms", label: "Platforms" },
   { id: "comparisons", label: "Comparisons" },
   { id: "sheets", label: "Sheets" },
+  { id: "board", label: "Board" },
 ] as const;
 
 /** Sections the CLIENT can write to — they have a token route, under the hardened posture. */
-const CLIENT_WRITABLE = new Set<string>(["sheets"]);
+const CLIENT_WRITABLE = new Set<string>(["sheets", "board"]);
 
 describe.each(SECTIONS)("$label — the twelve parallel allow-lists", ({ id, label }) => {
   const sidebar = read("components/clients/wiki/wiki-sidebar.tsx");
@@ -251,6 +252,13 @@ describe("wiki-client-visibility.ts — each availableSections predicate has its
     expect(available).toContain("wiki.sheets.sheets.some((s) => s.columns.length > 0)");
   });
 
+  it("board — enabled AND at least one card on it", () => {
+    // Enabled-and-empty would show the client a board of empty columns, which reads as
+    // "nothing is planned".
+    expect(available).toContain("wiki.board.enabled");
+    expect(available).toContain("wiki.board.lanes.some((l) => l.total.cards + l.total.other > 0)");
+  });
+
   it("platforms — enabled AND at least one platform", () => {
     expect(available).toContain("wiki.clientPlatforms.enabled");
     expect(available).toContain("wiki.clientPlatforms.platforms.length > 0");
@@ -374,6 +382,53 @@ describe("sheets — the one section the client writes to, and how", () => {
     const access = read("server/wiki-sheets-access.ts");
     expect(access).toContain("assertCan(user, canManageClients, action)");
     expect(access).toContain("assertClientAccessBySlug(user, slug)");
+  });
+});
+
+describe("board — the client moves, adds and signs off cards, and how", () => {
+  const routes = [
+    "app/api/wiki/[token]/board/tasks/route.ts",
+    "app/api/wiki/[token]/board/tasks/[taskId]/move/route.ts",
+    "app/api/wiki/[token]/board/tasks/[taskId]/feedback/route.ts",
+  ];
+
+  it.each(routes)("%s resolves the writer + rate-limits before reading the body", (rel) => {
+    const src = read(rel);
+    expect(src).toContain("resolveBoardWriter(req, token)");
+    expect(src).toContain("assertBoardWriteRate(req)");
+    expect(src.indexOf("resolveBoardWriter(")).toBeLessThan(src.indexOf("await req.json()"));
+    expect(src.indexOf("assertBoardWriteRate(")).toBeLessThan(src.indexOf("await req.json()"));
+  });
+
+  it("every handler under the board's token routes resolves the writer first", () => {
+    const dir = join(ROOT, "app/api/wiki/[token]/board");
+    const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
+    expect(files.length).toBe(routes.length);
+    for (const f of files) {
+      const src = readFileSync(join(dir, f), "utf8");
+      const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];
+      const gates = src.match(/await resolveBoardWriter\(req, token\)/g) ?? [];
+      expect(gates.length, `${f}: every handler must resolve the writer`).toBe(handlers.length);
+    }
+  });
+
+  it("the writer resolver checks the section flag, the share link's section and the sign-in", () => {
+    const src = read("server/wiki-board-access.ts");
+    expect(src).toContain("boardEnabled");
+    expect(src).toContain('onlySection !== "board"');
+    expect(src).toContain("resolveWikiAccessUser(wiki.id, cookieValue)");
+  });
+
+  it("every write is scoped to the wiki's own client (a card from another client is a 404)", () => {
+    const src = read("server/wiki-board.ts");
+    expect(src).toContain("where: { id: taskId, clientId, parentId: null, archivedAt: null }");
+  });
+
+  it("the client's copy is cut by forPublicBoard, and the section loads through settle()", () => {
+    const wiki = read("server/wiki.ts");
+    const fn = wiki.slice(wiki.indexOf("function forPublic("), wiki.indexOf("export async function resolvePublicWiki"));
+    expect(fn).toContain("board: forPublicBoard(dto.board)");
+    expect(wiki).toContain('settle("board", () => loadWikiBoard(wiki.clientId), EMPTY_BOARD)');
   });
 });
 

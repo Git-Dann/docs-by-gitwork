@@ -32,6 +32,7 @@ export const SECTION_GROUP = {
   meetings: "overview",
 
   intake: "together",
+  board: "together",
   launchpad: "together",
   support: "together",
   "course-requests": "together",
@@ -85,6 +86,7 @@ export const SECTION_BLURB: Record<GroupedWikiSection, string> = {
   roundup: "Weekly progress write-up",
   meetings: "Shared meeting notes",
   intake: "Bugs, feedback and requests",
+  board: "Product cards to move and sign off",
   launchpad: "What we need from the client",
   support: "Care figures, month by month",
   "course-requests": "Golf course requests",

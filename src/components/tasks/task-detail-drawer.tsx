@@ -43,6 +43,7 @@ import { useAccount } from "@/hooks/use-account";
 import { getClientMeeting, type ScribeMeeting } from "@/lib/api";
 import { releaseLabel } from "@/lib/tasks/releases";
 import { CardPicker, CardProgressChip, ItemTypeChip, TierChip } from "@/components/tasks/product-card-parts";
+import { ClientFeedbackSection } from "@/components/tasks/client-feedback-section";
 import { isProductCard } from "@/lib/tasks/product-cards";
 import Link from "next/link";
 
@@ -611,6 +612,8 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
               ) : null}
 
               {isProductCard(task) ? <DevTasksSection card={task} /> : null}
+
+              <ClientFeedbackSection task={task} alwaysShow={isProductCard(task) || Boolean(task.clientSignOff)} />
 
               {/* Subtasks */}
               <div>

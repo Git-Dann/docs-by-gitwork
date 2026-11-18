@@ -82,6 +82,11 @@ export function clientVisibleSections(wiki: WikiDTO): WikiSection[] {
     ...(wiki.sheets.enabled && wiki.sheets.sheets.some((s) => s.columns.length > 0)
       ? (["sheets"] as const)
       : []),
+    // The Board needs at least one card. Enabled-and-empty would show the client a board of
+    // empty columns, which reads as "nothing is planned".
+    ...(wiki.board.enabled && wiki.board.lanes.some((l) => l.total.cards + l.total.other > 0)
+      ? (["board"] as const)
+      : []),
     // RoundUp needs a breakdown to summarise. Enabled-and-empty would land a client on
     // "nothing to report", which reads as a broken link rather than as work not started.
     ...(wiki.roundupEnabled && wiki.timeline.blocks.length > 0 ? (["roundup"] as const) : []),

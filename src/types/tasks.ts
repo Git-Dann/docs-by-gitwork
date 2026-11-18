@@ -144,6 +144,9 @@ export type TaskDTO = {
   productCard: TaskCardRef | null;
   /** On a card: progress of its linked dev tasks. Null on a dev task, or a card with none linked. */
   cardProgress: { linked: number; done: number; doing: number } | null;
+  /** The client's sign-off from their wiki Board, derived from their latest Approved / Changes
+   *  needed (src/lib/wiki-board.ts). Null when they haven't signed it off either way. */
+  clientSignOff: "approved" | "changes_requested" | null;
   createdAt: string;
   updatedAt: string;
 };

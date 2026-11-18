@@ -1,0 +1,118 @@
+/**
+ * The client's Board in their wiki: a Kanban of their product cards, grouped by release, that
+ * they can move, add to and sign off. Pure: the server, the client and the demo use these rules.
+ *
+ * Big Wedge planned on their own site (Luke's "Forge" board, Nov 2026) and wanted Foundry to be
+ * the single place the plan lives. The board is the same task board the team works from, so a
+ * card the client adds is a real task the devs see at once: nothing to copy across, nothing lost.
+ *
+ * Three rules worth knowing:
+ *   - Sign-off is DERIVED from the latest Approved / Changes needed entry, never stored on the
+ *     task. A later "Changes needed" therefore replaces an earlier "Approved" with no flag to
+ *     forget to clear, and a plain comment never changes it.
+ *   - The client can move a card between any lanes EXCEPT into or out of Done. Marking work
+ *     live, or reopening it, is the team's decision: it drives standups, Foreman and the
+ *     client's own Delivery figures.
+ *   - The client adds cards only to the early lanes (Backlog and To do stages), so a card they
+ *     add is always something waiting to be looked at, never work claimed to be in progress.
+ */
+
+import type { TaskStatus } from "@/types/tasks";
+
+export const FEEDBACK_KINDS = ["comment", "approved", "changes_requested"] as const;
+export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
+
+export function isFeedbackKind(v: unknown): v is FeedbackKind {
+  return typeof v === "string" && (FEEDBACK_KINDS as readonly string[]).includes(v);
+}
+
+/** The item types a client may create from the board. Sub-items come from the team. */
+export const CLIENT_CARD_TYPES = ["feature", "bug", "feedback"] as const;
+export type ClientCardType = (typeof CLIENT_CARD_TYPES)[number];
+
+export function isClientCardType(v: unknown): v is ClientCardType {
+  return typeof v === "string" && (CLIENT_CARD_TYPES as readonly string[]).includes(v);
+}
+
+export const BOARD_LIMITS = {
+  title: 200,
+  description: 10_000,
+  feedback: 4_000,
+  links: 10,
+  /** Done lanes show the newest this-many cards, then "+N more". */
+  doneLaneCards: 50,
+} as const;
+
+export type SignOff = "approved" | "changes_requested" | null;
+
+/**
+ * A card's sign-off: the most recent Approved or Changes needed entry wins. Comments don't
+ * count, so a client saying "thanks" after approving doesn't un-approve it.
+ */
+export function deriveSignOff(entries: ReadonlyArray<{ kind: string; createdAt: Date | string }>): SignOff {
+  let latest: { kind: string; t: number } | null = null;
+  for (const e of entries) {
+    if (e.kind !== "approved" && e.kind !== "changes_requested") continue;
+    const t = new Date(e.createdAt).getTime();
+    if (!latest || t >= latest.t) latest = { kind: e.kind, t };
+  }
+  return (latest?.kind as SignOff) ?? null;
+}
+
+export const SIGN_OFF_LABELS: Record<Exclude<SignOff, null>, string> = {
+  approved: "Approved",
+  changes_requested: "Changes needed",
+};
+
+/** Lanes a client may add a card to: the early stages, where new work waits to be looked at. */
+export function clientCanAddToStage(stage: TaskStatus): boolean {
+  return stage === "BACKLOG" || stage === "TODO";
+}
+
+/**
+ * Why a client can't make this move, as a sentence, or null when they can. Moving within Done,
+ * or between lanes that aren't Done, is fine; crossing the Done line is the team's call.
+ */
+export function clientMoveRefusal(from: TaskStatus, to: TaskStatus): string | null {
+  if (from === to) return null;
+  if (to === "DONE") return "Only Gitwork can mark a card as live. Leave feedback or approve it instead.";
+  if (from === "DONE") return "This card is live. Leave feedback on it and Gitwork will reopen it if needed.";
+  return null;
+}
+
+/**
+ * What the feedback composer needs before it can send. A comment needs words; "Changes needed"
+ * needs to say what to change, or the team has nothing to act on; "Approved" can stand alone.
+ */
+export function feedbackRefusal(kind: FeedbackKind, body: string | null | undefined): string | null {
+  const text = body?.trim() ?? "";
+  if (text.length > BOARD_LIMITS.feedback) return `Keep it under ${BOARD_LIMITS.feedback.toLocaleString("en-GB")} characters.`;
+  if (kind === "comment" && !text) return "Write something first.";
+  if (kind === "changes_requested" && !text) return "Say what needs changing, so the team knows what to do.";
+  return null;
+}
+
+/** "Hassaan B." — what the client sees of who's on a card. Never an email or full surname. */
+export function shortPersonName(name: string | null | undefined): string | null {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return null;
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
+}
+
+/**
+ * Links a client attaches to a card are stored as markdown lines under the description, so they
+ * render with the same safe renderer as the rest of it. Only http(s) links are kept.
+ */
+export function cardDescription(description: string | null | undefined, links: readonly string[]): string | null {
+  const text = description?.trim() ?? "";
+  // `[label](url)`: the one link form the shared renderer (src/lib/markdown.tsx) draws. A `]` or
+  // `)` in the label would end it early, so they're dropped from the label (the URL is intact).
+  // The URL itself can't contain `)` or whitespace there either, so those are percent-encoded.
+  const lines = links.map((l) => {
+    const href = l.replace(/\(/g, "%28").replace(/\)/g, "%29").replace(/\s/g, "%20");
+    return `- [${l.replace(/^https?:\/\//, "").replace(/[\]()]/g, "")}](${href})`;
+  });
+  const out = [text, lines.length ? `Links:\n${lines.join("\n")}` : ""].filter(Boolean).join("\n\n");
+  return out || null;
+}

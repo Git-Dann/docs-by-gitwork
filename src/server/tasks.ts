@@ -5,6 +5,7 @@
 // assigned to. Mirrors the Backstage server-module conventions.
 
 import type { Prisma } from "@prisma/client";
+import { deriveSignOff } from "@/lib/wiki-board";
 import { prisma } from "@/lib/prisma";
 import { bytesForPrisma } from "@/lib/prisma-bytes";
 import {
@@ -127,6 +128,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     // Title and progress are filled in by attachCardInfo (one query each per list).
     productCard: row.productCardId ? { id: row.productCardId, title: "", itemType: null } : null,
     cardProgress: null,
+    clientSignOff: null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -178,6 +180,7 @@ function taskListDTO(task: TaskDTO): TaskDTO {
     externalRef: task.externalRef,
     productCard: task.productCard,
     cardProgress: task.cardProgress,
+    clientSignOff: task.clientSignOff,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   };
@@ -300,8 +303,9 @@ async function attachScribeSources<T extends TaskDTO>(
 async function attachCardInfo<T extends TaskDTO>(workspaceId: string, tasks: T[]): Promise<T[]> {
   const cardIds = [...new Set(tasks.map((t) => t.productCard?.id).filter((x): x is string => Boolean(x)))];
   const ownCardIds = tasks.filter((t) => isProductCard(t)).map((t) => t.id);
-  if (cardIds.length === 0 && ownCardIds.length === 0) return tasks;
-  const [cards, counts] = await Promise.all([
+  const allIds = tasks.map((t) => t.id);
+  if (allIds.length === 0) return tasks;
+  const [cards, counts, signOffs] = await Promise.all([
     cardIds.length
       ? prisma.task.findMany({
           where: { id: { in: cardIds }, workspaceId },
@@ -315,7 +319,19 @@ async function attachCardInfo<T extends TaskDTO>(workspaceId: string, tasks: T[]
           _count: { _all: true },
         })
       : Promise.resolve([]),
+    // The client's sign-off from their wiki Board, derived from their latest Approved / Changes
+    // needed entry. One query for the whole list.
+    prisma.taskClientFeedback.findMany({
+      where: { taskId: { in: allIds }, kind: { in: ["approved", "changes_requested"] } },
+      select: { taskId: true, kind: true, createdAt: true },
+    }),
   ]);
+  const signOffEntries = new Map<string, Array<{ kind: string; createdAt: Date }>>();
+  for (const e of signOffs) {
+    const list = signOffEntries.get(e.taskId) ?? [];
+    list.push(e);
+    signOffEntries.set(e.taskId, list);
+  }
   const cardById = new Map(cards.map((c) => [c.id, c]));
   const statusesByCard = new Map<string, TaskStatus[]>();
   for (const row of counts) {
@@ -331,6 +347,7 @@ async function attachCardInfo<T extends TaskDTO>(workspaceId: string, tasks: T[]
       // A link to a card that's gone reads as no link, never as a nameless card.
       productCard: t.productCard && card ? { id: card.id, title: card.title, itemType: card.itemType } : null,
       cardProgress: isProductCard(t) ? cardProgress(statusesByCard.get(t.id) ?? []) : null,
+      clientSignOff: deriveSignOff(signOffEntries.get(t.id) ?? []),
     };
   });
 }
@@ -1209,6 +1226,51 @@ export async function moveTask(
 
   const [moved] = await attachCardInfo(user.workspaceId, [taskRowToDTO(row)]);
   return moved;
+}
+
+/**
+ * A client moving a card on their wiki Board (src/server/wiki-board.ts). The caller has already
+ * checked the card is theirs, the lane exists, and the move doesn't cross into or out of Done.
+ * Same status stamps as a team move; assignees are told, with the client named as the mover.
+ */
+export async function moveTaskForClient(
+  taskId: string,
+  input: { status: TaskStatus; orderKey: number; boardColumnId: string | null; movedBy: string },
+): Promise<void> {
+  const existing = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { status: true, startedAt: true },
+  });
+  if (!existing) throw new ForbiddenError("Task not found");
+  const row = await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      status: input.status,
+      orderKey: input.orderKey,
+      ...statusTimestamps(existing.status as TaskStatus, input.status, existing),
+      boardColumnId: input.boardColumnId,
+    },
+    select: {
+      id: true,
+      title: true,
+      workspaceId: true,
+      clientId: true,
+      client: { select: { slug: true } },
+      assignees: { select: { id: true } },
+    },
+  });
+  if (input.status !== existing.status && row.assignees.length > 0) {
+    dispatchNotification({
+      event: "tasks.status_changed",
+      workspaceId: row.workspaceId,
+      target: { kind: "users", userIds: row.assignees.map((a) => a.id) },
+      clientId: row.clientId,
+      title: `"${row.title}" → ${TASK_STATUS_LABELS[input.status]} (moved by ${input.movedBy})`,
+      actionUrl: clientTasksUrl(row.client.slug),
+      groupKey: `tasks.status_changed:${row.id}`,
+      metadata: { taskId: row.id, status: input.status },
+    });
+  }
 }
 
 export async function deleteTask(user: EffectiveUser, id: string): Promise<void> {

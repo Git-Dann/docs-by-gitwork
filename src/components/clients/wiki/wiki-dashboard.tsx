@@ -11,6 +11,7 @@ import {
   BookOpenIcon,
   CalculatorIcon,
   TableCellsIcon,
+  RectangleStackIcon,
   ViewColumnsIcon,
   CalendarDaysIcon,
   ChartBarIcon,
@@ -82,6 +83,7 @@ const SECTION_META: Record<
   estimates: { label: "Estimates", icon: CalculatorIcon },
   comparisons: { label: "Comparisons", icon: TableCellsIcon },
   sheets: { label: "Sheets", icon: ViewColumnsIcon },
+  board: { label: "Board", icon: RectangleStackIcon },
   roundup: { label: "RoundUp", icon: NewspaperIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
@@ -626,6 +628,29 @@ export function WikiDashboard({
             <p className="truncate text-[12px] text-[var(--text-4)]" title={names.join(" · ")}>
               {names.slice(0, 3).join(" · ")}
               {names.length > 3 ? ` +${names.length - 3}` : ""}
+            </p>
+          </div>
+        );
+      }
+      case "board": {
+        // A real case, not the markdown-doc default (§52.1). It leads with what is waiting on
+        // the client: cards in review they haven't signed off, then what they've approved.
+        const cards = wiki.board.lanes.flatMap((l) => l.groups.flatMap((g) => g.cards)).filter((c) => c.isCard);
+        if (cards.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No cards yet.</p>;
+        }
+        const waiting = cards.filter((c) => c.status === "IN_REVIEW" && !c.signOff).length;
+        const approved = cards.filter((c) => c.signOff === "approved").length;
+        const changes = cards.filter((c) => c.signOff === "changes_requested").length;
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={String(waiting)} label="Waiting for your review" />
+              <Metric value={String(approved)} label="Approved" />
+            </div>
+            <p className="truncate text-[12px] text-[var(--text-4)]">
+              {cards.length} card{cards.length === 1 ? "" : "s"}
+              {changes ? ` · ${changes} with changes asked for` : ""}
             </p>
           </div>
         );
