@@ -1,13 +1,14 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
+import { getCachedAiResponse, hashInputs, setCachedAiResponse } from "@/server/ai-cache";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { resolveAiConfig, completeText, type WorkspaceAiFields } from "@/server/ai-provider";
 import { getSlackBotToken } from "@/server/slack/client";
 import { readSlackChannel } from "@/server/slack-channel-updates";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { resolveSlackDigest, type SummariseResult } from "@/server/slack-activity-digest";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -113,31 +114,36 @@ export async function GET(request: NextRequest, context: RouteContext) {
       channelLabel: channelName ?? client?.name ?? "this project",
     });
 
-    const cacheResult = await cachedOrCompute<{ summary: string | null }>({
-      workspaceId,
-      cacheKey: `slack-activity:${channelId}`,
-      inputsHash,
+    const channelLabel = channelName ?? client?.name ?? "this project";
+    const cacheKey = `slack-activity:${channelId}`;
+    // "Try again" on the card: ask the provider even if a digest is cached. Only honoured for
+    // someone who may spend tokens (resolveSlackDigest checks canCompute).
+    const force = request.nextUrl.searchParams.get("refresh") === "1";
+    const digest = await resolveSlackDigest({
       canCompute,
-      compute: async () => {
-        const summary = await summarise(
-          messages,
-          channelName ?? client?.name ?? "this project",
-          ws,
-          { module: "SLACK", workspaceId, userId: user?.id, operation: "slackActivitySummary" },
-        );
-        return { response: { summary }, modelUsed: ws.aiProvider };
-      },
+      force,
+      readCache: () => getCachedAiResponse<{ summary: string | null }>({ workspaceId, cacheKey, inputsHash }),
+      writeCache: (summary) =>
+        setCachedAiResponse({ workspaceId, cacheKey, inputsHash, response: { summary }, modelUsed: ws.aiProvider }),
+      summarise: () =>
+        summarise(messages, channelLabel, ws, {
+          module: "SLACK",
+          workspaceId,
+          userId: user?.id,
+          operation: "slackActivitySummary",
+        }),
     });
 
     return apiOk({
       configured: true,
       channelName,
-      // Viewer without the AI gate + no cached digest → no summary, but the raw messages
-      // still render. Reason "stale" tells the client it's cache-only, not an error.
-      summary: cacheResult?.response.summary ?? null,
-      generatedAt: cacheResult?.cachedAt ?? null,
-      cached: cacheResult?.cached ?? false,
-      reason: cacheResult ? "ok" : "stale",
+      summary: digest.summary,
+      generatedAt: digest.generatedAt,
+      cached: digest.cached,
+      // "ok" · "stale" (no digest and this viewer can't write one) · "no_ai_key" · "ai_failed".
+      reason: digest.reason,
+      aiError: digest.aiError,
+      canRefresh: canCompute,
       participants,
       messages,
     });
@@ -158,7 +164,10 @@ function notConfigured(reason: string) {
   });
 }
 
-/** Concise digest of recent dev updates. Returns null if AI isn't configured. */
+/**
+ * Concise digest of recent dev updates. Says whether there was no key or the call failed,
+ * rather than hiding both as null (src/server/slack-activity-digest.ts).
+ */
 async function summarise(
   messages: SlackMessage[],
   channelLabel: string,
@@ -169,9 +178,9 @@ async function summarise(
     userId?: string | null;
     operation?: string | null;
   },
-): Promise<string | null> {
+): Promise<SummariseResult> {
   const config = resolveAiConfig(ws);
-  if (!config.apiKey) return null;
+  if (!config.apiKey) return { kind: "no_ai_key" };
 
   const transcript = messages
     .slice(-40)
@@ -183,7 +192,7 @@ Produce a tight digest of what the devs have posted recently — British English
 Format as 2–5 short bullet points starting with "•". Lead with progress/shipped, then in-progress, then any blockers or asks for the client. If there's nothing substantive, reply exactly: "No significant updates."`;
 
   try {
-    return await completeText({
+    const text = await completeText({
       config,
       system,
       user: `Channel: ${channelLabel}\nRecent messages (oldest first):\n${transcript}`,
@@ -191,7 +200,9 @@ Format as 2–5 short bullet points starting with "•". Lead with progress/ship
       tier: "light",
       usageContext,
     });
-  } catch {
-    return null;
+    return { kind: "ok", text };
+  } catch (err) {
+    console.error("[slack-activity] digest failed", err instanceof Error ? err.message : err);
+    return { kind: "failed", error: err instanceof Error ? err.message : String(err) };
   }
 }

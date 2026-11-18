@@ -163,12 +163,12 @@ function DocumentLinkRow({
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]">{link.name}</p>
-          <p className="truncate text-[11px] leading-tight text-[var(--text-4)] mt-0.5">
+          <p className="truncate text-[13px] font-semibold leading-tight text-[var(--text-1)]" title={link.name}>{link.name}</p>
+          <p className="truncate text-[11px] leading-tight text-[var(--text-4)] mt-0.5" title={link.url}>
             {link.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
           </p>
           {link.notes && (
-            <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]">{link.notes}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--text-3)]" title={link.notes}>{link.notes}</p>
           )}
         </div>
 
