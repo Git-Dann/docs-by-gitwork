@@ -153,9 +153,17 @@ export function DevOverview() {
                     href={`/app/portal/${t.client.slug}/tasks`}
                     className="flex items-center justify-between gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 transition hover:bg-[var(--surface-1)]"
                   >
+                    {/* ⚠️ `title` is the recovery a truncated value needs, and it
+                        matters MORE after the grid fix above: one column makes the
+                        card narrower (384px → 327px measured at 375px), so a task
+                        name that used to just fit now ellipses. Truncated with no
+                        title and no scroll means the full value is unreadable
+                        anywhere — `audit:clipping` flags exactly that, and it
+                        already flags these two on production at 375 and 390.
+                        `desk-tasks.tsx` is the precedent. */}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-[var(--text-1)]">{t.title}</p>
-                      <p className="truncate text-xs text-[var(--text-4)]">{t.client.name}</p>
+                      <p className="truncate text-sm font-medium text-[var(--text-1)]" title={t.title}>{t.title}</p>
+                      <p className="truncate text-xs text-[var(--text-4)]" title={t.client.name}>{t.client.name}</p>
                     </div>
                     <span className={cn("shrink-0 rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium", STATUS_STYLES[t.status])}>
                       {STATUS_LABEL[t.status]}
@@ -212,7 +220,7 @@ export function DevOverview() {
                       href={`/app/portal/${c.slug}/tasks`}
                       className="flex min-w-0 flex-1 items-center justify-between gap-2"
                     >
-                      <span className="truncate text-sm font-medium text-[var(--text-1)]">{c.name}</span>
+                      <span className="truncate text-sm font-medium text-[var(--text-1)]" title={c.name}>{c.name}</span>
                       <ArrowRightIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
                     </Link>
                     <NewTaskButton clientId={c.id} clientName={c.name} />
