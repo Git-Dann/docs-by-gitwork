@@ -77,7 +77,8 @@ export type AuditAction =
   // Foreman (daily delivery-risk watchdog)
   | "foreman.run.completed"
   // Importing a client's plan from their own planning tool (src/server/forge-import.ts)
-  | "tasks.forge_import.applied";
+  | "tasks.forge_import.applied"
+  | "tasks.sheets_to_board.applied";
 
 export interface RecordAuditEntryInput {
   workspaceId: string;

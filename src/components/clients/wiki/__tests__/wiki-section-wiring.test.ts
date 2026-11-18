@@ -66,12 +66,11 @@ const SECTIONS = [
   { id: "meetings", label: "Meetings" },
   { id: "platforms", label: "Platforms" },
   { id: "comparisons", label: "Comparisons" },
-  { id: "sheets", label: "Sheets" },
   { id: "board", label: "Board" },
 ] as const;
 
 /** Sections the CLIENT can write to — they have a token route, under the hardened posture. */
-const CLIENT_WRITABLE = new Set<string>(["sheets", "board"]);
+const CLIENT_WRITABLE = new Set<string>(["board"]);
 
 describe.each(SECTIONS)("$label — the twelve parallel allow-lists", ({ id, label }) => {
   const sidebar = read("components/clients/wiki/wiki-sidebar.tsx");
@@ -246,12 +245,6 @@ describe("wiki-client-visibility.ts — each availableSections predicate has its
     expect(available).toContain("wiki.comparisons.comparisons.some(isPublishableComparison)");
   });
 
-  it("sheets — enabled AND a sheet with at least one column", () => {
-    // Enabled-and-empty would invite the client to edit a grid with nothing in it.
-    expect(available).toContain("wiki.sheets.enabled");
-    expect(available).toContain("wiki.sheets.sheets.some((s) => s.columns.length > 0)");
-  });
-
   it("board — enabled AND at least one card on it", () => {
     // Enabled-and-empty would show the client a board of empty columns, which reads as
     // "nothing is planned".
@@ -331,57 +324,45 @@ describe("comparisons — the client's copy carries no drafts", () => {
   });
 });
 
-describe("sheets — the one section the client writes to, and how", () => {
-  // Unlike every other section above, a client edits Sheets, so it DOES have a token route —
-  // and that route must carry the full hardened posture, not a quiet `route.ts`.
-  const routes = [
-    "app/api/wiki/[token]/sheets/[sheetId]/rows/route.ts",
-    "app/api/wiki/[token]/sheets/[sheetId]/rows/[rowId]/route.ts",
+describe("Sheets is retired into the Board (CLAUDE.md §127)", () => {
+  // Its rows became Board cards. "sheets" must not come back as a selectable section by the
+  // back door: a list entry here, an Add New option there, a route the client can still write to.
+  const files = [
+    "components/clients/wiki/wiki-sidebar.tsx",
+    "components/clients/wiki/wiki-mobile-nav.tsx",
+    "components/clients/wiki/wiki-dashboard.tsx",
+    "components/clients/wiki/wiki-public-view.tsx",
+    "components/clients/wiki/wiki-access-settings.tsx",
+    "lib/wiki-section-groups.ts",
+    "lib/wiki-client-visibility.ts",
+    "app/wiki/[slug]/[token]/page.tsx",
   ];
 
-  it.each(routes)("%s exists and resolves the writer + rate-limits before any write", (rel) => {
-    const src = read(rel);
-    expect(src).toContain("resolveSheetsWriter(req, token)");
-    expect(src).toContain("assertSheetsWriteRate(req)");
-    // The resolve and the rate limit come before the body is even parsed.
-    expect(src.indexOf("resolveSheetsWriter(")).toBeLessThan(src.indexOf("await req.json()"));
-    expect(src.indexOf("assertSheetsWriteRate(")).toBeLessThan(src.indexOf("await req.json()"));
+  it.each(files)("%s doesn't offer a Sheets section", (rel) => {
+    expect(read(rel)).not.toMatch(/["']sheets["']|\bsheets:\s/);
   });
 
-  it("there is no client route for structure (columns or sheets)", () => {
-    expect(existsSync(join(ROOT, "app/api/wiki/[token]/sheets/[sheetId]/columns"))).toBe(false);
-    expect(existsSync(join(ROOT, "app/api/wiki/[token]/sheets/route.ts"))).toBe(false);
-    expect(existsSync(join(ROOT, "app/api/wiki/[token]/sheets/[sheetId]/route.ts"))).toBe(false);
+  it("the workspace neither lists nor adds it, and an old #sheets link lands on the Board", () => {
+    const src = read("components/clients/wiki/wiki-workspace.tsx");
+    const all = src.slice(src.indexOf("const ALL_WIKI_SECTIONS"), src.indexOf("];", src.indexOf("const ALL_WIKI_SECTIONS")));
+    expect(all).not.toContain('"sheets"');
+    expect(src).not.toContain('section: "sheets"');
+    expect(src).not.toContain('activeSection === "sheets"');
+    expect(src).toContain('hash === "sheets" ? "board" : hash');
   });
 
-  it("the writer resolver checks the cookie, the section flag and the share link's section", () => {
-    const src = read("server/wiki-sheets-access.ts");
-    expect(src).toContain("resolvePublicWiki(token)");
-    expect(src).toContain("resolveWikiAccessUser(wiki.id, cookieValue)");
-    expect(src).toContain("sheetsEnabled");
-    expect(src).toContain('onlySection !== "sheets"');
-  });
-
-  it("the client's copy is cut down by forPublicSheets, and the section loads through settle()", () => {
+  it("there is no Sheets route left for anyone to write to, and the server can't share it", () => {
+    expect(existsSync(join(ROOT, "app/api/wiki/[token]/sheets"))).toBe(false);
+    expect(existsSync(join(ROOT, "app/api/clients/[slug]/wiki/sheets"))).toBe(false);
+    expect(existsSync(join(ROOT, "app/api/wiki/sheet-upload"))).toBe(false);
     const wiki = read("server/wiki.ts");
-    const fn = wiki.slice(wiki.indexOf("function forPublic("), wiki.indexOf("export async function resolvePublicWiki"));
-    expect(fn).toContain("sheets: forPublicSheets(dto.sheets)");
-    expect(wiki).toContain('settle("sheets", () => loadWikiSheets(wiki.clientId), EMPTY_SHEETS)');
+    const shareable = wiki.slice(wiki.indexOf("const SHAREABLE_SECTIONS"), wiki.indexOf("] as const;", wiki.indexOf("const SHAREABLE_SECTIONS")));
+    expect(shareable).not.toContain('"sheets"');
+    expect(wiki).not.toContain("loadWikiSheets");
   });
 
-  it("the internal routes all go through resolveInternalSheets (Manage clients + client access)", () => {
-    const dir = join(ROOT, "app/api/clients/[slug]/wiki/sheets");
-    const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
-    expect(files.length).toBeGreaterThanOrEqual(6);
-    for (const f of files) {
-      const src = readFileSync(join(dir, f), "utf8");
-      const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];
-      const gates = src.match(/await resolveInternalSheets\(req, slug,/g) ?? [];
-      expect(gates.length, `${f}: every handler must resolve the internal writer`).toBe(handlers.length);
-    }
-    const access = read("server/wiki-sheets-access.ts");
-    expect(access).toContain("assertCan(user, canManageClients, action)");
-    expect(access).toContain("assertClientAccessBySlug(user, slug)");
+  it("old uploaded images still load: the file route stays", () => {
+    expect(existsSync(join(ROOT, "app/api/wiki/files/[key]/[name]/route.ts"))).toBe(true);
   });
 });
 

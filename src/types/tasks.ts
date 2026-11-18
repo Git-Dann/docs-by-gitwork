@@ -142,6 +142,9 @@ export type TaskDTO = {
   estimateHours: number | null;
   /** The item's id in an outside planning tool (e.g. "forge:247"). */
   externalRef: string | null;
+  /** The named list this card is in on the client's board (e.g. "QA review: 20 Oct 2026") —
+   *  what replaced Sheets (CLAUDE.md §127). Optional so older DTO builders needn't send it. */
+  boardList?: string | null;
   /** The card this dev task delivers, if linked. */
   productCard: TaskCardRef | null;
   /** On a card: progress of its linked dev tasks. Null on a dev task, or a card with none linked. */

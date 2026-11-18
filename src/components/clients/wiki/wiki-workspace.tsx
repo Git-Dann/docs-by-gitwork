@@ -43,8 +43,6 @@ import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-sec
 import { WikiCostsSection } from "./wiki-costs-section";
 import { WikiEstimatesSection } from "./wiki-estimates-section";
 import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
-import { WikiSheetsSectionView } from "./wiki-sheets-section";
-import { useSetWikiSheetsEnabled } from "@/hooks/use-wiki-sheets";
 import { useSetWikiBoardEnabled } from "@/hooks/use-wiki-board";
 import { WikiBoardSectionView } from "./wiki-board-section";
 import { WikiRoundupSection } from "./wiki-roundup-section";
@@ -147,7 +145,6 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   costs: "Running costs",
   estimates: "Estimates",
   comparisons: "Comparisons",
-  sheets: "Sheets",
   board: "Board",
   roundup: "RoundUp",
   delivery: "Delivery",
@@ -175,7 +172,6 @@ const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   costs: "RUNNING COSTS",
   estimates: "ESTIMATES",
   comparisons: "COMPARISONS",
-  sheets: "SHEETS",
   board: "BOARD",
   roundup: "ROUNDUP",
   delivery: "DELIVERY",
@@ -878,7 +874,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "estimates", "comparisons", "sheets", "board", "roundup", "delivery", "support", "metrics", "meetings", "platforms", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "estimates", "comparisons", "board", "roundup", "delivery", "support", "metrics", "meetings", "platforms", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -886,7 +882,9 @@ const ALL_WIKI_SECTIONS: WikiSection[] = [
 /** Read the active section from the URL hash (e.g. `#api-docs`), defaulting to dashboard. */
 function readSectionFromHash(): WikiSection {
   if (typeof window === "undefined") return "dashboard";
-  const raw = window.location.hash.replace(/^#/, "");
+  const hash = window.location.hash.replace(/^#/, "");
+  // Sheets was retired into the Board (CLAUDE.md §127): an old #sheets link lands there.
+  const raw = hash === "sheets" ? "board" : hash;
   return (ALL_WIKI_SECTIONS as string[]).includes(raw) ? (raw as WikiSection) : "dashboard";
 }
 
@@ -979,7 +977,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setCostsEnabled = useSetWikiCostsEnabled(slug);
   const setEstimatesEnabled = useSetWikiEstimatesEnabled(slug);
   const setComparisonsEnabled = useSetWikiComparisonsEnabled(slug);
-  const setSheetsEnabled = useSetWikiSheetsEnabled(slug);
   const setBoardEnabled = useSetWikiBoardEnabled(slug);
   const setRoundupEnabled = useSetWikiRoundupEnabled(slug);
   const setDeliveryEnabled = useSetWikiDeliveryEnabled(slug);
@@ -1034,7 +1031,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const costsOn = wiki.costs.enabled;
   const estimatesOn = wiki.estimates.enabled;
   const comparisonsOn = wiki.comparisons.enabled;
-  const sheetsOn = wiki.sheets.enabled;
   const boardOn = wiki.board.enabled;
   const roundupOn = wiki.roundupEnabled ?? false;
   const deliveryOn = wiki.deliveryEnabled;
@@ -1058,7 +1054,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(costsOn ? (["costs"] as const) : []),
     ...(estimatesOn ? (["estimates"] as const) : []),
     ...(comparisonsOn ? (["comparisons"] as const) : []),
-    ...(sheetsOn ? (["sheets"] as const) : []),
     ...(boardOn ? (["board"] as const) : []),
     ...(roundupOn ? (["roundup"] as const) : []),
     ...(deliveryOn ? (["delivery"] as const) : []),
@@ -1089,7 +1084,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(costsOn ? [] : [{ section: "costs" as WikiSection, label: "Running costs" }]),
     ...(estimatesOn ? [] : [{ section: "estimates" as WikiSection, label: "Estimates" }]),
     ...(comparisonsOn ? [] : [{ section: "comparisons" as WikiSection, label: "Comparisons" }]),
-    ...(sheetsOn ? [] : [{ section: "sheets" as WikiSection, label: "Sheets" }]),
     ...(boardOn ? [] : [{ section: "board" as WikiSection, label: "Board" }]),
     ...(roundupOn ? [] : [{ section: "roundup" as WikiSection, label: "RoundUp" }]),
     ...(deliveryOn ? [] : [{ section: "delivery" as WikiSection, label: "Delivery" }]),
@@ -1175,11 +1169,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (section === "comparisons") {
       await setComparisonsEnabled.mutateAsync(true);
       setActiveSection("comparisons");
-      return;
-    }
-    if (section === "sheets") {
-      await setSheetsEnabled.mutateAsync(true);
-      setActiveSection("sheets");
       return;
     }
     if (section === "board") {
@@ -1282,11 +1271,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "comparisons") ?? "dashboard");
       return;
     }
-    if (section === "sheets") {
-      await setSheetsEnabled.mutateAsync(false);
-      setActiveSection(availableSections.find((s) => s !== "sheets") ?? "dashboard");
-      return;
-    }
     if (section === "board") {
       await setBoardEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "board") ?? "dashboard");
@@ -1346,7 +1330,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "costs" &&
       section !== "estimates" &&
       section !== "comparisons" &&
-      section !== "sheets" &&
       section !== "board" &&
       section !== "roundup" &&
       section !== "delivery" &&
@@ -1370,8 +1353,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 ? " The estimates are kept, so re-adding it brings every one back."
                 : section === "comparisons"
                 ? " The tables are kept, so re-adding it brings every one back."
-                : section === "sheets"
-                ? " The sheets and their rows are kept, and the client can't see or edit them while it's off."
                 : section === "board"
                 ? " Every card and all the client's feedback are kept; they just can't see the board while it's off."
                 : section === "metrics"
@@ -1630,15 +1611,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           audience="team"
           tasksHref={`/app/portal/${slug}/tasks`}
         />
-      );
-    }
-    if (activeSection === "sheets") {
-      return (
-        <WikiSheetsSectionView
-          slug={slug}
-          clientId={wiki!.clientId}
-          section={wiki!.sheets}
-          mode="internal"        />
       );
     }
     if (activeSection === "comparisons") {
@@ -2122,7 +2094,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 s === "costs" ||
                 s === "estimates" ||
                 s === "comparisons" ||
-                s === "sheets" ||
                 s === "board" ||
                 s === "roundup" ||
                 s === "delivery" ||
