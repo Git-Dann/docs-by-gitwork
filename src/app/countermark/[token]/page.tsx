@@ -20,6 +20,7 @@ import { buildPayload } from "@/server/provenance/issue";
 import { verifyAttestation } from "@/server/provenance/digest";
 import { isAsserting } from "@/server/provenance/lapse";
 import { getStandard } from "@/server/provenance/standard";
+import { certificateLineage } from "@/server/provenance/recheck";
 import type { ClauseVerdict, CountermarkRecord, CountermarkStatus } from "@/server/provenance/types";
 import { cn, formatDate } from "@/lib/format";
 
@@ -109,6 +110,10 @@ export default async function CountermarkCertificatePage({ params }: { params: P
 
   const grade = GRADE_COPY[countermark.grade];
   const status = STATUS_COPY[countermark.status];
+  // Where this mark sits in its subject's history: the newest mark that replaces it (so an old
+  // link points forward rather than quietly contradicting the current one), and, when it was
+  // struck by a scheduled re-examination, the date of the mark it replaced.
+  const lineage = await certificateLineage(countermark);
   const asserting = isAsserting(countermark.status);
   const standard = getStandard(countermark.standardId);
 
@@ -180,7 +185,21 @@ export default async function CountermarkCertificatePage({ params }: { params: P
                 assert — the reader must not have to scroll to find out it does not count. */}
             {!asserting && (
               <p className="mt-4 rounded-[6px] border border-[var(--border-2)] bg-white/70 px-3 py-2.5 text-sm leading-relaxed text-[var(--text-2)]">
-                <span className="font-semibold">{status.label}.</span> {status.note}
+                <span className="font-semibold">{status.label}.</span>{" "}
+                {countermark.status === "SUPERSEDED" && lineage.current ? (
+                  <>
+                    A newer mark was issued on {formatDate(lineage.current.issuedAt)}.{" "}
+                    <Link
+                      href={`/countermark/${lineage.current.token}`}
+                      className="font-medium text-[var(--brand-600)] underline underline-offset-2"
+                    >
+                      Read the current certificate
+                    </Link>
+                    .
+                  </>
+                ) : (
+                  status.note
+                )}
                 {countermark.status === "REVOKED" && countermark.revokedReason && (
                   <>
                     {" "}
@@ -201,6 +220,13 @@ export default async function CountermarkCertificatePage({ params }: { params: P
               <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
                 <Field label="Issued by" value={countermark.issuerName} />
                 <Field label="Issued" value={formatDate(countermark.issuedAt)} mono />
+                {lineage.reexaminationOf && (
+                  <Field
+                    label="Re-examination of"
+                    value={`the mark issued ${formatDate(lineage.reexaminationOf.issuedAt)}`}
+                    mono
+                  />
+                )}
                 <Field
                   label={asserting ? "Valid until" : "Expired"}
                   value={`${formatDate(countermark.expiresAt)}${asserting ? ` · ${countermark.daysRemaining}d left` : ""}`}

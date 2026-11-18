@@ -59,6 +59,9 @@ export const NOTIFICATION_EVENTS = [
   "wiki.request_mention",
   // Foreman (daily delivery-risk watchdog)
   "foreman.digest",
+  // Provenance: a kept-current countermark was re-examined and its grade changed, or the
+  // re-examination failed / paused (src/server/provenance/recheck.ts)
+  "provenance.recheck",
   // HR's Monday digest: what's coming up, to check and incomplete (src/server/hr/digest.ts)
   "hr.weekly_digest",
   // A message a person wrote and addressed to you (src/server/team-messages.ts)
@@ -123,6 +126,9 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   // plus a single post to `channelRoutes["foreman.digest"]` when one is configured, so the
   // delivery picture shows up where the team already is rather than only inside Foundry.
   "foreman.digest": ["inApp", "push", "slack"],
+  // To holders of provenance.issue. In-app + push: a grade change or a failed re-examination
+  // needs someone to look before the old mark lapses. Never Slack: it names client software.
+  "provenance.recheck": ["inApp", "push"],
   // In-app only: the same digest is also emailed directly by src/server/hr/digest.ts (the
   // dispatcher's email channel is still deferred), so listing "email" here would one day
   // send it twice. Never Slack: it names people and what their records lack.

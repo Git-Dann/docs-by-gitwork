@@ -9,6 +9,7 @@ import { runClientArchive } from "@/server/client-archive";
 import { runRetentionSweep } from "@/server/retention/sweep";
 import { runCurator } from "@/server/curator/run";
 import { runForeman } from "@/server/foreman/run";
+import { runRecheckJob } from "@/server/provenance/recheck";
 
 const registry: { [K in JobType]: JobHandler<K> } = {
   CLIENT_ARCHIVE: async (payload) => {
@@ -33,6 +34,10 @@ const registry: { [K in JobType]: JobHandler<K> } = {
       consolidate: payload.consolidate,
       dryRun: payload.dryRun,
     });
+    return result as unknown as Prisma.InputJsonValue;
+  },
+  COUNTERMARK_RECHECK: async (payload) => {
+    const result = await runRecheckJob(payload);
     return result as unknown as Prisma.InputJsonValue;
   },
 };

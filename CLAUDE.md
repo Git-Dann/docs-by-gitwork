@@ -2531,12 +2531,33 @@ and what is unresolved.
 
 **Deferred, highest-value first:** ~~commit pinning~~ (**done October 2026**: a repo mark is
 pinned to the commit the code-health measure read, sealed, and shown as "Version examined");
-**continuous re-examination** as a `COUNTERMARK_RECHECK` job on the existing Curator/Foreman cron spine
-(this is the subscription); **licensed issuers** for white label (issuer record + per-issuer
+~~continuous re-examination~~ (**done November 2026**, §38.1); **licensed issuers** for white label (issuer record + per-issuer
 certificate branding + a public issuer directory); a **public `SAS-1` page** at a stable URL so
 a contract can cite it; **Docs integration** (embed a mark in a handover; require a live mark
 before e-sign acceptance); and an **insurer/marketplace API**, which needs a partner before it
 needs code.
+
+### 38.1 Keeping a mark current (November 2026)
+
+"Keep this mark current" on a register row re-examines the subject on a schedule
+(`CountermarkSchedule`, one per subject, enforced in code — no `@unique`; `CountermarkRecheck`
+records every attempt). Full contract: `docs/provenance.md` §4a.
+
+- **On the `jobs` worker, no new crontab line.** `startDueRechecks` enqueues a deduped
+  `COUNTERMARK_RECHECK` "start" job; it starts a fresh Pulse scan **without awaiting it** and hands
+  off to "poll" jobs (every 2 min, 90 min ceiling). A day-long lease on `nextDueAt` stops a second scan.
+- ⚠️ **Supersede only on success.** `issueCountermark` gained `requireEstablished` (throws
+  `ProvenanceNotEstablishedError` before any write when the grade is `INCOMPLETE`) and `supersedesId`
+  (supersedes that exact mark in the issue transaction, even if the subject name changed or it lapsed
+  while the scan ran; never a revoked one). A failed/timed-out scan or an unestablished grade keeps
+  the old mark untouched and records the reason. Re-examination never lapses or revokes.
+- ⚠️ **Re-examining is issuing.** The issuer who switched it on must still be active with
+  `provenance.issue`, checked before the scan AND before striking; otherwise it pauses with a reason.
+  Revoked marks and 5 straight failures pause too. Max 5 started per workspace per 24h.
+- Notifies `provenance.recheck` (holders of `provenance.issue`) on a grade change, failure or pause.
+  The certificate shows "Re-examination of the mark issued …" and a superseded mark links forward.
+- Tests `recheck-rules.test.ts` + `recheck.test.ts`, each rule proved by breaking it (dedupe key,
+  INCOMPLETE struck, permission ignored, failed scan struck).
 
 ## 39. Recent Changes (July 2026) — Badges: "Foundry Approved" + an embeddable Pulse score
 

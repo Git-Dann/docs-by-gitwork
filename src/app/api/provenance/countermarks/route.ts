@@ -3,6 +3,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canIssueCountermark, requireAuthedUser } from "@/server/auth/effective-user";
 import { issueCountermark, listCountermarks } from "@/server/provenance/issue";
 import { canSeal } from "@/server/provenance/digest";
+import { listSchedules } from "@/server/provenance/recheck";
 import { countermarkIssueSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
@@ -11,10 +12,13 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuthedUser(request);
-    const countermarks = await listCountermarks(user.workspaceId);
+    const [countermarks, schedules] = await Promise.all([
+      listCountermarks(user.workspaceId),
+      listSchedules(user.workspaceId),
+    ]);
     // Surfaced so the UI can warn BEFORE issuing that marks will come out unsealed, rather
     // than after the fact on a certificate someone has already sent to a client.
-    return apiOk({ countermarks, sealingConfigured: canSeal() });
+    return apiOk({ countermarks, schedules, sealingConfigured: canSeal() });
   } catch (error) {
     return fromError(error);
   }

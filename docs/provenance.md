@@ -1,7 +1,7 @@
 # Provenance — the attestation layer
 
 > **Status:** MVP shipped July 2026. Engine + register + public certificate are live; the
-> continuous re-examination agent and the white-label issuer tier are the next two phases.
+> continuous re-examination shipped November 2026 (§4a); the white-label issuer tier is next.
 >
 > **What it is in one line:** every other tool in this market produces a *report for the
 > owner*. Provenance produces a **signed, expiring attestation for the counterparty** — the
@@ -201,6 +201,37 @@ would 404 the certificate URL, which reads to whoever holds it as a broken link 
 as a withdrawal — so the one thing revocation exists to communicate would be the one thing
 it fails to say.
 
+### 4a. Keeping a mark current (continuous re-examination)
+
+"Keep this mark current" on a register row turns on a schedule for that **subject** (one per
+subject, `CountermarkSchedule`; it follows the newest mark, including one struck by hand). The
+cadence is 30, 60 or 90 days from issue, or by default the start of the 14-day notice window, and
+never later than that window whatever the cadence.
+
+- **Runs on the existing `jobs` worker** — no crontab line. `startDueRechecks` (in
+  `GET /api/cron/jobs`) enqueues one `COUNTERMARK_RECHECK` start job per due schedule, deduped on
+  the schedule. "start" starts a fresh Pulse scan of the same inputs (the original scan's URL or
+  repo, platform, client and markets; a repo is scanned at its default branch's current commit, which
+  the new mark pins) **without waiting for it**, and hands off to "poll" jobs every 2 minutes, for at
+  most 90 minutes. While an attempt runs the schedule's due date is pushed out a day, so a second scan
+  can't start.
+- **A successor is struck only from a completed scan that establishes a grade**
+  (`issueCountermark({ requireEstablished: true, supersedesId })`). It supersedes the old mark in the
+  same transaction it is issued in. A worse grade **is** struck. A failed, missing or timed-out scan,
+  or an `INCOMPLETE` examination, keeps the old mark exactly as it was, records the attempt with its
+  reason (`CountermarkRecheck`), and retries in a day. Re-examination never lapses or revokes anything.
+- **Re-examining is issuing.** The successor names the person who switched the schedule on. Before a
+  scan starts AND before a mark is struck, they must still be an active member holding
+  `provenance.issue`; otherwise the schedule pauses and says why, and someone who can issue resumes it
+  (which hands it to them). A revoked mark pauses too, as do five failed attempts in a row.
+- **Cost:** one Pulse scan per attempt, at most 5 started per workspace per rolling 24 hours.
+- **Told:** holders of `provenance.issue` get `provenance.recheck` (in-app + push) on a grade change,
+  a failure or a pause. A routine "still certified" is silent.
+- **Seen:** the register shows the schedule, the next date and the last ten attempts; the certificate
+  shows "Re-examination of the mark issued …", and a superseded mark links forward to the current one.
+- Rules are pure in `src/server/provenance/recheck-rules.ts`; the job is `recheck.ts`; the route is
+  `PUT /api/provenance/countermarks/[id]/schedule`.
+
 ---
 
 ## 5. Operating it
@@ -329,8 +360,7 @@ what it knows.
   ⚠️ The commit is the one the clone read. The API-based repo checks read the default branch
   in the same scan, seconds apart, so a push landing mid-scan could split them. That's accepted,
   not solved.
-- **Continuous re-examination.** The `CuratorRun`/`ForemanRun` job + cron spine is right there; a
-  `COUNTERMARK_RECHECK` job that re-scans and re-issues before expiry is the subscription.
+- ~~**Continuous re-examination.**~~ **Done (November 2026)** — see §4a.
 - **Licensed issuers (white label).** Needs an issuer record, per-issuer branding on the
   certificate, and a public issuer directory so a reader can check the issuer is real.
 - **A public standard page.** `SAS-1` should be readable at a stable URL so a contract can

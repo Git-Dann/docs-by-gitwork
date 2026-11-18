@@ -10,6 +10,7 @@ import { refreshRunningMonths } from "@/server/wiki-metrics";
 import { sendHrDigests } from "@/server/hr/digest";
 import { startDueAnswerRuns } from "@/server/ai-answers";
 import { syncDueCommitments } from "@/server/commitments";
+import { startDueRechecks } from "@/server/provenance/recheck";
 
 export const dynamic = "force-dynamic";
 // No serverless cap on the VPS, but keep runs bounded so host cron ticks stay short.
@@ -102,6 +103,13 @@ export async function GET(request: NextRequest) {
       return null;
     });
 
+    // ── Provenance: countermarks kept current ── (enqueues a start job per due schedule; the
+    // scans themselves run in the background and are watched by their own poll jobs)
+    const countermarkRechecks = await startDueRechecks().catch((err) => {
+      console.error("[jobs] countermark re-examination scheduling failed", err);
+      return null;
+    });
+
     return apiOk({
       reconciled,
       ...drain,
@@ -111,6 +119,7 @@ export async function GET(request: NextRequest) {
       hrDigest,
       aiAnswers,
       commitments,
+      countermarkRechecks,
     });
   } catch (error) {
     return fromError(error);
