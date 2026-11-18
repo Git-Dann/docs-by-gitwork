@@ -10398,6 +10398,27 @@ The old `CardForm` (add) and `CardDetail` (read, then a separate "Edit" form) ar
   edits its fields on the task board (the Table's rule); nothing while previewing the client's view.
   **The client never sees who works on a card** in the dialog (`showsPeople`), never sets it (the
   schemas have no assignee field), and gets the client's copy of "depends on".
+- **Screenshots come off a card** (client and team): an × on each thumbnail and **Remove** in the
+  lightbox, each asking in place first. `removeBoardCardImage` deletes the attachment only where it
+  is on THAT card (`deleteMany({ id, taskId })`), on a card the writer may act on (a dev task is a
+  404 to the client), counts as a client's edit against the per-wiki quota under the board lock, and
+  writes "Luke removed a screenshot." in the thread. TaskAttachment keeps its bytes in Postgres, so
+  deleting the row is the whole removal. Routes: client `DELETE /api/wiki/[token]/board/tasks/[taskId]/images/[attachmentId]`
+  (writer, then the write rate limit), team `DELETE /api/clients/[slug]/wiki/board/cards/[taskId]/images/[imageId]`.
+- **A feature's sub-items open in the same popup**: "‹ Feature / Sub-item" in the header, Back
+  returns to the feature without closing (one Modal; the wrapper keeps the sub-item and re-reads the
+  feature after every change so its list on the board stays right). The same layout, per-field
+  autosave, screenshots, links, thread and delete. Its type is fixed (a sub-item stays a sub-item,
+  400 otherwise). **+ Add sub-item** under the feature's list adds one and opens it. The card DTO's
+  `subtasks` now carry `{ id, title, done, isItem }`; only `isItem` (itemType "subitem") rows open,
+  the team's checklist children are listed only. New `GET` on the card routes (`readBoardCard`)
+  opens one card or sub-item, in the copy the caller may see.
+- ⚠️ **Which child tasks a board route may address is one rule, `assertAddressable`
+  (`src/server/wiki-board.ts`)**: a live top-level task, or a product sub-item whose parent is a
+  live top-level FEATURE card on the same client. A dev task's child, or a plain checklist child of
+  a card, is a 404 to everyone. Loads find by `{ id, clientId, archivedAt: null }` and then apply it;
+  updates and deletes compare-and-set on the `parentId` they loaded. The deleted list and Restore
+  include sub-items; restoring one places its feature card.
 
 ## 127. Recent Changes (November 2026) — Sheets is retired: its rows become Board cards
 
