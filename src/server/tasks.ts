@@ -33,7 +33,7 @@ import type {
 } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
 import { BoardColumnError, parseBoardColumns } from "@/lib/tasks/board-columns";
-import { cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
+import { BOARD_LIST_MAX, cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
@@ -126,6 +126,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     area: row.area,
     estimateHours: row.estimateHours,
     externalRef: row.externalRef,
+    boardList: row.boardList,
     // Title and progress are filled in by attachCardInfo (one query each per list).
     productCard: row.productCardId ? { id: row.productCardId, title: "", itemType: null } : null,
     cardProgress: null,
@@ -179,6 +180,7 @@ function taskListDTO(task: TaskDTO): TaskDTO {
     area: task.area,
     estimateHours: task.estimateHours,
     externalRef: task.externalRef,
+    boardList: task.boardList ?? null,
     productCard: task.productCard,
     cardProgress: task.cardProgress,
     clientSignOff: task.clientSignOff,
@@ -794,6 +796,12 @@ async function assertNotLinkedTo(workspaceId: string, taskId: string): Promise<v
   }
 }
 
+/** A board list name as stored: trimmed, at most BOARD_LIST_MAX characters, blank → null. */
+function boardListValue(v: string | null | undefined): string | null {
+  const t = v?.trim();
+  return t ? t.slice(0, BOARD_LIST_MAX) : null;
+}
+
 /** The card fields as written, trimmed. Undefined keys are left out so an update only touches what it names. */
 function cardFieldsData(input: {
   itemType?: string | null;
@@ -801,12 +809,14 @@ function cardFieldsData(input: {
   area?: string | null;
   estimateHours?: number | null;
   externalRef?: string | null;
+  boardList?: string | null;
 }): {
   itemType?: string | null;
   tier?: string | null;
   area?: string | null;
   estimateHours?: number | null;
   externalRef?: string | null;
+  boardList?: string | null;
 } {
   const out: ReturnType<typeof cardFieldsData> = {};
   if (input.itemType !== undefined) out.itemType = input.itemType || null;
@@ -814,6 +824,7 @@ function cardFieldsData(input: {
   if (input.area !== undefined) out.area = input.area?.trim() ? input.area.trim().slice(0, 80) : null;
   if (input.estimateHours !== undefined) out.estimateHours = input.estimateHours ?? null;
   if (input.externalRef !== undefined) out.externalRef = input.externalRef?.trim() || null;
+  if (input.boardList !== undefined) out.boardList = boardListValue(input.boardList);
   return out;
 }
 
@@ -856,6 +867,7 @@ export async function createTask(
     area?: string | null;
     estimateHours?: number | null;
     externalRef?: string | null;
+    boardList?: string | null;
     productCardId?: string | null;
   },
 ): Promise<TaskDTO> {
@@ -919,6 +931,7 @@ export async function createTask(
       area: input.area?.trim() ? input.area.trim().slice(0, 80) : null,
       estimateHours: input.estimateHours ?? null,
       externalRef: input.externalRef?.trim() || null,
+      boardList: boardListValue(input.boardList),
       productCardId: input.productCardId || null,
       ...(input.metadata !== undefined && input.metadata !== null
         ? { metadata: input.metadata as Prisma.InputJsonValue }
@@ -1068,6 +1081,8 @@ export async function updateTask(
     area?: string | null;
     estimateHours?: number | null;
     externalRef?: string | null;
+    /** The named list on the client's board (§127); null or "" takes it out. */
+    boardList?: string | null;
     /** The card this task delivers; null or "" unlinks. */
     productCardId?: string | null;
   },

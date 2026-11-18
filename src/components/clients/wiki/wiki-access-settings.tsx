@@ -80,7 +80,6 @@ const SHARE_SECTION_LABELS: Partial<Record<WikiSection, string>> = {
   costs: "Running costs",
   estimates: "Estimates",
   comparisons: "Comparisons",
-  sheets: "Sheets",
   board: "Board",
   roundup: "RoundUp",
   delivery: "Delivery",

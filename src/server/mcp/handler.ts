@@ -76,9 +76,7 @@ import {
   type ComparisonContent,
 } from "@/lib/wiki-comparisons";
 import type { WikiComparison } from "@/types/wiki-comparisons";
-import { setWikiSheetsEnabled } from "@/server/wiki-sheets";
 import { setWikiBoardEnabled } from "@/server/wiki-board";
-import { buildSheetTools } from "@/server/mcp/sheet-tools";
 import { setWikiInsightsEnabled } from "@/server/wiki-insights";
 import { setWikiEstimatesEnabled } from "@/server/wiki-estimates";
 import {
@@ -132,6 +130,7 @@ import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { forgeApplyBodySchema, forgePlanBodySchema } from "@/lib/forge-import/schemas";
 import { renderForgePlanMarkdown } from "@/lib/forge-import/report";
 import { applyForgeImport, planForgeImport } from "@/server/forge-import";
+import { applySheetsToBoard, planSheetsToBoard } from "@/server/sheets-to-board";
 import {
   getDefaultAssetPayload,
   getDefaultCostsPayload,
@@ -581,6 +580,7 @@ const createTaskSchema = z.object({
   area: z.string().max(80).optional(),
   estimateHours: z.number().min(0).max(10000).optional(),
   productCard: z.string().max(200).optional(),
+  list: z.string().max(80).optional(),
 });
 
 const updateTaskSchema = z.object({
@@ -599,6 +599,7 @@ const updateTaskSchema = z.object({
   area: z.string().max(80).optional(),
   estimateHours: z.number().min(0).max(10000).optional(),
   productCard: z.string().max(200).optional(),
+  list: z.string().max(80).optional(),
 });
 
 const listReleasesSchema = z.object({ client: z.string() });
@@ -668,6 +669,10 @@ const CARD_PROPERTIES = {
   productCard: {
     type: "string",
     description: "The product card this dev task delivers: the card's id or exact title on the same client. '' unlinks.",
+  },
+  list: {
+    type: "string",
+    description: "A named list on the client's board, e.g. 'QA review: 20 Oct 2026' (at most 80 characters). '' takes it out of its list.",
   },
 } as const;
 
@@ -999,7 +1004,6 @@ function projectComparison(table: WikiComparison) {
 /** The wiki sections that can be switched on and off, and the server function for each. */
 const WIKI_SECTION_TOGGLES = {
   comparisons: setWikiComparisonsEnabled,
-  sheets: setWikiSheetsEnabled,
   board: setWikiBoardEnabled,
   insights: setWikiInsightsEnabled,
   costs: setWikiCostsEnabled,
@@ -2007,8 +2011,6 @@ const TOOLS: ToolDef[] = [
       return textResult({ deleted: true, id: table.id }, `Deleted "${table.title}" from ${resolved.name}.`);
     },
   },
-  // Sheets — client-editable spreadsheets linked to the task board (src/server/mcp/sheet-tools.ts).
-  ...buildSheetTools({ resolveClient, textResult }),
   // Monitors beyond add/list — summary, edit, check, remove, incidents (src/server/mcp/monitor-tools.ts).
   ...buildMonitorTools({ resolveClient, textResult }),
   {
@@ -2378,6 +2380,7 @@ const TOOLS: ToolDef[] = [
         tier: parsed.tier || null,
         area: parsed.area ?? null,
         estimateHours: parsed.estimateHours ?? null,
+        boardList: parsed.list ?? null,
         productCardId: parsed.productCard !== undefined ? await resolveCardRef(user, c.id, parsed.productCard) : null,
       });
       return textResult(
@@ -2417,7 +2420,7 @@ const TOOLS: ToolDef[] = [
     },
     handler: async (user, args) => {
       const parsed = updateTaskSchema.parse(args);
-      const { taskId, featureBlockId, release, productCard, itemType, tier, ...rest } = parsed;
+      const { taskId, featureBlockId, release, productCard, itemType, tier, list, ...rest } = parsed;
       let releaseId: string | null | undefined;
       let productCardId: string | null | undefined;
       if (release !== undefined || productCard !== undefined) {
@@ -2433,6 +2436,7 @@ const TOOLS: ToolDef[] = [
         productCardId,
         itemType: itemType === undefined ? undefined : itemType || null,
         tier: tier === undefined ? undefined : tier || null,
+        boardList: list === undefined ? undefined : list || null,
       });
       return textResult(updated, `Updated task "${updated.title}" (status: ${updated.status}).`);
     },
@@ -2572,6 +2576,73 @@ const TOOLS: ToolDef[] = [
         result,
         `Imported into ${c.name}: ${result.created} new cards, ${result.linked} existing tasks became cards, ${result.devLinked} dev tasks linked, ` +
           `${result.releasesCreated} releases added, ${result.filled} cards filled in. ${result.pendingReview} still waiting for a decision.`,
+      );
+    },
+  },
+  {
+    name: "sheets_to_board_plan",
+    description:
+      "Dry run of moving a client's old wiki Sheets onto their Board (Sheets was retired, CLAUDE.md §127). Writes nothing. " +
+      "Each live row would become a product card in a list named after its sheet, carrying every cell; a row already sent " +
+      "to the board links its dev task to the new card. Returns counts and every row's plan. Requires 'Manage clients'.",
+    inputSchema: {
+      type: "object",
+      properties: { client: { type: "string", description: "Client slug, name, or cuid (e.g. 'wedge')." } },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "move a client's sheets onto the board");
+      const parsed = z.object({ client: z.string().trim().min(1) }).strict().parse(args);
+      const c = await resolveClient(user, parsed.client);
+      const plan = await planSheetsToBoard({ workspaceId: user.workspaceId, clientId: c.id });
+      const k = plan.counts;
+      const rows = plan.rows.map((r) => ({
+        sheet: r.sheetTitle,
+        row: r.rowId,
+        action: r.action,
+        title: r.title,
+        type: r.itemType,
+        status: r.status,
+        column: r.columnId,
+        linksDevTask: r.linkDevTaskId,
+        cells: r.cellsCarried,
+        screenshots: r.uploads.length,
+        note: r.note,
+      }));
+      return textResult(
+        { counts: k, rows },
+        `Dry run for ${c.name}: ${k.rows} rows in ${k.sheets} sheets. ${k.create} new cards (${k.linkDevTask} link the dev task they were sent to), ` +
+          `${k.joinCard} existing cards join a list, ${k.already} already moved. ${k.cellsCarried} cells and ${k.uploads} screenshots carried.`,
+      );
+    },
+  },
+  {
+    name: "sheets_to_board_apply",
+    description:
+      "Move a client's old wiki Sheets onto their Board, as the sheets_to_board_plan dry run described. Only creates cards, links dev " +
+      "tasks that deliver no card yet and puts existing cards in a list; never deletes, moves or renames a task, and never changes the " +
+      "sheets. A re-run does only what's left. Screenshots are copied onto the cards. Requires 'Manage clients'.",
+    inputSchema: {
+      type: "object",
+      properties: { client: { type: "string", description: "Client slug, name, or cuid (e.g. 'wedge')." } },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "move a client's sheets onto the board");
+      const parsed = z.object({ client: z.string().trim().min(1) }).strict().parse(args);
+      const c = await resolveClient(user, parsed.client);
+      const r = await applySheetsToBoard({ workspaceId: user.workspaceId, clientId: c.id, actorId: user.id });
+      const { plan: _plan, ...result } = r;
+      void _plan;
+      return textResult(
+        result,
+        `Moved ${c.name}'s sheets: ${r.created} new cards, ${r.devLinked} dev tasks linked, ${r.joined} existing cards put in a list, ` +
+          `${r.skipped} already moved. ${r.imagesCopied} screenshots copied` +
+          (r.imagesFailed.length ? `, ${r.imagesFailed.length} couldn't be` : "") +
+          (r.imagesDeferred ? `, ${r.imagesDeferred} left for the next run` : "") +
+          ".",
       );
     },
   },

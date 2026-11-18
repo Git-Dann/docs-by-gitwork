@@ -7040,6 +7040,11 @@ on a phone and check the compare-two view.
 
 ## 73. Recent Changes (October 2026) — Sheets: a client-editable spreadsheet linked to the task board
 
+> ⚠️ **Retired in November 2026 (§127).** Sheets is no longer a wiki section: its rows moved onto
+> the Board as product cards in named lists, and a Table view on the Board replaces the grid. The
+> notes below are history. The pure cell rules live on in `src/lib/table/`, the tables and old
+> image links stay, and nothing here is reachable from the wiki any more.
+
 Harry's ask: the team and clients keep lists of things to build in Google Sheets, with links
 everywhere, and none of it reaches the board. **Sheets** (section id `sheets`) is a typed grid in
 the client's wiki that **the client edits themselves**. Any row can be **sent to the dev board**,
@@ -10269,7 +10274,7 @@ all; releases that ended over a week ago start folded. Clicking a card opens the
   nosniff + sandbox CSP).
 - **Side stroke:** back, but straight: `rounded-l-none` wherever `border-l-[3px]` is drawn
   (`straight-side-stroke.test.ts`). A stroke that bends round a rounded corner is what Dan ruled out.
-- **Sheets** sit under Working together (QA lists and dev tasks shared with the client).
+- **Sheets** sat under Working together until it was retired into the Board the same month (§127).
 
 ### 126.3 A cleaner toolbar, and full control of the cards (the client's ops-board parity)
 
@@ -10334,4 +10339,54 @@ control over the tasks basically… what he can't do is assign it to a dev."**
   change entries), screenshots 50 an hour and 200 a day per wiki (counted per file in
   `RateLimitHit` under `board:upload:<wikiId>`), on top of the card and comment limits.
 - Demo: `/demo/wiki#board` adds (with an image), edits, deletes and restores in memory.
+
+## 127. Recent Changes (November 2026) — Sheets is retired: its rows become Board cards
+
+Only Wedge ever used Sheets: a QA review (47 rows, 26 already sent to the board and done) and a
+front-end backlog (18 rows, none sent). Both were lists of work kept beside the Board, so the work
+had two homes. Dan's call: "remove sheets as an entity — sheets is just a view", with a Table view
+on the Board for generic lists. This change does the move; the Table view comes after the Board
+update that's in flight (it shares the Board's files).
+
+- **`Task.boardList`** (additive, `@@index([clientId, boardList])`, never unique): a named list of
+  cards, e.g. "QA review: 20 Oct 2026". At most `BOARD_LIST_MAX` (80) characters. Set through the
+  task routes (`boardList` in the card fields) and MCP `create_task` / `update_task` (`list`; ''
+  takes a card out). `TaskDTO.boardList` is optional so older DTO builders needn't send it.
+- **The move** (`src/lib/sheets-to-board.ts` pure, `src/server/sheets-to-board.ts`): every live
+  row becomes a product card in the list named after its sheet.
+  - **Every non-empty cell is carried**: the title cell is the card's title, the rest go in the
+    description as `**Column:** value` (`rowTaskDescription`, the text "Send to board" wrote).
+    A row with no title keeps its cells under "Untitled row from …".
+  - **Idempotent:** a card carries `externalRef = "sheet-row:<rowId>"`; a second apply makes nothing.
+  - **A row already sent to the board keeps its work.** Its dev task (on this client) gets a new card
+    in the task's own status (Done → the Done lane) and is linked to it, unless it already delivers
+    another card. A task that's already a card just joins the list. A task that's gone, or on
+    another client, counts as never sent.
+  - **Mapped only where it clearly matches:** a QA-shaped sheet (title or Expected/Build columns)
+    makes bugs, otherwise features, and a row's own Type wins when it names a card type. Priority
+    High/Medium/Low (Urgent → High), Area → the card's area. A Status naming one of the client's
+    Backlog/To do columns lands there ("Future item" → Future Idea, "To decide" / "In review doc"
+    → Triage); anything else goes to the default backlog lane. The original value stays in the
+    description.
+  - **Screenshots:** uploaded images are copied onto the card as attachments, after the
+    transaction, 3 at a time inside 120 s, each under a per-card lock (`metadata.sheet.images`,
+    key → attachment id, so nothing is copied twice). A file uploaded to another client's wiki is
+    never copied. Links elsewhere stay links.
+  - Apply is one transaction under `pg_try_advisory_xact_lock` (409 while one runs). The sheets
+    themselves are never changed.
+  - Run it: `POST /api/clients/[slug]/sheets-to-board` `{ apply?: boolean }` (dry run by default;
+    'Manage clients' + this client) or MCP `sheets_to_board_plan` / `sheets_to_board_apply`.
+    Audited as `tasks.sheets_to_board.applied`.
+- **Sheets is gone as a section.** Out of the sidebar, Add New, section groups, dashboard, phone
+  nav, share lists, the client's view and `clientVisibleSections`; its components, the internal and
+  token routes, the upload-ticket route, the MCP sheet tools, the demo and the
+  `wiki.sheet_client_edit` notification are deleted. An old `#sheets` link opens the Board.
+  `wiki-section-wiring.test.ts` fails if "sheets" comes back anywhere.
+- **Kept:** the `WikiSheet*` tables and `ClientWiki.sheetsEnabled` (dropping them would block every
+  deploy, §2), the image route `/api/wiki/files/[key]/[name]` (old links), `resolveInternalSheets`
+  (the Board's settings route uses it), and the pure cell rules, moved to `src/lib/table/` (typed
+  cells and coercion, RFC 4180 paste parsing, CSV/TSV export with formula injection neutralised,
+  sort, undo history, media links, column widths) with their tests, for the Table view.
+- ⚠️ The wiki DTO still sends `sheets: { enabled: false, sheets: [] }`, always empty, so an app
+  build that decodes the field doesn't fail. Drop it once no build reads it.
 

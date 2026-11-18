@@ -21,7 +21,6 @@ import {
   CalculatorIcon,
   TableCellsIcon,
   RectangleStackIcon,
-  ViewColumnsIcon,
   CalendarDaysIcon,
   ChartBarIcon,
   ChartBarSquareIcon,
@@ -56,7 +55,6 @@ export type WikiSection =
   | "costs"
   | "estimates"
   | "comparisons"
-  | "sheets"
   | "board"
   | "roundup"
   | "delivery"
@@ -224,7 +222,6 @@ export function WikiSidebar({
       "costs",
       "estimates",
       "comparisons",
-      "sheets",
       "board",
       "roundup",
       "delivery",
@@ -406,7 +403,6 @@ export function WikiSidebar({
         {group("together", [
           navItem("intake", "Requests", <FlagIcon />),
           navItem("board", "Board", <RectangleStackIcon />),
-          navItem("sheets", "Sheets", <ViewColumnsIcon />),
           navItem("launchpad", "Launchpad", <RocketLaunchIcon />),
           navItem("support", "Support", <LifebuoyIcon />),
           COURSE_REQUESTS_SLUGS.includes(slug) && navItem("course-requests", "Course Requests", <FlagIcon />),

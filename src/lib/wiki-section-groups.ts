@@ -33,8 +33,6 @@ export const SECTION_GROUP = {
 
   intake: "together",
   board: "together",
-  // Sheets are mostly QA lists and tasks for the devs, worked on with the client (Dan, Nov 2026).
-  sheets: "together",
   launchpad: "together",
   support: "together",
   "course-requests": "together",
@@ -93,7 +91,6 @@ export const SECTION_BLURB: Record<GroupedWikiSection, string> = {
   "course-requests": "Golf course requests",
   metrics: "Product numbers, monthly",
   insights: "Bar, pie, Venn and node charts",
-  sheets: "Shared spreadsheets",
   comparisons: "Feature and plan tables",
   estimates: "Timescales by team size",
   costs: "Monthly running costs",

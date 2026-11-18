@@ -1635,8 +1635,8 @@ model ClientWiki {
   /// Pro, the client vs competitors). Client-facing, so off until someone turns it on.
   comparisonsEnabled  Boolean                @default(false)
   comparisons         WikiComparison[]
-  /// Whether the Sheets section is enabled — client-editable spreadsheets whose rows can be
-  /// sent to the task board. Off until someone turns it on.
+  /// Retired Nov 2026 (CLAUDE.md §127): Sheets is no longer a section; its rows became Board
+  /// cards. Kept, unread, until the data is moved: dropping a column blocks every deploy (§2).
   sheetsEnabled       Boolean                @default(false)
   sheets              WikiSheet[]
   pages               ClientWikiPage[]
@@ -4771,6 +4771,9 @@ model Task {
   /// The item's id in an outside planning tool, e.g. "forge:247", so a re-run of an import
   /// links instead of duplicating. Indexed per client, NOT unique (§2).
   externalRef        String?
+  /// A named list of cards on the client's board, e.g. "QA review: 20 Oct 2026" — the
+  /// generic-lists replacement for the retired Sheets (CLAUDE.md §127). Null = no list.
+  boardList          String?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
   /// Soft-archive: hidden from board/list/Gantt + dashboard scans, but never deleted (the
@@ -4802,6 +4805,7 @@ model Task {
   @@index([clickupId])
   @@index([productCardId])
   @@index([clientId, externalRef])
+  @@index([clientId, boardList])
   // Cross-client dashboard reads: the existing [workspaceId, clientId, status]
   // can't serve a workspace-wide status/due query (clientId sits between the two
   // predicates). These match getTaskAttention's overdue/due-soon/doing scans and
@@ -5874,6 +5878,7 @@ model WikiComparison {
 /// A client-editable spreadsheet in the wiki (CLAUDE.md §73). Columns are JSON (typed,
 /// parsed defensively by src/lib/wiki-sheets.ts); rows are their own table because the
 /// client and the team edit them concurrently, cell by cell.
+/// Retired Nov 2026 — kept until data is moved, see CLAUDE.md §127.
 model WikiSheet {
   id                   String         @id @default(cuid())
   wikiId               String
@@ -5901,6 +5906,7 @@ model WikiSheet {
 /// One row of a WikiSheet. `cells` is `{ [columnId]: value }`, merged per cell on write so
 /// two people editing different cells never clobber each other. `taskId` is a loose id
 /// (like ClientWikiIntakeItem.taskId) — the row's stage is derived from the task at read.
+/// Retired Nov 2026 — kept until data is moved, see CLAUDE.md §127.
 model WikiSheetRow {
   id                  String    @id @default(cuid())
   sheetId             String
@@ -5931,6 +5937,7 @@ model WikiSheetRow {
 /// An image uploaded into a Sheet's media cell (§73.2). Addressed by `key`, a 160-bit
 /// random capability; the cell stores `/api/wiki/files/<key>/<name>`. Loose ids, no FK:
 /// a row edit that drops the link leaves the bytes (cheap; images are capped at 10 MB).
+/// Retired Nov 2026 — kept until data is moved, see CLAUDE.md §127.
 model WikiSheetFile {
   id             String   @id @default(cuid())
   key            String   @unique

@@ -18,7 +18,7 @@
  * handler pulls in Prisma and the whole server tree, neither of which a node test wants.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
@@ -29,10 +29,9 @@ function toolNames(relative: string, indent = 4): string[] {
   return [...src.matchAll(new RegExp(`^ {${indent}}name: "([a-z_]+)",$`, "gm"))].map((m) => m[1]).sort();
 }
 
-// The Sheets tools live in their own module (a factory spread into TOOLS), one level deeper.
+// The monitor tools live in their own module (a factory spread into TOOLS), one level deeper.
 const handler = [
   ...toolNames("src/server/mcp/handler.ts"),
-  ...toolNames("src/server/mcp/sheet-tools.ts", 6),
   ...toolNames("src/server/mcp/monitor-tools.ts", 6),
 ].sort();
 const catalog = toolNames("src/components/settings/mcp-tools-catalog.tsx");
@@ -131,38 +130,28 @@ describe("comparison tools are registered and their writers gated", () => {
   });
 });
 
-describe("sheet tools are registered and their writers gated", () => {
-  const WRITERS = [
-    "create_sheet",
-    "update_sheet",
-    "add_sheet_columns",
-    "update_sheet_column",
-    "remove_sheet_column",
-    "add_sheet_rows",
-    "update_sheet_rows",
-    "delete_sheet_rows",
-    "send_sheet_rows_to_board",
-    "delete_sheet",
-  ];
-
-  it.each(["list_sheets", "get_sheet", ...WRITERS])("%s", (name) => {
-    expect(handler).toContain(name);
+describe("Sheets is retired (CLAUDE.md §127)", () => {
+  it("no sheet tools are registered or described", () => {
+    expect(handler.filter((n) => n.includes("sheet") && !n.startsWith("sheets_to_board"))).toEqual([]);
+    expect(catalog.filter((n) => n.includes("sheet") && !n.startsWith("sheets_to_board"))).toEqual([]);
+    expect(existsSync(join(ROOT, "src/server/mcp/sheet-tools.ts"))).toBe(false);
   });
 
-  it("every writer asserts 'Manage clients' — a sheet is something the client reads and edits", () => {
-    const src = readFileSync(join(ROOT, "src/server/mcp/sheet-tools.ts"), "utf8");
-    for (const name of WRITERS) {
-      const start = src.indexOf(`name: "${name}",`);
-      expect(start, `${name} not found`).toBeGreaterThan(-1);
-      const end = src.indexOf('      name: "', start + 20);
-      const block = src.slice(start, end === -1 ? undefined : end);
-      expect(block, `${name} is not gated`).toContain("assertCan(user, canManageClients");
-    }
-  });
-
-  it("sheets can be switched on and off with enable_wiki_section", () => {
+  it("enable_wiki_section can't switch Sheets back on", () => {
     const src = readFileSync(join(ROOT, "src/server/mcp/handler.ts"), "utf8");
-    expect(src).toContain("  sheets: setWikiSheetsEnabled,");
+    const toggles = src.slice(src.indexOf("const WIKI_SECTION_TOGGLES"), src.indexOf("const TOGGLEABLE_WIKI_SECTIONS"));
+    expect(toggles).toContain("board:");
+    expect(toggles).not.toMatch(/\bsheets:/);
+  });
+
+  it("moving sheets onto the board is there, and both tools need 'Manage clients'", () => {
+    const src = readFileSync(join(ROOT, "src/server/mcp/handler.ts"), "utf8");
+    for (const name of ["sheets_to_board_plan", "sheets_to_board_apply"]) {
+      expect(handler).toContain(name);
+      const start = src.indexOf(`name: "${name}",`);
+      const end = src.indexOf('    name: "', start + 20);
+      expect(src.slice(start, end), `${name} is not gated`).toContain("assertCan(user, canManageClients");
+    }
   });
 });
 

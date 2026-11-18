@@ -18,7 +18,6 @@ import {
   InboxArrowDownIcon,
   LifebuoyIcon,
   SignalIcon,
-  TableCellsIcon,
   UserGroupIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/outline";
@@ -54,7 +53,6 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   "clients.feed_failing": { icon: ExclamationTriangleIcon, label: "Portal" },
   "clients.monitor_alert": { icon: ExclamationTriangleIcon, label: "Monitors" },
   "wiki.request_mention": { icon: AtSymbolIcon, label: "Requests" },
-  "wiki.sheet_client_edit": { icon: TableCellsIcon, label: "Sheets" },
   "foreman.digest": { icon: ExclamationTriangleIcon, label: "Delivery watch" },
   "hr.weekly_digest": { icon: UserGroupIcon, label: "HR" },
   "team.message": { icon: ChatBubbleLeftEllipsisIcon, label: "Message" },

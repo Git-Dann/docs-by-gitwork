@@ -55,7 +55,7 @@ describe("clientVisibleSections", () => {
 
   /**
    * ⚠️ THE PROPERTY THE FIELD RESTS ON. `forPublic` trims the client's copy —
-   * hidden metrics removed, unpublishable comparisons dropped, sheets emptied while
+   * hidden metrics removed, unpublishable comparisons dropped while
    * the section is off — and the predicates below read exactly those arrays. Computed
    * before the trim, the list would name a section whose content had just gone, which
    * is the blank page the predicates exist to prevent.
@@ -68,24 +68,25 @@ describe("clientVisibleSections", () => {
         enabled: true,
         comparisons: [{ id: "c", title: "T", columns: [{ id: "a", title: "A" }], rows: [{ id: "r", kind: "row", label: "L", cells: {} }] }],
       },
-      sheets: { enabled: true, sheets: [{ id: "s", title: "S", columns: [{ id: "c1", title: "C" }], rows: [] }] },
     } as unknown as AnyWiki;
     const before = clientVisibleSections(withContent);
     expect(before).toContain("metrics");
     expect(before).toContain("comparisons");
-    expect(before).toContain("sheets");
 
     // What `forPublic` leaves behind when every one of those is withheld.
     const trimmed = {
       ...withContent,
       metrics: { enabled: true, source: null, metrics: [] },
       comparisons: { enabled: false, comparisons: [] },
-      sheets: { enabled: false, sheets: [] },
     } as unknown as AnyWiki;
     const after = clientVisibleSections(trimmed);
     expect(after).not.toContain("metrics");
     expect(after).not.toContain("comparisons");
-    expect(after).not.toContain("sheets");
+  });
+
+  it("never offers the retired Sheets section, even to a wiki that had it switched on (§127)", () => {
+    const old = { ...bare(), sheets: { enabled: true, sheets: [{ id: "s", title: "S", columns: [{ id: "c1", title: "C" }], rows: [] }] } } as unknown as AnyWiki;
+    expect(clientVisibleSections(old)).not.toContain("sheets");
   });
 
   it("offers the Board only with a card on it, and not once forPublic has emptied it", () => {
