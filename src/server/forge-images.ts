@@ -85,7 +85,7 @@ export const fetchForgeImage: ImageFetcher = async (url) => {
 /** Attach one downloaded image, unless the card already has it. Returns false if it was already there. */
 async function attachOnce(job: ImageJob, bytes: Uint8Array, mime: ImageMime, thumb: Buffer): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`forge-img:${job.taskId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`forge-img:${job.taskId}`}))`;
     const task = await tx.task.findUnique({ where: { id: job.taskId }, select: { metadata: true } });
     if (!task || copiedImages(task.metadata)[job.url]) return false;
     const row = await tx.taskAttachment.create({
