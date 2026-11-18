@@ -16,7 +16,7 @@ const isTeam = vi.hoisted(() => vi.fn());
 vi.mock("@/server/wiki-access", () => ({
   loginPortalUser: login,
   isGitworkTeamLogin: isTeam,
-  WIKI_ACCESS_COOKIE_MAX_AGE: 60,
+  wikiAccessCookieOptions: () => ({ path: "/", maxAge: 60 }),
 }));
 
 import { POST } from "../route";

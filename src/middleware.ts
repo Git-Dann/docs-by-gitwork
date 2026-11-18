@@ -1,3 +1,4 @@
+import { shouldRenewWikiAccess, wikiAccessCookieOptions, wikiAccessCookiesToRenew } from "@/lib/wiki-access-cookie";
 import { hasValidApiKeySignature, looksLikeApiKey } from "@/lib/api-key-token";
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
@@ -215,6 +216,18 @@ export default auth(async (req) => {
       const url = req.nextUrl.clone();
       url.pathname = `/docs${pathname}`;
       return NextResponse.rewrite(url);
+    }
+  }
+
+  // A client opening their wiki stays signed in: each page visit starts their 30 days
+  // again (src/lib/wiki-access-cookie.ts). The cookie is copied as it is and still checked
+  // on every request, so this never lets anyone in who wasn't already.
+  if (shouldRenewWikiAccess(pathname, req.method)) {
+    const renew = wikiAccessCookiesToRenew(req.cookies.getAll());
+    if (renew.length) {
+      const res = NextResponse.next();
+      for (const c of renew) res.cookies.set({ name: c.name, value: c.value, ...wikiAccessCookieOptions() });
+      return res;
     }
   }
 
