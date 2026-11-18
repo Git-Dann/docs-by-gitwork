@@ -40,3 +40,19 @@ export function portalSectionNumbers(shown: (section: PortalSection) => boolean,
   }
   return out;
 }
+
+/**
+ * How many cards share a row in a wrapping card grid (Developers), chosen from the count so the
+ * last row is never left with a hole: 5 → 3 + 2, 7 → 4 + 3. The cards also flex-grow, so whatever
+ * lands on a shorter last row (or a narrow screen) stretches to fill it.
+ */
+export function cardsPerRow(count: number): number {
+  if (count <= 4) return Math.max(1, count);
+  if (count <= 6) return 3;
+  return 4;
+}
+
+/** The flex-basis for one card when `perRow` share a row with `gapPx` between them. */
+export function cardBasis(perRow: number, gapPx: number): string {
+  return `calc((100% - ${(perRow - 1) * gapPx}px) / ${perRow})`;
+}

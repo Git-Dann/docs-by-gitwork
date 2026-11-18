@@ -2127,6 +2127,61 @@ const demoClientMeetings = {
     },
   ],
 };
+
+/**
+ * `/demo/portal?shape=dense` — Wedge's real shape, for the no-gaps check (§129.1): five developers,
+ * four designs, 49 meetings, one Pulse scan, no studies and thirty documents. The default demo is
+ * unchanged so the baseline snapshot keeps its data.
+ */
+function demoPortalShape(): "dense" | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return new URLSearchParams(window.location.search).get("shape") === "dense" ? "dense" : null;
+  } catch {
+    return null;
+  }
+}
+
+function denseClientDetail(): ClientDetailRecord {
+  const base = demoClientDetail;
+  const extraDevs = [
+    { id: "pl5", candidateId: "cand5", candidateName: "Sana Iqbal", candidateJobTitle: "Flutter developer", candidateStack: ["Flutter", "Dart"], candidateAvatarUrl: null, candidateUserId: null, clientName: WIKI_CLIENT.name, projectName: "Northwind mobile", startDate: atDays(-40), endDate: null, allocationPercent: 100, notes: null, updatedAt: atDays(-2) },
+    { id: "pl6", candidateId: "cand6", candidateName: "Omar Farouk", candidateJobTitle: "QA engineer", candidateStack: ["Playwright"], candidateAvatarUrl: null, candidateUserId: null, clientName: WIKI_CLIENT.name, projectName: "Northwind web", startDate: atDays(-15), endDate: null, allocationPercent: 50, notes: null, updatedAt: atDays(-1) },
+  ];
+  const designs = [
+    ...base.designs,
+    { id: "ds3", clientId: WIKI_CLIENT.id, name: "Figma — Full launch", url: "https://www.figma.com/design/demo-launch", notes: null, previewImageUrl: null, createdAt: atDays(-20), updatedAt: atDays(-5) },
+    { id: "ds4", clientId: WIKI_CLIENT.id, name: "Figma — Design system", url: "https://www.figma.com/design/demo-system", notes: null, previewImageUrl: null, createdAt: atDays(-18), updatedAt: atDays(-4) },
+  ];
+  const documentLinks = Array.from({ length: 30 }, (_, i) => ({
+    id: `dl-dense-${i + 1}`,
+    clientId: WIKI_CLIENT.id,
+    name: `Release notes ${String(i + 1).padStart(2, "0")}`,
+    url: `https://docs.google.com/document/d/demo-dense-${i + 1}`,
+    notes: null,
+    createdAt: atDays(-(i + 1) * 3),
+    updatedAt: atDays(-(i + 1) * 2),
+  }));
+  return { ...base, placements: [...base.placements, ...extraDevs], designs, documentLinks, studies: [], pulseScans: base.pulseScans.slice(0, 1) };
+}
+
+function denseClientMeetings() {
+  const [first] = demoClientMeetings.meetings;
+  const statuses = ["SUMMARISED", "ERROR", "NO_TRANSCRIPT", "SUMMARISED"] as const;
+  return {
+    ...demoClientMeetings,
+    meetings: Array.from({ length: 49 }, (_, i) => ({
+      ...first,
+      id: `mtg-dense-${i + 1}`,
+      calendarEventId: `ev-dense-${i + 1}`,
+      title: i % 3 === 0 ? "Northwind x Gitwork" : i % 3 === 1 ? "Weekly standup with the team" : "Luke x Dan",
+      startedAt: atDays(-(i + 1)),
+      endedAt: atDays(-(i + 1)),
+      status: statuses[i % statuses.length],
+    })),
+  };
+}
+
 const demoSlackActivity = {
   configured: true,
   channelName: "northwind-internal",
@@ -5058,14 +5113,14 @@ export function resolveDemoApi(
     return demoSlackActivity;
   }
   if (/^\/api\/clients\/[^/]+\/meetings$/.test(pathname)) {
-    return demoClientMeetings;
+    return demoPortalShape() === "dense" ? denseClientMeetings() : demoClientMeetings;
   }
   if (/^\/api\/clients\/[^/]+\/design-system$/.test(pathname)) {
     return demoDesignSystem;
   }
   // Single client — GET /api/clients/{slug} (exact; not a sub-resource).
   if (/^\/api\/clients\/[^/]+$/.test(pathname)) {
-    return demoClientDetail;
+    return demoPortalShape() === "dense" ? denseClientDetail() : demoClientDetail;
   }
 
   // Docs.
