@@ -703,26 +703,44 @@ export function useExportProposal(id: string) {
   });
 }
 
+export type ClientSlackActivity = {
+  configured: boolean;
+  channelName: string | null;
+  summary: string | null;
+  generatedAt: string | null;
+  /** "ok" · "stale" · "no_ai_key" · "ai_failed" · "empty", or a not-configured reason. */
+  reason: string;
+  /** Plain words for an "ai_failed" (never the provider's raw text). */
+  aiError?: string | null;
+  /** Whether this viewer may ask the AI again ("Try again"). */
+  canRefresh?: boolean;
+  messages: Array<{ id: string; author: string; text: string; ts: string }>;
+};
+
 export function useClientSlackActivity(slug: string, enabled = true) {
   return useQuery({
     queryKey: ["client-slack-activity", slug],
     // Use apiFetch so the browser's gitwork_api_session cookie handles auth —
     // sending an empty `Authorization: Bearer ` header was blocking requests.
-    queryFn: () =>
-      apiFetch<{
-        configured: boolean;
-        channelName: string | null;
-        summary: string | null;
-        generatedAt: string | null;
-        reason: string;
-        messages: Array<{ id: string; author: string; text: string; ts: string }>;
-      }>(`/api/clients/${slug}/slack-activity`),
+    queryFn: () => apiFetch<ClientSlackActivity>(`/api/clients/${slug}/slack-activity`),
     enabled: Boolean(slug) && enabled,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
     // Keep the last successful data visible while a background refetch runs,
     // so the digest never flashes to an empty state mid-refresh.
     placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * "Try again" on the Slack digest: asks the AI even when a digest is cached, then puts the
+ * answer where the card reads it.
+ */
+export function useRetryClientSlackDigest(slug: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<ClientSlackActivity>(`/api/clients/${slug}/slack-activity?refresh=1`),
+    onSuccess: (data) => qc.setQueryData(["client-slack-activity", slug], data),
   });
 }
 
