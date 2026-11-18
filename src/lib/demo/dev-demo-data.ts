@@ -4914,6 +4914,62 @@ function demoMonitorBoardBase() {
   };
 }
 
+/**
+ * `/demo/hq?desk=long` shows a long desk (14 overdue, 8 in progress), like a real one after a
+ * busy fortnight, so the HQ layout can be checked with a long On your desk as well as a short one.
+ */
+function demoAttentionFor() {
+  const long = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("desk") === "long";
+  if (!long) return demoAttention;
+  const base = demoAttention as { overdue: Array<Record<string, unknown>>; doing: Array<Record<string, unknown>> } & Record<string, unknown>;
+  const seed = base.overdue[0] ?? base.doing[0];
+  if (!seed) return demoAttention;
+  const make = (n: number, prefix: string, daysAgo: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      ...seed,
+      id: `${prefix}${i + 1}`,
+      title: `${prefix === "lo" ? "Overdue" : "In progress"} task ${i + 1}: tidy the release checklist for the next build`,
+      dueDate: new Date(Date.now() - (daysAgo + i) * 86_400_000).toISOString(),
+    }));
+  return { ...base, overdue: make(6, "lo", 2), overdueCount: 14, doing: make(6, "ld", -3), doingCount: 8 };
+}
+
+/**
+ * The DevOps roll-up roster for `/demo/hq`: a team mid-afternoon, most of whom have posted
+ * their morning standup and some their end of day. Times are relative to now, so the demo
+ * never shows a stale day.
+ */
+function demoRollupRoster() {
+  const today = new Date();
+  const at = (h: number, m: number) => {
+    const d = new Date(today);
+    d.setHours(h, m, 0, 0);
+    return d.toISOString();
+  };
+  const people: Array<[string, string, boolean, boolean, number, number]> = [
+    ["d1", "Alex Rivera", true, true, 1, 3],
+    ["d2", "Priya Shah", true, false, 2, 1],
+    ["d3", "Tom Okafor", true, true, 0, 4],
+    ["d4", "Mia Larsen", true, false, 3, 0],
+    ["d5", "Jonah Reid", false, false, 1, 0],
+    ["d6", "Sara Nunez", true, true, 1, 2],
+    ["d7", "Leo Brandt", true, false, 2, 1],
+    ["d8", "Ivy Chen", false, false, 0, 0],
+    ["d9", "Omar Haddad", true, false, 1, 2],
+  ];
+  return {
+    date: today.toISOString().slice(0, 10),
+    allPushed: false,
+    devs: people.map(([id, name, am, pm, doing, done]) => ({
+      user: { id, name, avatarUrl: null },
+      amPushedAt: am ? at(9, 20) : null,
+      pmPushedAt: pm ? at(16, 45) : null,
+      doingCount: doing,
+      doneCount: done,
+    })),
+  };
+}
+
 export function resolveDemoApi(
   pathname: string,
   search?: URLSearchParams,
@@ -4927,7 +4983,9 @@ export function resolveDemoApi(
     case "/api/tasks/standup":
       return demoMyDay;
     case "/api/tasks/attention":
-      return demoAttention;
+      return demoAttentionFor();
+    case "/api/tasks/rollup":
+      return demoRollupRoster();
     case "/api/integrations/calendar":
       return demoCalendar;
     // A stand-in on the client: Marco is off and Alex is covering, so the Portal's developer

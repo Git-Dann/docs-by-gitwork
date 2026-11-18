@@ -23,7 +23,9 @@ import {
   useRejectLeaveRequest,
   useReviewExpense,
 } from "@/hooks/use-backstage";
-import { useTaskAttention, usePushDailyUpdate, useMyDay } from "@/hooks/use-tasks";
+import { useTaskAttention, usePushDailyUpdate, useMyDay, useUpdateTask } from "@/hooks/use-tasks";
+import { useToast } from "@/components/ui/toast";
+import type { TaskStatus } from "@/types/tasks";
 import { pushTaskToSlack } from "@/lib/api";
 import { useProposalList } from "@/hooks/use-proposals";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
@@ -49,6 +51,8 @@ const SIGN_OFF_LABEL: Record<string, string> = {
 const APPROVALS_CAP = 4;
 const TASKS_CAP = 6;
 const SIGNOFF_CAP = 5;
+const SHORT_CAP = 3;
+const DESK_EXPANDED_KEY = "foundry.hq.desk.expanded.v1";
 
 interface OnYourDeskCardProps {
   canApprove: boolean;
@@ -88,6 +92,43 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
   // surfaced here so admins (Dan) can post their own tasks for testing/dogfood.
   // Admins are excluded from the dev roster so this doesn't pollute the roll-up
   // count; it just posts a Block Kit card to the involved clients' channels.
+  // Quick "Done" on an overdue row, with Undo: the commonest reason a task is overdue on
+  // HQ is that it was finished and nobody moved it.
+  const updateTask = useUpdateTask();
+  const toast = useToast();
+  function markDone(id: string, title: string, previous: TaskStatus) {
+    updateTask.mutate(
+      { id, input: { status: "DONE" } },
+      {
+        onSuccess: () =>
+          toast.undo(`Marked done: ${title}`, async () => {
+            await updateTask.mutateAsync({ id, input: { status: previous } });
+          }),
+      },
+    );
+  }
+  // Doing and Upcoming open short (3 each) so the desk card sits level with the roll-up
+  // beside it; "Show more" opens both, and the choice is remembered in this browser.
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    try {
+      setExpanded(window.localStorage.getItem(DESK_EXPANDED_KEY) === "1");
+    } catch {
+      /* blocked storage: short lists */
+    }
+  }, []);
+  function toggleExpanded() {
+    setExpanded((v) => {
+      try {
+        window.localStorage.setItem(DESK_EXPANDED_KEY, v ? "0" : "1");
+      } catch {
+        /* ignore */
+      }
+      return !v;
+    });
+  }
+  const doingCap = expanded ? TASKS_CAP : SHORT_CAP;
+  const upcomingCap = expanded ? 6 : SHORT_CAP;
   const myDay = useMyDay();
   const pushUpdate = usePushDailyUpdate();
   const [pushFeedback, setPushFeedback] = useState<string | null>(null);
@@ -151,7 +192,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
   if (!hasAnything) return null;
 
   return (
-    <section className={cn("widget-card", className)}>
+    <section className={cn("widget-card", className)} data-hq-card="desk">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
@@ -173,7 +214,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
         </span>
       </div>
 
-      <div className="widget-body space-y-5">
+      <div className="widget-body min-h-0 flex-1 space-y-5 overflow-y-auto">
         {/* ─── Tasks ──────────────────────────────────────────────────────── */}
         {hasTasks ? (
           <div>
@@ -213,29 +254,44 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
               Overdue ({overdueTotal})
             </p>
             {overdueTasks.slice(0, TASKS_CAP).map((t) => (
-              <Link
+              <div
                 key={t.id}
-                href={`/app/portal/${t.client.slug}/tasks?task=${encodeURIComponent(t.id)}`}
                 className="flex items-center justify-between gap-2 rounded-[8px] border border-red-100 bg-red-50/50 px-3 py-2 transition hover:bg-red-50"
               >
-                <div className="flex min-w-0 items-center gap-2">
+                <Link
+                  href={`/app/portal/${t.client.slug}/tasks?task=${encodeURIComponent(t.id)}`}
+                  className="flex min-w-0 flex-1 items-center gap-2"
+                >
                   <span
                     className="shrink-0 text-[10px] text-[var(--text-4)]"
                     style={{ fontFamily: "var(--font-mono)" }}
                   >
                     {taskRef(t.id)}
                   </span>
-                  <span className="truncate text-sm font-medium text-[var(--text-1)]">
+                  <span className="truncate text-sm font-medium text-[var(--text-1)]" title={t.title}>
                     {t.title}
                   </span>
                   <span className="shrink-0 truncate text-[11px] text-[var(--text-4)]">
                     · {t.client.name}
                   </span>
-                </div>
-                <span className="shrink-0 text-[11px] font-medium tabular-nums text-red-600">
-                  {t.dueDate ? formatDate(t.dueDate) : ""}
+                </Link>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="text-[11px] font-medium tabular-nums text-red-600">
+                    {t.dueDate ? formatDate(t.dueDate) : ""}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => markDone(t.id, t.title, t.status)}
+                    disabled={updateTask.isPending}
+                    title="Mark this task done"
+                    aria-label={`Mark ${t.title} done`}
+                    className="inline-flex items-center gap-1 rounded-[5px] border border-[var(--border-2)] bg-[var(--surface-0)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-2)] transition hover:border-[var(--success-500)] hover:text-[var(--success-500)] disabled:opacity-50"
+                  >
+                    <CheckIcon className="h-3 w-3" />
+                    Done
+                  </button>
                 </span>
-              </Link>
+              </div>
             ))}
             {overdueTotal > TASKS_CAP ? (
               <p className="text-center text-[11px] text-[var(--text-4)]">
@@ -253,7 +309,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
             >
               Doing ({doingCount})
             </p>
-            {doingTasks.slice(0, TASKS_CAP).map((t) => {
+            {doingTasks.slice(0, doingCap).map((t) => {
               const feedback = taskPushFeedback?.taskId === t.id ? taskPushFeedback : null;
               return (
                 <div
@@ -270,7 +326,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
                     >
                       {taskRef(t.id)}
                     </span>
-                    <span className="truncate text-sm font-medium text-[var(--text-1)]">
+                    <span className="truncate text-sm font-medium text-[var(--text-1)]" title={t.title}>
                       {t.title}
                     </span>
                     <span className="shrink-0 truncate text-[11px] text-[var(--text-4)]">
@@ -309,10 +365,18 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
                 </div>
               );
             })}
-            {doingCount > TASKS_CAP ? (
-              <p className="text-center text-[11px] text-[var(--text-4)]">
-                +{doingCount - TASKS_CAP} more in progress
-              </p>
+            {doingCount > doingCap ? (
+              doingTasks.length > doingCap ? (
+                <button type="button" onClick={toggleExpanded} className="w-full text-center text-[11px] text-[var(--brand-700)] hover:underline">
+                  Show {Math.min(doingTasks.length, TASKS_CAP) - doingCap} more in progress
+                </button>
+              ) : (
+                <p className="text-center text-[11px] text-[var(--text-4)]">+{doingCount - doingCap} more in progress</p>
+              )
+            ) : expanded && doingTasks.length > SHORT_CAP ? (
+              <button type="button" onClick={toggleExpanded} className="w-full text-center text-[11px] text-[var(--text-4)] hover:text-[var(--text-2)]">
+                Show fewer
+              </button>
             ) : null}
           </div>
         ) : null}
@@ -420,7 +484,7 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
         ) : null}
         {hasUpcoming ? (
           <ul className="space-y-1.5">
-            {upcomingAlerts.slice(0, 6).map((a, i) => (
+            {upcomingAlerts.slice(0, upcomingCap).map((a, i) => (
               <li key={i}>
                 <UpcomingRow alert={a} />
               </li>
@@ -431,6 +495,11 @@ export function OnYourDeskCard({ canApprove, canSeeTasks, canSeeSignoff, index, 
               </li>
             ) : null}
           </ul>
+        ) : null}
+        {hasUpcoming && upcomingAlerts.length > SHORT_CAP ? (
+          <button type="button" onClick={toggleExpanded} className="w-full text-center text-[11px] text-[var(--brand-700)] hover:underline">
+            {expanded ? "Show fewer" : `Show ${Math.min(upcomingAlerts.length, 6) - SHORT_CAP} more upcoming`}
+          </button>
         ) : null}
       </div>
     </section>

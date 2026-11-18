@@ -1,6 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { TileHeader } from "@/components/dashboard/tile-header";
+import { CountUp } from "@/components/dashboard/count-up";
+
 import { useExpenses } from "@/hooks/use-backstage";
 import type { WidgetSize } from "@/components/app-overview";
 import { SkeletonWidget } from "@/components/ui/motion/skeleton";
@@ -19,11 +21,10 @@ function money(amount: number, currency: string): string {
 }
 
 export default function ExpensesWidget({ index }: { size: WidgetSize; index: number }) {
-  const num = String(index).padStart(2, "0");
   const waiting = useExpenses("team", "SUBMITTED");
   if (waiting.isPending) return <SkeletonWidget />;
 
-  const rows = waiting.data ?? [];
+  const rows = Array.isArray(waiting.data) ? waiting.data : [];
   // Totals per currency: adding pounds to euros would be a number that means nothing.
   const totals = new Map<string, number>();
   for (const e of rows) totals.set(e.currency, (totals.get(e.currency) ?? 0) + e.amount);
@@ -31,14 +32,7 @@ export default function ExpensesWidget({ index }: { size: WidgetSize; index: num
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-1)] px-4">
-        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-          {`${num} // EXPENSES`}
-        </span>
-        <Link href="/app/backstage?area=expenses" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
-          Expenses
-        </Link>
-      </div>
+      <TileHeader index={index} label="EXPENSES" href="/app/backstage?area=expenses" hrefLabel="Expenses" />
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         {waiting.isError ? (
           <p className="text-xs text-[var(--text-3)]">Couldn&apos;t load expenses.</p>
@@ -46,14 +40,14 @@ export default function ExpensesWidget({ index }: { size: WidgetSize; index: num
           <>
             <p className="flex flex-wrap items-baseline gap-x-1.5">
               <span className="text-[34px] leading-none text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
-                {rows.length}
+                <CountUp value={rows.length} />
               </span>
               <span className="text-xs text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
                 to review
                 {totalLabel ? ` · ${totalLabel}` : ""}
               </span>
             </p>
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {rows.length === 0 ? (
                 <p className="text-xs text-[var(--text-3)]">Nothing waiting.</p>
               ) : (

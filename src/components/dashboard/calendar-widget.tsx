@@ -7,7 +7,10 @@ import { cn } from "@/lib/format";
 import { getCalendarEvents } from "@/lib/api";
 import type { CalendarEvent } from "@/lib/api";
 import type { WidgetSize } from "@/components/app-overview";
-import { SkeletonWidget } from "@/components/ui/motion/skeleton";
+import { SkeletonRows } from "@/components/ui/motion/skeleton";
+import { StatusDot } from "@/components/ui/motion/status-dot";
+import { TileHeader } from "@/components/dashboard/tile-header";
+import { nowOrNext, startsIn } from "@/lib/hq-calendar";
 
 function formatTime(iso: string): string {
   if (!iso.includes("T")) return "All day";
@@ -60,7 +63,6 @@ function MeetingJoinLink({ href, compact = false }: { href: string | null; compa
 }
 
 export default function CalendarWidget({ size, index }: { size: WidgetSize; index: number }) {
-  const num = String(index).padStart(2, "0");
 
   const { data, isLoading } = useQuery({
     queryKey: ["integrations", "calendar"],
@@ -70,7 +72,12 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
   });
 
   if (isLoading) {
-    return <SkeletonWidget />;
+    return (
+      <div className="flex h-full flex-col">
+        <TileHeader index={index} label="CALENDAR" />
+        <SkeletonRows count={6} className="p-4" />
+      </div>
+    );
   }
 
   // ── sm size: mini view ──────────────────────────────────────────────────────
@@ -79,12 +86,7 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
     const nextEvent = events[0];
     return (
       <div className="flex h-full flex-col">
-        {/* Widget header */}
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-            {`${num} // CALENDAR`}
-          </span>
-        </div>
+        <TileHeader index={index} label="CALENDAR" />
         {/* Body */}
         <div className="flex flex-1 flex-col overflow-hidden p-4">
           <div className="flex flex-1 flex-col items-center justify-center">
@@ -106,14 +108,9 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
   if (!data?.connected) {
     return (
       <div className="flex h-full flex-col">
-        {/* Widget header */}
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-          <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-            {`${num} // CALENDAR`}
-          </span>
-        </div>
+        <TileHeader index={index} label="CALENDAR" />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-teal-50">
             <VideoCameraIcon className="h-5 w-5 text-teal-400" />
           </div>
           <div>
@@ -144,16 +141,42 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
     else groups.push({ label, events: [ev] });
   }
 
-  // ── md / lg: single-column timeline ─────────────────────────────────────────
+  // ── md / lg: now/next, then a single-column timeline ─────────────────────────
+  const upNext = nowOrNext(events, new Date());
   return (
     <div className="flex h-full flex-col">
-      {/* Widget header */}
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-4">
-        <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
-          {`${num} // CALENDAR`}
-        </span>
-        <span className="text-xs text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>next 14 days</span>
-      </div>
+      <TileHeader index={index} label="CALENDAR" status="NEXT 14 DAYS" href="https://calendar.google.com" hrefLabel="Open" />
+
+      {upNext ? (
+        <div className="shrink-0 border-b border-l-[3px] border-[var(--border-2)] border-l-[var(--brand-500)] px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--brand-700)]" style={{ fontFamily: "var(--font-mono)" }}>
+                <StatusDot tone="brand" motion={upNext.live ? "pulse" : "none"} size="xs" />
+                {upNext.live ? "Now" : `Next · ${startsIn(upNext.event.start, new Date())}`}
+              </p>
+              <p className="mt-0.5 truncate text-sm font-semibold text-[var(--text-1)]" title={upNext.event.summary}>
+                {upNext.event.summary}
+              </p>
+              <p className="text-[11px] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+                {formatTime(upNext.event.start)}–{formatTime(upNext.event.end)}
+                {upNext.event.attendees.length > 0 ? ` · ${upNext.event.attendees.length} people` : ""}
+              </p>
+            </div>
+            {upNext.event.meetLink ? (
+              <a
+                href={upNext.event.meetLink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[var(--brand-800)]"
+              >
+                <VideoCameraIcon className="h-3.5 w-3.5" />
+                Join
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Body: timeline list */}
       <div className="flex-1 overflow-y-auto">
@@ -175,7 +198,7 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
                   </span>
                 </div>
                 {/* Events for the day, connected by a timeline rail */}
-                <ul className="relative ml-[3.25rem] border-l border-[rgba(0,0,0,0.08)]">
+                <ul className="relative ml-[3.25rem] border-l border-[var(--border-2)]">
                   {group.events.map((ev) => (
                     <li key={ev.id} className="relative py-2.5">
                       {/* Time on the rail's left */}

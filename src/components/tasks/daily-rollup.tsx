@@ -8,8 +8,6 @@ import {
   PaperAirplaneIcon,
   SunIcon,
   MoonIcon,
-  ChevronUpIcon,
-  ChevronDownIcon,
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
@@ -26,8 +24,6 @@ import {
 
 import { TaskAvatar } from "@/components/tasks/task-avatar";
 import { Skeleton } from "@/components/ui/motion/skeleton";
-
-const PAGE_SIZE = 5;
 
 export function DailyRollup({
   enabled = true,
@@ -50,7 +46,7 @@ export function DailyRollup({
   const pushPm = usePushPmUpdates();
   const [result, setResult] = useState<string | null>(null);
   const [pmResult, setPmResult] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<string | null>(null);
   // Review-before-send: opening the modal fetches the compiled preview for the
   // chosen phase (AM = in-progress, PM = done-today).
   const [reviewing, setReviewing] = useState(false);
@@ -63,9 +59,7 @@ export function DailyRollup({
   const pmCount = devs.filter((d) => d.pmPushedAt).length;
   const allPushed = data?.allPushed ?? false;
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages - 1);
-  const pageRows = devs.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const selectedDev = devs.find((d) => d.user.id === selected) ?? null;
 
   async function doPublish(override: boolean) {
     setResult(null);
@@ -112,7 +106,7 @@ export function DailyRollup({
   }
 
   return (
-    <section className={cn("widget-card", className)}>
+    <section className={cn("widget-card", className)} data-hq-card="rollup">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">
@@ -153,56 +147,59 @@ export function DailyRollup({
           </p>
         ) : (
           <>
-            {/* Paginated roster — 5 per page */}
-            <div className="space-y-1.5">
-              {pageRows.map((d) => (
-                <div
-                  key={d.user.id}
-                  className="flex items-center gap-2.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
-                >
-                  <TaskAvatar user={d.user} size={26} />
+            {/* The whole team at a glance: one face per developer, with their morning and
+                end-of-day standup as two marks under it. Pick a face to see their day.
+                Was a paged list of five, so most of the team was always off-screen. */}
+            <div>
+              <div className="flex items-center gap-3">
+                <RollupBar label="AM" n={amCount} total={total} colour="var(--brand-500)" />
+                <RollupBar label="PM" n={pmCount} total={total} colour="var(--text-3)" />
+              </div>
+              <ul className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-1.5" aria-label="Developers">
+                {devs.map((d) => {
+                  const on = selected === d.user.id;
+                  const first = d.user.name.trim().split(/\s+/)[0] ?? d.user.name;
+                  return (
+                    <li key={d.user.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelected(on ? null : d.user.id)}
+                        aria-pressed={on}
+                        title={`${d.user.name}: AM ${d.amPushedAt ? "posted" : "not posted"}, PM ${d.pmPushedAt ? "posted" : "not posted"}`}
+                        className={cn(
+                          "flex w-full flex-col items-center gap-1 rounded-[8px] border px-1 py-2 transition-colors",
+                          on
+                            ? "border-[var(--brand-500)] bg-[var(--surface-brand-soft)]"
+                            : "border-transparent hover:bg-[var(--surface-1)]",
+                        )}
+                      >
+                        <span className={cn("rounded-full", !d.amPushedAt && !d.pmPushedAt && "opacity-60")}>
+                          <TaskAvatar user={d.user} size={30} />
+                        </span>
+                        <span className="w-full truncate text-center text-[11px] text-[var(--text-2)]">{first}</span>
+                        <span className="flex items-center gap-1" aria-hidden>
+                          <PushMark on={Boolean(d.amPushedAt)} colour="var(--brand-500)" />
+                          <PushMark on={Boolean(d.pmPushedAt)} colour="var(--text-3)" />
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {selectedDev ? (
+                <div className="mt-2 flex items-center gap-2.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                  <TaskAvatar user={selectedDev.user} size={26} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[var(--text-1)]">
-                      {d.user.name}
-                    </p>
+                    <p className="truncate text-sm font-medium text-[var(--text-1)]">{selectedDev.user.name}</p>
                     <p className="text-[11px] text-[var(--text-4)]">
-                      {d.doingCount} doing · {d.doneCount} done today
+                      {selectedDev.doingCount} doing · {selectedDev.doneCount} done today
                     </p>
                   </div>
-                  <PushDot label="AM" on={Boolean(d.amPushedAt)} />
-                  <PushDot label="PM" on={Boolean(d.pmPushedAt)} />
+                  <PushDot label="AM" at={selectedDev.amPushedAt} />
+                  <PushDot label="PM" at={selectedDev.pmPushedAt} />
                 </div>
-              ))}
+              ) : null}
             </div>
-
-            {totalPages > 1 ? (
-              <div className="flex items-center justify-between pt-0.5">
-                <span className="widget-timestamp">
-                  {safePage * PAGE_SIZE + 1}–
-                  {Math.min((safePage + 1) * PAGE_SIZE, total)} of {total}
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    disabled={safePage === 0}
-                    onClick={() => setPage((p) => p - 1)}
-                    title="Previous"
-                    className="rounded-[4px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] disabled:opacity-30"
-                  >
-                    <ChevronUpIcon className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={safePage >= totalPages - 1}
-                    onClick={() => setPage((p) => p + 1)}
-                    title="Next"
-                    className="rounded-[4px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] disabled:opacity-30"
-                  >
-                    <ChevronDownIcon className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ) : null}
 
             {/* Publish — primary CTA left, override secondary right. Skipped
                 when the viewer is here purely to monitor (super admin). */}
@@ -455,21 +452,45 @@ export function DailyRollup({
   );
 }
 
-function PushDot({ label, on }: { label: string; on: boolean }) {
+function PushDot({ label, at }: { label: string; at: string | null }) {
+  const time = at ? new Date(at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : null;
   return (
     <span
-      title={`${label} ${on ? "pushed" : "pending"}`}
-      className="inline-flex items-center gap-1 text-[10px] font-medium"
-      style={{
-        fontFamily: "var(--font-mono)",
-        color: on ? "#16A34A" : "#94A3B8",
-      }}
+      title={`${label} ${at ? `posted at ${time}` : "not posted yet"}`}
+      className={cn("inline-flex items-center gap-1 text-[10px] font-medium", at ? "text-[var(--success-500)]" : "text-[var(--text-4)]")}
+      style={{ fontFamily: "var(--font-mono)" }}
     >
-      <span
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ background: on ? "#16A34A" : "#CBD5E1" }}
-      />
+      <span className={cn("inline-block h-1.5 w-1.5 rounded-full", at ? "bg-[var(--success-500)]" : "bg-[var(--border-1)]")} />
       {label}
+      {time ? ` ${time}` : ""}
     </span>
+  );
+}
+
+/** One standup under a face: filled when posted, an outline when not. */
+function PushMark({ on, colour }: { on: boolean; colour: string }) {
+  return (
+    <span
+      className="h-1.5 w-3 rounded-[2px] border"
+      style={{ background: on ? colour : "transparent", borderColor: on ? colour : "var(--border-1)" }}
+    />
+  );
+}
+
+/** "AM 14/19" with a proportional bar. */
+function RollupBar({ label, n, total, colour }: { label: string; n: number; total: number; colour: string }) {
+  const pct = total > 0 ? (n / total) * 100 : 0;
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="flex items-baseline justify-between text-[10px] text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
+        <span>{label}</span>
+        <span className="tabular-nums">
+          {n}/{total}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-[2px] bg-[var(--surface-2)]">
+        <div className="h-full transition-[width] duration-700" style={{ width: `${pct}%`, background: colour }} />
+      </div>
+    </div>
   );
 }

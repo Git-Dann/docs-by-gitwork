@@ -3,7 +3,8 @@
 import { GettingStartedCard } from "@/components/dashboard/getting-started-card";
 import Link from "next/link";
 
-import { useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { rowHeight, rowsOf } from "@/lib/hq-rows";
 import dynamic from "next/dynamic";
 import PulseWidget from "@/components/dashboard/pulse-widget";
 import CareWidget from "@/components/dashboard/care-widget";
@@ -32,7 +33,10 @@ import { useClientList } from "@/hooks/use-proposals";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast, isSuperAdmin, isExternalRole } from "@/types/auth";
 import { useViewAs } from "@/lib/view-as";
+import { cn } from "@/lib/format";
 import { SkeletonBlock } from "@/components/ui/motion/skeleton";
+import { FadeIn } from "@/components/ui/motion/fade-in";
+import { HqTodayBand } from "@/components/dashboard/hq-today-band";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -151,30 +155,109 @@ function GuestOverview({
   );
 }
 
+// Literal class names so Tailwind emits them.
+const XL_SPAN: Record<number, string> = { 1: "xl:col-span-6", 2: "xl:col-span-3", 3: "xl:col-span-2" };
+const LG_SPAN: Record<number, string> = { 1: "lg:col-span-6", 2: "lg:col-span-3" };
+
+/** Tiles per row at the current width: 3 from xl, 2 from lg, else 1 (each tile its own row). */
+function perRowNow(): number {
+  if (typeof window === "undefined") return 3;
+  if (window.matchMedia("(min-width: 1280px)").matches) return 3;
+  if (window.matchMedia("(min-width: 1024px)").matches) return 2;
+  return 1;
+}
+
 function BentoBand({ tiles, band }: { tiles: NumberedTile[]; band: WidgetBand }) {
-  const height = band === "feed" ? ROW_HEIGHT * 2 + TILE_GAP : ROW_HEIGHT;
+  const cap = band === "feed" ? ROW_HEIGHT * 2 + TILE_GAP : ROW_HEIGHT;
+  // Floors keep a row readable when one tile is nearly empty; the empty space that leaves in
+  // that tile stays under the 48px HQ allows.
+  const floor = band === "feed" ? 228 : 160;
+  const cards = useRef<Array<HTMLDivElement | null>>([]);
+  const cells = useRef<Array<HTMLDivElement | null>>([]);
+  const [heights, setHeights] = useState<number[]>([]);
+
+  // Measure each tile's natural height (cards at auto height, not stretched), then give every
+  // row its shortest tile's height (`rowHeight`). Re-measured when content or width changes.
+  const measure = useCallback(() => {
+    const els = cards.current.slice(0, tiles.length);
+    if (els.some((e) => !e)) return;
+    const perRow = perRowNow();
+    els.forEach((el, i) => {
+      el!.style.height = "auto";
+      el!.style.maxHeight = "none";
+      const cell = cells.current[i];
+      if (cell) cell.style.alignSelf = "start";
+    });
+    const naturals = els.map((el) => el!.offsetHeight);
+    const next: number[] = [];
+    for (const row of rowsOf(tiles.length, perRow)) {
+      // Below lg each tile is its own row: its natural height, capped.
+      const h = perRow === 1 ? Math.min(cap, naturals[row[0]]) : rowHeight(row.map((i) => naturals[i]), floor, cap);
+      for (const i of row) next[i] = h;
+    }
+    els.forEach((el, i) => {
+      el!.style.height = `${next[i]}px`;
+      el!.style.maxHeight = "";
+      const cell = cells.current[i];
+      if (cell) cell.style.alignSelf = "";
+    });
+    setHeights((prev) => (prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next));
+  }, [tiles.length, cap, floor]);
+
+  useLayoutEffect(() => {
+    measure();
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    // Data arriving (a list filling in) changes what's inside the tiles, not their size, so
+    // watch the DOM as well as the window.
+    const mo = new MutationObserver(schedule);
+    const root = cards.current[0]?.parentElement?.parentElement?.parentElement;
+    if (root) mo.observe(root, { childList: true, subtree: true, characterData: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      mo.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, [measure]);
+
   return (
     <div
       className="grid grid-cols-1 lg:grid-cols-6"
       style={{ gap: `${TILE_GAP}px` }}
     >
       {tiles.map(({ component: Widget, size, number }, i) => {
-        // Length of the (max-3) row this tile sits in → its column span.
-        const rowStart = Math.floor(i / 3) * 3;
-        const rowLen = Math.min(3, tiles.length - rowStart);
-        const span = 6 / rowLen; // 3→2, 2→3, 1→6
+        // Three to a row from xl, two from lg, one below. Each row's last tiles stretch to
+        // fill it (3→2 cols, 2→3, 1→6), so there is never a blank cell at either width.
+        const xlRowStart = Math.floor(i / 3) * 3;
+        const xlSpan = XL_SPAN[Math.min(3, tiles.length - xlRowStart)];
+        const lgRowStart = Math.floor(i / 2) * 2;
+        const lgSpan = LG_SPAN[Math.min(2, tiles.length - lgRowStart)];
         return (
           <div
             key={number}
-            // ⚠️ Was `bg-white` + a literal `rgba(0,0,0,0.08)` border. The dark remap
-            // covers `bg-white` and rgba-black borders (see globals.css), but this card
-            // ALSO wraps every HQ widget — so a token-correct widget still rendered on a
-            // hardcoded white slab, which is why §42.13's Care tile "looked wrong in dark
-            // mode" even after its own colours were fixed. Uses the surface tokens now.
+            ref={(el) => {
+              cells.current[i] = el;
+            }}
+            className={cn("min-w-0", lgSpan, xlSpan)}
+          >
+          <FadeIn delayMs={Math.min(i, 8) * 45} className="h-full">
+          <div
+            ref={(el) => {
+              cards.current[i] = el;
+            }}
+            data-hq-card="tile"
+            // ⚠️ Was `bg-white` + a literal `rgba(0,0,0,0.08)` border; surface tokens now so it
+            // flips in dark mode (§42.13). The height is set per row by `measure` above.
             className="overflow-hidden rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-0)]"
-            style={{ gridColumn: `span ${span}`, height: `${height}px` }}
+            style={{ height: heights[i] ? `${heights[i]}px` : `${cap}px` }}
           >
             <Widget size={size} index={number} />
+          </div>
+          </FadeIn>
           </div>
         );
       })}
@@ -323,21 +406,41 @@ export function AppOverview() {
 
       {isEffectiveAdmin ? <GettingStartedCard /> : null}
 
+      {/* What needs me now: a few figures, each a link to where it's dealt with. Every
+          tile reads a query a card below already makes, and only shows to someone who
+          can see that card. */}
+      <HqTodayBand
+        access={{
+          tasks: canSeeTasks,
+          rollup: canPublishRollup,
+          care: showAll || resolvedPermissions.includes("support"),
+          pulse: showAll || resolvedPermissions.includes("pulse"),
+          calendar: canSeeTasks,
+        }}
+      />
+
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
           and the DevOps lead's "Daily roll-up". Side-by-side only when both
           render; otherwise the present card fills the row. */}
-      <div className={todayTwoUp ? "grid items-stretch gap-3 lg:grid-cols-2" : ""}>
+      <div className={todayTwoUp ? "grid items-stretch gap-3 xl:grid-cols-2" : ""}>
+        <div
+          id="hq-desk"
+          className={cn("scroll-mt-4", todayTwoUp && "xl:relative xl:min-h-[420px]", !deskVisible && "contents")}
+        >
         <OnYourDeskCard
           index={1}
           onVisibilityChange={setDeskVisible}
           canApprove={canApprove}
           canSeeTasks={canSeeTasks}
           canSeeSignoff={canSeeSignoff}
-          className={todayTwoUp ? "h-full" : undefined}
+          // Side by side, the desk card fills the row and scrolls inside, so the row ends
+          // level with the roll-up column however long the desk is: no gap under either.
+          className={todayTwoUp ? "xl:absolute xl:inset-0" : undefined}
         />
+        </div>
         {hasRightColumn ? (
-          <div className="flex flex-col gap-3">
-            {canPublishRollup ? <DailyRollup index={rollupNumber} canPublish={canActuallyPublish} /> : null}
+          <div id="hq-rollup" className="flex scroll-mt-4 flex-col gap-3">
+            {canPublishRollup ? <DailyRollup index={rollupNumber} canPublish={canActuallyPublish} className="flex-1" /> : null}
             {canBroadcast ? <BroadcastComposer index={broadcastNumber} enabled /> : null}
           </div>
         ) : null}
@@ -351,7 +454,7 @@ export function AppOverview() {
         </div>
       )}
 
-      {canSeeTasks && canSeeSignoff && canManageClientRecords ? <AgenticWorkflowCard /> : null}
+      {canSeeTasks && canSeeSignoff && canManageClientRecords ? <AgenticWorkflowCard index={counter + 1} /> : null}
     </div>
   );
 }

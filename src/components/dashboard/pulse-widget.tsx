@@ -6,6 +6,8 @@ import { usePermissions } from "@/hooks/use-permissions";
 import type { WidgetSize } from "@/components/app-overview";
 import type { PulseScanListItem } from "@/types/pulse";
 import { SkeletonWidget } from "@/components/ui/motion/skeleton";
+import { TileHeader } from "@/components/dashboard/tile-header";
+import { useCountUp } from "@/components/ui/motion/use-count-up";
 
 /**
  * `NN // PULSE` on Foundry HQ.
@@ -77,32 +79,65 @@ function ScanRow({ scan, size }: { scan: { id: string; projectName: string; heal
 }
 
 function WidgetFrame({
-  num,
+  index,
+  status,
   children,
 }: {
-  num: string;
+  index: number;
+  status?: string | null;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[var(--border-1)] px-4">
-        <span
-          className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {`${num} // PULSE`}
-        </span>
-        <Link href="/app/pulse" className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]">
-          View all
-        </Link>
-      </div>
+      <TileHeader index={index} label="PULSE" href="/app/pulse" status={status} statusTone={status ? "danger" : "muted"} />
       <div className="flex flex-1 flex-col overflow-hidden">{children}</div>
     </div>
   );
 }
 
+const TIER_COLOUR = {
+  green: "var(--success-500)",
+  amber: "var(--warning-500)",
+  red: "var(--danger-500)",
+} as const;
+const TIER_LABEL = { green: "Healthy", amber: "Needs work", red: "At risk" } as const;
+
+/**
+ * Every scanned project as one proportional bar, healthy → at risk, with the counts under
+ * it. Three equal-width bars only said whether a tier was empty; this says how the
+ * portfolio is split.
+ */
+function TierDistribution({ tiers }: { tiers: { green: number; amber: number; red: number } }) {
+  const total = tiers.green + tiers.amber + tiers.red;
+  if (total === 0) return null;
+  const order = ["green", "amber", "red"] as const;
+  return (
+    <div>
+      <div className="flex h-2 w-full gap-[2px] overflow-hidden rounded-[3px]" role="img" aria-label={order.map((t) => `${tiers[t]} ${TIER_LABEL[t].toLowerCase()}`).join(", ")}>
+        {order.map((t) =>
+          tiers[t] > 0 ? (
+            <span
+              key={t}
+              className="h-full transition-[width] duration-500"
+              style={{ width: `${(tiers[t] / total) * 100}%`, background: TIER_COLOUR[t] }}
+              title={`${tiers[t]} ${TIER_LABEL[t].toLowerCase()}`}
+            />
+          ) : null,
+        )}
+      </div>
+      <div className="mt-1.5 flex items-center gap-3 text-[10px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+        {order.map((t) => (
+          <span key={t} className="inline-flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-[2px]" style={{ background: TIER_COLOUR[t] }} />
+            {tiers[t]} {TIER_LABEL[t].toUpperCase()}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function PulseWidget({ size, index }: { size: WidgetSize; index: number }) {
-  const num = String(index).padStart(2, "0");
   const { isExternal } = usePermissions();
 
   // Only one of these is ever enabled, so a guest never fires the request that 403s and
@@ -120,7 +155,7 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
     const mine: PulseScanListItem[] = mineQuery.data?.scans ?? [];
     if (mine.length === 0) {
       return (
-        <WidgetFrame num={num}>
+        <WidgetFrame index={index}>
           <EmptyState compact={size === "sm"} />
         </WidgetFrame>
       );
@@ -132,7 +167,7 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
       : null;
 
     return (
-      <WidgetFrame num={num}>
+      <WidgetFrame index={index}>
         <div className="flex flex-1 flex-col overflow-hidden px-3 pb-3 pt-2">
           <div className="flex items-baseline gap-3 px-1">
             <p
@@ -177,7 +212,7 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
 
   if (stats.totalScans === 0) {
     return (
-      <WidgetFrame num={num}>
+      <WidgetFrame index={index}>
         <EmptyState compact={size === "sm"} />
       </WidgetFrame>
     );
@@ -188,47 +223,18 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
 
   if (size === "sm") {
     return (
-      <WidgetFrame num={num}>
-        <div className="flex flex-1 flex-col overflow-hidden px-3 pb-3 pt-2">
-          <div className="flex items-baseline gap-3 px-1">
-            <p
-              className={`text-2xl tabular-nums leading-none ${scoreColour(stats.avgHealthScore)}`}
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              {stats.avgHealthScore ?? "—"}
+      <WidgetFrame index={index} status={stats.totalCriticalGaps > 0 ? `${stats.totalCriticalGaps} CRITICAL` : null}>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-3 pt-3">
+          <div className="flex items-baseline gap-2">
+            <AnimatedScore value={stats.avgHealthScore} />
+            <p className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+              avg health · {total} project{total === 1 ? "" : "s"}
             </p>
-            <p
-              className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              avg health
-            </p>
-            {stats.totalCriticalGaps > 0 ? (
-              <span
-                className="ml-auto text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--danger-500)]"
-                style={{ fontFamily: "var(--font-mono)" }}
-              >
-                {stats.totalCriticalGaps} critical
-              </span>
-            ) : null}
           </div>
-          <div className="mt-2 flex gap-1 px-1">
-            {(["green", "amber", "red"] as const).map((tier) => (
-              <div
-                key={tier}
-                className="h-1 flex-1 rounded-full"
-                style={{
-                  backgroundColor:
-                    tier === "green" ? "var(--success-500)"
-                    : tier === "amber" ? "var(--warning-500)"
-                    : "var(--danger-500)",
-                  opacity: stats.healthTiers[tier] > 0 ? 1 : 0.15,
-                }}
-                title={`${stats.healthTiers[tier]} ${tier}`}
-              />
-            ))}
+          <div className="mt-2.5">
+            <TierDistribution tiers={stats.healthTiers} />
           </div>
-          <div className="mt-3 space-y-0.5">
+          <div className="mt-2 min-h-0 flex-1 space-y-0.5 overflow-y-auto">
             {stats.recentScans.slice(0, 2).map((scan) => (
               <ScanRow key={scan.id} scan={scan} size="sm" />
             ))}
@@ -239,7 +245,7 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
   }
 
   return (
-    <WidgetFrame num={num}>
+    <WidgetFrame index={index}>
       <div className="flex flex-1 flex-col overflow-hidden p-4">
         <div className="flex items-center gap-4">
           <div>
@@ -306,5 +312,15 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
         </div>
       </div>
     </WidgetFrame>
+  );
+}
+
+/** The average health, counting up when it arrives. */
+function AnimatedScore({ value }: { value: number | null }) {
+  const shown = useCountUp(value);
+  return (
+    <p className={`text-2xl tabular-nums leading-none ${scoreColour(value)}`} style={{ fontFamily: "var(--font-display)" }}>
+      {value == null ? "—" : shown}
+    </p>
   );
 }

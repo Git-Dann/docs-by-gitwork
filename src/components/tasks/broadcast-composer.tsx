@@ -17,34 +17,35 @@ export function BroadcastComposer({ index = 0, enabled = true }: { index?: numbe
   const [open, setOpen] = useState(false);
   const { data: recent } = useRecentSlackUpdates(enabled);
 
-  const lastBroadcast = recent?.find((r) => r.kind === "BROADCAST" && r.clientId === null) ?? null;
+  // A reply that isn't a list (the demo's catch-all answers `{}`) means no broadcasts, not a crash.
+  const lastBroadcast = (Array.isArray(recent) ? recent : []).find((r) => r.kind === "BROADCAST" && r.clientId === null) ?? null;
   const lastLabel = lastBroadcast
     ? `Last broadcast · ${new Date(lastBroadcast.createdAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
     : "No broadcasts yet today.";
 
   return (
-    <section className="widget-card">
+    <section className="widget-card" data-hq-card="broadcast">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
           {" // DEVOPS BROADCAST"}
         </span>
       </div>
-      <div className="widget-body space-y-3">
-        <p className="text-xs text-[var(--text-3)]">
-          Post a free-form update to one or more client channels — no tasks needed.
-        </p>
-        <div className="flex items-center justify-between gap-2 border-t border-[var(--border-2)] pt-3">
-          <span className="widget-timestamp">{lastLabel}</span>
-          <Button
-            type="button"
-            variant="primary"
-            leadingIcon={<MegaphoneIcon className="h-4 w-4" />}
-            onClick={() => setOpen(true)}
-          >
-            New broadcast
-          </Button>
+      {/* One line, not a paragraph and a button floating in a tall card: the
+          action is the content. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm text-[var(--text-2)]">Post a free-form update to client channels.</p>
+          <p className="widget-timestamp mt-0.5">{lastLabel}</p>
         </div>
+        <Button
+          type="button"
+          variant="primary"
+          leadingIcon={<MegaphoneIcon className="h-4 w-4" />}
+          onClick={() => setOpen(true)}
+        >
+          New broadcast
+        </Button>
       </div>
       {open ? <BroadcastModal onClose={() => setOpen(false)} /> : null}
     </section>

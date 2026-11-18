@@ -1,5 +1,7 @@
 "use client";
 
+import { TileHeader } from "@/components/dashboard/tile-header";
+
 import Link from "next/link";
 import { RocketLaunchIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
@@ -44,22 +46,12 @@ export default function LaunchpadWidget({ index }: { size: WidgetSize; index: nu
 
   return (
     <div className="flex h-full flex-col">
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
-          {" // LAUNCHPAD"}
-        </span>
-        {/* Coloured only when it is a call to action — amber, not red: this is work we
-            are waiting on the CLIENT for, not a fault on our side. */}
-        <span
-          className={cn(
-            "widget-header__status",
-            totalOutstanding > 0 && "text-[var(--warning-500)]",
-          )}
-        >
-          {totalOutstanding > 0 ? `${totalOutstanding} OUTSTANDING` : "ALL IN"}
-        </span>
-      </div>
+      <TileHeader
+        index={index}
+        label="LAUNCHPAD"
+        status={totalOutstanding > 0 ? `${totalOutstanding} OUTSTANDING` : "ALL IN"}
+        statusTone={totalOutstanding > 0 ? "warning" : "success"}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
         <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
