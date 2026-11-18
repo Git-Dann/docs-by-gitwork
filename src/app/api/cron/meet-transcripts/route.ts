@@ -9,6 +9,7 @@ import {
   listRecentMeetCalls,
   attributeToClient,
   ingestMeeting,
+  retryFailedSummaries,
   type CalendarCandidate,
 } from "@/server/meetings";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
@@ -190,6 +191,13 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    // Meetings whose notes were read but whose AI summary failed (e.g. the provider was out of
+    // credit). The calendar pass above only looks back two days, so it never revisited them.
+    const retries = await retryFailedSummaries(workspace.id).catch((err) => {
+      memberErrors.push(`summary retry: ${String(err).slice(0, 120)}`);
+      return { due: 0, summarised: 0, errors: 1 };
+    });
+
     const log = loggerFor("cron:meet-transcripts");
     if (dropped > 0) {
       log.warn("eligible meetings deferred to a later run", { dropped, cap: MAX_PER_RUN });
@@ -208,6 +216,7 @@ export async function GET(request: NextRequest) {
       ingested,
       withTranscript,
       dropped,
+      summaryRetries: retries,
       unattributed: unattributed.length,
       unattributedSample: unattributed.slice(0, 10),
       errors: [...memberErrors, ...ingestErrors],

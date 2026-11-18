@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { getUserGoogleAuth } from "@/server/google-auth";
-import { ingestMeeting } from "@/server/meetings";
+import { ingestMeeting, resummariseStoredNotes } from "@/server/meetings";
 import { meetingIngestSchema } from "@/server/validators";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
@@ -37,6 +37,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);
+
+    // Retry on a call whose notes were already read but whose AI summary failed: summarise the
+    // saved notes again. No Drive read, so it works whoever presses it and whatever their Google.
+    const resummarised = await resummariseStoredNotes(workspaceId, client.id, body.calendarEventId);
+    if (resummarised) {
+      const session = await auth().catch(() => null);
+      void recordAuditEntry({
+        workspaceId,
+        actorId: session?.user?.id ?? null,
+        action: "client.meeting.ingested",
+        target: slug,
+        metadata: { calendarEventId: body.calendarEventId, meetingId: resummarised.id, resummarised: true },
+      });
+      return apiOk({ meeting: resummarised });
+    }
 
     const googleAuth = await getUserGoogleAuth();
     if (!googleAuth.ok) {

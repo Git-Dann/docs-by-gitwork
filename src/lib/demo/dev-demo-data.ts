@@ -2130,6 +2130,7 @@ const demoClientMeetings = {
       summary: null,
       decisions: null,
       modelUsed: null,
+      summaryError: "The AI provider account is out of credit, so the AI write-up didn't run. Top it up, then regenerate.",
       createdAt: atDays(-11),
       updatedAt: atDays(-11),
       actionItems: [],

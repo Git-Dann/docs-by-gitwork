@@ -2,12 +2,17 @@ import { describe, expect, it } from "vitest";
 import { meetingStatusChip } from "../meeting-status";
 
 describe("meeting notes states", () => {
-  it("a failed read says what happened, never a bare 'Error', and isn't red", () => {
+  it("a failed summary says so, not that the notes couldn't be read, and isn't red", () => {
     const c = meetingStatusChip("ERROR");
-    expect(c.label).toBe("Couldn't read");
-    expect(c.label.toLowerCase()).not.toBe("error");
+    expect(c.label).toBe("Summary failed");
+    expect(c.label).not.toMatch(/read/i);
     expect(c.cls).not.toContain("red");
     expect(c.title).toMatch(/Retry/);
+  });
+
+  it("gives the stored reason on hover when there is one", () => {
+    const c = meetingStatusChip("ERROR", "The AI provider account is out of credit.");
+    expect(c.title).toMatch(/^The AI provider account is out of credit\./);
   });
 
   it("every state explains itself on hover", () => {

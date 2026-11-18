@@ -10,6 +10,7 @@
  */
 
 import { google } from "googleapis";
+import { SUMMARY_RETRY_MAX, summaryFailureReason, summaryRetryDue, type SummaryFailureKind } from "@/lib/meeting-summary";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
@@ -138,7 +139,9 @@ export async function ingestMeeting(args: IngestMeetingArgs) {
     },
   });
 
-  if (notes) {
+  // Summarise when the notes were just read, or when notes were stored on an earlier run and the
+  // summary failed: Retry then works even if this person's Drive can't see the notes doc.
+  if (notes || (meeting.transcriptText && meeting.status !== "SUMMARISED")) {
     await summariseMeeting(meeting.id).catch((err) => {
       console.error("[scribe] summariseMeeting failed", meeting.id, err);
     });
@@ -146,6 +149,74 @@ export async function ingestMeeting(args: IngestMeetingArgs) {
 
   return prisma.meeting.findUnique({
     where: { id: meeting.id },
+    include: { actionItems: { orderBy: { createdAt: "asc" } } },
+  });
+}
+
+/**
+ * The summary failed after the notes were read: ERROR (shown as "Summary failed"), with the
+ * reason in plain words and one more attempt counted, so the cron backs off.
+ */
+async function markSummaryFailed(meetingId: string, kind: SummaryFailureKind, raw?: string | null) {
+  await prisma.meeting.update({
+    where: { id: meetingId },
+    data: {
+      status: "ERROR",
+      summaryError: summaryFailureReason(kind, raw),
+      summaryAttempts: { increment: 1 },
+      summaryAttemptedAt: new Date(),
+    },
+  });
+}
+
+/** How many failed summaries one run may retry, so the cron stays inside maxDuration. */
+const MAX_SUMMARY_RETRIES_PER_RUN = 6;
+
+/**
+ * Re-summarise meetings whose AI summary failed (the notes are stored), bounded and backed off by
+ * summaryRetryDue. Idempotent: a success clears the error; a failure counts one more attempt.
+ * Reaches past the cron's 2-day calendar look-back, which never revisited older failures.
+ */
+export async function retryFailedSummaries(workspaceId: string, now = new Date()) {
+  const failed = await prisma.meeting.findMany({
+    where: {
+      workspaceId,
+      status: "ERROR",
+      transcriptText: { not: null },
+      summaryAttempts: { lt: SUMMARY_RETRY_MAX },
+    },
+    select: { id: true, summaryAttempts: true, summaryAttemptedAt: true },
+    orderBy: [{ startedAt: "desc" }, { createdAt: "desc" }],
+    take: 50,
+  });
+  const due = failed
+    .filter((m) =>
+      summaryRetryDue({ status: "ERROR", hasNotes: true, attempts: m.summaryAttempts, attemptedAt: m.summaryAttemptedAt, now }),
+    )
+    .slice(0, MAX_SUMMARY_RETRIES_PER_RUN);
+  const results = await Promise.allSettled(due.map((m) => summariseMeeting(m.id)));
+  const summarised = await prisma.meeting.count({
+    where: { id: { in: due.map((m) => m.id) }, status: "SUMMARISED" },
+  });
+  return { due: due.length, summarised, errors: results.filter((r) => r.status === "rejected").length };
+}
+
+/**
+ * Retry for a meeting whose notes are stored but whose summary failed (ERROR): summarise the
+ * saved notes again. Returns null when there's nothing stored to retry from, so the caller falls
+ * back to reading Drive. Scoped to the workspace and client in the URL.
+ */
+export async function resummariseStoredNotes(workspaceId: string, clientId: string, calendarEventId: string) {
+  const existing = await prisma.meeting.findFirst({
+    where: { workspaceId, clientId, calendarEventId, status: "ERROR", transcriptText: { not: null } },
+    select: { id: true },
+  });
+  if (!existing) return null;
+  await summariseMeeting(existing.id).catch((err) => {
+    console.error("[scribe] resummarise failed", existing.id, err);
+  });
+  return prisma.meeting.findUnique({
+    where: { id: existing.id },
     include: { actionItems: { orderBy: { createdAt: "asc" } } },
   });
 }
@@ -200,6 +271,10 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
   if (!ws) return;
 
   const config = resolveAiConfig(ws as WorkspaceAiFields);
+  if (!config.apiKey) {
+    await markSummaryFailed(meetingId, "no_ai_key");
+    return;
+  }
 
   let notesText = meeting.transcriptText;
   let truncatedNote = "";
@@ -227,7 +302,7 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
     });
   } catch (err) {
     console.error("[scribe] AI completion failed", meetingId, err);
-    await prisma.meeting.update({ where: { id: meetingId }, data: { status: "ERROR" } });
+    await markSummaryFailed(meetingId, "ai_failed", err instanceof Error ? err.message : String(err));
     return;
   }
 
@@ -236,7 +311,7 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
     // Couldn't parse the structured JSON (usually a truncated model response). Mark the
     // meeting ERROR so the UI offers a retry, rather than dumping raw JSON into the summary.
     console.error("[scribe] failed to parse summary JSON", meetingId, raw.slice(0, 300));
-    await prisma.meeting.update({ where: { id: meetingId }, data: { status: "ERROR" } });
+    await markSummaryFailed(meetingId, "unparsable");
     return;
   }
 
@@ -257,6 +332,9 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
         decisions,
         modelUsed: config.model,
         status: "SUMMARISED",
+        summaryError: null,
+        summaryAttempts: 0,
+        summaryAttemptedAt: new Date(),
       },
     }),
     prisma.meetingActionItem.deleteMany({ where: { meetingId } }),
@@ -345,6 +423,7 @@ export function listClientMeetings(workspaceId: string, clientId: string, q?: st
       summary: true,
       decisions: true,
       modelUsed: true,
+      summaryError: true,
       createdAt: true,
       updatedAt: true,
       actionItems: { orderBy: { createdAt: "asc" } },

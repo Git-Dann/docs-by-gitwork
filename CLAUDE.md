@@ -784,6 +784,12 @@ In the last session, the following was completed:
 
 **Prerequisites:** Meet AI ("Take notes for me") enabled on the Workspace tier (Gitwork has it — Gemini notes are already generated); each teammate signs out/in once to grant `drive.readonly`.
 
+**A failed summary is not a failed read (Nov 2026).** `ERROR` is only ever set inside `summariseMeeting`, after the notes were found and stored in `transcriptText`, so it always means the **AI summary** failed. Wedge's calls from 28 Oct to 18 Nov were all ERROR with their notes stored, because the workspace's AI key was out of credit; the row said "Couldn't read", which sent people looking at Drive. Now:
+- The row says **Summary failed**, with the reason on hover (`Meeting.summaryError`, from `describeAiError`, never the provider's raw text).
+- **Retry** summarises the stored notes (`resummariseStoredNotes`): no Drive read, so it works whoever presses it. `ingestMeeting` also re-summarises stored notes when Drive finds nothing this time.
+- The cron (`meet-transcripts`) runs `retryFailedSummaries`: up to 6 a run, backing off 1h, 2h, 4h… (capped at a day), stopping after 6 attempts (`summaryRetryDue`, `src/lib/meeting-summary.ts`). Its calendar pass only looks back 2 days, so older failures were never retried before.
+- Additive columns: `Meeting.summaryError`, `summaryAttempts`, `summaryAttemptedAt`.
+
 ## 15. Recent Changes (June 2026) — Care analytics connectors (multi-client reporting)
 
 The monthly Care report's usage section is now **API-driven per client**, replacing the
