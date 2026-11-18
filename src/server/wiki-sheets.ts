@@ -878,7 +878,7 @@ export async function sendSheetRowsToBoard(
   sheetId: string,
   rowIds: string[],
   actor: SheetActor,
-  opts: { featureBlockId?: string | null; sheetUrl?: string | null } = {},
+  opts: { featureBlockId?: string | null; releaseId?: string | null; sheetUrl?: string | null } = {},
 ): Promise<SendResult[]> {
   const sheet = await getSheetRecord(scope, sheetId);
   if (actor.kind === "CLIENT" && !sheet.clientCanSendToBoard) {
@@ -902,6 +902,16 @@ export async function sendSheetRowsToBoard(
     });
     if (!block) throw new SheetError("That category isn't on this client's board.");
     featureBlockId = block.id;
+  }
+  // A release, the same way: the team only, and only one of this client's.
+  let releaseId: string | null = null;
+  if (opts.releaseId && actor.kind === "TEAM") {
+    const release = await prisma.clientRelease.findFirst({
+      where: { id: opts.releaseId, clientId: client.id },
+      select: { id: true },
+    });
+    if (!release) throw new SheetError("That release isn't on this client's board.");
+    releaseId = release.id;
   }
 
   const rows = await prisma.wikiSheetRow.findMany({
@@ -939,6 +949,7 @@ export async function sendSheetRowsToBoard(
         description: rowTaskDescription(meta, cells, opts.sheetUrl ?? null),
         status: "BACKLOG",
         featureBlockId,
+        releaseId,
         orderKey: orderKey++,
         metadata: {
           wikiSheet: {

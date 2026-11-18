@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { PencilSquareIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowTopRightOnSquareIcon, PencilSquareIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/format";
-import { RELEASE_LIMITS, releaseLabel } from "@/lib/tasks/releases";
+import { RELEASE_LIMITS, releaseLabel, safeReleaseDocUrl } from "@/lib/tasks/releases";
 import { useCreateRelease, useDeleteRelease, useReleases, useUpdateRelease } from "@/hooks/use-tasks";
 import type { ReleaseDTO } from "@/types/tasks";
 
-type Draft = { version: string; name: string; startDate: string; endDate: string };
-const EMPTY: Draft = { version: "", name: "", startDate: "", endDate: "" };
+type Draft = { version: string; name: string; startDate: string; endDate: string; docUrl: string };
+const EMPTY: Draft = { version: "", name: "", startDate: "", endDate: "", docUrl: "" };
 
 function toDraft(r: ReleaseDTO): Draft {
   return {
@@ -18,6 +18,7 @@ function toDraft(r: ReleaseDTO): Draft {
     name: r.name ?? "",
     startDate: r.startDate?.slice(0, 10) ?? "",
     endDate: r.endDate?.slice(0, 10) ?? "",
+    docUrl: r.docUrl ?? "",
   };
 }
 
@@ -37,7 +38,8 @@ export function ReleasesModal({ clientId, onClose }: { clientId: string; onClose
 
   const list = releases.data ?? [];
   const datesBackwards = Boolean(draft.startDate && draft.endDate && draft.endDate < draft.startDate);
-  const canSave = draft.version.trim().length > 0 && !datesBackwards;
+  const badDoc = draft.docUrl.trim().length > 0 && safeReleaseDocUrl(draft.docUrl) === null;
+  const canSave = draft.version.trim().length > 0 && !datesBackwards && !badDoc;
   const saving = create.isPending || update.isPending;
 
   function startEdit(r: ReleaseDTO) {
@@ -59,6 +61,7 @@ export function ReleasesModal({ clientId, onClose }: { clientId: string; onClose
       name: draft.name.trim() || null,
       startDate: draft.startDate || null,
       endDate: draft.endDate || null,
+      docUrl: draft.docUrl.trim() || null,
     };
     try {
       if (editingId) await update.mutateAsync({ id: editingId, input });
@@ -107,6 +110,17 @@ export function ReleasesModal({ clientId, onClose }: { clientId: string; onClose
                     ? ` · ${formatDate(r.startDate)} – ${formatDate(r.endDate)}`
                     : " · dates estimated from tasks"}
                 </p>
+                {r.docUrl ? (
+                  <a
+                    href={r.docUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-[var(--brand-700)] hover:underline"
+                  >
+                    Release doc
+                    <ArrowTopRightOnSquareIcon className="h-3 w-3" aria-hidden />
+                  </a>
+                ) : null}
               </div>
               {confirmingId === r.id ? (
                 <span className="flex shrink-0 items-center gap-2">
@@ -189,9 +203,20 @@ export function ReleasesModal({ clientId, onClose }: { clientId: string; onClose
             />
           </label>
         </div>
+        <input
+          aria-label="Release doc link"
+          placeholder="Release doc link, optional (https://…)"
+          type="url"
+          inputMode="url"
+          className="app-input w-full text-[16px] sm:text-[13px]"
+          value={draft.docUrl}
+          maxLength={RELEASE_LIMITS.docUrl}
+          onChange={(e) => setDraft({ ...draft, docUrl: e.target.value })}
+        />
         {datesBackwards ? (
           <p className="text-[12px] text-[var(--danger-500)]">The end date is before the start date.</p>
         ) : null}
+        {badDoc ? <p className="text-[12px] text-[var(--danger-500)]">Use a link that starts with https://.</p> : null}
         {error ? <p className="text-[12px] text-[var(--danger-500)]">{error}</p> : null}
         <div className="flex items-center justify-end gap-2 pt-1">
           {editingId ? (

@@ -11,6 +11,7 @@ import {
 import {
   listTasks,
   getTask,
+  getCardLinks,
   createTask,
   updateTask,
   moveTask,
@@ -120,6 +121,17 @@ export function useTasks(
     // return. Passive summaries (the dev dashboard's My Tasks) pass
     // refetchOnFocus:false so they don't re-pull on every alt-tab.
     refetchOnWindowFocus: opts.refetchOnFocus ?? true,
+  });
+}
+
+/** A product card's dev tasks and link candidates, from the server (archived ones included). */
+export function useCardLinks(cardId: string | null) {
+  return useQuery({
+    // Under ["tasks"], so every task write refreshes it with the rest (invalidateAll).
+    queryKey: ["tasks", "card-links", cardId ?? ""] as const,
+    queryFn: () => getCardLinks(cardId as string),
+    enabled: Boolean(cardId),
+    staleTime: 15_000,
   });
 }
 

@@ -31,10 +31,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const { slug, sheetId } = await params;
     const { clientId, actor } = await resolveInternalSheets(req, slug, "change rows", "rows");
     if (!clientId) return apiError("Client not found", 404);
-    const { action, rowIds, featureBlockId } = sheetRowsBulkSchema.parse(await req.json());
+    const { action, rowIds, featureBlockId, releaseId } = sheetRowsBulkSchema.parse(await req.json());
     if (action === "send") {
       const results = await sendSheetRowsToBoard({ clientId }, sheetId, rowIds, actor, {
         featureBlockId,
+        releaseId,
         sheetUrl: `/app/portal/${slug}/wiki#sheets`,
       });
       return apiOk({ results, sheet: await getWikiSheet({ clientId }, sheetId) });

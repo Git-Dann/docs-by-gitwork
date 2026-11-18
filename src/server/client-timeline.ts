@@ -4,6 +4,7 @@
 // only. No assignees, notes, priorities, or internal status chatter.
 
 import { blockSpan } from "@/lib/gantt-span";
+import { releaseLabel, releaseProgress, releaseSpan, releaseStatusCounts, safeReleaseDocUrl, sortReleases } from "@/lib/tasks/releases";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
@@ -111,6 +112,38 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
     })
     .filter((b): b is PublicTimelineBlock => b !== null);
 
+  // Releases, built exactly like the wiki Timeline's (loadWikiTimeline): own dates, else
+  // estimated from their tasks' due dates; titles and done-ness only.
+  const releaseRows = await prisma.clientRelease.findMany({
+    where: { clientId: client.id },
+    include: {
+      tasks: {
+        where: { parentId: null, archivedAt: null },
+        select: { title: true, status: true, dueDate: true },
+        orderBy: { orderKey: "asc" },
+      },
+    },
+  });
+  const publicReleases: PublicTimelineBlock[] = sortReleases(releaseRows)
+    .map((r): PublicTimelineBlock | null => {
+      const span = releaseSpan(r, r.tasks);
+      if (!span) return null;
+      return {
+        id: r.id,
+        name: releaseLabel(r),
+        description: null,
+        startDate: span.startDate,
+        endDate: span.endDate,
+        estimated: span.estimated,
+        color: null,
+        progress: releaseProgress(r.tasks),
+        tasks: r.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+        statusCounts: releaseStatusCounts(r.tasks),
+        docUrl: safeReleaseDocUrl(r.docUrl),
+      };
+    })
+    .filter((b): b is PublicTimelineBlock => b !== null);
+
   const milestoneRows = await prisma.milestone.findMany({
     where: { clientId: client.id },
     orderBy: { date: "asc" },
@@ -121,6 +154,7 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
     clientName: client.name,
     generatedAt: new Date().toISOString(),
     blocks: publicBlocks,
+    releases: publicReleases,
     milestones: milestoneRows.map((m) => ({
       id: m.id,
       name: m.name,

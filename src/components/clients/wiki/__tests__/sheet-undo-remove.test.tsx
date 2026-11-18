@@ -14,7 +14,7 @@ import { ToastProvider } from "@/components/ui/toast";
 const calls = vi.hoisted(() => ({ bulk: [] as unknown[][] }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
-vi.mock("@/hooks/use-tasks", () => ({ useFeatureBlocks: () => ({ data: [] }) }));
+vi.mock("@/hooks/use-tasks", () => ({ useFeatureBlocks: () => ({ data: [] }), useReleases: () => ({ data: [] }) }));
 vi.mock("@/lib/api", () => ({
   updateWikiSheetCellsApi: vi.fn(async () => {}),
   bulkWikiSheetRowsApi: vi.fn(async (...args: unknown[]) => {

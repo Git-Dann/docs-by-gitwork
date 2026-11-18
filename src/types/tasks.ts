@@ -81,6 +81,8 @@ export type ReleaseDTO = {
   startDate: string | null;
   endDate: string | null;
   orderKey: number;
+  /** The release document (http(s)), shown as "Release doc ↗" on the timeline. */
+  docUrl: string | null;
   taskCount: number;
   doneCount: number;
 };
@@ -437,6 +439,8 @@ export type PublicTimelineBlock = {
   progress: number;
   tasks: { title: string; done: boolean }[];
   statusCounts: Record<TaskStatus, number>;
+  /** Releases only: the release document. The client's own doc, so client-safe. */
+  docUrl?: string | null;
 };
 
 export type PublicTimelineMilestone = {
@@ -450,5 +454,7 @@ export type PublicTimelineDTO = {
   clientName: string;
   generatedAt: string;
   blocks: PublicTimelineBlock[];
+  /** The same view grouped by release, client-safe fields only. Empty when there are none. */
+  releases: PublicTimelineBlock[];
   milestones: PublicTimelineMilestone[];
 };

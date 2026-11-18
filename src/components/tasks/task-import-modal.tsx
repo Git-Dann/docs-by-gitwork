@@ -1,5 +1,6 @@
 "use client";
 
+import { findReleaseByVersion } from "@/lib/tasks/releases";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpTrayIcon, ArrowDownTrayIcon, DocumentTextIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
@@ -16,7 +17,7 @@ import {
 } from "@/types/tasks";
 
 // ── The fields a CSV can map onto ─────────────────────────────────────────────
-type FieldKey = "title" | "status" | "priority" | "assignee" | "dueDate" | "category" | "description";
+type FieldKey = "title" | "status" | "priority" | "assignee" | "dueDate" | "category" | "release" | "description";
 
 const FIELDS: { key: FieldKey; label: string; required?: boolean; aliases: string[] }[] = [
   { key: "title", label: "Title", required: true, aliases: ["title", "name", "task", "task name", "summary", "subject"] },
@@ -25,6 +26,7 @@ const FIELDS: { key: FieldKey; label: string; required?: boolean; aliases: strin
   { key: "assignee", label: "Assignee", aliases: ["assignee", "owner", "assigned to", "assigned", "dev", "developer", "responsible", "who"] },
   { key: "dueDate", label: "Due date", aliases: ["due", "due date", "deadline", "date", "end date", "due on"] },
   { key: "category", label: "Category", aliases: ["category", "section", "block", "list", "group", "feature", "epic", "phase"] },
+  { key: "release", label: "Release", aliases: ["release", "version", "release version", "fix version", "build number"] },
   { key: "description", label: "Description", aliases: ["description", "notes", "details", "desc", "body"] },
 ];
 
@@ -146,12 +148,15 @@ function TriStateBox({
 export function TaskImportModal({
   slug,
   blocks,
+  releases = [],
   existingTitles = [],
   onClose,
   onDone,
 }: {
   slug: string;
   blocks: { id: string; name: string }[];
+  /** This client's releases; a Release column is matched to one by version ("2.0.0" finds "v2.0.0"). */
+  releases?: { id: string; version: string }[];
   /** Titles already on this client's board — used to flag duplicate rows. */
   existingTitles?: string[];
   onClose: () => void;
@@ -167,7 +172,7 @@ export function TaskImportModal({
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsed, setParsed] = useState<{ headers: string[]; rows: string[][] } | null>(null);
   const [mapping, setMapping] = useState<Record<FieldKey, number | null>>({
-    title: null, status: null, priority: null, assignee: null, dueDate: null, category: null, description: null,
+    title: null, status: null, priority: null, assignee: null, dueDate: null, category: null, release: null, description: null,
   });
   // Distinct unmatched value → chosen id ("" = leave unset).
   const [assigneeFix, setAssigneeFix] = useState<Record<string, string>>({});
@@ -213,7 +218,7 @@ export function TaskImportModal({
         const norm = (s: string) => s.trim().toLowerCase();
         const used = new Set<number>();
         const next: Record<FieldKey, number | null> = {
-          title: null, status: null, priority: null, assignee: null, dueDate: null, category: null, description: null,
+          title: null, status: null, priority: null, assignee: null, dueDate: null, category: null, release: null, description: null,
         };
         for (const f of FIELDS) {
           const idx = p.headers.findIndex((h, i) => !used.has(i) && f.aliases.includes(norm(h)));
@@ -277,6 +282,9 @@ export function TaskImportModal({
         if (fix) cId = fix;
         else unmatchedCategories.add(cName);
       }
+      // Release by version; an unmatched or ambiguous one is flagged and left unset, never guessed.
+      const rName = cell(r, "release");
+      const rId = rName ? findReleaseByVersion(releases, rName)?.id ?? null : null;
       // Duplicate detection (title-based, per client): already on the board, or
       // repeated earlier in this same CSV.
       const key = normTitle(title);
@@ -305,6 +313,9 @@ export function TaskImportModal({
         categoryName: cName,
         categoryId: cId,
         categoryFlagged: Boolean(cName) && !cId,
+        releaseName: rName,
+        releaseId: rId,
+        releaseFlagged: Boolean(rName) && !rId,
         duplicate,
         skipped,
         valid: title.length > 0,
@@ -323,7 +334,7 @@ export function TaskImportModal({
       keptDupeCount: dupes.filter((r) => importDupes.has(r.idx)).length,
       willImport,
     };
-  }, [parsed, mapping, memberByKey, blockByName, assigneeFix, categoryFix, existingTitleSet, importDupes]);
+  }, [parsed, mapping, memberByKey, blockByName, releases, assigneeFix, categoryFix, existingTitleSet, importDupes]);
 
   // Toggle one duplicate row in/out of the import.
   function toggleDupe(idx: number) {
@@ -349,6 +360,7 @@ export function TaskImportModal({
         priority: r.priority,
         assigneeIds: r.assigneeId ? [r.assigneeId] : undefined,
         featureBlockId: r.categoryId ?? undefined,
+        releaseId: r.releaseId ?? undefined,
         dueDate: r.dueIso ?? undefined,
       }));
     if (tasks.length === 0) {
@@ -603,6 +615,7 @@ export function TaskImportModal({
                         <th className="px-2 py-1.5 font-medium">Assignee</th>
                         <th className="px-2 py-1.5 font-medium">Due</th>
                         <th className="px-2 py-1.5 font-medium">Category</th>
+                        {mapping.release != null ? <th className="px-2 py-1.5 font-medium">Release</th> : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -636,6 +649,11 @@ export function TaskImportModal({
                             <td className={cn("px-2 py-1.5", r.categoryFlagged && flag)}>
                               {r.categoryId ? (blocks.find((b) => b.id === r.categoryId)?.name ?? "—") : r.categoryName ? `${r.categoryName} (unmatched)` : "—"}
                             </td>
+                            {mapping.release != null ? (
+                              <td className={cn("px-2 py-1.5", r.releaseFlagged && flag)}>
+                                {r.releaseId ? (releases.find((x) => x.id === r.releaseId)?.version ?? "—") : r.releaseName ? `${r.releaseName} (unmatched)` : "—"}
+                              </td>
+                            ) : null}
                           </tr>
                         );
                       })}

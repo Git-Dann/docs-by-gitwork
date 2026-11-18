@@ -28,7 +28,8 @@ import {
   type SheetsTarget,
 } from "@/lib/api";
 import { useSheetPeople, useSheetsRefresh } from "@/hooks/use-wiki-sheets";
-import { useFeatureBlocks } from "@/hooks/use-tasks";
+import { useFeatureBlocks, useReleases } from "@/hooks/use-tasks";
+import { releaseLabel } from "@/lib/tasks/releases";
 import { COLUMN_TYPES, COLUMN_TYPE_LABEL, SHEET_LIMITS } from "@/lib/wiki-sheets";
 import type { SheetColumnType, WikiSheet, WikiSheetsSection } from "@/types/wiki-sheets";
 import { SheetGrid } from "./sheet-grid";
@@ -101,6 +102,11 @@ export function WikiSheetsSectionView({
   const featureBlocks = useMemo(
     () => (blocks.data ?? []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name })),
     [blocks.data],
+  );
+  const releaseList = useReleases(mode === "internal" ? (clientId ?? null) : null);
+  const releases = useMemo(
+    () => (releaseList.data ?? []).map((r) => ({ id: r.id, label: releaseLabel(r) })),
+    [releaseList.data],
   );
 
   return (
@@ -175,6 +181,7 @@ export function WikiSheetsSectionView({
           mode={mode}
           people={people}
           featureBlocks={featureBlocks}
+          releases={releases}
           onRefresh={refresh}
           headerExtra={
             mode === "internal" ? (

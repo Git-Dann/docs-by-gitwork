@@ -12,6 +12,7 @@
  * `textResult` rather than this file re-implementing them.
  */
 
+import { findReleaseByVersion } from "@/lib/tasks/releases";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { assertCan, canManageClients, type EffectiveUser } from "@/server/auth/effective-user";
@@ -227,7 +228,7 @@ const rowRefsSchema = ref.extend({
   rows: z.array(z.string().min(1)).min(1).max(SHEET_LIMITS.maxBatch),
 });
 const deleteRowsSchema = rowRefsSchema.extend({ restore: z.boolean().optional() });
-const sendSchema = rowRefsSchema.extend({ category: z.string().optional() });
+const sendSchema = rowRefsSchema.extend({ category: z.string().optional(), release: z.string().optional() });
 const getSchema = ref.extend({ includeDeleted: z.boolean().optional() });
 
 function columnInput(c: z.infer<typeof columnArg>) {
@@ -886,11 +887,12 @@ export function buildSheetTools({ resolveClient, textResult }: SheetToolDeps): S
         "Send rows to the client's dev task board: each becomes a Backlog task titled from the sheet's " +
         "title column, with the other cells in its description, and the row then tracks that task. " +
         "Idempotent — a row whose task still exists returns that task instead of a second one. " +
-        "category = a feature block (category) id or exact name on the client's board. Rows by id or " +
+        "category = a feature block (category) id or exact name on the client's board; release = a release version " +
+        "(e.g. 'v2.0.0') or id. Rows by id or " +
         "exact title-cell text. Requires 'Manage clients'.",
       inputSchema: {
         type: "object",
-        properties: { client: CLIENT, sheet: SHEET, rows: ROW_REFS_JSON, category: { type: "string" } },
+        properties: { client: CLIENT, sheet: SHEET, rows: ROW_REFS_JSON, category: { type: "string" }, release: { type: "string" } },
         required: ["client", "sheet", "rows"],
         additionalProperties: false,
       },
@@ -912,8 +914,16 @@ export function buildSheetTools({ resolveClient, textResult }: SheetToolDeps): S
           if (!block) throw new SheetError(`No category "${parsed.category}" on ${resolved.name}'s board.`);
           featureBlockId = block.id;
         }
+        let releaseId: string | null = null;
+        if (parsed.release) {
+          const releases = await prisma.clientRelease.findMany({ where: { clientId: resolved.id }, select: { id: true, version: true } });
+          const r = releases.find((x) => x.id === parsed.release) ?? findReleaseByVersion(releases, parsed.release);
+          if (!r) throw new SheetError(`No single release "${parsed.release}" on ${resolved.name}'s board.`);
+          releaseId = r.id;
+        }
         const results = await sendSheetRowsToBoard({ clientId: resolved.id }, sheet.id, ids, actorOf(user), {
           featureBlockId,
+          releaseId,
           sheetUrl: `/app/portal/${resolved.slug}/wiki#sheets`,
         });
         const made = results.filter((r) => r.created).length;

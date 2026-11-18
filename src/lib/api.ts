@@ -3105,6 +3105,11 @@ export function listTasks(opts: {
   return apiFetch(`/api/tasks${qs ? `?${qs}` : ""}`);
 }
 
+/** A product card's linked dev tasks (archived included) and the tasks that could be linked. */
+export function getCardLinks(id: string): Promise<{ linked: TaskDTO[]; candidates: TaskDTO[] }> {
+  return apiFetch(`/api/tasks/${encodeURIComponent(id)}/linked`);
+}
+
 export function getTask(id: string): Promise<TaskDetailDTO> {
   return apiFetch(`/api/tasks/${id}`);
 }
@@ -3260,6 +3265,7 @@ export type TaskImportRow = {
   priority?: TaskPriority;
   assigneeIds?: string[];
   featureBlockId?: string | null;
+  releaseId?: string | null;
   dueDate?: string | null;
 };
 
@@ -3518,6 +3524,7 @@ export type ReleaseInput = {
   name?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  docUrl?: string | null;
   orderKey?: number;
 };
 
@@ -4213,7 +4220,7 @@ export async function updateWikiSheetCellsApi(
 export async function bulkWikiSheetRowsApi(
   target: SheetsTarget,
   sheetId: string,
-  input: { action: "delete" | "restore" | "send"; rowIds: string[]; featureBlockId?: string | null },
+  input: { action: "delete" | "restore" | "send"; rowIds: string[]; featureBlockId?: string | null; releaseId?: string | null },
 ): Promise<{ count?: number; results?: { rowId: string; taskId: string; created: boolean }[] }> {
   return apiFetch(`${sheetsBase(target, sheetId)}/rows`, jsonInit("PATCH", input));
 }
