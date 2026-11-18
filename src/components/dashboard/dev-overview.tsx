@@ -101,7 +101,20 @@ export function DevOverview() {
   const pageClients = clients.slice(clientsPage * PAGE_SIZE, (clientsPage + 1) * PAGE_SIZE);
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    // ⚠️ `grid-cols-1` is load-bearing below lg, and its absence clipped this
+    // dashboard on every phone. With columns declared only at `lg:`, the grid
+    // falls back to `grid-template-columns: none` — ONE implicit track sized to
+    // its content's max-content, not to the grid. My Day's rows do not shrink,
+    // so the track measured 383.8px inside a 327px grid and the `w-full` cards
+    // ran to x=408 in a 375px viewport. `.widget-card` is `overflow: hidden`
+    // and <main> does not scroll sideways, so those 33px were not merely
+    // off-screen, they were UNREACHABLE — and a page-X check reports clean,
+    // because the page itself never overflows. Measured in the browser before
+    // and after: card right edge 408px → 351px.
+    //
+    // `grid-cols-1` is `repeat(1, minmax(0,1fr))`, which bounds the track to
+    // the grid. The `lg:` columns still win at ≥1024px, so desktop is untouched.
+    <div className="grid items-start gap-4 grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       {/* Left — My Day standup */}
       <MyDay />
 
