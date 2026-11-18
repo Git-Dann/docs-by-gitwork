@@ -450,5 +450,7 @@ export type PublicTimelineDTO = {
   clientName: string;
   generatedAt: string;
   blocks: PublicTimelineBlock[];
+  /** The same view grouped by release, client-safe fields only. Empty when there are none. */
+  releases: PublicTimelineBlock[];
   milestones: PublicTimelineMilestone[];
 };
