@@ -164,6 +164,8 @@ export interface SheetGridProps {
   people: SheetPerson[];
   /** Internal only: categories a sent row can land in. */
   featureBlocks?: { id: string; name: string }[];
+  /** Internal only: releases a sent row can be put in. */
+  releases?: { id: string; label: string }[];
   /** Refetch after a structural change (rows added/removed/sent, columns added). */
   onRefresh: () => void;
   /** Team: open this sheet's settings. */
@@ -768,7 +770,7 @@ function SortableRow({
 
 /* ─────────────────────────────────────────────────────────────── grid ── */
 
-export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefresh, headerExtra, index }: SheetGridProps) {
+export function SheetGrid({ sheet, target, mode, people, featureBlocks, releases, onRefresh, headerExtra, index }: SheetGridProps) {
   const internal = mode === "internal";
   const columns = sheet.columns;
   // The leading column: select box + edited-by dot, plus the drag handle for the team.
@@ -838,6 +840,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
   const [addColOpen, setAddColOpen] = useState(false);
   const [mobileRowId, setMobileRowId] = useState<string | null>(null);
   const [blockId, setBlockId] = useState<string>("");
+  const [releaseId, setReleaseId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const { undo: undoToast } = useToast();
@@ -1409,6 +1412,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
         action,
         rowIds: ids,
         ...(action === "send" && internal && blockId ? { featureBlockId: blockId } : {}),
+        ...(action === "send" && internal && releaseId ? { releaseId } : {}),
       });
       if (action === "send") {
         const made = res.results?.filter((r) => r.created).length ?? 0;
@@ -1853,6 +1857,21 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                       {featureBlocks.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {internal && releases && releases.length > 0 && (
+                    <select
+                      value={releaseId}
+                      onChange={(e) => setReleaseId(e.target.value)}
+                      aria-label="Release on the board"
+                      className="app-input app-select-chevron h-8 w-auto max-w-[200px] py-0 pr-8 pl-2 text-base sm:text-[13px]"
+                    >
+                      <option value="">No release</option>
+                      {releases.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label}
                         </option>
                       ))}
                     </select>

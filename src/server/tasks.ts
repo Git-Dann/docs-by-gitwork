@@ -910,6 +910,7 @@ export async function importTasks(
     priority?: TaskPriority;
     assigneeIds?: string[];
     featureBlockId?: string | null;
+    releaseId?: string | null;
     dueDate?: string | null;
   }>,
 ): Promise<{ created: number; skipped: number }> {
@@ -925,6 +926,18 @@ export async function importTasks(
             select: { id: true },
           })
         ).map((b) => b.id)
+      : [],
+  );
+  // Releases the same way: one that isn't this client's is dropped, never written.
+  const releaseIds = [...new Set(rows.map((r) => r.releaseId).filter((x): x is string => !!x))];
+  const validReleases = new Set(
+    releaseIds.length
+      ? (
+          await prisma.clientRelease.findMany({
+            where: { id: { in: releaseIds }, workspaceId: user.workspaceId, clientId },
+            select: { id: true },
+          })
+        ).map((r) => r.id)
       : [],
   );
   const assigneeIds = [...new Set(rows.flatMap((r) => r.assigneeIds ?? []))];
@@ -958,6 +971,7 @@ export async function importTasks(
         clientId,
         createdById: user.id,
         featureBlockId: fbId,
+        releaseId: r.releaseId && validReleases.has(r.releaseId) ? r.releaseId : null,
         title: title.slice(0, 200),
         description: r.description ? r.description.slice(0, 10000) : null,
         status,

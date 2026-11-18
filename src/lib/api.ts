@@ -3260,6 +3260,7 @@ export type TaskImportRow = {
   priority?: TaskPriority;
   assigneeIds?: string[];
   featureBlockId?: string | null;
+  releaseId?: string | null;
   dueDate?: string | null;
 };
 
@@ -4213,7 +4214,7 @@ export async function updateWikiSheetCellsApi(
 export async function bulkWikiSheetRowsApi(
   target: SheetsTarget,
   sheetId: string,
-  input: { action: "delete" | "restore" | "send"; rowIds: string[]; featureBlockId?: string | null },
+  input: { action: "delete" | "restore" | "send"; rowIds: string[]; featureBlockId?: string | null; releaseId?: string | null },
 ): Promise<{ count?: number; results?: { rowId: string; taskId: string; created: boolean }[] }> {
   return apiFetch(`${sheetsBase(target, sheetId)}/rows`, jsonInit("PATCH", input));
 }

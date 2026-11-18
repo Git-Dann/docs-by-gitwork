@@ -1265,6 +1265,7 @@ export const taskImportSchema = z.object({
         priority: taskPrioritySchema.optional(),
         assigneeIds: z.array(z.string().cuid()).optional(),
         featureBlockId: z.string().cuid().nullable().optional(),
+        releaseId: z.string().cuid().nullable().optional(),
         dueDate: isoDateString.nullable().optional(),
       }),
     )
@@ -2564,6 +2565,7 @@ export const sheetRowsBulkSchema = z.object({
   action: z.enum(["delete", "restore", "send"]),
   rowIds: z.array(z.string().min(1).max(64)).min(1).max(SHT.maxBatch),
   featureBlockId: z.string().max(64).nullable().optional(),
+  releaseId: z.string().max(64).nullable().optional(),
 });
 
 export const sheetOrderSchema = z.object({

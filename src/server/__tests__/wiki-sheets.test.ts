@@ -186,6 +186,12 @@ vi.mock("@/lib/prisma", () => {
       delete: vi.fn(async () => ({})),
     },
     featureBlock: { findFirst: vi.fn(async () => null) },
+    // One release, on client-1 only.
+    clientRelease: {
+      findFirst: vi.fn(async (args: { where: { id: string; clientId: string } }) =>
+        args.where.id === "rel-1" && args.where.clientId === "client-1" ? { id: "rel-1" } : null,
+      ),
+    },
     // `cells || set - clear`, as the SQL does it — the per-cell merge.
     $executeRaw: vi.fn(async (_strings: TemplateStringsArray, set: string, clear: string[], kind: string, name: string, rowId: string) => {
       const r = db.rows.find((x) => x.id === rowId)!;
@@ -403,6 +409,18 @@ describe("send to board", () => {
     db.rows[0].cells = { pri: "High" };
     await expect(sendSheetRowsToBoard({ clientId: "client-1" }, "s1", ["r1"], team)).rejects.toMatchObject({ status: 400 });
     expect(db.tasks).toHaveLength(0);
+  });
+
+  it("puts a sent row in a release, but only one of this client's, and only for the team", async () => {
+    await sendSheetRowsToBoard({ clientId: "client-1" }, "s1", ["r1"], team, { releaseId: "rel-1" });
+    expect(db.tasks[0]).toMatchObject({ releaseId: "rel-1" });
+    db.tasks.length = 0;
+    db.rows[0].taskId = null;
+    await expect(sendSheetRowsToBoard({ clientId: "client-1" }, "s1", ["r1"], team, { releaseId: "rel-other" })).rejects.toMatchObject({ status: 400 });
+    expect(db.tasks).toHaveLength(0);
+    db.sheets[0].clientCanSendToBoard = true;
+    await sendSheetRowsToBoard({ wikiId: "wiki-1" }, "s1", ["r1"], client, { releaseId: "rel-1" });
+    expect(db.tasks[0]).toMatchObject({ releaseId: null });
   });
 
   it("can't send another client's rows", async () => {

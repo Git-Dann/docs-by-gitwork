@@ -519,6 +519,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         <TaskImportModal
           slug={slug}
           blocks={blocks}
+          releases={releases}
           existingTitles={[...tasks, ...archivedTasks].map((t) => t.title)}
           onClose={() => setImporting(false)}
           onDone={() => setImporting(false)}
