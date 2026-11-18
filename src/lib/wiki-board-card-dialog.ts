@@ -102,3 +102,20 @@ export function pickCardImages(
   if (wrong) return { ok: false, error: `“${wrong.name}” isn't a PNG, JPEG, GIF or WebP image under 10 MB.` };
   return { ok: true };
 }
+
+/**
+ * Which sub-item an add created: the one in the parent's list after the add that wasn't there
+ * before. Null when the server's answer doesn't show it (the popup then just stays on the parent).
+ */
+export function addedSubItemId(beforeIds: ReadonlySet<string>, after: Pick<WikiBoardCard, "subtasks">): string | null {
+  return after.subtasks.find((s) => s.isItem && !beforeIds.has(s.id))?.id ?? null;
+}
+
+/**
+ * Where the lightbox goes after an image is removed: the same position (the next image slides into
+ * it), the new last one if it was the last, or closed when none are left.
+ */
+export function indexAfterRemoval(index: number, remaining: number): number | null {
+  if (remaining <= 0) return null;
+  return Math.min(index, remaining - 1);
+}

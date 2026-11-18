@@ -1,12 +1,15 @@
 /**
- * A card's image on the client's Board: GET, `?thumb=1` for the small version.
+ * A card's image on the client's Board.
+ *   GET    the image, `?thumb=1` for the small version.
+ *   DELETE takes it off the card (resolveBoardWriter + the write rate limit → removeBoardCardImage:
+ *          the image must be on THIS card, the card one the client may act on).
  * Same access as the card's thread (resolveBoardWriter → boardCardImage). Served as an image only:
  * nosniff, and a sandboxing CSP in case the stored type is ever wrong.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { apiError, fromError } from "@/lib/api-response";
-import { boardCardImage } from "@/server/wiki-board";
-import { boardAccessError, resolveBoardWriter } from "@/server/wiki-board-access";
+import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { boardCardImage, removeBoardCardImage } from "@/server/wiki-board";
+import { assertBoardWriteRate, boardAccessError, resolveBoardWriter } from "@/server/wiki-board-access";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +36,21 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         "Content-Security-Policy": "default-src 'none'; sandbox",
       },
     });
+  } catch (err) {
+    return fromError(err);
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: Ctx) {
+  try {
+    const { token, taskId, attachmentId } = await params;
+    const access = await resolveBoardWriter(req, token);
+    if (!access.ok) {
+      const { message, status } = boardAccessError(access.reason);
+      return apiError(message, status);
+    }
+    await assertBoardWriteRate(req);
+    return apiOk({ card: await removeBoardCardImage(access.writer, taskId, attachmentId) });
   } catch (err) {
     return fromError(err);
   }

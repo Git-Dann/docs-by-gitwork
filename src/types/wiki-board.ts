@@ -36,7 +36,11 @@ export interface WikiBoardCard {
   signOff: SignOff;
   feedbackCount: number;
   description: string | null;
-  subtasks: Array<{ title: string; done: boolean }>;
+  /**
+   * Its child tasks, in order. `isItem` marks a product SUB-ITEM (itemType "subitem"): those open in
+   * the card popup and are edited there. The rest are the team's checklist items, listed only.
+   */
+  subtasks: Array<{ id: string; title: string; done: boolean; isItem: boolean }>;
   /**
    * The card's image attachments (ids), oldest first: screenshots from the client's planning tool
    * or added by the team. Cards the client may act on only; a dev task's are never sent.

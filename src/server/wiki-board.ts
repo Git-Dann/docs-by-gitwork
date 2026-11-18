@@ -110,7 +110,7 @@ const TASK_SELECT = {
   subtasks: {
     where: { archivedAt: null },
     orderBy: { orderKey: "asc" },
-    select: { title: true, status: true },
+    select: { id: true, title: true, status: true, itemType: true },
   },
 } as const satisfies Prisma.TaskSelect;
 
@@ -200,7 +200,7 @@ function toCard(row: TaskRow, ctx: CardContext): WikiBoardCard {
     signOff: deriveSignOff(entries),
     feedbackCount: entries.length,
     description: ctx.descriptions.get(row.id) ?? null,
-    subtasks: row.subtasks.map((s) => ({ title: s.title, done: s.status === "DONE" })),
+    subtasks: row.subtasks.map((s) => ({ id: s.id, title: s.title, done: s.status === "DONE", isItem: s.itemType === "subitem" })),
     images: ctx.images.get(row.id) ?? [],
     stageHistory: stageHistoryOf(row.metadata),
     // When it was finished, for the Schedule's log. The client's own cards only: a dev task's
@@ -353,7 +353,7 @@ export const DELETED_LIST_MAX = 1000;
 export async function listDeletedBoardCards(clientId: string): Promise<{ cards: WikiBoardDeletedCard[]; total: number }> {
   const ids = await prisma.$queryRaw<Array<{ id: string; total: bigint }>>`
     SELECT "id", count(*) OVER () AS total FROM "Task"
-    WHERE "clientId" = ${clientId} AND "parentId" IS NULL AND "archivedAt" IS NOT NULL
+    WHERE "clientId" = ${clientId} AND ("parentId" IS NULL OR "itemType" = 'subitem') AND "archivedAt" IS NOT NULL
       AND "metadata" ? 'deletedFromBoard'
     ORDER BY "archivedAt" DESC
     LIMIT ${DELETED_LIST_MAX}`;
@@ -509,12 +509,29 @@ export function boardHasCards(section: WikiBoardSection): boolean {
 
 /* ─────────────────────────────────────────────────────────── writes ── */
 
-/** The card, on this client, live and top-level, or a 404. A card from another client never matches. */
+/**
+ * What a board write may address: a live top-level task, or a product SUB-ITEM (itemType
+ * "subitem") whose parent is a live top-level FEATURE card on the same client. Any other child
+ * task — a dev task's subtask, a checklist item under a card — is a 404, the same answer as a task
+ * that doesn't exist. Checked in code rather than in the query, so the rule reads in one place.
+ */
+async function assertAddressable(clientId: string, task: { parentId: string | null; itemType: string | null }): Promise<void> {
+  if (!task.parentId) return;
+  if (task.itemType !== "subitem") throw new BoardError("Not found", 404);
+  const parent = await prisma.task.findFirst({
+    where: { id: task.parentId, clientId, parentId: null, archivedAt: null },
+    select: { itemType: true },
+  });
+  if (!parent || parent.itemType !== "feature") throw new BoardError("Not found", 404);
+}
+
+/** The card (or a product sub-item, `assertAddressable`), on this client and live, or a 404. */
 async function loadOwnTask(clientId: string, taskId: string) {
   const task = await prisma.task.findFirst({
-    where: { id: taskId, clientId, parentId: null, archivedAt: null },
+    where: { id: taskId, clientId, archivedAt: null },
     select: {
       id: true,
+      parentId: true,
       title: true,
       status: true,
       boardColumnId: true,
@@ -527,7 +544,18 @@ async function loadOwnTask(clientId: string, taskId: string) {
     },
   });
   if (!task) throw new BoardError("Not found", 404);
+  await assertAddressable(clientId, task);
   return task;
+}
+
+/**
+ * One card (or sub-item) to open in the card popup: the same checks as a write — on this client,
+ * live, addressable, and for the client one they may act on — and the copy the reader may see.
+ */
+export async function readBoardCard(writer: BoardWriter, taskId: string): Promise<WikiBoardCard> {
+  const task = await loadOwnTask(writer.clientId, taskId);
+  assertClientMayAct(writer, task);
+  return cardFor(writer, task.id);
 }
 
 /** A client user, as opposed to a Gitwork team member writing on the client's page. */
@@ -770,9 +798,10 @@ export async function createBoardCard(writer: BoardWriter, input: BoardCardInput
 /** Everything an edit compares and writes, for one card. */
 async function loadEditableTask(writer: BoardWriter, taskId: string) {
   const task = await prisma.task.findFirst({
-    where: { id: taskId, clientId: writer.clientId, parentId: null, archivedAt: null },
+    where: { id: taskId, clientId: writer.clientId, archivedAt: null },
     select: {
       id: true,
+      parentId: true,
       title: true,
       status: true,
       workspaceId: true,
@@ -792,6 +821,7 @@ async function loadEditableTask(writer: BoardWriter, taskId: string) {
     },
   });
   if (!task) throw new BoardError("Not found", 404);
+  await assertAddressable(writer.clientId, task);
   assertClientMayAct(writer, task);
   return task;
 }
@@ -901,6 +931,10 @@ async function hiddenDependsOn(clientId: string, ids: readonly string[]): Promis
  */
 export async function updateBoardCard(writer: BoardWriter, taskId: string, patch: BoardCardPatch): Promise<WikiBoardCard> {
   const task = await loadEditableTask(writer, taskId);
+  // A sub-item lives inside its feature card; turning it into a top-level type would strand it.
+  if (task.parentId && patch.itemType !== undefined && patch.itemType !== task.itemType) {
+    throw new BoardError("A sub-item stays a sub-item. Add a new card if this should stand on its own.", 400);
+  }
   const before = fieldsOf(task);
   let dependsOn = before.dependsOn;
   if (patch.dependsOn !== undefined) {
@@ -944,7 +978,7 @@ export async function updateBoardCard(writer: BoardWriter, taskId: string, patch
   const notify = await withBoardLock(writer, async (tx) => {
     if (isClientWriter(writer)) await consumeBoardQuota(tx, writer.wikiId, "edit");
     const { count } = await tx.task.updateMany({
-    where: { id: task.id, clientId: writer.clientId, parentId: null, archivedAt: null },
+    where: { id: task.id, clientId: writer.clientId, parentId: task.parentId, archivedAt: null },
     data: {
       title: after.title,
       itemType: after.itemType,
@@ -994,7 +1028,7 @@ export async function deleteBoardCard(writer: BoardWriter, taskId: string): Prom
       linkedTaskIds: linked.map((l) => l.id),
     };
     const { count } = await tx.task.updateMany({
-      where: { id: task.id, clientId: writer.clientId, parentId: null, archivedAt: null },
+      where: { id: task.id, clientId: writer.clientId, parentId: task.parentId, archivedAt: null },
       data: { archivedAt: new Date(), metadata: meta },
     });
     if (count === 0) throw new BoardError("This card has already been deleted. Refresh to see the board now.", 409);
@@ -1033,9 +1067,21 @@ export async function deleteBoardCard(writer: BoardWriter, taskId: string): Prom
 /** The team puts a deleted card back, and relinks the dev tasks it had, where they're still free. */
 export async function restoreBoardCard(writer: BoardWriter, taskId: string): Promise<WikiBoardCard> {
   const task = await prisma.task.findFirst({
-    where: { id: taskId, clientId: writer.clientId, parentId: null, archivedAt: { not: null } },
-    select: { id: true, title: true, metadata: true, workspaceId: true, assigneeId: true, assignees: { select: { id: true } }, client: { select: { slug: true } } },
+    where: { id: taskId, clientId: writer.clientId, archivedAt: { not: null } },
+    select: {
+      id: true,
+      title: true,
+      parentId: true,
+      itemType: true,
+      metadata: true,
+      workspaceId: true,
+      assigneeId: true,
+      assignees: { select: { id: true } },
+      client: { select: { slug: true } },
+    },
   });
+  // A sub-item comes back only under a live feature card; restore the card first.
+  if (task) await assertAddressable(writer.clientId, task);
   const meta = metaObject(task?.metadata);
   const marker = meta.deletedFromBoard;
   if (!task || !marker || typeof marker !== "object" || Array.isArray(marker)) throw new BoardError("Not found", 404);
@@ -1057,7 +1103,8 @@ export async function restoreBoardCard(writer: BoardWriter, taskId: string): Pro
     }
     await writeChange(tx, writer, task, `${writer.name} restored this card.`);
   });
-  return cardFor(writer, task.id);
+  // A sub-item lives inside its feature card, so the card to place is the parent.
+  return cardFor(writer, task.parentId ?? task.id);
 }
 
 /**
@@ -1132,6 +1179,27 @@ export async function addBoardCardImages(
         select: { id: true },
       });
     }
+    return writeChange(tx, writer, task, sentence);
+  });
+  if (isClientWriter(writer)) pruneBoardQuota(writer.wikiId);
+  if (notify) notifyChange(writer, task, sentence);
+  return cardFor(writer, task.id);
+}
+
+/**
+ * Take a screenshot off a card. The image must be on THIS card, and the card on this client and
+ * one the writer may act on (a team dev task is a 404 to the client). It counts as an edit
+ * against the client's quota, under the per-wiki lock, and the removal is written in the card's
+ * thread with the change. TaskAttachment keeps its bytes in Postgres, so deleting the row is the
+ * whole removal; there is nothing in object storage to clean up.
+ */
+export async function removeBoardCardImage(writer: BoardWriter, taskId: string, attachmentId: string): Promise<WikiBoardCard> {
+  const task = await loadEditableTask(writer, taskId);
+  const sentence = `${writer.name} removed a screenshot.`;
+  const notify = await withBoardLock(writer, async (tx) => {
+    if (isClientWriter(writer)) await consumeBoardQuota(tx, writer.wikiId, "edit");
+    const { count } = await tx.taskAttachment.deleteMany({ where: { id: attachmentId, taskId: task.id } });
+    if (count === 0) throw new BoardError("That screenshot isn't on this card any more. Refresh to see the card now.", 404);
     return writeChange(tx, writer, task, sentence);
   });
   if (isClientWriter(writer)) pruneBoardQuota(writer.wikiId);

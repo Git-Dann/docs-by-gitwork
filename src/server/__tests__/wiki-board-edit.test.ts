@@ -89,6 +89,11 @@ vi.mock("@/lib/prisma", () => {
         return { id: "att" };
       }),
       findMany: vi.fn(async () => []),
+      deleteMany: vi.fn(async ({ where }: { where: Row }) => {
+        const before = db.attachments.length;
+        db.attachments = db.attachments.filter((a) => !matches(a, where));
+        return { count: before - db.attachments.length };
+      }),
     },
     taskComment: { createMany: vi.fn(async ({ data }: { data: Row[] }) => { db.comments.push(...data); return { count: data.length }; }) },
     $queryRaw: vi.fn(async () => []),
@@ -134,6 +139,8 @@ import {
   deleteBoardCard,
   listBoardFeedback,
   moveBoardCard,
+  readBoardCard,
+  removeBoardCardImage,
   restoreBoardCard,
   updateBoardCard,
   type BoardWriter,
@@ -541,5 +548,96 @@ describe("lists (the Table view's groups)", () => {
   it("a card added with a list is stored in it", async () => {
     await createBoardCard(client, { title: "From a paste", itemType: "bug", laneKey: "col_ideas000", list: "QA review: 21 Nov" });
     expect(db.tasks.at(-1)).toMatchObject({ title: "From a paste", boardList: "QA review: 21 Nov" });
+  });
+});
+
+describe("removing a screenshot", () => {
+  beforeEach(() => {
+    db.attachments = [
+      { id: "img-card", taskId: "card" },
+      { id: "img-bug", taskId: "bug" },
+      { id: "img-dev", taskId: "dev" },
+      { id: "img-else", taskId: "elsewhere" },
+    ];
+  });
+
+  it("takes it off the card, says so in the thread, and counts as a client's edit", async () => {
+    await removeBoardCardImage(client, "card", "img-card");
+    expect(db.attachments.map((a) => a.id)).not.toContain("img-card");
+    expect(changes()).toEqual(["Luke M. removed a screenshot."]);
+    expect(spies.consume).toHaveBeenCalledWith(expect.anything(), "w1", "edit");
+  });
+
+  it("an image from another card is a 404, through this card's address, and stays", async () => {
+    await expect(removeBoardCardImage(client, "card", "img-bug")).rejects.toMatchObject({ status: 404 });
+    await expect(removeBoardCardImage(team, "card", "img-bug")).rejects.toMatchObject({ status: 404 });
+    expect(db.attachments.map((a) => a.id)).toContain("img-bug");
+    expect(changes()).toHaveLength(0);
+  });
+
+  it("another client's card is a 404, whoever asks", async () => {
+    await expect(removeBoardCardImage(client, "elsewhere", "img-else")).rejects.toMatchObject({ status: 404 });
+    await expect(removeBoardCardImage(team, "elsewhere", "img-else")).rejects.toMatchObject({ status: 404 });
+    expect(db.attachments.map((a) => a.id)).toContain("img-else");
+  });
+
+  it("the client can't touch a team dev task's screenshot; the team can", async () => {
+    await expect(removeBoardCardImage(client, "dev", "img-dev")).rejects.toMatchObject({ status: 404 });
+    expect(db.attachments.map((a) => a.id)).toContain("img-dev");
+    await removeBoardCardImage(team, "dev", "img-dev");
+    expect(db.attachments.map((a) => a.id)).not.toContain("img-dev");
+  });
+});
+
+describe("sub-items, opened and edited in the card popup", () => {
+  beforeEach(() => {
+    db.tasks.push(
+      // Children that are NOT product sub-items of a feature: never addressed from the board.
+      task({ id: "devchild", title: "Secret dev step", itemType: "subitem", parentId: "dev" }),
+      task({ id: "checklist", title: "Team checklist item", itemType: null, parentId: "card" }),
+    );
+  });
+
+  it("the client reads and edits their feature's sub-item, and the thread says so", async () => {
+    expect((await readBoardCard(client, "sub")).title).toBe("A sub-item");
+    const saved = await updateBoardCard(client, "sub", { title: "Rename a saved search", priority: "HIGH" });
+    expect(saved.id).toBe("sub");
+    expect(db.tasks.find((t) => t.id === "sub")).toMatchObject({ title: "Rename a saved search", priority: "HIGH", parentId: "card" });
+    expect(changes()).toHaveLength(1);
+  });
+
+  it("a dev task's child is a 404 to everyone, and untouched", async () => {
+    for (const who of [client, team]) {
+      await expect(readBoardCard(who, "devchild")).rejects.toMatchObject({ status: 404 });
+      await expect(updateBoardCard(who, "devchild", { title: "x" })).rejects.toMatchObject({ status: 404 });
+      await expect(deleteBoardCard(who, "devchild")).rejects.toMatchObject({ status: 404 });
+    }
+    expect(db.tasks.find((t) => t.id === "devchild")!.title).toBe("Secret dev step");
+  });
+
+  it("a card's plain checklist child isn't a sub-item, so it isn't addressed either", async () => {
+    await expect(updateBoardCard(team, "checklist", { title: "x" })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("a sub-item stays a sub-item", async () => {
+    await expect(updateBoardCard(client, "sub", { itemType: "feature" })).rejects.toMatchObject({ status: 400 });
+    expect(db.tasks.find((t) => t.id === "sub")!.itemType).toBe("subitem");
+  });
+
+  it("deleting a sub-item archives only it, and restoring places its feature card", async () => {
+    await deleteBoardCard(client, "sub");
+    expect(db.tasks.find((t) => t.id === "sub")!.archivedAt).not.toBeNull();
+    expect(db.tasks.find((t) => t.id === "card")!.archivedAt).toBeNull();
+    const placed = await restoreBoardCard(team, "sub");
+    expect(placed.id).toBe("card");
+    expect(db.tasks.find((t) => t.id === "sub")!.archivedAt).toBeNull();
+  });
+
+  it("never names a team dev task a sub-item depends on, in what the client gets back", async () => {
+    db.tasks.find((t) => t.id === "sub")!.metadata = { dependsOn: ["dev", "bug"] };
+    for (const card of [await readBoardCard(client, "sub"), await updateBoardCard(client, "sub", { title: "Renamed" })]) {
+      expect(card.dependsOn.map((d) => d.id)).toEqual(["bug"]);
+      expect(JSON.stringify(card)).not.toContain("Backend: rounds endpoint");
+    }
   });
 });

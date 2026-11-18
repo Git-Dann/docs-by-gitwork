@@ -453,8 +453,8 @@ function board(cards: WikiBoardCard[], showAllTasks: boolean): WikiBoardSection 
   };
 }
 
-const featureCard = card({ id: "f", title: "Bag management", itemType: "feature", isCard: true, description: "Spec", subtasks: [{ title: "s", done: false }], feedbackCount: 2, signOff: "approved" });
-const devTask = card({ id: "d", title: "Backend: rounds endpoint", description: "INTERNAL: ssh key in 1Password", subtasks: [{ title: "secret step", done: false }], feedbackCount: 1, signOff: "approved", dueDate: "2026-12-01" });
+const featureCard = card({ id: "f", title: "Bag management", itemType: "feature", isCard: true, description: "Spec", subtasks: [{ id: "s1", title: "s", done: false, isItem: true }], feedbackCount: 2, signOff: "approved" });
+const devTask = card({ id: "d", title: "Backend: rounds endpoint", description: "INTERNAL: ssh key in 1Password", subtasks: [{ id: "s2", title: "secret step", done: false, isItem: false }], feedbackCount: 1, signOff: "approved", dueDate: "2026-12-01" });
 
 describe("the client's copy of the board", () => {
   it("carries only the allow-listed card fields", () => {
