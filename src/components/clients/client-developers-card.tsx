@@ -51,7 +51,7 @@ export function ClientDevelopersCard({
             {active.length} active{past.length > 0 ? ` · ${past.length} past` : ""}
           </span>
         ) : (
-          <Link href="/app/codeclear/candidates" className="widget-header__status transition-colors hover:text-[var(--brand-700)]">
+          <Link href="/app/staff/developers" className="widget-header__status transition-colors hover:text-[var(--brand-700)]">
             Assign in Staff →
           </Link>
         )}
@@ -61,7 +61,7 @@ export function ClientDevelopersCard({
         {active.length === 0 && standIns.length === 0 ? (
           <p className="text-sm text-[var(--text-4)]">
             Nobody is placed on this client.{" "}
-            <Link href="/app/codeclear/candidates" className="text-[var(--brand-700)] hover:underline">
+            <Link href="/app/staff/developers" className="text-[var(--brand-700)] hover:underline">
               Place a developer
             </Link>
           </p>

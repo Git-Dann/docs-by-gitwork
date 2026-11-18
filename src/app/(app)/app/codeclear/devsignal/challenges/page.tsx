@@ -1,21 +1,7 @@
-import { AppShell } from "@/components/app-shell";
-import { CodeClearTabs } from "@/components/codeclear/codeclear-shared";
-import { ChallengeBank } from "@/components/codeclear/devsignal/challenge-bank";
-import { DevSignalSubNav } from "@/components/codeclear/devsignal/devsignal-subnav";
+import { redirect } from "next/navigation";
+import { withSearch, type SearchParamsRecord } from "@/lib/legacy-redirect";
 
-export default function DevSignalChallengesPage() {
-  return (
-    <AppShell
-      title="Hiring"
-      subtitle="DevSignal challenge bank — the coding tasks candidates are assessed on."
-    >
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <CodeClearTabs />
-        </div>
-        <DevSignalSubNav />
-        <ChallengeBank />
-      </div>
-    </AppShell>
-  );
+/** Legacy path (CLAUDE.md §87): the page moved under /app/staff. Kept so old links, notifications and bookmarks still land, query string included. */
+export default async function LegacyChallengesRedirect({ searchParams }: { searchParams: Promise<SearchParamsRecord> }) {
+  redirect(withSearch("/app/staff/hiring/devsignal/challenges", await searchParams));
 }

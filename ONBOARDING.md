@@ -189,7 +189,7 @@ npm run audit:clipping -- --self-test
   |---|---|---|---|
   | Portal | `/app/portal` | `/app/clients` | `clients` |
   | Care | `/app/care` | `/app/support` | `support` |
-  | Staff (was Code) | `/app/staff` | `/app/code` → redirects; developer and Hiring pages still under `/app/codeclear` | `codeclear` |
+  | Staff (was Code) | `/app/staff` | `/app/code`, `/app/codeclear/**` → redirect stubs (Developers `/app/staff/developers`, Hiring `/app/staff/hiring/**`) | `codeclear` |
   | Docs | `/app/docs` | `/app/proposals` → redirects | `proposals` |
 
   `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth for which is

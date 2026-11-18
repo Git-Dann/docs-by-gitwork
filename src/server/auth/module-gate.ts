@@ -25,20 +25,19 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   // the id, so a feature works here; what matters is that a feature is NOT in MODULE_IDS and
   // therefore is not auto-inherited by STAFF.
   { prefix: "/app/provenance", module: "provenance" },
-  // DevSignal — MUST precede the /app/code(clear) entries so it wins the first-match
-  // loop. Admin-only feature perm (default-off), not `codeclear`.
-  { prefix: "/app/codeclear/devsignal", module: "devsignal" },
+  // DevSignal — MUST precede the /app/staff and /app/code(clear) entries so it wins the
+  // first-match loop. Admin-only feature perm (default-off), not `codeclear`, which STAFF
+  // auto-inherits. It moved from /app/codeclear/devsignal (CLAUDE.md §87): the entry was
+  // renamed IN PLACE, and the legacy prefix keeps its own devsignal entry for the redirect
+  // stubs, so neither can fall through to a broader `codeclear` prefix below.
+  { prefix: "/app/staff/hiring/devsignal", module: "devsignal" },
+  { prefix: "/app/codeclear/devsignal", module: "devsignal" }, // legacy redirect stubs
   // Matching is anchored on a path-segment boundary (see matchesPrefix), so "/app/code"
-  // does NOT catch "/app/codeclear" and the legacy prefix needs its own entry. It used to
-  // be covered incidentally by a bare `startsWith` — which also meant a hypothetical
-  // "/app/codex" would have been gated on `codeclear`.
-  //
-  // If DevSignal ever moves to /app/code/devsignal, RENAME the entry above in place;
-  // appending it after the two entries below would let a broader prefix match first and
-  // silently regate admin-only DevSignal onto `codeclear`, which STAFF auto-inherits.
-  { prefix: "/app/codeclear", module: "codeclear" }, // legacy (still owns candidates/, pipeline/, devsignal/**)
+  // does NOT catch "/app/codeclear" and the legacy prefix needs its own entry.
+  { prefix: "/app/codeclear", module: "codeclear" }, // legacy redirect stubs only (§87)
   { prefix: "/app/code", module: "codeclear" }, // was the canonical route; now redirects to /app/staff
-  // Staff (formerly Code, CLAUDE.md §87). Same permission id: it is stored in every role
+  // Staff (formerly Code, CLAUDE.md §87), incl. Developers and Hiring (/app/staff/developers,
+  // /app/staff/hiring/**; DevSignal is gated above). Same permission id: it is stored in every role
   // matrix and member override, so renaming it would silently revoke Staff from everyone.
   { prefix: "/app/staff", module: "codeclear" },
   { prefix: "/app/docs", module: "proposals" }, // canonical

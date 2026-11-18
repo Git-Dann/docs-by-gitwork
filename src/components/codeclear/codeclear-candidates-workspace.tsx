@@ -524,7 +524,7 @@ export function CodeClearCandidatesWorkspace() {
                         : current.filter((entry) => entry !== id),
                     )
                   }
-                  onRowClick={(id) => router.push(`/app/codeclear/candidates/${id}`)}
+                  onRowClick={(id) => router.push(`/app/staff/${encodeURIComponent(id)}`)}
                   clientOptions={clientOptions}
                   canViewRates={canViewRates}
                   viewMode={viewMode}
@@ -630,7 +630,7 @@ export function CodeClearCandidatesWorkspace() {
                         }
                         setShowCreateModal(false);
                         setCreateForm(emptyCandidateProfile);
-                        router.push(`/app/codeclear/candidates/${result.candidate.id}`);
+                        router.push(`/app/staff/${encodeURIComponent(result.candidate.id)}`);
                       },
                     },
                   )

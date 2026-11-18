@@ -52,7 +52,7 @@ export default function ContextPage() {
               ["Marketing", "/", "Foundry public homepage (Gitwork logo, Foundry design)", "Live"],
               ["Docs / Proposals", "/app/docs", "Proposal builder — sections, costing, timeline, PDF export", "Live"],
               ["Proof", "/app/proof", "Document sign-off workflow — DRAFT → APPROVED", "Live"],
-              ["Code", "/app/codeclear", "Developer hiring pipeline with GitHub analysis + scoring", "Live"],
+              ["Code", "/app/staff/hiring", "Developer hiring pipeline with GitHub analysis + scoring", "Live"],
               ["Portal", "/app/portal", "Client management and profile pages", "Live"],
               ["Pulse", "/app/pulse", `AI project validation — ${ADVERTISED_CHECK_COUNT_LABEL} checks, gap analysis, fix agent; includes an optional Study research tool (multi-agent interviews) at /app/study`, "Live"],
               ["Care", "/app/care", "Client support ops — one conversation queue per client, answered from the reply state the connectors report. The legacy /app/support dashboard still owns tickets, monthly reports and workflow rules", "Live"],

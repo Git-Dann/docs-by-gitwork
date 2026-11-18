@@ -62,7 +62,9 @@ export const WORKSPACE_MODULES: WorkspaceModuleDef[] = [
     id: "devsignal",
     label: "Hiring",
     description: "Developer vetting: GitHub analysis, scores, DevSignal and the pipeline",
-    pagePrefixes: ["/app/codeclear/devsignal", "/app/codeclear/pipeline"],
+    // The whole of Hiring, incl. its Overview (which a Staff-only business could reach by URL
+    // while it lived at /app/codeclear). The legacy prefixes cover the redirect stubs.
+    pagePrefixes: ["/app/staff/hiring", "/app/codeclear/devsignal", "/app/codeclear/pipeline"],
     apiPrefixes: ["/api/devsignal"],
   },
   {
@@ -154,7 +156,7 @@ function matchesPrefix(pathname: string, prefix: string): boolean {
 
 /**
  * The module that owns a path, or null for shared ground (HQ, settings, account …).
- * Longest prefix wins, so `/app/codeclear/devsignal` belongs to Hiring, not Staff,
+ * Longest prefix wins, so `/app/staff/hiring/**` belongs to Hiring, not Staff,
  * whatever order the catalogue is in.
  */
 export function workspaceModuleForPath(pathname: string): string | null {

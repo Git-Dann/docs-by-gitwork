@@ -1197,7 +1197,8 @@ function isActivePath(pathname: string | null, href: string) {
   if (href === "/app") {
     return pathname === "/app" || Boolean(pathname?.startsWith("/app/projects/"));
   }
-  // Staff's developer and hiring pages still live under the legacy /app/codeclear prefix.
+  // Staff owns /app/staff/** (Developers and Hiring included). /app/code and /app/codeclear
+  // are legacy redirect stubs, kept lit for the moment before the redirect lands.
   if (href === "/app/staff") {
     return Boolean(pathname && /^\/app\/(staff|code|codeclear)(\/|$)/.test(pathname));
   }

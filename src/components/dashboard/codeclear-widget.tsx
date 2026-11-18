@@ -62,7 +62,7 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
         <span className="text-[10px] font-medium uppercase tracking-[1.2px] text-[#94A3B8]" style={{ fontFamily: "var(--font-mono)" }}>
           04 // CODE
         </span>
-        <Link href="/app/codeclear" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
+        <Link href="/app/staff/hiring" className="text-xs text-[#475569] transition-colors hover:text-[#0F172A]">
           View all
         </Link>
       </div>

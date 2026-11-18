@@ -1,4 +1,4 @@
-// /app/codeclear/candidates/[id] — dev-specific OG card. Slack's fetcher hits
+// /app/staff/hiring/candidates/[id] (was /app/codeclear/candidates/[id]) — dev-specific OG card. Slack's fetcher hits
 // the URL unauthenticated; generateMetadata + this generator both still run
 // server-side, so the candidate's name surfaces in the unfurl even though the
 // page body is auth-gated.

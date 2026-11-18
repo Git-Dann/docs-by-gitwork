@@ -1,15 +1,14 @@
-import { AppShell } from "@/components/app-shell";
-import { AssessmentDetail } from "@/components/codeclear/devsignal/assessment-detail";
+import { redirect } from "next/navigation";
+import { withSearch, type SearchParamsRecord } from "@/lib/legacy-redirect";
 
-export default async function DevSignalAssessmentPage({
+/** Legacy path (CLAUDE.md §87): the page moved under /app/staff. Kept so old links, notifications and bookmarks still land, query string included. */
+export default async function LegacyAssessmentRedirect({
   params,
+  searchParams,
 }: {
   params: Promise<{ assessmentId: string }>;
+  searchParams: Promise<SearchParamsRecord>;
 }) {
   const { assessmentId } = await params;
-  return (
-    <AppShell title="DevSignal" subtitle="Assessment review">
-      <AssessmentDetail id={assessmentId} />
-    </AppShell>
-  );
+  redirect(withSearch(`/app/staff/hiring/devsignal/${encodeURIComponent(assessmentId)}`, await searchParams));
 }

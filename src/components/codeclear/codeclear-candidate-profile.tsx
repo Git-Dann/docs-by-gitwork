@@ -77,7 +77,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
           They may have been deleted, or you may not have access.
         </p>
         <div className="mt-4">
-          <Link href="/app/codeclear/candidates">
+          <Link href="/app/staff/hiring/pipeline">
             <Button type="button" variant="secondary" size="sm">
               Back to candidates
             </Button>
@@ -89,14 +89,14 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
 
   async function confirmDelete() {
     await deleteCandidate.mutateAsync(candidateId);
-    router.push("/app/codeclear/candidates");
+    router.push("/app/staff/hiring/pipeline");
   }
 
   return (
     <div className="space-y-6">
       {/* Back link */}
       <Link
-        href="/app/codeclear/candidates"
+        href="/app/staff/hiring/pipeline"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--text-3)] hover:text-[var(--text-1)]"
       >
         <ArrowLeftIcon className="h-3.5 w-3.5" />

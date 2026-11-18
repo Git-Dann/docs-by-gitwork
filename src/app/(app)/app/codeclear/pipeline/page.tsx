@@ -1,18 +1,7 @@
-import { Suspense } from "react";
-import { AppShell } from "@/components/app-shell";
-import { CodeClearPipelineWorkspace } from "@/components/codeclear/codeclear-pipeline-workspace";
+import { redirect } from "next/navigation";
+import { withSearch, type SearchParamsRecord } from "@/lib/legacy-redirect";
 
-export const dynamic = "force-dynamic";
-
-export default function CodeClearPipelinePage() {
-  return (
-    <AppShell
-      title="Hiring"
-      subtitle="Move developers through sourcing, assessment, verification, placement, and re-check stages."
-    >
-      <Suspense>
-        <CodeClearPipelineWorkspace />
-      </Suspense>
-    </AppShell>
-  );
+/** Legacy path (CLAUDE.md §87): the page moved under /app/staff. Kept so old links, notifications and bookmarks still land, query string included. */
+export default async function LegacyPipelineRedirect({ searchParams }: { searchParams: Promise<SearchParamsRecord> }) {
+  redirect(withSearch("/app/staff/hiring/pipeline", await searchParams));
 }

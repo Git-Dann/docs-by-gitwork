@@ -268,7 +268,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 > |---|---|
 > | `/app/portal` | `/app/clients` → `redirect()` stubs |
 > | `/app/care` | `/app/support` — ⚠️ still a **live, different** UI, not a stub |
-> | `/app/code` | `/app/codeclear` — ⚠️ its `candidates/`, `pipeline/`, `devsignal/**` subtrees live **only** here |
+> | `/app/staff` | `/app/code` and `/app/codeclear/**` → query-preserving `redirect()` stubs (§87.1) |
 > | `/app/docs` | `/app/proposals` → `redirect()` stubs |
 >
 > Note the **server module name is a third thing again** and doesn't match either: Portal →
@@ -280,7 +280,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Foundry HQ** | `/app` | — | Dashboard overview. `/app/projects/[slug]` hangs off it (project detail; `app-shell.tsx` deliberately highlights HQ for it) |
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
 | **Provenance** (lab) | `/app/provenance` | `src/server/provenance/` | Attestation layer — strikes a **Countermark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/countermark/[token]` (no auth, noindex). **No sidebar item** — entry point is Settings → Labs (§4a) while it's an experiment. Gated by the **admin-only `provenance` feature perm** (default-off, NOT a module id — see §38); issuing/revoking is the separate high-risk `provenance.issue`. See §38 + `docs/provenance.md` |
-| **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
+| **Staff** (was Code) | `/app/staff` · Developers `/app/staff/developers` · Hiring `/app/staff/hiring/**` (legacy `/app/code`, `/app/codeclear/**` redirect) | `src/server/codeclear*.ts` | People, developers, and Hiring (overview, pipeline, DevSignal). See §87.1 for the path map. ⚠️ `/app/staff/hiring/devsignal` must stay ahead of `/app/staff` in `MODULE_PATHS`, or admin-only DevSignal regates onto the staff-inherited `codeclear` module |
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio`. **No sidebar item since Aug 2026** — reached from **Settings → Labs**, which is Super-Admin-gated, so this narrows it from the `studio` module perm (§4a) |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
@@ -686,7 +686,6 @@ npm run deck:verify  # Deck's own regression gate (see §30)
 | Issue | File | Notes |
 |---|---|---|
 | **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. (The "Care never clears `unread`" bug listed here was fixed in July 2026 — see §33.) |
-| **`/app/codeclear/*` subtrees not yet moved** | `src/app/(app)/app/codeclear/` | `candidates/`, `pipeline/` and `devsignal/**` exist only under the legacy prefix; 33 refs across 10 files. When moving, rename the `/app/codeclear/devsignal` `MODULE_PATHS` entry **in place** — appending it after `/app/code` regates admin-only DevSignal onto `codeclear`, which STAFF auto-inherits. Silent privilege escalation, no compile error. |
 | Cron scheduling has drifted | `vercel.json` · `docs/vps-crons.md` | `wedge-keepwarm` and `retention` are scheduled **nowhere**; `wiki-monitors` is only in `vercel.json`; the critical `jobs` worker is **missing** from `vercel.json`; three schedules disagree between the two; `foreman` is listed twice in the doc. And `vercel.json` crons are **not** necessarily inert — Vercel crons hit the deployment directly regardless of DNS, so some may be double-running. Reconcile against the live `crontab -l` before changing either. |
 | `pulse-scan.ts` is 4000+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
 | 26 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
@@ -8689,6 +8688,34 @@ the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenan
   `md` each person is a card. Sortable Person, Job title and Started (`sortStaffBy`: blanks last both
   ways), 20 a page. Avatars use the shared `Avatar`, which falls back to initials when an image fails.
   `SortHeader` now lives in `src/components/ui/sort-header.tsx`.
+
+### 87.1 The Staff pages left `/app/codeclear` (Nov 2026)
+
+Every page under `/app/codeclear/**` moved; the old paths are `redirect()` stubs that keep the
+query string (`withSearch` + `movedCodeclearPath` in `src/lib/legacy-redirect.ts`), so old links,
+notifications and Slack messages still land.
+
+| Old | New |
+|---|---|
+| `/app/codeclear` | `/app/staff/hiring` (Hiring → Overview) |
+| `/app/codeclear/pipeline` | `/app/staff/hiring/pipeline` |
+| `/app/codeclear/devsignal/**` | `/app/staff/hiring/devsignal/**` |
+| `/app/codeclear/candidates` | `/app/staff/developers` (Staff tab) |
+| `/app/codeclear/candidates/[id]` | `/app/staff/hiring/candidates/[id]` (external candidates; team members still redirect to `/app/staff/[id]`) |
+| `/app/codeclear/archived` | `/app/staff?view=archived` |
+
+- **Why `/app/staff/…` and not `/app/code`:** the tabs already read Staff = People · Developers and
+  Hiring = Overview · Pipeline · DevSignal under one Staff sidebar item, and `/app/code` already
+  redirects to `/app/staff`. Paths now follow the tabs.
+- **Gates:** `/app/staff/hiring/devsignal` (`devsignal`) sits ahead of `/app/staff` in
+  `MODULE_PATHS`, renamed in place; the legacy `/app/codeclear/devsignal` entry stays so the stubs
+  keep the same gate. Workspace modules: all of `/app/staff/hiring` is Hiring (`devsignal`), which
+  also closes the old gap where a Staff-only business could open Hiring's Overview by URL.
+- Developers list rows open `/app/staff/[id]` directly; Pipeline rows open the Hiring candidate page.
+- The permission id stays `codeclear`. `/api/codeclear/**` is unchanged.
+- Tests: `src/lib/__tests__/legacy-redirect.test.ts` (map, query strings, every stub, and a sweep
+  that no `/app/codeclear` path is left in `src` outside the stubs and the gates),
+  `staff-tabs.test.ts`, and the module-gate / workspace-module cases for the new paths.
 
 ## 88. Recent Changes (October 2026) — Phase 2 begins in shadow mode
 

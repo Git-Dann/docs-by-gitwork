@@ -55,6 +55,15 @@ describe("workspace module switch — rules", () => {
     expect(workspaceModuleForPath("/app/codeclear/candidates")).toBe("codeclear");
     expect(workspaceAllowsPath("/app/codeclear/devsignal", ["codeclear"])).toBe(false);
     expect(workspaceAllowsPath("/app/codeclear/candidates", ["codeclear"])).toBe(true);
+    // Canonical paths (§87): all of Hiring, Overview included, belongs to Hiring.
+    expect(workspaceModuleForPath("/app/staff/hiring")).toBe("devsignal");
+    expect(workspaceModuleForPath("/app/staff/hiring/pipeline")).toBe("devsignal");
+    expect(workspaceModuleForPath("/app/staff/hiring/devsignal/ds-1")).toBe("devsignal");
+    expect(workspaceModuleForPath("/app/staff/hiring/candidates/c1")).toBe("devsignal");
+    expect(workspaceModuleForPath("/app/staff/developers")).toBe("codeclear");
+    expect(workspaceAllowsPath("/app/staff/hiring", ["codeclear"])).toBe(false);
+    expect(workspaceAllowsPath("/app/staff/developers", ["codeclear"])).toBe(true);
+    expect(workspaceAllowsPath("/app/staff/hiring/pipeline", ["codeclear", "devsignal"])).toBe(true);
   });
 
   it("resolves the stored columns: unrestricted → null, restricted → known ids only", () => {
