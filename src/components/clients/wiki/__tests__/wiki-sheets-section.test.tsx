@@ -25,7 +25,7 @@ const calls = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
-vi.mock("@/hooks/use-tasks", () => ({ useFeatureBlocks: () => ({ data: [] }) }));
+vi.mock("@/hooks/use-tasks", () => ({ useFeatureBlocks: () => ({ data: [] }), useReleases: () => ({ data: [] }) }));
 vi.mock("@/lib/api", () => ({
   updateWikiSheetCellsApi: vi.fn(async (...args: unknown[]) => {
     calls.cells.push(args);
