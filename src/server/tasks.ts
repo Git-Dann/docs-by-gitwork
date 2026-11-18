@@ -1359,6 +1359,10 @@ export async function autoArchiveDoneTasks(olderThanDays = 30): Promise<{ archiv
     where: {
       status: "DONE",
       archivedAt: null,
+      // Never a product card (§124): a card is the client's record of what their product does, and
+      // Live Features is a column they read. Archiving it after 30 days would empty that column
+      // overnight. Cards are archived by a person, or not at all.
+      itemType: null,
       // Completed >N days ago — OR, for imported/legacy done tasks that never got
       // a completedAt (bulk-imported as DONE), untouched for >N days. Without the
       // second clause those dateless done tasks never archive and pile up on the
