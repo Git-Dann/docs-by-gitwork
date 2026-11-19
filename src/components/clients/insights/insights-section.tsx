@@ -23,6 +23,7 @@ import {
   useDeleteInsightBoard,
   useUpdateInsightBoard,
 } from "@/hooks/use-wiki";
+import { WikiPageActions } from "@/components/clients/wiki/wiki-page-header";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
@@ -74,19 +75,16 @@ export function WikiInsightsSectionView({
   return (
     <div className="space-y-4">
       {isInternal && (
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] text-[var(--text-3)]">
-            Charts and diagrams for this client. They see exactly what you see here.
-          </p>
+        <WikiPageActions>
           <button
             type="button"
             onClick={() => setEditing({ board: null })}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] bg-[var(--brand-600)] px-3 py-2 text-[13px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
+            className="app-button app-button-primary app-button-sm inline-flex items-center gap-1.5"
           >
             <PlusIcon className="h-4 w-4" />
-            New board
+            New chart
           </button>
-        </div>
+        </WikiPageActions>
       )}
 
       {boards.length === 0 ? (

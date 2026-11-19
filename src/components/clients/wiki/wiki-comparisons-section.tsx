@@ -82,7 +82,7 @@ export function WikiComparisonsSectionView({
           </span>
           <button
             type="button"
-            className="app-button app-button-secondary app-button-sm"
+            className="app-button app-button-primary app-button-sm"
             onClick={() => setCreating(true)}
             disabled={tables.length >= COMPARISON_LIMITS.maxTables}
           >

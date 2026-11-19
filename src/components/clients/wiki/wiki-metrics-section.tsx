@@ -36,6 +36,7 @@ import {
   useUpdateWikiMetrics,
   useWikiMetricEndpoints,
 } from "@/hooks/use-wiki";
+import { WikiPageActions } from "@/components/clients/wiki/wiki-page-header";
 
 function Header({ n, label, status }: { n: string; label: string; status?: string }) {
   return (
@@ -383,7 +384,7 @@ export function WikiMetricsSectionView({
   return (
     <div className="space-y-4">
       {!empty ? (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <WikiPageActions>
           <Segmented
             label="Period"
             value={period ?? ""}
@@ -398,7 +399,7 @@ export function WikiMetricsSectionView({
               options={[{ value: "ALL", label: "All" }, ...groupNames.map((g) => ({ value: g, label: g }))]}
             />
           ) : null}
-        </div>
+        </WikiPageActions>
       ) : null}
 
       {empty ? (
