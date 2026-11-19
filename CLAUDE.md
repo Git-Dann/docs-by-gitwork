@@ -10866,3 +10866,19 @@ client could edit any other client's wiki.
   that calls no client-access guard, so a new route can't skip it. Proved by removing one.
 - Not changed: READ handlers under `/api/clients/[slug]` (a separate, lower-risk pass), and the
   public token routes, which have their own posture.
+
+## 136. Recent Changes (November 2026) — Every wiki page opens on the same header
+
+Each wiki page drew its top differently. Now every page but the Dashboard (which keeps its hero)
+opens on **`WikiPageHeader`** (`src/components/clients/wiki/wiki-page-header.tsx`): the sidebar
+group as a mono eyebrow, the page title in display type, one sentence saying what the page is, and
+the page's main action on the right. The content rises in under it on every page change
+(`motion-rise`, which only transforms while it plays, so dialogs aren't trapped, §108.3).
+
+- **Titles and descriptions live in one place**, `src/lib/wiki-page-meta.ts`, read by the team's
+  wiki and the client's link (each kept its own title map before). Adding a section means adding
+  its title and description there; the wiring test checks both.
+- **A page puts its action in the header with `<WikiPageActions>`**, a portal into the header's
+  right-hand slot, so the action keeps its state in the section's own code. Doc pages (Edit/Done
+  and the ⋯ menu) and Comparisons (New table) use it. ⚠️ The slot is never re-keyed; only the text
+  block re-animates, or a portal would point at a replaced node.

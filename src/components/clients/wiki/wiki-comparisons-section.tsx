@@ -35,6 +35,8 @@ import {
 } from "@/lib/wiki-comparisons";
 import type { WikiComparison, WikiComparisonsSection } from "@/types/wiki-comparisons";
 import { ComparisonLegend, ComparisonTable } from "./comparison-table";
+import { WikiPageActions } from "./wiki-page-header";
+
 
 /** How long after the last change an edit is saved. */
 const AUTOSAVE_MS = 800;
@@ -71,7 +73,7 @@ export function WikiComparisonsSectionView({
   return (
     <div className="space-y-4">
       {mode === "internal" && tables.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <WikiPageActions>
           <span
             className="text-[11px] tracking-[0.08em] text-[var(--text-4)] uppercase"
             style={{ fontFamily: MONO }}
@@ -87,7 +89,7 @@ export function WikiComparisonsSectionView({
             <PlusIcon className="h-4 w-4" />
             New table
           </button>
-        </div>
+        </WikiPageActions>
       )}
 
       {tables.length === 0 ? (

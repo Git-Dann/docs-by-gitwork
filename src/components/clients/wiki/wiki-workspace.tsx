@@ -28,6 +28,8 @@ import {
   GOLF_DATA_SLUGS,
   OPTIONAL_DOC_SECTIONS,
 } from "./wiki-sidebar";
+import { WikiPageActions, WikiPageHeader } from "./wiki-page-header";
+import { WIKI_PAGE_TITLES } from "@/lib/wiki-page-meta";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { WikiDocTabs } from "./wiki-doc-tabs";
 import { WikiMobileNav } from "./wiki-mobile-nav";
@@ -135,37 +137,7 @@ const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
   DATA_MODEL: "data-model",
 };
 
-const SECTION_TITLES: Record<WikiSection, string> = {
-  dashboard: "Dashboard",
-  settings: "Settings",
-  timeline: "Timeline",
-  monitors: "Monitors",
-  documents: "Resources",
-  intake: "Requests",
-  launchpad: "Launchpad",
-  insights: "Charts",
-  costs: "Running costs",
-  estimates: "Estimates",
-  comparisons: "Comparisons",
-  board: "Board",
-  roundup: "RoundUp",
-  delivery: "Delivery",
-  support: "Support",
-  metrics: "Metrics",
-  meetings: "Meetings",
-  platforms: "Platforms",
-  "code-handover": "Code Handover",
-  "design-system": "Design System",
-  ia: "Information Architecture",
-  "dev-guide": "Developer Guide",
-  "api-docs": "API Docs",
-  architecture: "Architecture",
-  runbook: "Runbook",
-  "data-model": "Data Model",
-  changelog: "Changelog",
-  "course-requests": "Course Requests",
-  "golf-data": "Golf Data",
-};
+const SECTION_TITLES = WIKI_PAGE_TITLES;
 
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "TIMELINE",
@@ -1935,15 +1907,13 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           titles={SECTION_TITLES}
           onSelect={setActiveSection}
         />
-        {/* Page-level action bar — folded into a 3-dot menu */}
-        <div className="mb-4 flex h-9 items-center justify-between gap-2">
-          <span
-            className="text-[11px] text-[var(--text-4)]"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {pageSavedLabel ?? ""}
-          </span>
-          <div className="flex items-center gap-2">
+        {/* The page's actions sit in the shared header (WikiPageHeader). */}
+        <WikiPageActions>
+          {pageSavedLabel ? (
+            <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+              {pageSavedLabel}
+            </span>
+          ) : null}
           {/* The everyday action, visible: Edit to change the page, Done to read it back. */}
           <button
             type="button"
@@ -1986,8 +1956,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               },
             ]}
           />
-          </div>
-        </div>
+        </WikiPageActions>
 
         {/* Widget card */}
         <section className="widget-card">
@@ -2112,7 +2081,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         </div>
 
         {/* Main content — pt-6 matches DesignSystemWorkspace's own pt-6 so action bars align */}
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-6">{renderContent()}</div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-6">
+          {/* Every page but the dashboard (it has its own hero) opens on the same header. */}
+          {activeSection !== "dashboard" ? <WikiPageHeader section={activeSection} /> : null}
+          {/* Each page's content rises in once its header has (motion-rise only transforms while it
+              plays, so a dialog opened from the page isn't trapped afterwards, §108.3). */}
+          <div key={activeSection} className="motion-rise" style={{ animationDelay: "60ms" }}>
+            {renderContent()}
+          </div>
+        </div>
       </div>
 
       {/* Changelog entry form modal */}
