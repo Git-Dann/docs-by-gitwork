@@ -410,10 +410,12 @@ export function WikiSidebar({
         {group("numbers", [
           navItem("metrics", "Metrics", <PresentationChartLineIcon />),
           navItem("insights", "Charts", <ChartPieIcon />),
+          GOLF_DATA_SLUGS.includes(slug) && navItem("golf-data", "Golf Data", <ChartBarIcon />),
+        ])}
+        {group("plans", [
           navItem("comparisons", "Comparisons", <TableCellsIcon />),
           navItem("estimates", "Estimates", <CalculatorIcon />),
           navItem("costs", "Running costs", <BanknotesIcon />),
-          GOLF_DATA_SLUGS.includes(slug) && navItem("golf-data", "Golf Data", <ChartBarIcon />),
         ])}
         {group("product", [
           navItem("platforms", "Platforms", <GlobeAltIcon />),

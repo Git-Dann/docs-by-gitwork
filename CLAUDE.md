@@ -7378,8 +7378,9 @@ and yearly counts share the `subs` card.
 
 The sidebar had grown to 28 possible sections in one flat list, one row per feature as each shipped.
 Measured on production (17 wikis): most clients show 2–6 sections, Wedge shows 13 and After Desk 9.
-Sections now sit in five groups — **Overview · Working together · Numbers · Product · Docs &
-handover** — with Dashboard alone at the top and Settings pinned at the foot.
+Sections now sit in six groups — **Overview · Working together · Numbers · Plans & costs ·
+Product · Docs & handover** (Numbers is what the product measures: Metrics, Charts, Golf Data;
+Plans & costs is what the client is buying or deciding: Comparisons, Estimates, Running costs) — with Dashboard alone at the top and Settings pinned at the foot.
 
 - **One map:** `SECTION_GROUP` in `src/lib/wiki-section-groups.ts` is read by the sidebar *and* the
   "+ Add New" picker. `wiki-section-groups.test.ts` fails if a section is in no group, or if the

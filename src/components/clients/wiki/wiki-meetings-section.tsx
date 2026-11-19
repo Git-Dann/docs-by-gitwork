@@ -125,6 +125,8 @@ export function WikiMeetingsSectionView({
   slug?: string;
   editable?: boolean;
 }) {
+  // The team's share picker is card 01 when it is shown, so the meetings number on from it.
+  const first = editable && slug ? 2 : 1;
   return (
     <div className="space-y-4">
       {editable && slug ? <SharePicker slug={slug} /> : null}
@@ -132,7 +134,7 @@ export function WikiMeetingsSectionView({
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label" style={{ fontFamily: MONO }}>
-              <span className="widget-header__label--number">01</span>
+              <span className="widget-header__label--number">{String(first).padStart(2, "0")}</span>
               {" // MEETINGS"}
             </span>
           </div>
@@ -143,7 +145,7 @@ export function WikiMeetingsSectionView({
           </p>
         </section>
       ) : (
-        meetings.meetings.map((m, i) => <MeetingCard key={m.id} meeting={m} n={i + 1} />)
+        meetings.meetings.map((m, i) => <MeetingCard key={m.id} meeting={m} n={i + first} />)
       )}
     </div>
   );
@@ -159,7 +161,8 @@ function SharePicker({ slug }: { slug: string }) {
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
-          {"SHARE WITH CLIENT"}
+          <span className="widget-header__label--number">01</span>
+          {" // SHARE WITH CLIENT"}
         </span>
         <span className="widget-header__status shrink-0" style={{ fontFamily: MONO }}>
           GITWORK ONLY
