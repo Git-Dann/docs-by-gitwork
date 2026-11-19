@@ -28,6 +28,7 @@ import {
   GOLF_DATA_SLUGS,
   OPTIONAL_DOC_SECTIONS,
 } from "./wiki-sidebar";
+import { WikiBrandCell } from "./wiki-brand-cell";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
 import { WikiDocTabs } from "./wiki-doc-tabs";
 import { WikiMobileNav } from "./wiki-mobile-nav";
@@ -2035,9 +2036,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      {/* Header */}
-      <div className="widget-header sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(0,0,0,0.08)] bg-white">
-        <div className="flex items-center gap-3">
+      {/* Header: the Foundry logo above the sidebar (WikiBrandCell), level with the bar beside it. */}
+      <div className="sticky top-0 z-10 flex h-14 shrink-0 items-stretch border-b border-[var(--border-1)] bg-[var(--surface-0)]">
+        <WikiBrandCell />
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 md:px-6">
+        <div className="flex min-w-0 items-center gap-3">
           <Link
             href={`/app/portal/${slug}`}
             className="flex items-center gap-1.5 text-xs text-[var(--text-4)] transition hover:text-[var(--text-1)]"
@@ -2056,6 +2059,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         <div className="flex shrink-0 items-center gap-2">
           <DashboardEditButton />
           <ThemeToggle iconOnly />
+        </div>
         </div>
       </div>
 
