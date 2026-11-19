@@ -10,7 +10,8 @@ describe("cardGrid — no empty slots on the last row", () => {
   for (let n = 1; n <= 13; n++) {
     it(`${n} card(s) leave no empty slot at md or xl`, () => {
       const g = cardGrid(n);
-      expect(emptySlots(n, 2, g.item, "md")).toBe(0);
+      // One card is a one-column grid at every width.
+      expect(emptySlots(n, n === 1 ? 1 : 2, g.item, "md")).toBe(0);
       expect(emptySlots(n, xlColumns(n), g.item, "xl")).toBe(0);
     });
   }

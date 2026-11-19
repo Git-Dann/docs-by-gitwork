@@ -59,10 +59,10 @@ describe("Settings", () => {
     expect(src).not.toMatch(/<details[^>]*\bopen\b/);
   });
 
-  it("API intake and Linked clients sit side by side in one grid", () => {
-    const grid = src.slice(src.indexOf("xl:grid-cols-2"), src.indexOf("</div>", src.indexOf("xl:grid-cols-2")));
-    expect(grid).toContain("<WikiApiIntakeSettings");
-    expect(grid).toContain("<WikiLinkedClients");
+  it("API intake and Linked clients run full width, one under the other (they never matched side by side)", () => {
+    expect(src).not.toContain("xl:grid-cols-2");
+    expect(src.indexOf("<WikiApiIntakeSettings")).toBeGreaterThan(-1);
+    expect(src.indexOf("<WikiApiIntakeSettings")).toBeLessThan(src.indexOf("<WikiLinkedClients"));
   });
 
   it("the user dialog is the shared Modal, not a hand-rolled overlay", () => {
