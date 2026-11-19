@@ -8,5 +8,5 @@ export const metadata: Metadata = { title: "Profile demo", robots: { index: fals
 
 export default async function DemoProfilePage({ searchParams }: { searchParams: Promise<{ long?: string; owner?: string }> }) {
   const { long, owner } = await searchParams;
-  return <PublicProfileView profile={long ? DEMO_PUBLIC_PROFILE_LONG : DEMO_PUBLIC_PROFILE} isOwner={Boolean(owner)} />;
+  return <PublicProfileView profile={long ? DEMO_PUBLIC_PROFILE_LONG : DEMO_PUBLIC_PROFILE} isOwner={Boolean(owner)} wallets={{ apple: true, google: true }} />;
 }

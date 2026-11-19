@@ -14,7 +14,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { AcademicCapIcon, ArrowTopRightOnSquareIcon, BriefcaseIcon, TrophyIcon, CalendarDaysIcon, MapPinIcon, PencilSquareIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import type { PublicProfile } from "@/server/public-profile";
-import { ProfileSharePanel, ProfileShareTile, type ProfileShareData } from "./profile-share-actions";
+import { ProfileSharePanel, ProfileShareTile, type ProfileShareData, type WalletOffer } from "./profile-share-actions";
 import { Pattern, ProfileBusinessCard } from "./profile-card";
 import { PlatformMark } from "@/lib/platform-icons";
 import { cardColour } from "@/lib/profile-card";
@@ -272,18 +272,28 @@ function Footer({ p, step }: { p: PublicProfile; step: number }) {
   );
 }
 
-export function PublicProfileView({ profile, isOwner = false }: { profile: PublicProfile; isOwner?: boolean }) {
+export function PublicProfileView({
+  profile,
+  isOwner = false,
+  wallets = { apple: false, google: false },
+}: {
+  profile: PublicProfile;
+  isOwner?: boolean;
+  /** Which wallet passes this server can issue (`walletAvailability`). */
+  wallets?: { apple: boolean; google: boolean };
+}) {
   const p = profile;
   const pageUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://foundry.gitwork.co.uk").replace(/\/$/, "")}/u/${p.slug}`;
   const share: ProfileShareData = { name: p.name, headline: p.headline, company: p.company, links: p.links };
   const person = { name: p.name, headline: p.headline, company: p.company, location: p.location, avatarUrl: p.avatarUrl };
+  const wallet: WalletOffer = { slug: p.slug, ...wallets };
   return (
     <main className="min-h-screen bg-[var(--surface-canvas,var(--surface-1))]">
       <div className="px-3 pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-14 lg:hidden">
-        <PhoneProfile p={p} isOwner={isOwner} pageUrl={pageUrl} share={share} person={person} />
+        <PhoneProfile p={p} isOwner={isOwner} pageUrl={pageUrl} share={share} person={person} wallet={wallet} />
       </div>
       <div className="hidden px-6 py-10 lg:block">
-        <DesktopProfile p={p} isOwner={isOwner} pageUrl={pageUrl} share={share} person={person} />
+        <DesktopProfile p={p} isOwner={isOwner} pageUrl={pageUrl} share={share} person={person} wallet={wallet} />
       </div>
     </main>
   );
@@ -294,12 +304,13 @@ type ViewProps = {
   isOwner: boolean;
   pageUrl: string;
   share: ProfileShareData;
+  wallet: WalletOffer;
   person: { name: string; headline: string | null; company: string; location: string | null; avatarUrl: string | null };
 };
 
 // ── Phone: link-in-bio ──────────────────────────────────────────────────────────────────────
 
-function PhoneProfile({ p, isOwner, pageUrl, share, person }: ViewProps) {
+function PhoneProfile({ p, isOwner, pageUrl, share, person, wallet }: ViewProps) {
   // With a card, the card already shows the company and location.
   const meta = [
     p.card ? null : { icon: BriefcaseIcon, text: p.company },
@@ -371,7 +382,7 @@ function PhoneProfile({ p, isOwner, pageUrl, share, person }: ViewProps) {
                 ))}
               </ul>
             ) : null}
-            <ProfileShareTile data={share} pageUrl={pageUrl} />
+            <ProfileShareTile data={share} pageUrl={pageUrl} wallet={wallet} />
           </div>
         </div>
       </section>
@@ -390,7 +401,7 @@ function PhoneProfile({ p, isOwner, pageUrl, share, person }: ViewProps) {
 
 // ── Desktop: LinkedIn-shaped ────────────────────────────────────────────────────────────────
 
-function DesktopProfile({ p, isOwner, pageUrl, share, person }: ViewProps) {
+function DesktopProfile({ p, isOwner, pageUrl, share, person, wallet }: ViewProps) {
   const banner = p.card ? cardColour(p.card.colour) : null;
   const facts = [p.company, p.location, p.yearsExperience ? `${p.yearsExperience}+ years' experience` : null].filter(Boolean) as string[];
   let step = 1;
@@ -466,7 +477,7 @@ function DesktopProfile({ p, isOwner, pageUrl, share, person }: ViewProps) {
           </div>
         ) : null}
         <Card title="Share" step={2}>
-          <ProfileSharePanel data={share} pageUrl={pageUrl} />
+          <ProfileSharePanel data={share} pageUrl={pageUrl} wallet={wallet} />
         </Card>
         {p.links.length ? (
           <Card title="Links" step={3}>

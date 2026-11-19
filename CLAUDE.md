@@ -10987,6 +10987,13 @@ in block by block and works in light and dark.
   each kind its own card. `Candidate.profileExtras` (additive JSON, `readExtras`) holds headline
   numbers, featured work, recommendations (word for word, as the person published them) and
   clients worked with. Every section is left out when empty, in both layouts.
+- **Wallet passes** (Apple and Google), each OFF until its secrets are set; the button appears only
+  then (`walletAvailability`). Setup, step by step: `docs/profile-wallets.md`. Content is pure
+  (`src/lib/profile-wallet.ts`), signing is `src/server/profile-wallet.ts`: Apple via
+  `passkit-generator` + a `.p12` (Apple's public WWDR G4 is in `src/server/wallet/apple-wwdr.ts`,
+  expires Dec 2030), Google via a JWT save link signed with the service account. Google's button is
+  its official badge; Apple's badge needs Apple's marketing agreement accepted, so until it's added
+  the Apple button is plain text with no Apple mark.
 
 **Staff audit.** Hiring's "Overview" (tier mix, bench, calibre, costs, client coverage) described
 the developers you have, not hiring, so it is now **Developers → Insights** (`developers-views.tsx`,

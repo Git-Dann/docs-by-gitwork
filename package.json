@@ -84,8 +84,10 @@
     "mailparser": "^3.9.14",
     "next": "^15.5.28",
     "next-auth": "^5.0.0-beta.32",
+    "node-forge": "^1.4.3",
     "nodemailer": "^10.0.13",
     "openai": "^6.38.0",
+    "passkit-generator": "^3.7.0",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "1.1.1",
     "prosemirror-markdown": "^1.13.5",
@@ -109,6 +111,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^20",
+    "@types/node-forge": "^1.3.14",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -125,6 +128,9 @@
     "vitest": "^4.1.11"
   },
   "overrides": {
+    "passkit-generator": {
+      "joi": "17.13.9"
+    },
     "esbuild": "$esbuild",
     "postcss": "$postcss",
     "sharp": "$sharp",
