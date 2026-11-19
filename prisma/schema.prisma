@@ -2734,6 +2734,8 @@ model Candidate {
   profileLinks        Json?
   /// The business card at the top of the public page: { layout, font, colour, pattern } (src/lib/profile-card.ts). Null = the plain header.
   profileCard Json?
+  /// A booking link (Cal.com, Calendly, Google appointments) shown as "Book a call" on the public page.
+  profileBookingUrl String?
   yearsExperience      Int?
   hourlyRate           Decimal?               @db.Decimal(10, 2)
   currency             String?                @db.VarChar(3)
