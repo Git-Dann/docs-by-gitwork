@@ -187,7 +187,7 @@ export function PublicProfileCard({ number }: { number: string }) {
           onChange={(v) => set("achievements", v)}
           render={(a, update) => (
             <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-[130px_96px_96px_1fr]">
-              <select aria-label="Kind" className="app-select app-select-chevron w-full text-base sm:text-[14px]" value={a.kind ?? "role"} onChange={(e) => update({ ...a, kind: e.target.value as ProfileAchievement["kind"] })}>
+              <select aria-label="Kind" className="app-select w-full text-base sm:text-[14px]" value={a.kind ?? "role"} onChange={(e) => update({ ...a, kind: e.target.value as ProfileAchievement["kind"] })}>
                 {ACHIEVEMENT_KINDS.map((k) => (
                   <option key={k.id} value={k.id}>
                     {k.label}
