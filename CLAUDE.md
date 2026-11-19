@@ -10832,3 +10832,19 @@ order. The team can now save ONE arrangement per client as its starting layout.
 - ⚠️ **The client's copy names only cards it shows** (`scopeDefaultLayout` in `forPublic`, computed
   from `visibleSections`), so a hidden or retired section can't leak its id through the layout. And
   like any layout it only arranges cards the viewer has; it can never add one.
+
+## 134. Recent Changes (November 2026) — A client's bug or feedback goes to Requests (wiki Decision B)
+
+A client could raise a bug as a Board card *and* as a request, so the same thing was filed twice
+and triaged in two places. Now Requests is the one door for bugs and feedback; the Board is the plan.
+
+- **The rule is on the server** (`POST /api/wiki/[token]/board/tasks`): a CLIENT writer adding a
+  `bug` or `feedback` card gets a Request instead (`addRequestFromBoard` in `src/server/wiki.ts`,
+  the same ingest path as the Requests form), named after the signed-in client. Every client path
+  gets it: the card dialog, the Table's quick add and paste. The response is
+  `{ card: null, request: { id, title } }`; `addBoardCardApi` returns a `BoardAddResult`.
+- ⚠️ **When Requests is off for that client it stays a Board card**, so nothing a client sends is
+  lost. The team's own adds, and a Gitwork session on the client's page, are never re-routed.
+- Screenshots on the card go to the request (`uploadRequestImageApi`); a request holds one, so the
+  first is attached and the toast says so.
+- The add dialog tells the client before they press Add.
