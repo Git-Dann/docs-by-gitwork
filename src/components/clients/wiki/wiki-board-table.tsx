@@ -63,6 +63,7 @@ import {
 } from "@/lib/wiki-board-table";
 import {
   addBoardCardApi,
+  LOGGED_AS_REQUEST,
   boardImageUrl,
   deleteBoardCardApi,
   moveBoardCardApi,
@@ -201,14 +202,15 @@ export function WikiBoardTable(props: WikiBoardTableProps) {
     const laneKey = group.seed.laneKey && addLanes.some((l) => l.key === group.seed.laneKey) ? group.seed.laneKey : addLanes[0]?.key;
     if (!laneKey) return false;
     try {
-      const card = await addBoardCardApi(target, {
+      const res = await addBoardCardApi(target, {
         ...blankForm(),
         title: title.trim(),
         laneKey,
         list: group.seed.list ?? null,
         releaseId: group.seed.releaseId ?? null,
       });
-      props.onPlace(card);
+      if (res.card) props.onPlace(res.card);
+      else toast.success(LOGGED_AS_REQUEST.title, LOGGED_AS_REQUEST.body);
       refresh();
       return true;
     } catch (err) {
@@ -1022,10 +1024,11 @@ function PasteDialog({
     if (!plan.cards.length || !laneKey) return;
     setBusy(true);
     const added: WikiBoardCard[] = [];
+    let requests = 0;
     let error: string | null = null;
     for (const c of plan.cards) {
       try {
-        let card = await addBoardCardApi(target, {
+        const res = await addBoardCardApi(target, {
           title: c.title,
           itemType: c.itemType,
           laneKey,
@@ -1041,6 +1044,13 @@ function PasteDialog({
           links: [],
           dependsOn: [],
         });
+        if (!res.card) {
+          // A client's bug or feedback row was logged in Requests instead (§134).
+          requests += 1;
+          setProgress(added.length + requests);
+          continue;
+        }
+        let card = res.card;
         // A row naming a later column (In development, Live…) is added early, then moved there.
         const lane = c.moveToLaneKey ? lanes.find((l) => l.key === c.moveToLaneKey) : undefined;
         if (lane) {
@@ -1059,7 +1069,10 @@ function PasteDialog({
     if (error) {
       toast.error(`Added ${added.length} of ${plan.cards.length}`, `Stopped at a card that couldn't be added: ${error}`);
     } else {
-      toast.success(`Added ${added.length} card${added.length === 1 ? "" : "s"}`);
+      toast.success(
+        `Added ${added.length} card${added.length === 1 ? "" : "s"}`,
+        requests ? `${requests} bug${requests === 1 ? "" : "s"} and feedback row${requests === 1 ? "" : "s"} went to Requests, where the team picks them up.` : undefined,
+      );
       onClose();
     }
   }
