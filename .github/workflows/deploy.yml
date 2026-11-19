@@ -236,3 +236,48 @@ jobs:
             # Recreate so the container picks up any .env change made above.
             docker compose up -d --no-deps --force-recreate app
             docker image prune -f
+
+      # ── Scheduled jobs ──────────────────────────────────────────────────────
+      # The repo owns the VPS crontab: deploy/crontab is installed into the `deploy`
+      # user's crontab between `# BEGIN/# END foundry-managed` markers on every deploy,
+      # by deploy/install-crontab.sh. Before this, the schedule lived only in a
+      # hand-edited crontab and drifted from docs/vps-crons.md in both directions:
+      # foreman, curator and wedge-keepwarm were documented and never ran.
+      #
+      # A separate step after the app restart, so a crontab problem can never block a
+      # deploy of the app itself; it still fails the run, loudly, if the schedule did
+      # not install. Both files travel over the SSH channel as base64 env vars (the
+      # box has no checkout of the repo). Neither contains a secret.
+      - name: Checkout (schedule files only)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: |
+            deploy/crontab
+            deploy/install-crontab.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Encode the schedule
+        id: schedule
+        run: |
+          echo "crontab_b64=$(base64 -w0 deploy/crontab)" >> "$GITHUB_OUTPUT"
+          echo "installer_b64=$(base64 -w0 deploy/install-crontab.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Install scheduled jobs on the VPS
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
+        env:
+          FOUNDRY_CRONTAB_B64: ${{ steps.schedule.outputs.crontab_b64 }}
+          FOUNDRY_CRON_INSTALLER_B64: ${{ steps.schedule.outputs.installer_b64 }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: FOUNDRY_CRONTAB_B64,FOUNDRY_CRON_INSTALLER_B64
+          script: |
+            set -e
+            WORK="$(mktemp -d)"
+            trap 'rm -rf "$WORK"' EXIT
+            printf '%s' "$FOUNDRY_CRONTAB_B64" | base64 -d > "$WORK/crontab"
+            printf '%s' "$FOUNDRY_CRON_INSTALLER_B64" | base64 -d > "$WORK/install-crontab.sh"
+            # Keep a copy of what was there, in case a managed change needs undoing by hand.
+            crontab -l > "$HOME/crontab.before-deploy" 2>/dev/null || true
+            bash "$WORK/install-crontab.sh" "$WORK/crontab"

@@ -16,8 +16,8 @@ export const maxDuration = 60;
 //   - died BEFORE checksCompletedAt → nothing useful persisted → mark FAILED so
 //     the user can retry.
 //
-// NOTE: Vercel Hobby only permits DAILY crons. If on Pro, bump the schedule in
-// vercel.json to hourly (`0 * * * *`) for tighter recovery.
+// Every 15 minutes (deploy/crontab). It was daily while production ran on Vercel Hobby, so an
+// orphaned scan could show RUNNING for up to a day.
 const STALE_AFTER_MS = 6 * 60 * 1000; // 6 min — comfortably past the 300s scan budget
 const BATCH = 50;
 

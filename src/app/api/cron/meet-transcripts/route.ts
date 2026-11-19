@@ -37,7 +37,7 @@ const SCRIBE_ORGANISER_EMAILS = new Set([
 ]);
 
 /**
- * GET /api/cron/meet-transcripts  (Vercel cron)
+ * GET /api/cron/meet-transcripts  (VPS crontab: deploy/crontab)
  *
  * Scribe automation: auto-pull Google Meet transcripts for recently-ended client calls so notes
  * appear on client pages without anyone clicking "Fetch notes".

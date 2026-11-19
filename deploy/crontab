@@ -1,0 +1,51 @@
+# Foundry's scheduled jobs: the source of truth for the VPS `deploy` user's crontab.
+#
+# Every deploy installs this file between `# BEGIN foundry-managed` / `# END foundry-managed`
+# markers (deploy/install-crontab.sh, run by .github/workflows/deploy.yml). Edit it here, never
+# with `crontab -e` on the box: a hand edit of a managed line is replaced on the next deploy, and an
+# un-marked duplicate of a managed job is removed. Lines outside the markers (the weekly
+# db-backup.sh) are left exactly as they are.
+#
+# Every job goes through run-cron.sh, which reads CRON_SECRET from the app .env and calls the
+# route on the internal host. No secret appears on any line here.
+#
+# src/app/api/cron/__tests__/crontab.test.ts fails if a cron route is in neither this file nor
+# UNSCHEDULED_CRONS, or if this file names a route that does not exist.
+
+# Background-job worker, every minute: drains the job queue (curator/foreman runs, client
+# archives), plus the monitor watchdog, SSL/domain expiry, the running-month metrics refresh, the
+# Monday HR digest, AI-search buyer questions and commitment reads.
+* * * * * /opt/apps/foundry/run-cron.sh jobs >> /tmp/foundry-cron.log 2>&1
+# Uptime monitors, every minute. Healthy monitors self-throttle to their own interval; a failing
+# one is re-checked each minute.
+* * * * * /opt/apps/foundry/run-cron.sh wiki-monitors >> /tmp/foundry-cron.log 2>&1
+# Big Wedge keep-warm (their free-tier DB) + the watchdog for the hourly course feed.
+*/5 * * * * /opt/apps/foundry/run-cron.sh wedge-keepwarm >> /tmp/foundry-cron.log 2>&1
+# Pulse: scans left RUNNING after a crash/deploy are salvaged or failed. Was daily (a Vercel Hobby
+# limit), so an orphaned scan could spin for up to a day.
+*/15 * * * * /opt/apps/foundry/run-cron.sh pulse-reconcile >> /tmp/foundry-cron.log 2>&1
+# Pulse monitors: re-scans whichever monitors are due, at most 3 per run. Was daily, which
+# capped the whole platform at 3 monitor scans a day.
+20 * * * * /opt/apps/foundry/run-cron.sh pulse-run-monitors >> /tmp/foundry-cron.log 2>&1
+# Big Wedge course requests, hourly from their API.
+15 * * * * /opt/apps/foundry/run-cron.sh wedge-course-feed >> /tmp/foundry-cron.log 2>&1
+# CRM lead sync, hourly in working hours (a lead also syncs when someone opens it).
+0 8-18 * * 1-5 /opt/apps/foundry/run-cron.sh crm-sync >> /tmp/foundry-cron.log 2>&1
+
+# Nightly
+0 2 * * * /opt/apps/foundry/run-cron.sh docs-gdrive-backup >> /tmp/foundry-cron.log 2>&1
+0 3 * * * /opt/apps/foundry/run-cron.sh auto-archive-tasks >> /tmp/foundry-cron.log 2>&1
+30 3 * * * /opt/apps/foundry/run-cron.sh member-purge >> /tmp/foundry-cron.log 2>&1
+0 6 * * * /opt/apps/foundry/run-cron.sh analytics-snapshot >> /tmp/foundry-cron.log 2>&1
+0 7 * * * /opt/apps/foundry/run-cron.sh embed-conversations >> /tmp/foundry-cron.log 2>&1
+
+# Working day
+0 8,13 * * * /opt/apps/foundry/run-cron.sh support-sync >> /tmp/foundry-cron.log 2>&1
+30 8 * * 1-5 /opt/apps/foundry/run-cron.sh availability-digest >> /tmp/foundry-cron.log 2>&1
+0 9 * * * /opt/apps/foundry/run-cron.sh foreman >> /tmp/foundry-cron.log 2>&1
+0 9,13 * * * /opt/apps/foundry/run-cron.sh meet-transcripts >> /tmp/foundry-cron.log 2>&1
+0 10 * * * /opt/apps/foundry/run-cron.sh care-digest >> /tmp/foundry-cron.log 2>&1
+0 11 * * * /opt/apps/foundry/run-cron.sh absence-cover-reconcile >> /tmp/foundry-cron.log 2>&1
+
+# Weekly (Monday 01:00)
+0 1 * * 1 /opt/apps/foundry/run-cron.sh curator >> /tmp/foundry-cron.log 2>&1

@@ -24,7 +24,7 @@ const MAX_PER_RUN = 15;
 const STALE_SCAN_LIMIT = 200;
 
 /**
- * GET /api/cron/docs-gdrive-backup  (Vercel cron)
+ * GET /api/cron/docs-gdrive-backup  (VPS crontab: deploy/crontab)
  *
  * Mirrors documents into the backup account's Drive as native Google Docs. Idempotent: each doc
  * maps to one Google Doc (Document.gdriveFileId), created once then updated in place. Picks up
