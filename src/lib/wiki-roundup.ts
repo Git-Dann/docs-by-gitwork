@@ -281,3 +281,12 @@ export function summariseRoundup(
     blindSpots,
   };
 }
+
+/**
+ * How many rows "On now" and "Up next" each show, so the two cards beside each other end
+ * level instead of one running 141px past the other (wiki audit, Nov 2026). Both show the
+ * shorter list's length, but never fewer than `floor`, and the rest sit behind "Show N more".
+ */
+export function levelledRowCount(a: number, b: number, floor = 3): number {
+  return Math.max(floor, Math.min(a, b));
+}

@@ -127,13 +127,10 @@ export function WikiAccessSettings({
           n={next()}
         />
       ) : null}
-      {/* Side by side from xl — both are short once their folds are shut. xl, not lg: at lg
-          the content column is ~700px beside the sidebar, too narrow for two cards of URLs.
-          items-start so a card opening its folds doesn't stretch the one beside it. */}
-      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
-        <WikiApiIntakeSettings slug={slug} n={next()} />
-        <WikiLinkedClients slug={slug} clientId={wiki.clientId} n={next()} />
-      </div>
+      {/* Full width, one under the other. Side by side they never matched: API intake is a
+          line when off and a page when on, so one card ran 163px past the other (wiki audit). */}
+      <WikiApiIntakeSettings slug={slug} n={next()} />
+      <WikiLinkedClients slug={slug} clientId={wiki.clientId} n={next()} />
     </div>
   );
 }
@@ -501,9 +498,13 @@ function WikiApiIntakeSettings({ slug, n }: { slug: string; n: string }) {
               <a href={intakePagePath} className="text-[var(--brand-700)] hover:underline">Requests</a>, and keep their
               status in sync.
             </p>
-            <p className="mt-1 text-[12px] leading-relaxed text-[var(--danger-500)]">
-              Send them this token only — never the workspace API key, which opens every client&rsquo;s data.
-            </p>
+            {/* Only once there is a token to send. In red while intake was off, it read as
+                something broken on a feature nobody had switched on. */}
+            {token ? (
+              <p className="mt-1 text-[12px] leading-relaxed text-[var(--danger-500)]">
+                Send them this token only — never the workspace API key, which opens every client&rsquo;s data.
+              </p>
+            ) : null}
           </div>
           <ShareToggle
             on={Boolean(token)}

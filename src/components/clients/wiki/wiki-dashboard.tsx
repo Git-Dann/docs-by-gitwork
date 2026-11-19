@@ -37,7 +37,7 @@ import {
   VideoCameraIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
-import { summariseDelivery } from "@/lib/wiki-delivery";
+import { projectProgress, summariseDelivery } from "@/lib/wiki-delivery";
 import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
 import { buildEstimateReadout, planDurationParts, formatShortDate, isPlannable } from "@/lib/wiki-estimates";
 import { summariseRoundup } from "@/lib/wiki-roundup";
@@ -110,26 +110,15 @@ const SECTION_PAGE_TYPE: Record<DocSection, string> = {
   "data-model": "DATA_MODEL",
 };
 
-/** Weighted overall completion across all timeline blocks (by task count). */
+/**
+ * Overall completion — the ONE project rule (`projectProgress`, src/lib/wiki-delivery.ts),
+ * so this tile can never disagree with Timeline, Delivery or RoundUp. Null when there is
+ * nothing to count: no phases, or phases with no tasks yet (§49.1 — never a fall-back to
+ * averaging the phase bars, which is how the same project read 41% here and 29% there).
+ */
 function overallProgress(wiki: WikiDTO): number | null {
-  const blocks = wiki.timeline.blocks;
-  if (blocks.length === 0) return null;
-  let done = 0;
-  let total = 0;
-  for (const b of blocks) {
-    total += b.tasks.length;
-    done += b.tasks.filter((t) => t.done).length;
-  }
-  // ⚠️ Live work that is on no phase counts too. Without this GAIA Bloom's card read
-  // 98% (46 of 47 phase tasks) while six items, two of them in progress, were counted
-  // nowhere on the client's portal. The honest figure for her is 87%.
-  const loose = wiki.timeline.unassigned;
-  total += loose.length;
-  done += loose.filter((t) => t.done).length;
-  if (total === 0) {
-    return Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
-  }
-  return Math.round((done / total) * 100);
+  if (wiki.timeline.blocks.length === 0) return null;
+  return projectProgress({ blocks: wiki.timeline.blocks, unassigned: wiki.timeline.unassigned }).percent;
 }
 
 function formatDate(iso: string): string {
@@ -710,6 +699,9 @@ export function WikiDashboard({
           blocks: wiki.timeline.blocks,
           milestones: wiki.timeline.milestones,
           blockers: wiki.blockers,
+          // Loose work counts, as on the Delivery page itself — without it this tile and
+          // the page it links to disagreed.
+          unassigned: wiki.timeline.unassigned,
         });
         return d.noTimeline ? (
           <p className="text-[13px] text-[var(--text-4)]">No delivery plan yet.</p>
