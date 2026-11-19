@@ -58,7 +58,7 @@ describe("Care is one UI", () => {
     ]) {
       const src = stripComments(read(f));
       expect(src).toMatch(/redirect\(legacy(Support|Report)Redirect\(/);
-      expect(src).not.toMatch(/<[A-Z]/); // renders no component
+      expect(src).not.toMatch(/<[A-Z]\w*(\s|\/?>)/); // renders no component (a generic like Promise<Record<…>> is not JSX)
     }
   });
 
