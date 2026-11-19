@@ -10,12 +10,13 @@
  * Framework-free on purpose: a node test imports it with no React tree behind it.
  */
 
-export type WikiSectionGroupId = "overview" | "together" | "numbers" | "product" | "docs";
+export type WikiSectionGroupId = "overview" | "together" | "numbers" | "plans" | "product" | "docs";
 
 export const WIKI_SECTION_GROUPS: { id: WikiSectionGroupId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "together", label: "Working together" },
   { id: "numbers", label: "Numbers" },
+  { id: "plans", label: "Plans & costs" },
   { id: "product", label: "Product" },
   { id: "docs", label: "Docs & handover" },
 ];
@@ -37,12 +38,15 @@ export const SECTION_GROUP = {
   support: "together",
   "course-requests": "together",
 
+  // Numbers = what the product measures. What the client is buying or deciding on (tiers,
+  // timescales, running costs) is a different question, so it has its own group.
   metrics: "numbers",
   insights: "numbers",
-  comparisons: "numbers",
-  estimates: "numbers",
-  costs: "numbers",
   "golf-data": "numbers",
+
+  comparisons: "plans",
+  estimates: "plans",
+  costs: "plans",
 
   platforms: "product",
   monitors: "product",

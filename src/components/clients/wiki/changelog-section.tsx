@@ -24,13 +24,6 @@ const PLATFORM_LABELS: Record<string, string> = {
   ALL: "All",
 };
 
-const PLATFORM_COLORS: Record<string, { bg: string; text: string }> = {
-  IOS: { bg: "#f5f5f7", text: "#1a1a1a" },
-  ANDROID: { bg: "#f0fdf4", text: "#166534" },
-  FIRESTICK: { bg: "#fff7ed", text: "#c45500" },
-  WEB: { bg: "#eff6ff", text: "#1D4ED8" },
-  ALL: { bg: "#f8fafc", text: "#475569" },
-};
 
 const SEMVER_STYLES = {
   MAJOR: "bg-red-50 text-red-700 border border-red-200",
@@ -729,13 +722,8 @@ export function ChangelogSection({
 
                     {/* ── Platform tabs (multi-platform only) ─── */}
                     {hasMultiplePlatforms && (
-                      <div className="mt-3 flex gap-1 border-b border-[rgba(0,0,0,0.06)] pb-2">
+                      <div className="mt-3 flex gap-1 border-b border-[var(--border-1)] pb-2">
                         {group.entries.map((entry) => {
-                          const pColor =
-                            PLATFORM_COLORS[entry.platform] ?? {
-                              bg: "#f8fafc",
-                              text: "#475569",
-                            };
                           const isActive = activePlatform === entry.platform;
                           return (
                             <button
@@ -747,15 +735,17 @@ export function ChangelogSection({
                                   [group.version]: entry.platform,
                                 }))
                               }
+                              aria-pressed={isActive}
+                              // Platform is not a status, so it carries no colour of its own:
+                              // the chosen tab is raised on the surface scale (tokens, so it
+                              // follows dark mode), the rest are quiet text.
                               className={[
                                 "rounded-[4px] px-2.5 py-1 text-[11px] font-semibold transition",
-                                isActive ? "opacity-100" : "opacity-60 hover:opacity-100",
+                                isActive
+                                  ? "bg-[var(--surface-2)] text-[var(--text-1)]"
+                                  : "text-[var(--text-3)] hover:text-[var(--text-1)]",
                               ].join(" ")}
-                              style={{
-                                background: isActive ? pColor.bg : "transparent",
-                                color: isActive ? pColor.text : "var(--text-3)",
-                                fontFamily: MONO,
-                              }}
+                              style={{ fontFamily: MONO }}
                             >
                               {PLATFORM_LABELS[entry.platform] ?? entry.platform}
                             </button>

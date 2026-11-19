@@ -55,7 +55,8 @@ function render() {
 
 function tabButton(label: string): HTMLButtonElement {
   const button = Array.from(host.querySelectorAll("button")).find(
-    (b) => b.className.includes("rounded-full") && b.textContent?.trim().startsWith(label),
+    // The filter is the shared Segmented control: its options are the aria-pressed buttons.
+    (b) => b.hasAttribute("aria-pressed") && b.textContent?.trim().startsWith(label),
   );
   if (!button) throw new Error(`No filter tab starting with "${label}"`);
   return button;
@@ -63,7 +64,7 @@ function tabButton(label: string): HTMLButtonElement {
 
 function pagerButton(direction: "next" | "prev"): HTMLButtonElement {
   const buttons = Array.from(host.querySelectorAll("button")).filter(
-    (b) => !b.className.includes("rounded-full"),
+    (b) => !b.hasAttribute("aria-pressed"),
   );
   const button = direction === "next" ? buttons[buttons.length - 1] : buttons[buttons.length - 2];
   if (!button) throw new Error(`No pager "${direction}" button`);

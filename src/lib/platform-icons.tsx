@@ -217,15 +217,16 @@ export function PlatformMark({
   url?: string | null;
   platformType?: string | null;
   className?: string;
-  /** md: the 36px tile on a row; lg: a 56px tile, for a design shown as a large card. */
-  size?: "md" | "lg";
+  /** sm: a 28px tile beside a label; md: the 36px tile on a row; lg: a 56px tile, for a design shown as a large card. */
+  size?: "sm" | "md" | "lg";
 }) {
   const lg = size === "lg";
+  const sm = size === "sm";
   const mark = detectPlatformMark(url, platformType);
   return (
     <span
       className={[
-        lg ? "h-14 w-14 rounded-[12px]" : "h-9 w-9 rounded-[8px]",
+        lg ? "h-14 w-14 rounded-[12px]" : sm ? "h-7 w-7 rounded-[6px]" : "h-9 w-9 rounded-[8px]",
         "flex shrink-0 items-center justify-center border border-[var(--border-3)] bg-[var(--surface-1)]",
         className ?? "",
       ].join(" ")}
@@ -234,8 +235,8 @@ export function PlatformMark({
       {mark.kind === "brand" ? (
         <svg
           viewBox="0 0 24 24"
-          width={lg ? 28 : 18}
-          height={lg ? 28 : 18}
+          width={lg ? 28 : sm ? 16 : 18}
+          height={lg ? 28 : sm ? 16 : 18}
           role="img"
           aria-label={mark.label}
           className={mark.fill ? undefined : "text-[var(--text-1)]"}
