@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import { z } from "zod";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 // AI extraction adds a batched completion to the import; give it headroom.
 export const maxDuration = 60;
@@ -23,6 +24,7 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },

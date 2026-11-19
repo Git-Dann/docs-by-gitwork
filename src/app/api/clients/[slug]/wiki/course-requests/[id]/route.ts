@@ -3,6 +3,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { updateCourseRequest, deleteCourseRequest } from "@/server/wiki";
 import { requireClientIdForSlug, requireRowOfClient } from "@/server/clients-scope";
 import { z } from "zod";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const patchSchema = z.object({
   courseName: z.string().min(1).optional(),
@@ -17,6 +18,7 @@ export async function PATCH(
 ) {
   try {
     const { slug, id } = await params;
+    await assertClientWriter(req, slug);
     await requireRowOfClient("courseRequest", id, await requireClientIdForSlug(slug, req));
     const body = patchSchema.parse(await req.json());
     const request = await updateCourseRequest(id, body);
@@ -32,6 +34,7 @@ export async function DELETE(
 ) {
   try {
     const { slug, id } = await params;
+    await assertClientWriter(req, slug);
     await requireRowOfClient("courseRequest", id, await requireClientIdForSlug(slug, req));
     await deleteCourseRequest(id);
     return apiOk({ deleted: true });

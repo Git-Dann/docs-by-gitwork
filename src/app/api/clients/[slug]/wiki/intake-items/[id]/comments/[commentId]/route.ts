@@ -6,6 +6,7 @@ import { deleteWikiIntakeComment, editWikiIntakeComment, wikiIdForClientSlug } f
 import { resolveMentions } from "@/server/wiki-intake-mentions";
 import { internalCommentViewer } from "@/server/wiki-comment-viewer";
 import { MAX_MENTIONS_PER_COMMENT } from "@/lib/wiki-mentions";
+import { assertClientWriter } from "@/server/client-write-access";
 
 type Params = { params: Promise<{ slug: string; id: string; commentId: string }> };
 
@@ -25,6 +26,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuthedUser(req);
     const { slug, id, commentId } = await params;
+    await assertClientWriter(req, slug);
     const { body, mentionIds } = patchSchema.parse(await req.json());
     const wikiId = await wikiIdForClientSlug(slug, user.workspaceId);
     if (!wikiId) return apiError("Wiki not found", 404);
@@ -42,6 +44,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuthedUser(req);
     const { slug, id, commentId } = await params;
+    await assertClientWriter(req, slug);
     const comment = await deleteWikiIntakeComment({ slug, workspaceId: user.workspaceId }, id, commentId, internalCommentViewer(user));
     if (!comment) return apiError("Reply not found", 404);
     return apiOk(comment);

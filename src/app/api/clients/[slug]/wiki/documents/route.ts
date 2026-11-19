@@ -9,6 +9,7 @@ import {
 } from "@/server/wiki-documents";
 import { z } from "zod";
 import { clientIdForSlug } from "@/server/clients-scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 export const maxDuration = 60;
 
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
 
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { enabled } = toggleSchema.parse(await req.json());

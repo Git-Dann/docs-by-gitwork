@@ -4,6 +4,7 @@ import { setWikiShare, setWikiSectionShare } from "@/server/wiki";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 // `section` present → per-page share; absent → whole-wiki share.
 const bodySchema = z.object({
@@ -33,6 +34,7 @@ export async function PATCH(
 ) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },
