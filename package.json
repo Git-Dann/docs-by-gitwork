@@ -128,6 +128,9 @@
     "vitest": "^4.1.11"
   },
   "overrides": {
+    "passkit-generator": {
+      "joi": "17.13.9"
+    },
     "esbuild": "$esbuild",
     "postcss": "$postcss",
     "sharp": "$sharp",
