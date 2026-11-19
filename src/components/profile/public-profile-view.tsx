@@ -53,43 +53,43 @@ export function PublicProfileView({ profile }: { profile: PublicProfile }) {
         <section className="motion-rise overflow-hidden rounded-[16px] border border-[var(--border-1)] bg-[var(--surface-0)]">
           <div
             aria-hidden
-            className="h-28 sm:h-32"
+            className="h-16 sm:h-20"
             style={{
               background:
-                "radial-gradient(120% 140% at 0% 0%, var(--brand-500) 0%, transparent 55%), linear-gradient(135deg, var(--brand-700), #312E81)",
+                "radial-gradient(120% 160% at 0% 0%, var(--brand-500) 0%, transparent 60%), linear-gradient(135deg, var(--brand-700), #312E81)",
             }}
           />
-          <div className="px-5 pb-6 sm:px-8">
-            <div className="-mt-12 flex items-end justify-between gap-4">
-              {p.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={p.avatarUrl}
-                  alt=""
-                  width={104}
-                  height={104}
-                  className="h-[104px] w-[104px] rounded-full border-4 border-[var(--surface-0)] bg-[var(--surface-1)] object-cover"
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  className="flex h-[104px] w-[104px] items-center justify-center rounded-full border-4 border-[var(--surface-0)] bg-[var(--brand-50)] text-[32px] text-[var(--brand-700)]"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  {initials(p.name)}
-                </span>
-              )}
-            </div>
+          <div className="px-5 pb-5 sm:px-7">
+            {/* A rounded square with a ring outside it, not a circle with a border over it: a photo
+                framed tight to the head keeps the head. */}
+            {p.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={p.avatarUrl}
+                alt=""
+                width={84}
+                height={84}
+                className="relative -mt-10 block h-[84px] w-[84px] rounded-[20px] bg-[var(--surface-1)] object-cover ring-4 ring-[var(--surface-0)]"
+              />
+            ) : (
+              <span
+                aria-hidden
+                className="relative -mt-10 flex h-[84px] w-[84px] items-center justify-center rounded-[20px] bg-[var(--brand-50)] text-[28px] text-[var(--brand-700)] ring-4 ring-[var(--surface-0)]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {initials(p.name)}
+              </span>
+            )}
             <h1
-              className="mt-4 break-words text-[30px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)] [overflow-wrap:anywhere] sm:text-[38px]"
+              className="mt-3 break-words text-[28px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)] [overflow-wrap:anywhere] sm:text-[34px]"
               style={{ fontFamily: "var(--font-display)" }}
             >
               {p.name}
               {p.pronouns ? <span className="ml-2 align-middle font-sans text-[14px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-sans), system-ui, sans-serif" }}>({p.pronouns})</span> : null}
             </h1>
-            {p.headline ? <p className="mt-1.5 text-[16px] leading-6 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.headline}</p> : null}
+            {p.headline ? <p className="mt-1 text-[15px] leading-6 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.headline}</p> : null}
             {meta.length ? (
-              <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+              <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
                 {meta.map((m) => (
                   <li key={m.text} className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-3)]">
                     <m.icon aria-hidden className="h-4 w-4 text-[var(--text-4)]" />
@@ -98,17 +98,20 @@ export function PublicProfileView({ profile }: { profile: PublicProfile }) {
                 ))}
               </ul>
             ) : null}
-            {p.bio ? <p className="mt-4 text-[15px] leading-7 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.bio}</p> : null}
-            {p.links.length ? (
-              <ul className="mt-5 flex flex-wrap gap-x-2 gap-y-3" aria-label="Links">
-                {p.links.map((l, i) => (
-                  <li key={`${l.label}-${i}`} className="motion-rise" style={rise(i + 1)}>
-                    <ProfileLinkTile label={l.label} url={l.url} />
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <ProfileShareActions data={{ name: p.name, headline: p.headline, company: p.company, links: p.links }} />
+            {p.bio ? <p className="mt-3 text-[15px] leading-6 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.bio}</p> : null}
+            {/* One row: the links, then Share and Save pushed right, all the same tile. Five fit a phone. */}
+            <div className="mt-4 flex flex-wrap items-start gap-x-1.5 gap-y-3">
+              {p.links.length ? (
+                <ul className="contents" aria-label="Links">
+                  {p.links.map((l, i) => (
+                    <li key={`${l.label}-${i}`} className="motion-rise" style={rise(i + 1)}>
+                      <ProfileLinkTile label={l.label} url={l.url} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <ProfileShareActions data={{ name: p.name, headline: p.headline, company: p.company, links: p.links }} />
+            </div>
           </div>
         </section>
 
@@ -186,7 +189,7 @@ function ProfileLinkTile({ label, url }: { label: string; url: string }) {
       target="_blank"
       rel="noopener noreferrer me"
       title={label}
-      className="group flex w-[64px] flex-col items-center gap-1.5 rounded-[12px] transition hover:-translate-y-0.5 focus-visible:-translate-y-0.5"
+      className="group flex w-[56px] flex-col items-center gap-1.5 rounded-[12px] transition hover:-translate-y-0.5 focus-visible:-translate-y-0.5"
     >
       {isLinkedIn(url) ? (
         <span className="flex h-14 w-14 items-center justify-center rounded-[12px] border border-[var(--border-3)] bg-[var(--surface-1)] transition group-hover:border-[var(--brand-500)]">

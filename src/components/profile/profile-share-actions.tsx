@@ -35,8 +35,11 @@ export function profileVCard(p: ProfileShareData, pageUrl: string): string {
   ].join("\r\n");
 }
 
-const btn =
-  "inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-[10px] px-4 text-[14px] font-semibold transition";
+/** The same 56px tile as a profile link, so Share and Save sit on the links' row. */
+const tile =
+  "flex h-14 w-14 items-center justify-center rounded-[12px] border border-[var(--border-3)] bg-[var(--surface-1)] text-[var(--brand-700)] transition group-hover:border-[var(--brand-500)]";
+const caption = "w-full truncate text-center text-[11px] text-[var(--text-3)]";
+const cell = "group flex w-[56px] flex-col items-center gap-1.5 rounded-[12px] transition hover:-translate-y-0.5 focus-visible:-translate-y-0.5";
 
 export function ProfileShareActions({ data }: { data: ProfileShareData }) {
   const [copied, setCopied] = useState(false);
@@ -72,18 +75,18 @@ export function ProfileShareActions({ data }: { data: ProfileShareData }) {
   }
 
   return (
-    <div className="mt-5 flex gap-2">
-      <button type="button" onClick={() => void share()} className={`${btn} bg-[var(--brand-600)] text-white hover:bg-[var(--brand-700)]`}>
-        <ArrowUpOnSquareIcon aria-hidden className="h-5 w-5" />
-        {copied ? "Link copied" : "Share profile"}
+    <div className="ml-auto flex gap-x-1.5">
+      <button type="button" onClick={() => void share()} aria-label="Share profile" className={cell}>
+        <span className={tile}>
+          <ArrowUpOnSquareIcon aria-hidden className="h-6 w-6" />
+        </span>
+        <span className={caption}>{copied ? "Copied" : "Share"}</span>
       </button>
-      <button
-        type="button"
-        onClick={saveContact}
-        className={`${btn} border border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-1)] hover:border-[var(--brand-500)]`}
-      >
-        <UserPlusIcon aria-hidden className="h-5 w-5" />
-        Save contact
+      <button type="button" onClick={saveContact} aria-label="Save contact" className={cell}>
+        <span className={tile}>
+          <UserPlusIcon aria-hidden className="h-6 w-6" />
+        </span>
+        <span className={caption}>Save</span>
       </button>
     </div>
   );
