@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Segmented } from "@/components/ui/segmented";
 import { GanttChart, type GanttBlock, type GanttMilestone } from "@/components/tasks/gantt-chart";
+import { projectProgress } from "@/lib/wiki-delivery";
 import type { WikiLinkedWork, WikiTimeline } from "@/server/wiki";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -14,7 +15,14 @@ const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, mo
  * feature blocks (see `loadWikiTimeline` in server/wiki.ts), so it stays in sync
  * with the standalone /timeline/[token] share.
  */
-export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
+export function WikiTimelineSection({
+  timeline,
+  teamAction,
+}: {
+  timeline: WikiTimeline;
+  /** Team-only control in the card's header (e.g. "Edit on Tasks board"). Never passed on the client's view. */
+  teamAction?: ReactNode;
+}) {
   // Categories (what the work is about) or Releases (when it ships). The switch only shows
   // when the client has releases.
   const [group, setGroup] = useState<"categories" | "releases">("categories");
@@ -41,11 +49,10 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
   }));
 
   // The headline figure is the plan's (the categories), whichever way the chart is grouped,
-  // so switching the view never changes the number above it.
-  const overall =
-    timeline.blocks.length === 0
-      ? 0
-      : Math.round(timeline.blocks.reduce((sum, b) => sum + b.progress, 0) / timeline.blocks.length);
+  // so switching the view never changes the number above it. ⚠️ The ONE project rule
+  // (`projectProgress`), not an average of phase bars — averaging made this page say 41%
+  // while Delivery, RoundUp and the dashboard said 29% for the same project.
+  const overall = projectProgress({ blocks: timeline.blocks, unassigned: timeline.unassigned }).percent;
 
   return (
     // ⚠️ The spacing lives HERE, not in the parents. `wiki-public-view` renders this
@@ -58,11 +65,14 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
           <span className="widget-header__label--number">01</span>
           {" // TIMELINE"}
         </span>
-        {timeline.blocks.length > 0 && (
-          <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-            {overall}% COMPLETE
-          </span>
-        )}
+        <span className="flex items-center gap-3">
+          {timeline.blocks.length > 0 && (
+            <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+              {overall === null ? "NO TASKS YET" : `${overall}% COMPLETE`}
+            </span>
+          )}
+          {teamAction}
+        </span>
       </div>
       <div className="p-6">
         {/* Section intro — eyebrow + one-line orientation for the client. */}
