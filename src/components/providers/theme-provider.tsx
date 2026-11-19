@@ -33,9 +33,15 @@ const EVENT = "gitwork:theme-changed";
  * NOTE: `wiki` is deliberately NOT here — the client wiki supports light/dark via
  * its own ThemeToggle (internal takeover + public share header), matching Foundry.
  */
-// Kept in sync with the inline anti-flash script in src/app/layout.tsx. The `(?:\/|$)`
-// tail matches both `/demo/…` module pages AND the bare `/demo` hub (no trailing slash).
-const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|guidelines|onboarding|preview|embed|demo|apply|vet|login|portal\/login)(?:\/|$)/;
+// Kept in sync with the inline anti-flash script in src/app/layout.tsx.
+//
+// `/demo` is deliberately NOT here (Nov 2026). It mirrors the app, and the app supports dark,
+// so the demo honours the same `gitwork.theme.v1` setting. Forcing it light meant dark mode had
+// never been looked at on any surface the demo is used to verify. `?theme=dark|light|system` on a
+// /demo page sets that mode (see demoThemeParam), so a headless check can choose one. The one
+// exception is /demo/pulse-embed: it shows the scanner embedded in Gitwork's own (light) website,
+// and the real /embed is forced light too.
+const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|guidelines|onboarding|preview|embed|apply|vet|login|portal\/login|demo\/pulse-embed)(?:\/|$)/;
 
 /**
  * Routes that must ALWAYS render dark, regardless of the visitor's OS / stored
@@ -103,7 +109,33 @@ function isForcedDark(path: string | null | undefined): boolean {
   return !!path && FORCE_DARK.test(path);
 }
 
+/**
+ * `?theme=dark|light|system` on a /demo page sets the mode, exactly as clicking the switch would
+ * (it is stored), so a headless check can render either mode without clicking. The anti-flash
+ * script in src/app/layout.tsx does the same before first paint. Demo only: on /app a link must
+ * never change someone's saved preference.
+ */
+export const DEMO_THEME_PATHS = /^\/demo(?:\/|$)/;
+
+export function demoThemeParam(path: string, search: string): ThemeMode | null {
+  if (!DEMO_THEME_PATHS.test(path)) return null;
+  const v = new URLSearchParams(search).get("theme");
+  return v === "light" || v === "dark" || v === "system" ? v : null;
+}
+
+function applyDemoThemeParam(): void {
+  if (typeof window === "undefined") return;
+  const m = demoThemeParam(window.location.pathname, window.location.search);
+  if (!m) return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, m);
+  } catch {
+    /* storage blocked — the anti-flash script already painted it for this load */
+  }
+}
+
 function readStoredMode(): ThemeMode {
+  applyDemoThemeParam();
   if (typeof window === "undefined") return "system";
   try {
     const value = window.localStorage.getItem(STORAGE_KEY);

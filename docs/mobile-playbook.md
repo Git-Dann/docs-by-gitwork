@@ -104,7 +104,15 @@ npm i --no-save playwright-core          # not a repo dep; Chromium is preinstal
 npm run audit:clipping -- --self-test    # proves the detector still fires (do this first)
 npm run audit:clipping http://localhost:3000/api-docs
 npm run audit:clipping http://localhost:3000/ --viewports=390x844,1280x620
+npm run audit:clipping http://localhost:3000/demo/wiki --theme=dark   # same checks in dark mode
 ```
+
+**Check dark mode too.** The `/demo` pages follow the theme like `/app` (CLAUDE.md §131), so a
+layout change should be looked at in both. Add `?theme=dark` to any `/demo` URL (it is stored, as
+the switch in the demo banner would), or pass `--theme=dark` to the clipping audit or to
+`node scripts/baseline.mjs`. Clipping is not the only dark defect: also look for text below 4.5:1
+and light slabs left by classes that don't flip (opacity-modified tints such as `bg-red-50/60`, and
+any palette family without a dark remap in `globals.css`).
 
 **On a local macOS machine none of that works, and the three reasons are all
 non-obvious** (worked out 2026-08-22 while auditing the live `/production-ready`):

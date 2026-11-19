@@ -112,7 +112,9 @@ So for any visual change:
 2. **Both ends of the split** — the desktop ↔ mobile break is at `lg` (1024px), not `md`. Check
    base (<640), the 640–1023 tablet band, and `lg+`. Unprefixed utilities apply at *all* widths.
 3. **Run the clipping audit on anything reachable** —
-   `npm run audit:clipping http://localhost:3000/<path>`, self-test it first. Public pages
+   `npm run audit:clipping http://localhost:3000/<path>`, self-test it first. Repeat it with
+   `--theme=dark` (or open a `/demo` page with `?theme=dark`): the demo follows the theme, so
+   dark mode can be checked like light (CLAUDE.md §131). Public pages
    (`/`, `/pulse-overview`, `/api-docs`, `/context`, `/embed/*`, `/docs/[token]`,
    `/timeline/[token]`, `/report/[token]`, `/login`) can be driven headlessly; Chromium is
    preinstalled.

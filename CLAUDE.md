@@ -8648,8 +8648,8 @@ with the demo); every change goes to the business's own audit log as
 across workspaces. Demo at `/demo/platform`; demo handlers can now refuse a write with
 `{ error, __status }`.
 
-**Not verified:** any of this against production data, the console in dark mode (the demo shell
-ignores the theme switch), and the iOS app (its repo isn't in this session yet).
+**Not verified:** any of this against production data, and the iOS app (its repo isn't in this
+session yet). (The console's dark mode can now be checked on the demo: §131.)
 
 ### 85.6 The console is built for many businesses (Oct 2026)
 
@@ -10691,8 +10691,7 @@ the route returns `reason` `ok` · `stale` · `no_ai_key` · `ai_failed` with `a
 latest four messages, and **Try again** (`?refresh=1`) for people who may use AI.
 
 Verified at `/demo/portal` at 1440 · 1024 · 768 · 390: 0 clipping findings, 0 page overflow, 0
-console errors. ⚠️ The demo shell ignores the theme switch, so dark mode was not seen; everything
-uses tokens. Not verified against live data: post-deploy, open Wedge and check the Slack card
+console errors. Dark mode was checked once the demo followed the theme (§131). Not verified against live data: post-deploy, open Wedge and check the Slack card
 either shows a digest or says why, and press Try again.
 
 ### 129.1 Icons and colour, only where they mean something
@@ -10785,4 +10784,47 @@ unchanged (admin bento, developer view, Siân's people-ops tiles, guests, "view 
   reaches no server), with a roll-up roster fixture. Several tiles crashed on the demo's `{}`
   catch-all (broadcast list, client faces, expenses, HR, agentic card) and now treat a non-list as
   empty.
-- **Not verified:** dark mode (the demo shell ignores the theme switch), and live data.
+- **Not verified:** live data. (Dark mode was checked afterwards, §131.)
+
+## 131. Recent Changes (November 2026) — The demo follows the theme, so dark mode can be checked
+
+Every `/demo` page was forced light (it was in `FORCE_LIGHT`, both in `theme-provider.tsx` and the
+anti-flash script in `layout.tsx`). So none of the surfaces verified on the demo had ever been seen
+in dark, and every PR said "dark mode not verified".
+
+- **`/demo` is out of `FORCE_LIGHT`.** It follows `gitwork.theme.v1` exactly as `/app` does. Client
+  deliverables and the sign-in pages stay forced light, unchanged. The demo banner carries the same
+  Light / Dark / System `ThemeToggle` as the app's profile menu (rendered once mounted, since the
+  mode lives in localStorage).
+- **`?theme=dark|light|system` on any `/demo` page** sets the mode, as clicking the switch would (it
+  is stored). The anti-flash script applies it before first paint. ⚠️ Demo only
+  (`DEMO_THEME_PATHS`, `demoThemeParam`): a link must never change a signed-in person's saved
+  preference on `/app`. `src/components/__tests__/demo-theme.test.ts` pins both.
+- **Harnesses:** `npm run audit:clipping <url> -- --theme=dark` and `node scripts/baseline.mjs
+  --theme=dark` emulate the OS preference and set the stored mode before any script runs.
+  `--theme` can't be combined with `--update` (the snapshot is light).
+- **What the first dark pass found and fixed** (HQ, `/demo/hq?desk=long`, `/demo/dev`, the portal
+  page incl. `?shape=dense` and View history, the wiki dashboard, and the Board, Table, Timeline,
+  Schedule and card popup, at 1440 and 390):
+  - White text on `bg-[var(--brand-600)]` was **2.6:1** in dark (the brand lifts to `#6BA0FF`): the
+    demo tag, avatars, the Schedule's "This week" badge, link buttons, Reply. One global rule in
+    `globals.css` now gives it dark ink (`#0B0B0C`, 8:1), the same answer `.app-button-primary`
+    already uses in dark and the seasonal themes used for their brands.
+  - **Opacity-modified tints** (`bg-red-50/60`, `/50` on red, amber, teal, blue) are separate
+    classes, so the dark remaps never reached them and they painted a pale slab under red text —
+    the Schedule's Overdue box measured 1:1. Remapped.
+  - **Violet, purple, fuchsia, pink and cyan** weren't remapped at all. A Gantt bar coloured violet
+    was a light slab on the dark board. Tints, text (`-600`…`-900`) and borders now flip like the
+    other families.
+  - The wiki hero's small labels (`text-white/35`…`/45` on navy) were 3.2–4.5:1 in **both** modes;
+    raised to `/60`–`/65`. The wiki dashboard's monitor status text used fixed hexes (rose 3.9:1 in
+    dark); it now uses the palette classes that flip, keeping the hex for the dot.
+- After the fixes: 0 text below AA, 0 light slabs, 0 clipping findings, 0 page overflow and no
+  console errors on all of those, at both widths. Screenshots in the PR.
+- **`/demo/pulse-embed` stays forced light** (added to `FORCE_LIGHT` and the anti-flash script): it
+  shows the scanner embedded in Gitwork's own light website, as the real `/embed` is.
+- ⚠️ **Not fixed, found by a desktop sweep of the other demo pages** (outside this pass): Docs
+  cards use fixed dark hexes for their accent text (1.75–2.55:1 in dark); Backstage calendar
+  initials are white on light fills; Monitors' "Acknowledge" is white on `--danger-500` (2.77:1);
+  Platform's "6 of 13" chip is light text on a light fill (1.17:1); Studio's type swatch is a
+  cream slab. Each wants its own token fix.
