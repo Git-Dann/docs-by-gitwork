@@ -6,6 +6,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   CheckBadgeIcon,
   ClipboardDocumentIcon,
@@ -21,7 +22,10 @@ import {
   useIssueCountermark,
   useRevokeCountermark,
   useSeedProvenanceDemo,
+  useSetCountermarkSchedule,
   type Countermark,
+  type CountermarkRecheck,
+  type CountermarkSchedule,
   type CountermarkGrade,
   type CountermarkStatus,
 } from "@/hooks/use-provenance";
@@ -90,11 +94,17 @@ export function ProvenanceRegister() {
   const [revoking, setRevoking] = useState<Countermark | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [keeping, setKeeping] = useState<Countermark | null>(null);
 
   // Memoised because the `?? []` fallback is a fresh array on every render, which would
   // re-run the counts useMemo below each time.
   const countermarks = useMemo(() => data?.countermarks ?? [], [data?.countermarks]);
   const sealingConfigured = data?.sealingConfigured ?? false;
+  // One schedule per subject, shown on the mark it currently keeps current.
+  const scheduleBySubject = useMemo(
+    () => new Map((data?.schedules ?? []).map((sch) => [sch.subjectName, sch])),
+    [data?.schedules],
+  );
 
   // Only completed scans can be attested — issuing from a partial one would report
   // clauses as unestablished that were still being checked. The server enforces this;
@@ -268,6 +278,13 @@ export function ProvenanceRegister() {
                         <span className="font-medium">Revoked.</span> {h.revokedReason}
                       </p>
                     )}
+
+                    <KeepCurrentLine
+                      mark={h}
+                      schedule={scheduleBySubject.get(h.subjectName) ?? null}
+                      canManage={canIssueCountermark}
+                      onOpen={() => setKeeping(h)}
+                    />
                   </div>
 
                   {/* Fixed-width action column so the icons form a straight edge down the list.
@@ -380,6 +397,15 @@ export function ProvenanceRegister() {
         </div>
       </Modal>
 
+      {keeping && (
+        <KeepCurrentDialog
+          mark={keeping}
+          schedule={scheduleBySubject.get(keeping.subjectName) ?? null}
+          canManage={canIssueCountermark}
+          onClose={() => setKeeping(null)}
+        />
+      )}
+
       {/* ─── Revoke ─── */}
       <Modal open={revoking !== null} onClose={() => setRevoking(null)} title="Revoke this countermark">
         <div className="space-y-4 p-4">
@@ -426,5 +452,218 @@ export function ProvenanceRegister() {
         </div>
       </Modal>
     </div>
+  );
+}
+
+// ─── Keep this mark current ─────────────────────────────────────────────────────────────
+
+const CADENCE_OPTIONS: { value: "" | "30" | "60" | "90"; label: string }[] = [
+  { value: "", label: "Before it expires (14 days ahead)" },
+  { value: "30", label: "Every 30 days" },
+  { value: "60", label: "Every 60 days" },
+  { value: "90", label: "Every 90 days" },
+];
+
+const RECHECK_LABEL: Record<string, string> = {
+  running: "Re-examining now",
+  issued: "New mark struck",
+  failed: "Failed — current mark kept",
+  not_established: "Couldn't establish a grade — current mark kept",
+  paused: "Paused",
+};
+
+function cadenceText(schedule: CountermarkSchedule): string {
+  return schedule.cadenceDays ? `every ${schedule.cadenceDays} days` : "before it expires";
+}
+
+/**
+ * One line under a mark: is it being kept current, when is the next re-examination, or why it
+ * paused. Shown on the mark the schedule keeps current, and as an offer on a mark that is
+ * still the subject's latest (not superseded, not revoked).
+ */
+function KeepCurrentLine({
+  mark,
+  schedule,
+  canManage,
+  onOpen,
+}: {
+  mark: Countermark;
+  schedule: CountermarkSchedule | null;
+  canManage: boolean;
+  onOpen: () => void;
+}) {
+  const isLatest = mark.status !== "SUPERSEDED" && mark.status !== "REVOKED";
+  if (schedule && schedule.countermarkId === mark.id) {
+    const running = schedule.history[0]?.status === "running";
+    const tone = !schedule.enabled
+      ? "text-[var(--text-4)]"
+      : schedule.pausedReason
+        ? "text-amber-700"
+        : "text-[var(--text-3)]";
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <ArrowPathIcon className={cn("h-3.5 w-3.5 shrink-0", tone, running && "motion-safe:animate-spin")} aria-hidden="true" />
+        <span className={cn("min-w-0 text-[12.5px] [overflow-wrap:anywhere]", tone)}>
+          {!schedule.enabled
+            ? "Not kept current."
+            : schedule.pausedReason
+              ? `Re-examination paused: ${schedule.pausedReason}`
+              : running
+                ? "Re-examining now."
+                : `Kept current ${cadenceText(schedule)} · next re-examination ${formatDate(schedule.nextDueAt)}`}
+        </span>
+        <button
+          type="button"
+          className="text-[12.5px] font-medium text-[var(--brand-600)] hover:underline"
+          onClick={onOpen}
+        >
+          {canManage ? (schedule.pausedReason || !schedule.enabled ? "Resume" : "Manage") : "History"}
+        </button>
+      </div>
+    );
+  }
+  if (!isLatest || !canManage) return null;
+  return (
+    <button
+      type="button"
+      className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--brand-600)] hover:underline"
+      onClick={onOpen}
+    >
+      <ArrowPathIcon className="h-3.5 w-3.5" aria-hidden="true" />
+      Keep this mark current
+    </button>
+  );
+}
+
+function KeepCurrentDialog({
+  mark,
+  schedule,
+  canManage,
+  onClose,
+}: {
+  mark: Countermark;
+  schedule: CountermarkSchedule | null;
+  canManage: boolean;
+  onClose: () => void;
+}) {
+  const save = useSetCountermarkSchedule();
+  const [cadence, setCadence] = useState<"" | "30" | "60" | "90">(
+    schedule?.cadenceDays ? (String(schedule.cadenceDays) as "30" | "60" | "90") : "",
+  );
+  const active = Boolean(schedule?.enabled && !schedule.pausedReason);
+  const history: CountermarkRecheck[] = schedule?.history ?? [];
+
+  const submit = (enabled: boolean) =>
+    save.mutate(
+      { id: mark.id, enabled, cadenceDays: cadence ? (Number(cadence) as 30 | 60 | 90) : null },
+      { onSuccess: () => onClose() },
+    );
+
+  return (
+    <Modal open onClose={onClose} title="Keep this mark current" panelClassName="app-dialog-fixed w-full max-w-xl">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+        <p className="text-sm leading-relaxed text-[var(--text-2)]">
+          Foundry re-examines <span className="font-medium text-[var(--text-1)]">{mark.subjectName}</span> with a fresh
+          Pulse scan and strikes a new mark that replaces this one. If the scan fails or can&apos;t establish a grade,
+          the current mark stays exactly as it is and you&apos;re told. A worse grade is struck honestly.
+        </p>
+
+        {schedule?.pausedReason && (
+          <p className="border-l-2 border-amber-300 pl-2.5 text-[13px] leading-relaxed text-amber-800">
+            <span className="font-medium">Paused.</span> {schedule.pausedReason}
+          </p>
+        )}
+
+        {canManage && (
+          <div>
+            <label
+              htmlFor="provenance-cadence"
+              className="mb-1.5 block font-mono text-[10px] font-medium uppercase tracking-[0.6px] text-[var(--text-4)]"
+            >
+              Re-examine
+            </label>
+            <select
+              id="provenance-cadence"
+              className="app-select-chevron w-full pr-9"
+              value={cadence}
+              onChange={(e) => setCadence(e.target.value as "" | "30" | "60" | "90")}
+            >
+              {CADENCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--text-3)]">
+              Each re-examination is one Pulse scan, and new marks are issued in your name.
+              {schedule && schedule.enabledByName && active ? ` Currently issued in ${schedule.enabledByName}'s name.` : ""}
+            </p>
+          </div>
+        )}
+
+        <div>
+          <p className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.6px] text-[var(--text-4)]">History</p>
+          {history.length === 0 ? (
+            <p className="text-[13px] text-[var(--text-3)]">No re-examinations yet.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--border-2)] rounded-[6px] border border-[var(--border-2)]">
+              {history.map((r) => (
+                <li key={r.id} className="px-3 py-2.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <span className="text-[13px] font-medium text-[var(--text-1)]">{RECHECK_LABEL[r.status] ?? r.status}</span>
+                    <span className="font-mono text-[11px] text-[var(--text-4)]">{formatDate(r.startedAt)}</span>
+                  </div>
+                  <p className="mt-0.5 font-mono text-[11px] text-[var(--text-3)]">
+                    {GRADE_LABEL[r.gradeBefore]}
+                    {r.gradeAfter ? ` → ${GRADE_LABEL[r.gradeAfter]}` : ""} · {r.issuerName}
+                  </p>
+                  {r.reason && (
+                    <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-3)] [overflow-wrap:anywhere]">{r.reason}</p>
+                  )}
+                  {r.newCountermarkToken && (
+                    <a
+                      href={`/countermark/${r.newCountermarkToken}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-block text-[12.5px] font-medium text-[var(--brand-600)] hover:underline"
+                    >
+                      Open the new certificate
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {save.error && <p className="text-sm text-red-600">{save.error.message}</p>}
+      </div>
+
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-[var(--border-2)] px-5 py-3">
+        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={onClose}>
+          {canManage ? "Cancel" : "Close"}
+        </button>
+        {canManage && active && (
+          <button
+            type="button"
+            className="app-button app-button-secondary app-button-sm"
+            disabled={save.isPending}
+            onClick={() => submit(false)}
+          >
+            Stop keeping current
+          </button>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            className="app-button app-button-primary app-button-sm"
+            disabled={save.isPending || mark.status === "REVOKED"}
+            onClick={() => submit(true)}
+          >
+            {save.isPending ? "Saving…" : active ? "Save" : schedule ? "Resume" : "Keep current"}
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }

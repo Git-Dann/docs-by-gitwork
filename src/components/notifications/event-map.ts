@@ -54,6 +54,7 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   "clients.monitor_alert": { icon: ExclamationTriangleIcon, label: "Monitors" },
   "wiki.request_mention": { icon: AtSymbolIcon, label: "Requests" },
   "foreman.digest": { icon: ExclamationTriangleIcon, label: "Delivery watch" },
+  "provenance.recheck": { icon: CheckBadgeIcon, label: "Provenance" },
   "hr.weekly_digest": { icon: UserGroupIcon, label: "HR" },
   "team.message": { icon: ChatBubbleLeftEllipsisIcon, label: "Message" },
 };

@@ -1996,6 +1996,15 @@ export const countermarkIssueSchema = z.object({
   standardId: z.string().min(1).max(64).optional(),
 });
 
+/** "Keep this mark current" (src/server/provenance/recheck.ts). cadenceDays null = re-examine
+ *  when the mark enters its notice window; otherwise one of the offered cadences. */
+export const countermarkScheduleSchema = z
+  .object({
+    enabled: z.boolean(),
+    cadenceDays: z.union([z.literal(30), z.literal(60), z.literal(90)]).nullable().default(null),
+  })
+  .strict();
+
 export const countermarkRevokeSchema = z.object({
   // Required and non-trivial: a withdrawal with no stated reason is useless to the person
   // holding the certificate, who is the only reader that matters here.
