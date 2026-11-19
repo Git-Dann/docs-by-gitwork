@@ -7,6 +7,8 @@ import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
+const SENTIMENTS = ["positive", "neutral", "negative"] as const;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ clientId: string }> },
@@ -40,6 +42,7 @@ export async function GET(
       priority: (sp.get("priority") as ConversationPriority) ?? undefined,
       issueType: sp.get("issueType") ?? undefined,
       source: (sp.get("source") as SupportSource) ?? undefined,
+      sentiment: SENTIMENTS.find((v) => v === sp.get("sentiment")),
       replyState: (sp.get("replyState") as ReplyState) ?? undefined,
       q: sp.get("q") ?? undefined,
       sort: sp.get("sort") === "oldest_inbound" ? "oldest_inbound" : undefined,

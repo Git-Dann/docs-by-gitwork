@@ -7,7 +7,8 @@ import {
   ArrowLeftIcon,
   ArrowUpIcon,
   Cog8ToothIcon,
-  DocumentChartBarIcon,
+  SparklesIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type { Conversation, SupportClient } from "@/types/support";
@@ -22,6 +23,9 @@ import {
   useCloseConversationWithUndo,
   useSnoozeConversation,
   useUpdateSupportClient,
+  useClientHealth,
+  useSemanticSearch,
+  useSupportConversation,
 } from "@/hooks/use-support";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -41,7 +45,12 @@ import {
 import { hasCourseRequests } from "@/lib/wiki-sections";
 import { CareEmpty } from "./care-panel";
 import { ConversationDetail } from "./conversation-detail";
-import { ConnectorsView } from "@/components/support/support-dashboard";
+import { ConnectorsView } from "./care-connectors";
+import { HealthBadge } from "./care-shared";
+import { TicketsTableView } from "./care-tickets";
+import { ReportsView } from "./care-reports";
+import { CareAutomationView, PortalLinkCard } from "./care-automation";
+import { CARE_SECTIONS, CARE_SECTION_LABEL, type CareSection } from "@/lib/care-links";
 
 // One page. Small on purpose: because the views are server-side filters, 50 rows is 50 rows of
 // the thing you asked for, and "Load more" walks the rest.
@@ -228,12 +237,12 @@ function SortHeader({
 }
 
 /**
- * In-cockpit channels & settings hub. Replaces the old jump-out to
- * /app/support?panel=connectors|settings — you stay inside Care. Scope is deliberately just the
- * connected channels + their auto-fetch schedule (ConnectorsView); workflow rules / AI agents /
- * portal-link were dropped as unused per the redesign.
+ * The client's channels & settings: the course-requests mode (Wedge only), the connected channels
+ * and their schedule (ConnectorsView), and the Portal link. Workflow rules and AI agents are the
+ * Automation section.
  */
 function CareSettingsPanel({ client }: { client: SupportClient }) {
+  const { canManageSupport } = usePermissions();
   const updateClient = useUpdateSupportClient(client.id);
   const courseOnly = client.courseRequestOnly ?? false;
   /*
@@ -246,7 +255,7 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
    * Shown when the client HAS the pipeline, or when the flag is already on — so a client that
    * somehow has it set can always turn it off rather than being stuck with a hidden switch.
    */
-  const showCourseMode = hasCourseRequests(client.workspaceClientSlug) || courseOnly;
+  const showCourseMode = canManageSupport && (hasCourseRequests(client.workspaceClientSlug) || courseOnly);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
       <div className="mx-auto max-w-3xl space-y-4">
@@ -294,6 +303,9 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
         </section>
         )}
         <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
+        {/* The Portal link lived in the legacy dashboard's Settings panel; it is per-client setup,
+            so it sits here with the channels. Numbered after the connectors' own panels. */}
+        <PortalLinkCard clientId={client.id} number={showCourseMode ? 4 : 3} />
       </div>
     </div>
   );
@@ -321,8 +333,13 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
 export function ClientCockpit({
   client,
   onBack,
+  initialSection = "conversations",
+  onSectionChange,
 }: {
   client: SupportClient;
+  /** Which part of the client's Care to open on — from a deep link (`?section=`). */
+  initialSection?: CareSection;
+  onSectionChange?: (section: CareSection) => void;
   // No currentUserId: "Assigned to me" is now a server query (assigneeId=me), resolved from the
   // session server-side, so the client no longer needs to know who it is to filter.
   onBack: () => void;
@@ -338,6 +355,14 @@ export function ClientCockpit({
 
   const [activeView, setActiveView] = useState(DEFAULT_VIEW_ID);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  // The triage agent's sentiment tag — the legacy inbox's filter, now a server param.
+  const [sentimentFilter, setSentimentFilter] = useState<string>("all");
+  // AI (vector) search, from the legacy inbox. Ask in plain words, press Enter; the matches
+  // replace the table until cleared. Results open like any row.
+  const [aiMode, setAiMode] = useState(false);
+  const [aiResults, setAiResults] = useState<Array<{ id: string; score: number; subject: string; customerLabel: string; source: string; receivedAt: string }> | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const semantic = useSemanticSearch(client.id);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -347,8 +372,16 @@ export function ClientCockpit({
   // Per-view sort override. Null means "whatever this view was designed to show first".
   const [sortOverride, setSortOverride] = useState<SortKey | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
-  // In-place channel/settings hub — opens inside the cockpit instead of jumping to /app/support.
-  const [showSettings, setShowSettings] = useState(false);
+  // Which part of this client's Care is showing. Everything the legacy /app/support dashboard
+  // owned (tickets, monthly reports, rules + agents, channels) is a section here now.
+  const [section, setSectionState] = useState<CareSection>(initialSection);
+  function setSection(next: CareSection) {
+    setSectionState(next);
+    setSelectedId(null);
+    onSectionChange?.(next);
+  }
+  const healthQ = useClientHealth(client.id);
+  const health = healthQ.data?.health ?? null;
 
   const members = useMemo(() => membersQ.data?.members ?? [], [membersQ.data]);
   const memberName = useMemo(() => new Map(members.map((m) => [m.id, m.name])), [members]);
@@ -365,10 +398,12 @@ export function ClientCockpit({
       ...view.params,
       sort,
       ...(sourceFilter !== "all" ? { source: sourceFilter } : {}),
-      ...(deferredSearch.trim() ? { q: deferredSearch.trim() } : {}),
+      ...(sentimentFilter !== "all" ? { sentiment: sentimentFilter } : {}),
+      // In AI mode the box holds a question, not a filter, so it doesn't narrow the table.
+      ...(!aiMode && deferredSearch.trim() ? { q: deferredSearch.trim() } : {}),
       limit: PAGE_SIZE,
     }),
-    [view, sort, sourceFilter, deferredSearch],
+    [view, sort, sourceFilter, sentimentFilter, aiMode, deferredSearch],
   );
 
   const convsQ = useSupportConversationsPaged(client.id, params);
@@ -392,7 +427,26 @@ export function ClientCockpit({
     return out;
   }, [counts]);
 
-  const selected = selectedId ? conversations.find((c) => c.id === selectedId) ?? null : null;
+  // An AI search result may not be in the loaded page, so fall back to fetching it by id.
+  const selectedInList = selectedId ? conversations.find((c) => c.id === selectedId) ?? null : null;
+  const singleQ = useSupportConversation(client.id, selectedId && !selectedInList ? selectedId : null);
+  const selected = selectedInList ?? (selectedId ? singleQ.data?.conversation ?? null : null);
+
+  async function runAiSearch() {
+    const q = search.trim();
+    if (!q) return;
+    setAiError(null);
+    try {
+      const res = await semantic.mutateAsync({ query: q });
+      setAiResults(res.results);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "AI search failed");
+    }
+  }
+  function clearAi() {
+    setAiResults(null);
+    setAiError(null);
+  }
 
   /*
    * Channels offered by the filter = the union of what is CONNECTED and what is actually IN the
@@ -411,7 +465,8 @@ export function ClientCockpit({
     return Array.from(new Set([...connected, ...present]));
   }, [connectionsQ.data, counts]);
 
-  const mode: "index" | "record" | "settings" = showSettings ? "settings" : selected ? "record" : "index";
+  const mode: "index" | "record" | Exclude<CareSection, "conversations"> =
+    section !== "conversations" ? section : selected ? "record" : "index";
 
   // Opening a conversation is what marks it read — the same contract the legacy dashboard has
   // always had. Guarded on `conv.unread` so re-opening an already-read thread doesn't fire a
@@ -421,7 +476,6 @@ export function ClientCockpit({
   // read-only Care viewer would take a 403 on every open and watch the row re-bold as the
   // optimistic patch rolled back.
   function openConversation(conv: Conversation) {
-    setShowSettings(false);
     setSelectedId(conv.id);
     if (conv.unread && canManageSupport) markRead.mutate(conv.id);
   }
@@ -447,7 +501,7 @@ export function ClientCockpit({
       // Escape is the way back out of a thread — the only shortcut that belongs to the record.
       if (e.key === "Escape") {
         if (selection.size > 0) { e.preventDefault(); clearSelection(); return; }
-        if (mode !== "index") { e.preventDefault(); setSelectedId(null); setShowSettings(false); }
+        if (mode === "record") { e.preventDefault(); setSelectedId(null); }
         return;
       }
       // Everything below drives the index's cursor, so it must not fire while a thread is open.
@@ -543,26 +597,30 @@ export function ClientCockpit({
         <button
           type="button"
           onClick={() => {
-            if (mode === "index") onBack();
-            else { setSelectedId(null); setShowSettings(false); }
+            if (mode === "record") setSelectedId(null);
+            else onBack();
           }}
           className="shrink-0 rounded-[6px] p-1 transition hover:bg-[var(--surface-1)]"
-          title={mode === "index" ? "All clients" : "Back to conversations"}
+          title={mode === "record" ? "Back to conversations" : "All clients"}
         >
           <ArrowLeftIcon className="h-4 w-4 text-[var(--text-3)]" />
         </button>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[15px] font-semibold leading-tight text-[var(--text-1)]" title={client.name}>
-            {client.name}
-          </h2>
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate text-[15px] font-semibold leading-tight text-[var(--text-1)]" title={client.name}>
+              {client.name}
+            </h2>
+            {/* Account health (was legacy-only). A readout, so it sits with the name, not the actions. */}
+            {health && <HealthBadge health={health} size="xs" />}
+          </div>
           {/*
             Wraps rather than truncates. With `truncate` the readout ended "…longest 1d · 1 urg" at
             390px, so the urgent count — the one figure on the line that is a call to action — was
             clipped away entirely. A phone spends one extra line on it; that is the right trade.
           */}
           <div className="widget-data-label mt-0.5">
-            {mode === "settings" ? (
-              "Channels & settings"
+            {mode !== "index" && mode !== "record" ? (
+              CARE_SECTION_LABEL[mode]
             ) : mode === "record" ? (
               "Conversation"
             ) : countsQ.isLoading ? (
@@ -592,37 +650,53 @@ export function ClientCockpit({
             <ArrowPathIcon className={cn("h-3.5 w-3.5", sync.isPending && "animate-spin")} />
             <span className="hidden sm:inline">{sync.isPending ? "Syncing…" : "Sync now"}</span>
           </button>
-          {canManageSupport && (
-            <>
-              <button
-                type="button"
-                onClick={() => { setSelectedId(null); setShowSettings(true); }}
-                className={cn(
-                  "rounded-[6px] border p-1.5 transition",
-                  mode === "settings"
-                    ? "border-[var(--brand-200)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
-                    : "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
-                )}
-                title="Channels &amp; settings"
-                aria-label="Channels and settings"
-              >
-                <Cog8ToothIcon className="h-4 w-4" />
-              </button>
-              <a
-                href={`/app/support?client=${client.id}&tab=reports`}
-                className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
-                title="Monthly reports"
-                aria-label="Monthly reports"
-              >
-                <DocumentChartBarIcon className="h-4 w-4" />
-              </a>
-            </>
-          )}
         </div>
       </header>
 
+      {/* ── The client's sections. Conversations is the queue; the rest are what the legacy
+             /app/support dashboard used to own exclusively. Hidden on a record, where the header's
+             back arrow is the way out. ── */}
+      {mode !== "record" && (
+        <div className="shrink-0 overflow-x-auto border-b border-[var(--border-2)] px-3 py-2 sm:px-4">
+          <nav
+            className="inline-flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+            aria-label="Client sections"
+          >
+            {CARE_SECTIONS.map((id) => {
+              const active = section === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSection(id)}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.09em] transition",
+                    active
+                      ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[var(--shadow-xs)]"
+                      : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                  )}
+                >
+                  {id === "settings" && <Cog8ToothIcon className="h-3.5 w-3.5" />}
+                  {id === "settings" ? "Settings" : CARE_SECTION_LABEL[id]}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
       {mode === "settings" ? (
         <CareSettingsPanel client={client} />
+      ) : mode === "tickets" || mode === "reports" || mode === "automation" ? (
+        // pb-20 clears the fixed 48px "On Your Desk" dock, as the legacy dashboard did.
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-20 pt-5 sm:px-6">
+          <div className="mx-auto max-w-6xl">
+            {mode === "tickets" && <TicketsTableView clientId={client.id} />}
+            {mode === "reports" && <ReportsView client={client} />}
+            {mode === "automation" && <CareAutomationView clientId={client.id} />}
+          </div>
+        </div>
       ) : mode === "record" && selected ? (
         <ConversationDetail
           key={selected.id}
@@ -740,11 +814,38 @@ export function ClientCockpit({
             <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-2)] px-3 py-2 sm:px-4">
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search customer, subject or message…"
-                aria-label="Search conversations"
+                onChange={(e) => { setSearch(e.target.value); if (aiResults) clearAi(); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && aiMode) void runAiSearch(); }}
+                placeholder={aiMode ? "Ask in plain words, then press Enter…" : "Search customer, subject or message…"}
+                aria-label={aiMode ? "AI search" : "Search conversations"}
                 className="app-input-compact min-w-0 max-w-xs flex-1 text-sm"
               />
+              <button
+                type="button"
+                onClick={() => { setAiMode((m) => !m); clearAi(); setSearch(""); }}
+                aria-pressed={aiMode}
+                title={aiMode ? "AI search on — click for text search" : "Switch to AI search (by meaning)"}
+                aria-label="AI search"
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] border transition",
+                  aiMode
+                    ? "border-[var(--brand-200)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                    : "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                )}
+              >
+                <SparklesIcon className="h-4 w-4" />
+              </button>
+              <select
+                value={sentimentFilter}
+                onChange={(e) => setSentimentFilter(e.target.value)}
+                aria-label="Filter by sentiment"
+                className="app-select-compact hidden h-8 w-auto text-xs sm:block"
+              >
+                <option value="all">Any sentiment</option>
+                <option value="negative">Negative</option>
+                <option value="neutral">Neutral</option>
+                <option value="positive">Positive</option>
+              </select>
               <select
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value)}
@@ -770,6 +871,39 @@ export function ClientCockpit({
           {/* ── The queue. `overflow-auto` on the scroll container, not `overflow-hidden` on a
                  shell: a table narrower than its content must be reachable by scrolling, which is
                  the TABLE-SCROLL rule in audit:ui and the commonest way a column vanishes. ── */}
+          {aiError && (
+            <p className="shrink-0 border-b border-[var(--border-2)] bg-[var(--danger-50)] px-4 py-2 text-xs text-[var(--danger-500)]">{aiError}</p>
+          )}
+          {aiMode && (aiResults || semantic.isPending) ? (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <div className="flex items-center justify-between border-b border-[var(--border-3)] px-4 py-2">
+                <span className="widget-data-label">
+                  {semantic.isPending ? "Searching by meaning…" : `AI search · ${aiResults?.length ?? 0} closest matches`}
+                </span>
+                {aiResults && (
+                  <button type="button" onClick={clearAi} className="flex items-center gap-1 text-[11px] text-[var(--text-3)] transition hover:text-[var(--text-1)]">
+                    <XMarkIcon className="h-3 w-3" /> Clear
+                  </button>
+                )}
+              </div>
+              {aiResults && aiResults.length === 0 && (
+                <CareEmpty headline="Nothing close to that." body="Try other words. AI search matches by meaning across this client's conversations." />
+              )}
+              {aiResults?.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => setSelectedId(r.id)}
+                  className="flex w-full items-center gap-3 border-b border-[var(--border-3)] px-4 py-2.5 text-left transition hover:bg-[var(--surface-1)]"
+                >
+                  <SourceIcon source={r.source as Conversation["source"]} className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
+                  <span className="w-40 shrink-0 truncate text-[13px] text-[var(--text-2)]" title={r.customerLabel}>{r.customerLabel}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-1)]" title={r.subject}>{r.subject}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-[var(--text-4)]">{Math.round(r.score * 100)}%</span>
+                </button>
+              ))}
+            </div>
+          ) : (
           <div ref={listRef} className="min-h-0 flex-1 overflow-auto">
             <table className="app-table app-table--dense">
               <thead className="sticky top-0 z-10">
@@ -869,6 +1003,7 @@ export function ClientCockpit({
               </p>
             )}
           </div>
+          )}
         </>
       )}
     </div>

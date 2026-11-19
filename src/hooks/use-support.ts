@@ -23,6 +23,7 @@ import {
   listSupportConnections,
   listSupportConversations,
   getSupportConversationCounts,
+  getSupportConversation,
   getClientQueueSummaries,
   listSupportDraftActions,
   listSupportMembers,
@@ -128,6 +129,20 @@ export function useSupportConversationsPaged(clientId: string | null, params?: C
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: Boolean(clientId),
+    staleTime: 1000 * 15,
+  });
+}
+
+/**
+ * One conversation by id — for opening a search result (e.g. an AI semantic match) that is not
+ * in the loaded page. Its own key, outside ["support","conversations",…], because the optimistic
+ * list patchers sweep that prefix and expect list/page shapes.
+ */
+export function useSupportConversation(clientId: string | null, convId: string | null) {
+  return useQuery({
+    queryKey: ["support", "conversation", clientId, convId],
+    queryFn: () => getSupportConversation(clientId as string, convId as string),
+    enabled: Boolean(clientId && convId),
     staleTime: 1000 * 15,
   });
 }

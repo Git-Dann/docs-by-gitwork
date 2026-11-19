@@ -1,14 +1,15 @@
-import { AppShell } from "@/components/app-shell";
-import { SupportDashboard } from "@/components/support/support-dashboard";
+import { redirect } from "next/navigation";
+import { legacySupportRedirect } from "@/lib/care-links";
 
-export default function SupportPage() {
-  return (
-    <AppShell
-      title="Support"
-      subtitle="Multi-client customer service ops — inbox, tickets, connectors, and reports."
-      mainClassName="flex min-h-0 flex-1 overflow-hidden p-0"
-    >
-      <SupportDashboard />
-    </AppShell>
-  );
+/**
+ * The legacy Care dashboard lived here. Care is one UI at /app/care now (CLAUDE.md §42.16), so this
+ * is a redirect that keeps every old link working: `?client=…&tab=…&panel=…` is translated to the
+ * matching Care section, and any other query parameter is carried across.
+ */
+export default async function SupportRedirect({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  redirect(legacySupportRedirect(await searchParams));
 }

@@ -1970,6 +1970,8 @@ export interface ConversationListParams {
   priority?: string;
   issueType?: string;
   source?: string;
+  /** positive | neutral | negative — the triage agent's tag. */
+  sentiment?: string;
   /** Derived reply state — filtered in SQL, so a page is complete rather than a sample. */
   replyState?: string;
   /** Free-text over subject / preview / customer, matched server-side across ALL rows. */
@@ -1991,6 +1993,7 @@ export async function listSupportConversations(
   if (params?.priority) qs.set("priority", params.priority);
   if (params?.issueType) qs.set("issueType", params.issueType);
   if (params?.source) qs.set("source", params.source);
+  if (params?.sentiment) qs.set("sentiment", params.sentiment);
   if (params?.unassigned) qs.set("unassigned", "1");
   if (params?.replyState) qs.set("replyState", params.replyState);
   if (params?.q) qs.set("q", params.q);
@@ -2000,6 +2003,14 @@ export async function listSupportConversations(
   if (params?.cursor) qs.set("cursor", params.cursor);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return apiFetch(`/api/support/clients/${clientId}/conversations${suffix}`);
+}
+
+/** One conversation — used to open a search result that isn't in the loaded page. */
+export async function getSupportConversation(
+  clientId: string,
+  convId: string,
+): Promise<{ conversation: Conversation }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}`);
 }
 
 /** True per-view totals across the whole client — not a tally of the loaded page. */
