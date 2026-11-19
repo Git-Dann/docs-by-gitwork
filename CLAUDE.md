@@ -10911,6 +10911,9 @@ Every wiki page puts its actions in the same place, by these rules (Dan, Nov 202
 3. **Actions that belong to one card stay in that card's header** (a table's Edit, the Board's own
    toolbar, Monitors' Add monitor inside its card).
 4. The one exception is the doc pages' tabs, which switch page rather than act on one.
+5. **Adding something opens the house popup from the header button**, never an inline form card:
+   Requests' **New request** (a labelled form, Cancel / Add request pinned in the footer) and the
+   Board's **Add card**.
 
 - The header lets wide actions wrap onto their own line instead of squeezing the title (the title
   keeps at least 320px; measured at 820 and 1440 on Metrics).

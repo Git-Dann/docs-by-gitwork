@@ -61,6 +61,7 @@ import {
   useSetWikiBoardShowAllTasks,
   type BoardTarget, fetchDoneLane } from "@/hooks/use-wiki-board";
 import type { WikiBoardCard, WikiBoardDeletedCard, WikiBoardLane, WikiBoardSection } from "@/types/wiki-board";
+import { WikiPageActions } from "./wiki-page-header";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 /** Cards only, everything, or (team only, previewing) exactly what the client sees on their wiki. */
@@ -338,17 +339,19 @@ export function WikiBoardSectionView({
                 onPreview={setPreviewing}
               />
             ) : null}
+            {/* The page's main action sits in the shared header (§138). */}
             {canAdd ? (
-              <button
-                type="button"
-                className="app-button app-button-primary app-button-sm h-9 shrink-0"
-                onClick={() => setAdding("")}
-                aria-label="Add card"
-                data-board-add
-              >
-                <PlusIcon className="h-4 w-4" />
-                <span className="hidden sm:inline">Add card</span>
-              </button>
+              <WikiPageActions>
+                <button
+                  type="button"
+                  className="app-button app-button-primary app-button-sm inline-flex items-center gap-1.5"
+                  onClick={() => setAdding("")}
+                  data-board-add
+                >
+                  <PlusIcon className="h-4 w-4" />
+                  Add card
+                </button>
+              </WikiPageActions>
             ) : null}
           </div>
         </div>

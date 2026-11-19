@@ -55,6 +55,7 @@ import {
 } from "@/hooks/use-wiki";
 import { RequestThread } from "@/components/clients/wiki/request-thread";
 import { useToast } from "@/components/ui/toast";
+import { WikiPageActions } from "./wiki-page-header";
 
 /** A full-width labelled action in a request's details card. */
 const sideBtn =
@@ -171,6 +172,11 @@ function StageChip({ stage, title }: { stage: RequestStage; title?: string }) {
   );
 }
 
+/** The New request popup's fields: labelled, 16px on a phone so iOS doesn't zoom on focus. */
+const formLabel = "block text-[12px] font-medium text-[var(--text-2)]";
+const formInput = "app-input w-full text-base sm:text-[14px]";
+const formSelect = "app-select w-full text-base sm:text-[14px]";
+
 export function WikiIntakeSection({
   slug,
   token,
@@ -226,7 +232,6 @@ export function WikiIntakeSection({
   const [device, setDevice] = useState("");
   const [osVersion, setOsVersion] = useState("");
   const [image, setImage] = useState<File | null>(null);
-  const [showMoreFields, setShowMoreFields] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The screenshot open in the viewer — a request's own or one attached to a reply. */
   const [viewingImageSrc, setViewingImageSrc] = useState<string | null>(null);
@@ -356,6 +361,9 @@ export function WikiIntakeSection({
     });
   }
 
+  // The New request popup (opened from the page header).
+  const [logOpen, setLogOpen] = useState(false);
+
   async function submit() {
     setError(null);
     // Only the categoryId is sent — the server derives the underlying type from
@@ -390,6 +398,7 @@ export function WikiIntakeSection({
       }
       setTitle("");
       setDescription("");
+      setLogOpen(false);
       setPriority("MEDIUM");
       setCategoryId(categories[0]?.id ?? "FEEDBACK");
       setLabel("");
@@ -620,189 +629,153 @@ export function WikiIntakeSection({
 
   return (
     <div className="space-y-4">
-      {/* ── 01 // LOG A REQUEST ─────────────────────────────────────────────
-          One line, Enter to file. The brief was "an easy way for clients to log
-          requests, super snappy" — a nine-field form in a column beside the list
-          is neither, and it cost the table half the page. Everything optional is
-          behind "More fields", which stays open once opened. */}
-      <section className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label" style={{ fontFamily: MONO }}>
-            <span className="widget-header__label--number">{num(0)}</span>
-            {" // LOG A REQUEST"}
-          </span>
-        </div>
-        <div className="space-y-3 p-4">
-          {/* Wraps rather than switching at a breakpoint. A `sm:flex-row` here looked
-              right in a full-width page and was measured at 38px of title input inside
-              the wiki's own 405px content column — because the breakpoint asks about the
-              VIEWPORT and the constraint is the CONTAINER. `flex-wrap` plus a real
-              minimum on the field asks the right question: if the title cannot have
-              220px, the selects drop to their own line instead of crushing it. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !busy && !uploadingImage) {
-                  e.preventDefault();
-                  void submit();
-                }
-              }}
-              placeholder="What do you need? One line is enough."
-              aria-label="Request title"
-              className="app-input min-w-[220px] flex-1"
-            />
-            <div className="flex flex-1 gap-2 sm:flex-initial">
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                aria-label="Category"
-                className="app-select-compact w-full sm:w-[150px]"
-              >
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as Priority)}
-                aria-label="Priority"
-                className="app-select-compact w-full sm:w-[112px]"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-              </select>
+      {/* Logging a request is the page's main action, so it sits in the shared header and opens
+          the house popup (wiki page-actions standard, CLAUDE.md §138). The form itself is the
+          same one-line-first form: title, Enter to file, everything optional behind "More fields". */}
+      <WikiPageActions>
+        <button
+          type="button"
+          onClick={() => setLogOpen(true)}
+          className="app-button app-button-primary app-button-sm inline-flex items-center gap-1.5"
+        >
+          <PlusIcon className="h-4 w-4" />
+          New request
+        </button>
+      </WikiPageActions>
+      <Modal open={logOpen} onClose={() => setLogOpen(false)} title="New request" panelClassName="app-dialog-fixed w-full max-w-xl">
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!busy && !uploadingImage) void submit();
+          }}
+        >
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+            <div>
+              <label htmlFor="req-title" className={formLabel}>What do you need?</label>
+              <input
+                id="req-title"
+                autoFocus
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="One line is enough"
+                className={`${formInput} mt-1`}
+              />
+              {/* Said before they press Add, so nothing about the save is a surprise. */}
+              {title.trim().length > REQUEST_MAX_TITLE && (
+                <p className="mt-1 text-[12px] text-[var(--text-3)]">
+                  That&rsquo;s longer than a title. We&rsquo;ll use the first sentence as the title and keep
+                  everything you wrote in the details.
+                </p>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => void submit()}
-              disabled={busy || uploadingImage}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
-            >
-              <PlusIcon className="h-4 w-4" />
-              {uploadingImage ? "Uploading…" : busy ? "Adding…" : "Add"}
-            </button>
-          </div>
-
-          {/* Said before they press Add, so nothing about the save is a surprise. */}
-          {title.trim().length > REQUEST_MAX_TITLE && (
-            <p className="text-[12px] text-[var(--text-3)]">
-              That&rsquo;s longer than a title — we&rsquo;ll use the first sentence as the
-              title and keep everything you wrote in the description.
-            </p>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setShowMoreFields((v) => !v)}
-            aria-expanded={showMoreFields}
-            className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
-          >
-            <ChevronRightIcon
-              className={`h-3.5 w-3.5 transition-transform ${showMoreFields ? "rotate-90" : ""}`}
-            />
-            {showMoreFields ? "Fewer fields" : "More fields — detail, device, screenshot"}
-          </button>
-
-          {showMoreFields && (
-            <div className="space-y-3 border-t border-[var(--border-2)] pt-3">
-              {/* There is deliberately no "Requested by" field. Every route into this
-                  form is authenticated — a client user signed into their wiki, or a
-                  Gitwork user internally — so the submitter is stamped server-side from
-                  that identity (see resolveRequestedBy). Asking someone to type their
-                  own name collected something we already knew and could not trust. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="req-category" className={formLabel}>Category</label>
+                <select id="req-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} aria-label="Category" className={`${formSelect} mt-1`}>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="req-priority" className={formLabel}>Priority</label>
+                <select id="req-priority" value={priority} onChange={(e) => setPriority(e.target.value as Priority)} aria-label="Priority" className={`${formSelect} mt-1`}>
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                </select>
+              </div>
+            </div>
+            {/* There is deliberately no "Requested by" field: every route into this form is
+                signed in, so the submitter is stamped server-side (resolveRequestedBy). */}
+            <div>
+              <label htmlFor="req-details" className={formLabel}>Details <span className="font-normal text-[var(--text-4)]">(optional)</span></label>
               <textarea
+                id="req-details"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="What happened, what should change, or any helpful context…"
-                rows={3}
-                className="app-input resize-y py-2.5 leading-relaxed"
+                placeholder="What happened, what should change, or any helpful context"
+                rows={4}
+                className={`${formInput} mt-1 resize-y py-2.5 leading-relaxed`}
               />
-              <div className="grid gap-3 sm:grid-cols-3">
-                {/* Dev label — the same taxonomy the task board uses, so a promoted
-                    request arrives already categorised for whoever picks it up. */}
-                <select
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value as DevLabel | "")}
-                  aria-label="Label"
-                  className="app-select-compact"
-                >
-                  <option value="">No label (optional)</option>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                {/* The same taxonomy the task board uses, so a promoted request arrives categorised. */}
+                <label htmlFor="req-label" className={formLabel}>Label</label>
+                <select id="req-label" value={label} onChange={(e) => setLabel(e.target.value as DevLabel | "")} aria-label="Label" className={`${formSelect} mt-1`}>
+                  <option value="">None</option>
                   {DEV_LABELS.map((value) => (
                     <option key={value} value={value}>
                       {DEV_LABEL_LABEL[value]}
                     </option>
                   ))}
                 </select>
-                {/* Device/OS — optional context for bug reports; free text since we
-                    can't know every client's device fleet ahead of time. */}
-                <input
-                  value={device}
-                  onChange={(e) => setDevice(e.target.value)}
-                  placeholder="Device (e.g. iPhone 14 Pro)"
-                  className="app-input-compact"
-                />
-                <input
-                  value={osVersion}
-                  onChange={(e) => setOsVersion(e.target.value)}
-                  placeholder="OS version (e.g. iOS 17.4)"
-                  className="app-input-compact"
-                />
               </div>
-              {/* Screenshot — optional, attached after the item is created. */}
               <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-                />
-                {image ? (
-                  <div className="flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
-                    <PhotoIcon className="h-4 w-4 shrink-0 text-[var(--text-3)]" />
-                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-2)]">
-                      {image.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setImage(null);
-                        if (fileInputRef.current) fileInputRef.current.value = "";
-                      }}
-                      aria-label="Remove image"
-                      className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-2)]"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
-                  >
-                    <PhotoIcon className="h-4 w-4" />
-                    Attach a screenshot (optional)
-                  </button>
-                )}
+                <label htmlFor="req-device" className={formLabel}>Device</label>
+                <input id="req-device" value={device} onChange={(e) => setDevice(e.target.value)} placeholder="e.g. iPhone 15" className={`${formInput} mt-1`} />
+              </div>
+              <div>
+                <label htmlFor="req-os" className={formLabel}>OS version</label>
+                <input id="req-os" value={osVersion} onChange={(e) => setOsVersion(e.target.value)} placeholder="e.g. iOS 18.1" className={`${formInput} mt-1`} />
               </div>
             </div>
-          )}
-
-          {error && <p className="text-sm text-[var(--danger-600,#dc2626)]">{error}</p>}
-        </div>
-      </section>
+            {/* Screenshot: optional, attached after the request is created. */}
+            <div>
+              <p className={formLabel}>Screenshot <span className="font-normal text-[var(--text-4)]">(optional)</span></p>
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => setImage(e.target.files?.[0] ?? null)} />
+              {image ? (
+                <div className="mt-1 flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2">
+                  <PhotoIcon className="h-4 w-4 shrink-0 text-[var(--text-3)]" />
+                  <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-2)]" title={image.name}>
+                    {image.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImage(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    aria-label="Remove image"
+                    className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-2)]"
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-4 text-sm text-[var(--text-3)] transition hover:border-[var(--brand-500)] hover:text-[var(--text-1)]"
+                >
+                  <PhotoIcon className="h-4 w-4" />
+                  Attach a screenshot
+                </button>
+              )}
+            </div>
+            {error && <p className="text-sm text-[var(--danger-500)]">{error}</p>}
+          </div>
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-1)] px-5 py-3">
+            <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setLogOpen(false)}>
+              Cancel
+            </button>
+            <button type="submit" disabled={busy || uploadingImage} className="app-button app-button-primary app-button-sm inline-flex items-center gap-1.5">
+              <PlusIcon className="h-4 w-4" />
+              {uploadingImage ? "Uploading…" : busy ? "Adding…" : "Add request"}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* ── 02 // REQUESTS ─────────────────────────────────────────────────── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
-            <span className="widget-header__label--number">{num(1)}</span>
+            <span className="widget-header__label--number">{num(0)}</span>
             {" // REQUESTS"}
           </span>
           {filteredItems.length > 0 && (

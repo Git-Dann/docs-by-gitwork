@@ -252,6 +252,9 @@ describe("WikiIntakeSection — the category picker is a dropdown", () => {
   /** The form's category control, distinguished from the priority/label
    *  selects by its aria-label. */
   function categorySelect(): HTMLSelectElement {
+    // The form lives in the New request popup (opened from the page header, §138).
+    const open = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("New request"));
+    if (open) act(() => open.click());
     const el = host.querySelector<HTMLSelectElement>('select[aria-label="Category"]');
     if (!el) throw new Error("No category select in the Add Request form");
     return el;
