@@ -10,6 +10,7 @@ import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DashboardEditButton } from "@/components/clients/wiki/dashboard-edit";
+import { WikiBrandCell } from "@/components/clients/wiki/wiki-brand-cell";
 
 // Session/cookie-dependent (the access lockdown) — render per request.
 export const dynamic = "force-dynamic";
@@ -111,8 +112,11 @@ export default async function PublicWikiPage({
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--surface-0)]">
-      {/* Header — branding lives once, in the footer. */}
-      <header className="flex items-center justify-between gap-3 border-b border-[rgba(0,0,0,0.08)] bg-white px-4 py-4 md:px-8">
+      {/* Header: the Foundry logo above the sidebar (WikiBrandCell), level with the bar beside it,
+          as on the team's wiki. */}
+      <header className="flex h-14 shrink-0 items-stretch border-b border-[var(--border-1)] bg-[var(--surface-0)]">
+        <WikiBrandCell sidebar={!onlySection} />
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 md:px-8">
         <p
           className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]"
           style={{ fontFamily: "var(--font-mono)" }}
@@ -124,6 +128,7 @@ export default async function PublicWikiPage({
         <div className="flex shrink-0 items-center gap-2">
           <DashboardEditButton />
           <ThemeToggle iconOnly />
+        </div>
         </div>
       </header>
 
