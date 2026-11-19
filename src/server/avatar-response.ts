@@ -59,7 +59,7 @@ export async function shrinkAvatar(
 }
 
 /** Parse a `data:[mime][;base64],<payload>` URL into bytes + content type. */
-function decodeDataUrl(dataUrl: string): { mime: string; body: Buffer } | null {
+export function decodeDataUrl(dataUrl: string): { mime: string; body: Buffer } | null {
   const match = /^data:([^;,]+)?(;base64)?,([\s\S]*)$/.exec(dataUrl);
   if (!match) return null;
   const mime = match[1] || "application/octet-stream";

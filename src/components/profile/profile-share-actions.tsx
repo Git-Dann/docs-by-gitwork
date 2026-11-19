@@ -8,9 +8,43 @@
  * already shows (name, role, company, links), never an email or a phone number.
  */
 import { useState } from "react";
-import { ArrowUpOnSquareIcon, CheckIcon, LinkIcon, QrCodeIcon, UserPlusIcon } from "@heroicons/react/24/outline";
+import { ArrowUpOnSquareIcon, CheckIcon, LinkIcon, QrCodeIcon, UserPlusIcon, WalletIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { QrCode } from "./profile-card";
+
+/** Which wallets are switched on for this server, and the profile they're for. */
+export interface WalletOffer {
+  slug: string;
+  apple: boolean;
+  google: boolean;
+}
+
+/**
+ * Add to Apple Wallet / Add to Google Wallet. Google's is Google's own badge
+ * (public/brand/add-to-google-wallet.svg, from its brand pack). Apple's official badge is behind
+ * Apple's Wallet marketing agreement, so until it's downloaded and added this is a plain text
+ * button with no Apple mark: never a redrawn logo.
+ */
+function WalletButtons({ wallet }: { wallet: WalletOffer }) {
+  if (!wallet.apple && !wallet.google) return null;
+  const base = `/api/u/${encodeURIComponent(wallet.slug)}/wallet`;
+  return (
+    <div className="mt-3 grid grid-cols-1 gap-2">
+      {wallet.apple ? (
+        <a href={`${base}/apple`} className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[10px] bg-black px-3 text-[14px] font-medium text-white">
+          <WalletIcon aria-hidden className="h-5 w-5" />
+          Add to Apple Wallet
+        </a>
+      ) : null}
+      {wallet.google ? (
+        <a href={`${base}/google`} className="mx-auto block" aria-label="Add to Google Wallet">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/add-to-google-wallet.svg" alt="Add to Google Wallet" width={226} height={40} className="h-10 w-auto" />
+        </a>
+      ) : null}
+    </div>
+  );
+}
 
 export interface ProfileShareData {
   name: string;
@@ -77,7 +111,7 @@ const btn =
   "inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 text-[14px] font-medium text-[var(--text-1)] transition hover:border-[var(--brand-500)]";
 
 /** The QR code with the three actions under it: the sheet's body, and the desktop sidebar. */
-export function ProfileSharePanel({ data, pageUrl }: { data: ProfileShareData; pageUrl: string }) {
+export function ProfileSharePanel({ data, pageUrl, wallet }: { data: ProfileShareData; pageUrl: string; wallet?: WalletOffer }) {
   const s = useShare(data, pageUrl);
   return (
     <div>
@@ -102,12 +136,13 @@ export function ProfileSharePanel({ data, pageUrl }: { data: ProfileShareData; p
           Save contact
         </button>
       </div>
+      {wallet ? <WalletButtons wallet={wallet} /> : null}
     </div>
   );
 }
 
 /** One tile on the phone's links row that opens the Share sheet. */
-export function ProfileShareTile({ data, pageUrl }: { data: ProfileShareData; pageUrl: string }) {
+export function ProfileShareTile({ data, pageUrl, wallet }: { data: ProfileShareData; pageUrl: string; wallet?: WalletOffer }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -124,7 +159,7 @@ export function ProfileShareTile({ data, pageUrl }: { data: ProfileShareData; pa
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title="Share profile" panelClassName="max-w-[360px]">
         <div className="p-5">
-          <ProfileSharePanel data={data} pageUrl={pageUrl} />
+          <ProfileSharePanel data={data} pageUrl={pageUrl} wallet={wallet} />
         </div>
       </Modal>
     </>
