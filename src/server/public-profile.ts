@@ -15,6 +15,8 @@ import {
   profileCompleteness,
   readAchievements,
   readLinks,
+  readExtras,
+  type ProfileExtras,
   safeProfileUrl,
   slugProblem,
   suggestSlug,
@@ -43,6 +45,7 @@ export interface PublicProfile {
   card: ProfileCard | null;
   /** Their booking page, for "Book a call". */
   bookingUrl: string | null;
+  extras: ProfileExtras;
 }
 
 export interface MyPublicProfile {
@@ -59,6 +62,7 @@ export interface MyPublicProfile {
   links: ProfileLink[];
   card: ProfileCard | null;
   bookingUrl: string;
+  extras: ProfileExtras;
   /** What the card editor's preview draws: the same name, company and photo the page shows. */
   preview: { name: string; company: string; avatarUrl: string | null };
   completeness: { percent: number; missing: string[] };
@@ -88,6 +92,7 @@ const SELECT = {
   profileLinks: true,
   profileCard: true,
   profileBookingUrl: true,
+  profileExtras: true,
   workspace: { select: { name: true } },
   member: { select: { archivedAt: true, userId: true, user: { select: { avatarUrl: true } } } },
 } as const satisfies Prisma.CandidateSelect;
@@ -148,6 +153,7 @@ export async function loadPublicProfile(slug: string): Promise<PublicProfile | n
     links: linksOf(r),
     card: r.profileCard ? readCard(r.profileCard) : null,
     bookingUrl: safeProfileUrl(r.profileBookingUrl),
+    extras: readExtras(r.profileExtras),
   };
 }
 
@@ -175,6 +181,7 @@ function toMine(r: Row): MyPublicProfile {
     links,
     card: r.profileCard ? readCard(r.profileCard) : null,
     bookingUrl: r.profileBookingUrl ?? "",
+    extras: readExtras(r.profileExtras),
     preview: {
       name: (r.preferredName?.trim() || r.name).trim(),
       company: r.workspace.name,
@@ -218,6 +225,7 @@ export interface MyPublicProfileInput {
   /** null switches the card off and goes back to the plain header. */
   card?: Partial<Record<keyof ProfileCard, string>> | null;
   bookingUrl?: string;
+  extras?: unknown;
 }
 
 const text = (v: string | undefined, max: number) => (v === undefined ? undefined : v.trim().slice(0, max) || null);
@@ -270,6 +278,15 @@ export async function saveMyPublicProfile(
   }
   const booking = urlField(input.bookingUrl, "Booking link");
   if (booking !== undefined) data.profileBookingUrl = booking;
+  if (input.extras !== undefined) {
+    const raw = input.extras as { featured?: { url?: unknown; title?: unknown }[] } | null;
+    for (const f of raw?.featured ?? []) {
+      if (typeof f?.url === "string" && f.url.trim() && !safeProfileUrl(f.url)) {
+        throw new StaffInputError(`"${typeof f.title === "string" && f.title ? f.title : f.url}" isn't a web address (https://…).`);
+      }
+    }
+    data.profileExtras = readExtras(input.extras) as unknown as Prisma.InputJsonValue;
+  }
   if (input.card !== undefined) {
     data.profileCard = input.card === null ? Prisma.DbNull : (readCard(input.card) as unknown as Prisma.InputJsonValue);
   }

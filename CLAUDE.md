@@ -10975,6 +10975,11 @@ in block by block and works in light and dark.
 - **Book a call:** `Candidate.profileBookingUrl` (additive, http(s) only), set in the editor.
 - **Edit profile** shows only to the owner: the page compares the session's user id with the
   profile's login (`publicAvatarUserId`), never anything in the request. `/demo/profile?owner=1`.
+- **A fuller profile shows everything it has.** Entries carry a kind (`role` · `education` ·
+  `award`; unset reads as a role) and a period (`year`, `endYear`, `current` → "2025 – Present"),
+  each kind its own card. `Candidate.profileExtras` (additive JSON, `readExtras`) holds headline
+  numbers, featured work, recommendations (word for word, as the person published them) and
+  clients worked with. Every section is left out when empty, in both layouts.
 
 **Staff audit.** Hiring's "Overview" (tier mix, bench, calibre, costs, client coverage) described
 the developers you have, not hiring, so it is now **Developers → Insights** (`developers-views.tsx`,

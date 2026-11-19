@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import React from "react";
 import {
+  PROFILE_LIMITS,
+  achievementPeriod,
+  readExtras,
   profileCompleteness,
   readAchievements,
   readLinks,
@@ -41,9 +44,38 @@ describe("public profile rules", () => {
 
   it("stored lists are read defensively and capped", () => {
     const many = Array.from({ length: 20 }, (_, i) => ({ title: `A${i}`, year: 2020 }));
-    expect(readAchievements(many)).toHaveLength(12);
+    expect(readAchievements(many)).toHaveLength(PROFILE_LIMITS.achievements);
     expect(readAchievements([{ title: "" }, { title: "Ok", year: 1800 }, "junk"])).toEqual([{ title: "Ok", year: null, detail: null }]);
     expect(readAchievements("nope")).toEqual([]);
+  });
+
+  it("roles carry a kind and a period; older entries read as roles", () => {
+    const [role, edu] = readAchievements([
+      { title: "Head of Product, Gitwork", year: 2025, current: true, kind: "role" },
+      { title: "BA Advertising", year: 2009, endYear: 2012, kind: "education", current: "yes" },
+    ]);
+    expect(achievementPeriod(role!)).toBe("2025 – Present");
+    expect(achievementPeriod(edu!)).toBe("2009 – 2012");
+    expect(edu!.current).toBeUndefined();
+    expect(readAchievements([{ title: "Old entry", year: 2014 }])[0]!.kind).toBeUndefined();
+    expect(achievementPeriod({ title: "x", year: null, detail: null })).toBeNull();
+  });
+
+  it("extras are read defensively: bad rows dropped, links http(s) only, clients deduped", () => {
+    const e = readExtras({
+      highlights: [{ value: "15 yrs", label: "experience" }, { value: "", label: "no value" }],
+      featured: [{ title: "Foundry", url: "javascript:alert(1)" }, { title: "Site", url: "example.com" }],
+      testimonials: [{ quote: "Great", name: "Sam" }, { quote: "No name" }],
+      clients: ["Apple", "Apple", " Warner ", 3],
+    });
+    expect(e.highlights).toEqual([{ value: "15 yrs", label: "experience" }]);
+    expect(e.featured).toEqual([
+      { title: "Foundry", detail: null, url: null },
+      { title: "Site", detail: null, url: "https://example.com/" },
+    ]);
+    expect(e.testimonials).toEqual([{ quote: "Great", name: "Sam", role: null }]);
+    expect(e.clients).toEqual(["Apple", "Warner"]);
+    expect(readExtras(null)).toEqual({ highlights: [], featured: [], testimonials: [], clients: [] });
   });
 
   it("completeness names what's missing", () => {
@@ -92,7 +124,7 @@ describe("the page", () => {
   const html = renderToStaticMarkup(React.createElement(PublicProfileView, { profile: DEMO_PUBLIC_PROFILE }));
 
   it("draws the person, their links, achievements and skills", () => {
-    for (const s of ["Priya Shah", "Senior Product Engineer", "Manchester, UK", "LinkedIn", "Achievements", "TypeScript", "Profile on Foundry"]) {
+    for (const s of ["Priya Shah", "Senior Product Engineer", "Manchester, UK", "LinkedIn", "Experience", "Education", "Achievements", "Featured", "Recommendations", "Worked with", "2024 – Present", "TypeScript", "Profile on Foundry"]) {
       expect(html).toContain(s);
     }
   });
