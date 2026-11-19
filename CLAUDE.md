@@ -6923,6 +6923,16 @@ Eight items from the wiki backlog, built in parallel and merged as one change.
 **Requests (§69 follow-ups).**
 - **Team mentions notify in Foundry**: event `wiki.request_mention` (in-app + push) to each `team:`
   person mentioned, never the author. Runs beside the Slack post, after the reply is saved.
+- **Client mentions ring the client's phone** (Nov 2026; `notifyClientMentionsOnRequest` in
+  `src/server/push/client-notifications.ts`, rule `clientMentionRecipients` in
+  `src/lib/wiki-intake-reply-notify.ts`). A `client:` mention on a request reply, from either
+  reply route, pushes to **that person's** registered devices only (`listActiveClientDevicesForUser`),
+  never a colleague's and never the author. The id must be a client user of that wiki (re-checked
+  against the table), kind and prefix must both say client, `contact:primary` has no device. Quiet
+  hours as for the standup (nothing claimed out of hours); one alert per person per request per 10
+  minutes and at most 10 an hour per person, enforced with `ClientPushReceipt` keys
+  `mention:<wikiUserId>:<requestId>:<window>`. The payload carries `section: "intake"` and
+  `requestId`, never a staff path. Board card threads have no @mentions, so they are not covered.
 - **The client is emailed when Gitwork replies** (`src/server/wiki-intake-reply-notify.ts`, pure
   rules in `src/lib/wiki-intake-reply-notify.ts`). The raiser is found by matching `requestedBy`
   to the wiki's `ClientWikiUser`s (email, then name); ambiguous or no match → no email. Never to

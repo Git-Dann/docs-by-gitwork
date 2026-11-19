@@ -1,7 +1,8 @@
 /**
  * client-notifications.ts — what a client's phone is allowed to be told, and when.
  *
- * Today that is one thing: the developers' daily standup. The Slack half of this
+ * Two things: the developers' daily standup, and a reply that @mentions the client
+ * person by name on one of their requests. The Slack half of this
  * already works — `tasks-standup.ts` posts each dev's card to the client's Slack
  * Connect channel when one is linked — so this is for the clients who live in the
  * app instead of in a shared channel.
@@ -9,7 +10,13 @@
 
 import { prisma } from "@/lib/prisma";
 import { isApnsConfigured, type ApnsPayload } from "./apns";
-import { clientDeviceStore, listActiveClientDevices } from "./client-devices";
+import {
+  clientDeviceStore,
+  listActiveClientDevices,
+  listActiveClientDevicesForUser,
+} from "./client-devices";
+import { clientMentionRecipients } from "@/lib/wiki-intake-reply-notify";
+import type { StoredMention } from "@/lib/wiki-mentions";
 import { fanOutToDevices } from "./transport";
 import { fitTitle, shrinkToFit } from "./notifications";
 
@@ -209,4 +216,153 @@ export async function notifyClientsOfStandup(args: {
       }
     }),
   );
+}
+
+// MARK: - A client @mentioned on one of their requests
+
+/** Replies that mention the same person on the same request inside this window ring once. */
+export const MENTION_PUSH_WINDOW_MS = 10 * 60_000;
+/** The most mention alerts one client person gets in an hour, across all requests. */
+export const MENTION_PUSH_HOURLY_CAP = 10;
+/** The longest reply excerpt on a lock screen. */
+export const MENTION_EXCERPT_MAX = 120;
+
+/**
+ * `mention:<wikiUserId>:<requestId>:<window>` — the receipt key, and therefore the
+ * dedupe unit. The person comes first so one person's alerts in the last hour can be
+ * counted by prefix, which is how the hourly cap is enforced.
+ */
+export function mentionReceiptKey(wikiUserId: string, itemId: string, at: Date): string {
+  return `mention:${wikiUserId}:${itemId}:${Math.floor(at.getTime() / MENTION_PUSH_WINDOW_MS)}`;
+}
+
+/**
+ * What the alert says. Who mentioned them, and a short excerpt of the reply — which the
+ * client can already read on their own request, so nothing on the lock screen is
+ * something they could not see. Never a Foundry path, a staff name they cannot see in
+ * the thread, or anything about other requests.
+ */
+export function mentionPushCopy(authorName: string, body: string): { title: string; body: string } {
+  const clean = body.replace(/\s+/g, " ").trim();
+  const excerpt =
+    clean.length > MENTION_EXCERPT_MAX ? `${clean.slice(0, MENTION_EXCERPT_MAX - 1).trimEnd()}…` : clean;
+  return {
+    title: `${authorName.trim() || "Someone"} mentioned you`,
+    body: excerpt || "They mentioned you on one of your requests.",
+  };
+}
+
+export type ClientMentionPushResult = {
+  status: "sent" | "no_recipients" | "apns_unconfigured" | "quiet_hours" | "nothing_to_send";
+  /** Devices actually reached. */
+  devices: number;
+  /** People skipped because they had already been told about this request just now,
+   *  or had hit the hourly cap. */
+  throttled: number;
+};
+
+/**
+ * Rings the phone of each of the client's own people named in a reply on one of their
+ * requests.
+ *
+ * ⚠️ The rules, each a way this goes wrong:
+ *   • ONLY a `client:` mention that resolves to a client user OF THIS WIKI. Ids are
+ *     already re-checked against the wiki's directory when the reply is saved
+ *     (`resolveMentions`); this re-checks against the table so a stale or foreign id
+ *     can never reach another client's phone.
+ *   • ONE PERSON'S DEVICES, never the wiki's (see `listActiveClientDevicesForUser`).
+ *   • NEVER STAFF. Gitwork people are `team:` mentions and already get
+ *     `wiki.request_mention` in Foundry; nothing here looks at them.
+ *   • THE AUTHOR IS NEVER RUNG.
+ *   • QUIET HOURS, as for the standup. Out of hours nothing is sent and nothing is
+ *     claimed — the reply is still on their request and in their email.
+ *   • ONE ALERT PER PERSON PER REQUEST PER 10 MINUTES, and at most 10 an hour per
+ *     person. A back-and-forth must not buzz a phone for every line.
+ *   • A client's opt-out is their phone's: turning notifications off for the app, or
+ *     signing out, unregisters the device, and no device means no alert.
+ *
+ * Best-effort and never throws: a reply must not fail because a phone could not be
+ * reached.
+ */
+export async function notifyClientMentionsOnRequest(args: {
+  wikiId: string;
+  itemId: string;
+  /** Who wrote the reply, as the client sees it in the thread. */
+  authorName: string;
+  /** The author's wiki user id when the author is a client — never rung. */
+  authorWikiUserId: string | null;
+  body: string;
+  mentions: readonly StoredMention[];
+  now?: Date;
+}): Promise<ClientMentionPushResult> {
+  const result: ClientMentionPushResult = { status: "no_recipients", devices: 0, throttled: 0 };
+  try {
+    const named = clientMentionRecipients(args.mentions, args.authorWikiUserId);
+    if (named.length === 0) return result;
+    if (!isApnsConfigured()) return { ...result, status: "apns_unconfigured" };
+    const now = args.now ?? new Date();
+    if (!isWithinClientPushHours(now)) return { ...result, status: "quiet_hours" };
+
+    // Only people who really are client users of THIS wiki.
+    const users = await prisma.clientWikiUser.findMany({
+      where: { wikiId: args.wikiId, id: { in: named } },
+      select: { id: true },
+    });
+    if (users.length === 0) return result;
+
+    const copy = mentionPushCopy(args.authorName, args.body);
+    const hourAgo = new Date(now.getTime() - 60 * 60_000);
+    let devices = 0;
+    let throttled = 0;
+
+    for (const { id: userId } of users) {
+      const recent = await prisma.clientPushReceipt.count({
+        where: { wikiId: args.wikiId, key: { startsWith: `mention:${userId}:` }, sentAt: { gte: hourAgo } },
+      });
+      if (recent >= MENTION_PUSH_HOURLY_CAP) {
+        throttled += 1;
+        continue;
+      }
+      const key = mentionReceiptKey(userId, args.itemId, now);
+      try {
+        // The insert is the lock, as for the standup: two replies a second apart
+        // cannot both pass a check and both send.
+        await prisma.clientPushReceipt.create({ data: { wikiId: args.wikiId, key, sentAt: now } });
+      } catch {
+        throttled += 1;
+        continue;
+      }
+
+      const own = await listActiveClientDevicesForUser(args.wikiId, userId);
+      if (own.length === 0) continue;
+
+      const payload: ApnsPayload = {
+        aps: {
+          alert: { title: fitTitle(copy.title), body: copy.body },
+          sound: "default",
+          // Replies on one request collapse together rather than stacking.
+          "thread-id": `request:${args.itemId}`,
+        },
+        // ⚠️ A SECTION and the request id, never a staff `path`: a client build has
+        // no Foundry session and cannot act on an `/app/...` link.
+        kind: "client-mention",
+        section: "intake",
+        requestId: args.itemId,
+      };
+      const sent = await fanOutToDevices(
+        own.map((d) => ({ id: d.id, token: d.token, environment: d.environment, ownerId: d.clientWikiUserId })),
+        clientDeviceStore,
+        shrinkToFit(payload),
+        key,
+      );
+      devices += sent.sent;
+      await prisma.clientPushReceipt
+        .updateMany({ where: { wikiId: args.wikiId, key }, data: { deviceCount: sent.sent } })
+        .catch(() => {});
+    }
+    return { status: devices > 0 ? "sent" : "nothing_to_send", devices, throttled };
+  } catch (err) {
+    console.error("[client-push] mention notify failed", err);
+    return { ...result, status: "nothing_to_send" };
+  }
 }

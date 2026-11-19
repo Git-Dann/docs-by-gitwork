@@ -36,6 +36,36 @@ export function teamMentionRecipients(
   return [...out];
 }
 
+/**
+ * Which of this client's OWN people a reply @mentioned, as wiki-user ids — the people
+ * whose phones a mention may ring.
+ *
+ * ⚠️ The mirror of `teamMentionRecipients`. A mention id is `client:<wikiUserId>`, and
+ * BOTH halves must agree: `kind: "CLIENT"` and the `client:` prefix. Either alone is
+ * not enough — a `team:` id carrying kind CLIENT, or a `client:` id carrying kind
+ * TEAM, is a malformed entry and rings nobody.
+ *
+ * ⚠️ `contact:primary` is dropped. It is a CLIENT-kind mention with no wiki user
+ * behind it (a name off the client record), so there is no account and no device. It
+ * still highlights and still reaches them by email.
+ *
+ * ⚠️ The author is never a recipient. On the shared wiki the author may BE a client,
+ * and @mentioning a colleague must not ring their own phone.
+ */
+export function clientMentionRecipients(
+  mentions: readonly Pick<StoredMention, "id" | "kind">[],
+  authorWikiUserId: string | null | undefined,
+): string[] {
+  const out = new Set<string>();
+  for (const m of mentions) {
+    if (m.kind !== "CLIENT" || !m.id.startsWith("client:")) continue;
+    const userId = m.id.slice("client:".length).trim();
+    if (!userId || userId === authorWikiUserId) continue;
+    out.add(userId);
+  }
+  return [...out];
+}
+
 export interface WikiUserContact {
   email: string;
   name: string | null;
