@@ -71,6 +71,9 @@ function fill(param: string, before: string[], attacker: SideIds, victim: SideId
   switch (param) {
     case "slug":
       if (last === "clients") return victim.clientSlug;
+      // A public profile's photo (/api/u/<slug>/avatar): public by design, so this checks it
+      // never serves more than the photo.
+      if (last === "u") return victim.profileSlug;
       return null;
     case "clientId":
       if (parent.startsWith("support/clients")) return victim.supportClient;

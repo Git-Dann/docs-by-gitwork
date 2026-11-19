@@ -57,6 +57,8 @@ export type SideIds = {
   courseRequest: string;
   meeting: string;
   candidate: string;
+  /** The staff record's public profile handle (/u/<slug>, CLAUDE.md §139). */
+  profileSlug: string;
   staffDocument: string;
   placement: string;
   rateCardPerson: string;
@@ -118,6 +120,7 @@ export function idsFor(side: Side): SideIds {
     courseRequest: id(side, "course-request"),
     meeting: id(side, "meeting"),
     candidate: id(side, "candidate"),
+    profileSlug: `iso-${side}-profile`,
     staffDocument: id(side, "staff-document"),
     placement: id(side, "placement"),
     rateCardPerson: id(side, "rate"),
@@ -278,7 +281,7 @@ export async function seedSide(db: PrismaClient, side: Side) {
     data: { id: i.meeting, workspaceId: i.workspace, clientId: i.client, title: m(side, "meeting"), summary: m(side, "meeting-summary"), actionItems: { create: [{ text: m(side, "action-item") }] } },
   });
 
-  await db.candidate.create({ data: { id: i.candidate, workspaceId: i.workspace, name: m(side, "candidate"), primaryStack: "TypeScript", email: `cand@iso-${side}.test` } });
+  await db.candidate.create({ data: { id: i.candidate, workspaceId: i.workspace, name: m(side, "candidate"), primaryStack: "TypeScript", email: `cand@iso-${side}.test`, profilePublic: true, profileSlug: i.profileSlug } });
   await db.staffDocument.create({
     data: { id: i.staffDocument, workspaceId: i.workspace, recordId: i.candidate, type: "NDA", title: m(side, "staff-document"), link: "https://drive.google.com/file/d/iso" },
   });
