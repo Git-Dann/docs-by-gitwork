@@ -52,17 +52,11 @@ const ALLOWED = new Set([
  * excused because listing them as legitimate would be a lie, and the assertion
  * below is a RATCHET: the count may go down, never up.
  *
- * Not migrated in the same pass as Backstage's because they are eleven screens across the wiki, Settings and Tasks that cannot be visually verified before merge (`/app` is auth-gated,
+ * Not migrated in the same pass as Backstage's because they were eleven screens across the wiki, Settings and Tasks (the six wiki ones were migrated in Nov 2026) that cannot be visually verified before merge (`/app` is auth-gated,
  * no staging), and a blind eleven-file dialog refactor is how a tidy-up becomes
  * an outage. Take them a screen at a time, each one rendered and measured.
  */
 const KNOWN_HAND_ROLLED = [
-  "src/components/clients/wiki/changelog-entry-form.tsx",
-  "src/components/clients/wiki/course-api-intake-modal.tsx",
-  "src/components/clients/wiki/course-feedback-import-modal.tsx",
-  "src/components/clients/wiki/course-request-form.tsx",
-  "src/components/clients/wiki/wiki-intake-section.tsx",
-  "src/components/clients/wiki/wiki-workspace.tsx",
   "src/components/settings/agents-panel.tsx",
   "src/components/settings/checks-panel.tsx",
   "src/components/settings/team-section.tsx",

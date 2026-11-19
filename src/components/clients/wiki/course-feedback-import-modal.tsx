@@ -1,7 +1,8 @@
 "use client";
 
+import { Modal } from "@/components/ui/modal";
 import { useState } from "react";
-import { XMarkIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { SparklesIcon } from "@heroicons/react/24/outline";
 import { useCourseFeedbackCandidates, useImportCourseFeedback } from "@/hooks/use-wiki";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
@@ -48,18 +49,7 @@ export function CourseFeedbackImportModal({ slug, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex h-[80vh] max-h-[680px] w-full max-w-2xl flex-col rounded-[12px] bg-white shadow-xl">
-        <div className="widget-header shrink-0 rounded-t-[12px]">
-          <span className="widget-header__label">Import from feedback</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-          >
-            <XMarkIcon className="h-4 w-4" />
-          </button>
-        </div>
+    <Modal open onClose={onClose} title="Import from feedback" panelClassName="flex h-[80vh] max-h-[680px] w-full max-w-2xl flex-col">
 
         <div className="flex-1 overflow-y-auto p-6">
           {summary ? (
@@ -201,7 +191,6 @@ export function CourseFeedbackImportModal({ slug, onClose }: Props) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

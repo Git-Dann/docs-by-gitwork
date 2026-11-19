@@ -1,5 +1,6 @@
 "use client";
 
+import { Modal } from "@/components/ui/modal";
 import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
 import Link from "next/link";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
@@ -2139,18 +2140,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
       {/* Platform management modal */}
       {showPlatformModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-[12px] bg-white shadow-xl">
-            <div className="widget-header rounded-t-[12px]">
-              <span className="widget-header__label">Changelog Platforms</span>
-              <button
-                type="button"
-                onClick={() => setShowPlatformModal(false)}
-                className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-              >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
-            </div>
+        <Modal open onClose={() => setShowPlatformModal(false)} title="Changelog Platforms" panelClassName="w-full max-w-sm">
             <div className="p-6">
               <p className="mb-4 text-[13px] text-[var(--text-3)]">
                 Choose which platforms appear in the changelog tabs and the &quot;Add version&quot; form.
@@ -2200,8 +2190,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

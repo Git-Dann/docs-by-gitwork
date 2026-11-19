@@ -1,7 +1,7 @@
 "use client";
 
+import { Modal } from "@/components/ui/modal";
 import { useState } from "react";
-import { XMarkIcon } from "@heroicons/react/24/outline";
 import type { CourseRequestRecord } from "@/lib/api";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
@@ -56,18 +56,7 @@ export function CourseRequestForm({ initial, onSave, onClose, isSaving }: Props)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="app-dialog-fixed flex w-full max-w-lg flex-col rounded-[12px] bg-white shadow-xl">
-        <div className="widget-header shrink-0 rounded-t-[12px]">
-          <span className="widget-header__label">{isEditing ? "Edit Request" : "Add Request"}</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-          >
-            <XMarkIcon className="h-4 w-4" />
-          </button>
-        </div>
+    <Modal open onClose={onClose} title={isEditing ? "Edit Request" : "Add Request"} panelClassName="app-dialog-fixed flex w-full max-w-lg flex-col">
 
         <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-1 flex-col overflow-hidden">
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -161,7 +150,6 @@ export function CourseRequestForm({ initial, onSave, onClose, isSaving }: Props)
             </div>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }

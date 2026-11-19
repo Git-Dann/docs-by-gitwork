@@ -1,5 +1,6 @@
 "use client";
 
+import { Modal } from "@/components/ui/modal";
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowTopRightOnSquareIcon,
@@ -1700,27 +1701,7 @@ export function WikiIntakeSection({
       )}
 
       {viewingImageSrc ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setViewingImageSrc(null)}
-        >
-          <div
-            className="relative max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[10px] bg-[var(--surface-0)] shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-[var(--border-2)] px-4 py-2.5">
-              <span className="text-xs text-[var(--text-3)]" style={{ fontFamily: MONO }}>
-                Attached screenshot
-              </span>
-              <button
-                type="button"
-                onClick={() => setViewingImageSrc(null)}
-                aria-label="Close"
-                className="rounded-[6px] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
-              >
-                <XMarkIcon className="h-4 w-4" />
-              </button>
-            </div>
+        <Modal open onClose={() => setViewingImageSrc(null)} title="Attached screenshot" panelClassName="max-h-[90vh] w-full max-w-2xl">
             <div className="bg-[var(--surface-1)] p-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -1729,8 +1710,7 @@ export function WikiIntakeSection({
                 className="mx-auto max-h-[70vh] w-auto rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)]"
               />
             </div>
-          </div>
-        </div>
+        </Modal>
       ) : null}
     </div>
   );

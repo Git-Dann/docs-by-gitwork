@@ -1,7 +1,7 @@
 "use client";
 
+import { Modal } from "@/components/ui/modal";
 import { useState } from "react";
-import { XMarkIcon } from "@heroicons/react/24/outline";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -329,19 +329,7 @@ export function ChangelogEntryForm({
   const nearLimit = activeLimit !== null && activeStoreLength > activeLimit * 0.9;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex h-[88vh] max-h-[760px] w-full max-w-3xl flex-col rounded-[12px] bg-white shadow-xl">
-        {/* Header */}
-        <div className="widget-header shrink-0 rounded-t-[12px]">
-          <span className="widget-header__label">{isEditing ? "Edit Version" : "Add Version"}</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-          >
-            <XMarkIcon className="h-4 w-4" />
-          </button>
-        </div>
+    <Modal open onClose={onClose} title={isEditing ? "Edit Version" : "Add Version"} panelClassName="flex h-[88vh] max-h-[760px] w-full max-w-3xl flex-col">
 
         <form
           onSubmit={(e) => void handleSubmit(e)}
@@ -601,7 +589,6 @@ export function ChangelogEntryForm({
             </div>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
