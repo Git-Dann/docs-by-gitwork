@@ -246,7 +246,7 @@ export function CodeClearPipelineWorkspace() {
         <CodeClearTabs />
         <EmptyState
           title="No devs in the pipeline yet"
-          body="Add a dev in /app/codeclear/candidates and they'll appear here."
+          body="Add a developer under Staff → Developers and they'll appear here."
         />
       </div>
     );
@@ -279,7 +279,7 @@ export function CodeClearPipelineWorkspace() {
               candidates={grouped.get(column.id) ?? []}
               activeDragId={activeDragId}
               onCardClick={(candidateId) =>
-                router.push(`/app/codeclear/candidates/${candidateId}`)
+                router.push(`/app/staff/hiring/candidates/${encodeURIComponent(candidateId)}`)
               }
               onSchedule={(candidateId) => setScheduleCandidateId(candidateId)}
               onRemoveFromClient={handleRemoveFromClient}

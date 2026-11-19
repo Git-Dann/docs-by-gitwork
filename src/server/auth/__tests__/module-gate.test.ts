@@ -67,6 +67,21 @@ describe("moduleForPath", () => {
     // broader prefix ever won this match, admin-only DevSignal would silently open up.
     expect(moduleForPath("/app/codeclear/devsignal")).toBe("devsignal");
     expect(moduleForPath("/app/codeclear/devsignal/candidates/abc")).toBe("devsignal");
+    // Its canonical home since §87: the entry was renamed in place, ahead of /app/staff.
+    expect(moduleForPath("/app/staff/hiring/devsignal")).toBe("devsignal");
+    expect(moduleForPath("/app/staff/hiring/devsignal/ds-1")).toBe("devsignal");
+    expect(moduleForPath("/app/staff/hiring/devsignal/model")).toBe("devsignal");
+  });
+
+  it("STAFF holding only `codeclear` reaches Staff and Hiring but never DevSignal", () => {
+    const staff = ["codeclear"];
+    for (const p of ["/app/staff", "/app/staff/developers", "/app/staff/hiring", "/app/staff/hiring/pipeline", "/app/staff/hiring/candidates/c1", "/app/staff/abc"]) {
+      expect(hasModuleAccess(p, staff, "STAFF"), p).toBe(true);
+    }
+    for (const p of ["/app/staff/hiring/devsignal", "/app/staff/hiring/devsignal/challenges", "/app/codeclear/devsignal"]) {
+      expect(hasModuleAccess(p, staff, "STAFF"), p).toBe(false);
+    }
+    expect(hasModuleAccess("/app/staff/hiring/devsignal", ["codeclear", "devsignal"], "STAFF")).toBe(true);
   });
 
   it("gates the three pages that were previously ungated", () => {

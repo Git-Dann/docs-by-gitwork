@@ -1,21 +1,7 @@
-import { AppShell } from "@/components/app-shell";
-import { CodeClearTabs } from "@/components/codeclear/codeclear-shared";
-import { DevSignalQueue } from "@/components/codeclear/devsignal/devsignal-queue";
-import { DevSignalSubNav } from "@/components/codeclear/devsignal/devsignal-subnav";
+import { redirect } from "next/navigation";
+import { withSearch, type SearchParamsRecord } from "@/lib/legacy-redirect";
 
-export default function DevSignalPage() {
-  return (
-    <AppShell
-      title="Hiring"
-      subtitle="Developer vetting — assess candidates, then promote the right ones into Code."
-    >
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <CodeClearTabs />
-        </div>
-        <DevSignalSubNav />
-        <DevSignalQueue />
-      </div>
-    </AppShell>
-  );
+/** Legacy path (CLAUDE.md §87): the page moved under /app/staff. Kept so old links, notifications and bookmarks still land, query string included. */
+export default async function LegacyDevSignalRedirect({ searchParams }: { searchParams: Promise<SearchParamsRecord> }) {
+  redirect(withSearch("/app/staff/hiring/devsignal", await searchParams));
 }

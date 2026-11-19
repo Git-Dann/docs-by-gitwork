@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 /**
  * Code became Staff (CLAUDE.md §87). /app/code was the sidebar's link, so it is in
  * bookmarks and notifications: it now lands on Staff → People. The developer overview it
- * used to show is Staff → Hiring → Overview, at /app/codeclear.
+ * used to show is Staff → Hiring → Overview, at /app/staff/hiring.
  */
 export default function CodePage() {
   redirect("/app/staff");

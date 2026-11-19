@@ -6,8 +6,8 @@ import { cn } from "@/lib/format";
 import { usePermissions } from "@/hooks/use-permissions";
 
 const baseItems = [
-  { href: "/app/codeclear/devsignal", label: "Assessments" },
-  { href: "/app/codeclear/devsignal/challenges", label: "Challenge bank" },
+  { href: "/app/staff/hiring/devsignal", label: "Assessments" },
+  { href: "/app/staff/hiring/devsignal/challenges", label: "Challenge bank" },
 ] as const;
 
 /** Sub-nav within DevSignal: assessments · challenge bank · (super-admin) model. */
@@ -17,15 +17,15 @@ export function DevSignalSubNav() {
   const items = canCalibrateDevSignal
     ? [
         ...baseItems,
-        { href: "/app/codeclear/devsignal/model", label: "Model" },
-        { href: "/app/codeclear/devsignal/notice", label: "Notice" },
+        { href: "/app/staff/hiring/devsignal/model", label: "Model" },
+        { href: "/app/staff/hiring/devsignal/notice", label: "Notice" },
       ]
     : [...baseItems];
   return (
     <div className="flex flex-wrap items-center gap-2">
       {items.map((item) => {
         const active =
-          item.href === "/app/codeclear/devsignal"
+          item.href === "/app/staff/hiring/devsignal"
             ? pathname === item.href
             : pathname.startsWith(item.href);
         return (
