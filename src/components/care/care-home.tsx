@@ -1,11 +1,14 @@
 "use client";
 
-import { ArrowPathIcon, ChatBubbleLeftRightIcon } from "@heroicons/react/24/outline";
+import { useState } from "react";
+import { ArrowPathIcon, ChatBubbleLeftRightIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import type { ClientQueueSummary, SupportClient } from "@/types/support";
 import { useSupportClients, useClientQueueSummaries, useSyncSupportClient } from "@/hooks/use-support";
 import { formatAge, isLongWait } from "./care-constants";
 import { CareEmpty, CarePanel, CareStat } from "./care-panel";
+import { AddClientModal } from "./care-add-client";
+import { usePermissions } from "@/hooks/use-permissions";
 
 /**
  * Care home — one row per client, worst-off first, answering one question: which client is being
@@ -118,6 +121,20 @@ function ClientRow({
 export function CareHome({ onSelectClient }: { onSelectClient: (client: SupportClient) => void }) {
   const clientsQ = useSupportClients();
   const summariesQ = useClientQueueSummaries();
+  const { canManageSupport } = usePermissions();
+  // Adding a client used to exist only on the legacy /app/support dashboard. It is here now, on
+  // the page that lists the clients, for whoever may manage Care (the route asserts the same).
+  const [showAddClient, setShowAddClient] = useState(false);
+  const addClientButton = canManageSupport ? (
+    <button
+      type="button"
+      onClick={() => setShowAddClient(true)}
+      className="flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--brand-700)] transition hover:bg-[var(--surface-brand)]"
+    >
+      <PlusIcon className="h-3 w-3" />
+      Add client
+    </button>
+  ) : null;
   const clients = clientsQ.data?.clients ?? [];
   const summaries = summariesQ.data?.summaries ?? {};
 
@@ -176,13 +193,24 @@ export function CareHome({ onSelectClient }: { onSelectClient: (client: SupportC
           </div>
         </CarePanel>
 
-        <CarePanel number="02" title="Clients" right={clients.length ? String(clients.length) : undefined} flush>
+        <CarePanel
+          number="02"
+          title="Clients"
+          right={
+            addClientButton ?? (clients.length ? String(clients.length) : undefined)
+          }
+          flush
+        >
           {loading && <p className="px-4 py-6 text-sm text-[var(--text-4)]">Loading clients…</p>}
 
           {!loading && clients.length === 0 && (
             <CareEmpty
               headline="No clients in Care yet."
-              body="Connect a client's support channels — a mailbox, Discord, app reviews — and their conversations land here."
+              body={
+                canManageSupport
+                  ? "Add a client, then connect their support channels — a mailbox, Discord, app reviews — and their conversations land here."
+                  : "Connect a client's support channels — a mailbox, Discord, app reviews — and their conversations land here."
+              }
             />
           )}
 
@@ -209,6 +237,7 @@ export function CareHome({ onSelectClient }: { onSelectClient: (client: SupportC
           </CarePanel>
         )}
       </div>
+      {showAddClient && <AddClientModal onClose={() => setShowAddClient(false)} />}
     </div>
   );
 }
