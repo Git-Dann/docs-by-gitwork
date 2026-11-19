@@ -33,11 +33,14 @@ export function countUpValue(from: number, to: number, elapsed: number, duration
 export function useCountUp(target: number | null, { duration = 900 }: { duration?: number } = {}): number {
   const [value, setValue] = useState(0);
   const from = useRef(0);
+  // What is on screen right now, so an interrupted count carries on from it.
+  const shown = useRef(0);
 
   useEffect(() => {
     if (target == null) return;
     if (prefersReducedMotion()) {
       from.current = target;
+      shown.current = target;
       setValue(target);
       return;
     }
@@ -46,6 +49,7 @@ export function useCountUp(target: number | null, { duration = 900 }: { duration
     let frame = 0;
     const tick = (now: number) => {
       const next = countUpValue(origin, target, now - start, duration);
+      shown.current = next;
       setValue(next);
       if (next !== target) frame = requestAnimationFrame(tick);
       else from.current = target;
@@ -53,8 +57,10 @@ export function useCountUp(target: number | null, { duration = 900 }: { duration
     frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
-      // Interrupted: carry on from wherever it got to.
-      from.current = target;
+      // Interrupted: carry on from wherever it got to. (It used to jump to `target` here, so
+      // React's development double-mount, and any change of target mid-count, skipped the
+      // whole animation.)
+      from.current = shown.current;
     };
   }, [target, duration]);
 

@@ -55,6 +55,7 @@ import type { WikiSection } from "./wiki-sidebar";
 import { WikiStandupsCard } from "./wiki-standups-card";
 import { WikiDashboardGrid } from "./wiki-dashboard-grid";
 import { STANDUPS_CARD, type DashboardLayout } from "@/lib/wiki-dashboard-layout";
+import { CountUpText } from "@/components/ui/motion/count-up-text";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -276,7 +277,7 @@ function Metric({ value, label }: { value: string; label: string }) {
         className="text-[38px] leading-none text-[var(--text-1)]"
         style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}
       >
-        {value}
+        <CountUpText value={value} />
       </div>
       <div
         className="mt-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
@@ -371,7 +372,7 @@ export function WikiDashboard({
               <div>
                 <div className="mb-1 flex items-baseline justify-between">
                   <span className="text-[38px] leading-none text-[var(--text-1)]" style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}>
-                    {pct}%
+                    <CountUpText value={`${pct}%`} />
                   </span>
                   <span className="text-[11px] text-[var(--text-4)]">
                     {wiki.timeline.blocks.length} phase
