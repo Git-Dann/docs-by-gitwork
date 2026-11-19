@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { isDataUrl } from "@/lib/avatar";
+import { focusPoint, isDataUrl, squareCrop } from "@/lib/avatar";
 
 /**
  * Avatars are drawn at 24–96px, but they are stored as uploaded — a phone photo is
@@ -27,16 +27,23 @@ const RESIZED_MAX = 300;
 export async function shrinkAvatar(
   mime: string,
   body: Buffer,
+  /** The person's chosen focus (User.avatarPosition). The square is cut around it, so a
+   *  portrait framed with the head near the top keeps the head: centring would cut it off. */
+  position?: string | null,
 ): Promise<{ mime: string; body: Buffer }> {
   if (!RESIZABLE.test(mime)) return { mime, body };
-  const key = createHash("sha1").update(body).digest("hex");
+  const focus = focusPoint(position);
+  const key = createHash("sha1").update(body).update(`@${focus.x},${focus.y}`).digest("hex");
   const hit = resized.get(key);
   if (hit) return { mime: "image/webp", body: hit };
   try {
     const sharp = (await import("sharp")).default;
-    const out = await sharp(body, { failOn: "none" })
-      .rotate() // honour the phone's EXIF orientation before it is stripped
-      .resize(AVATAR_PX, AVATAR_PX, { fit: "cover", withoutEnlargement: true })
+    // Honour the phone's EXIF orientation first, so the square is cut from the upright image.
+    const upright = await sharp(body, { failOn: "none" }).rotate().toBuffer({ resolveWithObject: true });
+    const crop = squareCrop(upright.info.width, upright.info.height, focus);
+    const out = await sharp(upright.data)
+      .extract({ left: crop.left, top: crop.top, width: crop.size, height: crop.size })
+      .resize(AVATAR_PX, AVATAR_PX, { withoutEnlargement: true })
       .webp({ quality: 82 })
       .toBuffer();
     // Never serve a "shrunk" copy that is bigger than the original.
@@ -73,14 +80,14 @@ function decodeDataUrl(dataUrl: string): { mime: string; body: Buffer } | null {
 export async function avatarResponse(userId: string, req?: Request): Promise<Response> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { avatarImage: true, avatarUrl: true },
+    select: { avatarImage: true, avatarUrl: true, avatarPosition: true },
   });
   if (!user) return new Response("Not found", { status: 404 });
 
   if (user.avatarImage && isDataUrl(user.avatarImage)) {
     const decoded = decodeDataUrl(user.avatarImage);
     if (decoded) {
-      const served = await shrinkAvatar(decoded.mime, decoded.body);
+      const served = await shrinkAvatar(decoded.mime, decoded.body, user.avatarPosition);
       const etag = `"${createHash("sha1").update(served.body).digest("hex").slice(0, 20)}"`;
       const headers = {
         "Content-Type": served.mime,

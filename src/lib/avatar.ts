@@ -59,6 +59,31 @@ export function avatarPosition(position?: string | null): string {
   return p || AVATAR_POSITION_DEFAULT;
 }
 
+/**
+ * A stored position as a focus point, 0–1 on each axis. Percentages ("50% 0%") and the CSS
+ * keywords (left/center/right, top/center/bottom) are read; anything else is the centre.
+ */
+export function focusPoint(position?: string | null): { x: number; y: number } {
+  const words = avatarPosition(position).toLowerCase().split(/\s+/).filter(Boolean);
+  const read = (w: string | undefined, axis: "x" | "y"): number => {
+    if (!w) return 0.5;
+    const pct = /^(-?\d+(?:\.\d+)?)%$/.exec(w);
+    if (pct) return Math.min(1, Math.max(0, Number(pct[1]) / 100));
+    if (w === (axis === "x" ? "left" : "top")) return 0;
+    if (w === (axis === "x" ? "right" : "bottom")) return 1;
+    return 0.5;
+  };
+  // A lone vertical keyword ("top") means centre-horizontally, top-vertically.
+  if (words.length === 1 && (words[0] === "top" || words[0] === "bottom")) return { x: 0.5, y: read(words[0], "y") };
+  return { x: read(words[0], "x"), y: read(words[1], "y") };
+}
+
+/** The largest square in a w×h image, placed on the focus point: what a round avatar shows. */
+export function squareCrop(width: number, height: number, focus: { x: number; y: number }): { left: number; top: number; size: number } {
+  const size = Math.min(width, height);
+  return { size, left: Math.round((width - size) * focus.x), top: Math.round((height - size) * focus.y) };
+}
+
 // ── Blob-safe storage (the invariant that keeps API payloads small) ──────────
 //
 // `User.avatarUrl` must NEVER hold a base64 `data:` URL — those blobs (up to
