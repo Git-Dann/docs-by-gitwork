@@ -44,7 +44,7 @@ deploy replaces a hand-edited managed line and removes an un-marked duplicate.
 
 | Route | Why |
 |---|---|
-| `retention` | It has never run, so its first pass would sweep the whole accumulated backlog at once. That is a data-deletion decision, not a scheduling fix. Review the retention policy first, then move it from `UNSCHEDULED_CRONS` to `deploy/crontab`. |
+| _(none)_ | Every cron route is scheduled. `retention` was held back until Nov 2026; it only tiers Docs view events older than 60 days to cold storage, 200 a run, and never deletes for good. |
 
 ## Auth
 

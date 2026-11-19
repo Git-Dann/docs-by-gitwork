@@ -15,10 +15,7 @@ const CRONTAB = join(ROOT, "deploy/crontab");
  * Routes that exist but are deliberately NOT scheduled, each with the reason. Adding a route
  * without scheduling it means adding it here, on purpose.
  */
-const UNSCHEDULED_CRONS: Record<string, string> = {
-  retention:
-    "Has never run, so its first pass deletes the whole accumulated backlog at once. That is a data-deletion decision for Dan, not a scheduling fix (docs/vps-crons.md).",
-};
+const UNSCHEDULED_CRONS: Record<string, string> = {};
 
 function cronRoutes(): string[] {
   return readdirSync(CRON_DIR)
