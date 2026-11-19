@@ -50,3 +50,47 @@ describe("avatars are shrunk on the way out", () => {
     expect(again.status).toBe(304);
   });
 });
+
+describe("the square is cut around the person's chosen focus", () => {
+  /** A noisy portrait (so it doesn't compress below the original) with a pure red band on top. */
+  async function portraitWithRedTop(): Promise<Buffer> {
+    const w = 1000, h = 1400;
+    const raw = Buffer.alloc(w * h * 3);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 3;
+        if (y < 150) { raw[i] = 255; raw[i + 1] = 0; raw[i + 2] = 0; }
+        else { const n = ((y * w + x) * 2654435761) >>> 24; raw[i] = n; raw[i + 1] = n; raw[i + 2] = n; }
+      }
+    }
+    return sharp(raw, { raw: { width: w, height: h, channels: 3 } }).png().toBuffer();
+  }
+  async function topLeftPixel(img: Buffer) {
+    const { data } = await sharp(img).extract({ left: 128, top: 2, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+    return [data[0]!, data[1]!, data[2]!];
+  }
+
+  it("⚠️ focus at the top keeps the top of a portrait (the head), where centring cut it off", async () => {
+    const img = await portraitWithRedTop();
+    const top = await shrinkAvatar("image/png", img, "50% 0%");
+    const [r, g, b] = await topLeftPixel(top.body);
+    expect(r).toBeGreaterThan(200);
+    expect(g).toBeLessThan(60);
+    expect(b).toBeLessThan(60);
+
+    const centred = await shrinkAvatar("image/png", img, null);
+    const [r2, g2] = await topLeftPixel(centred.body);
+    expect(r2 > 200 && g2 < 60).toBe(false);
+  });
+
+  it("reads percentages and keywords, and anything else as the centre", async () => {
+    const { focusPoint, squareCrop } = await import("@/lib/avatar");
+    expect(focusPoint("50% 0%")).toEqual({ x: 0.5, y: 0 });
+    expect(focusPoint("top")).toEqual({ x: 0.5, y: 0 });
+    expect(focusPoint("right bottom")).toEqual({ x: 1, y: 1 });
+    expect(focusPoint("nonsense")).toEqual({ x: 0.5, y: 0.5 });
+    expect(focusPoint("120% -5%")).toEqual({ x: 1, y: 0 });
+    expect(squareCrop(1086, 1448, { x: 0.5, y: 0 })).toEqual({ size: 1086, left: 0, top: 0 });
+    expect(squareCrop(1086, 1448, { x: 0.5, y: 0.5 })).toEqual({ size: 1086, left: 0, top: 181 });
+  });
+});
