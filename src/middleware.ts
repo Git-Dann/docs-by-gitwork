@@ -13,24 +13,18 @@ import { workspaceAllowsPath } from "@/lib/workspace-modules";
 const { auth } = NextAuth(authConfig);
 
 // Hostnames that the middleware short-circuits past for custom-domain routing. Anything not in
-// this list and not localhost gets the DB lookup. Keep in sync with vercel.json domains.
-const DEFAULT_HOSTS = new Set([
-  "foundry.gitwork.co.uk",
-  "foundry-by-gitwork.vercel.app",
-  "docs-by-gitwork.vercel.app",
-]);
+// this list and not localhost gets the DB lookup. (The *.vercel.app hosts went with Vercel, Nov 2026.)
+const DEFAULT_HOSTS = new Set(["foundry.gitwork.co.uk"]);
 
 function isDefaultHost(host: string): boolean {
   const bare = host.split(":")[0].toLowerCase();
   if (DEFAULT_HOSTS.has(bare)) return true;
   if (bare === "localhost" || bare === "127.0.0.1") return true;
-  // Vercel preview deploys: *-{hash}-{team}.vercel.app
-  if (bare.endsWith(".vercel.app")) return true;
   return false;
 }
 
-// Cache custom-hostname → workspace lookups for 60s. The middleware runs in the edge runtime
-// on Vercel, where the cache is per-instance and short-lived anyway — this is just to avoid
+// Cache custom-hostname → workspace lookups for 60s. The middleware runs in the edge runtime,
+// where the cache is per-instance and short-lived anyway — this is just to avoid
 // stampedes within a single instance.
 const hostnameCache = new Map<string, { match: boolean; expires: number }>();
 const HOSTNAME_CACHE_TTL_MS = 60_000;
