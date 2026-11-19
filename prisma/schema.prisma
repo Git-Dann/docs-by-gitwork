@@ -1579,6 +1579,8 @@ model ClientWiki {
   /// Board: also show the client the team's plain dev tasks (not product cards), as titles only
   /// and read-only. Off by default: a dev task's description holds internal notes.
   boardShowAllTasks   Boolean                @default(false)
+  /// The team's default dashboard arrangement for this client (Decision E, Nov 2026); null = the code's default.
+  dashboardLayout     Json?
   /// Board: when the team was last told the client added cards. One notification per wiki per
   /// 10 minutes, claimed with a conditional update so two cards at once can't both send.
   boardClientNotifiedAt DateTime?

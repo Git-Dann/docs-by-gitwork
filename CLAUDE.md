@@ -10816,3 +10816,19 @@ that could run against the stale Neon database. Now:
   watchdog now runs under an advisory lock (`src/server/cron-single-run.ts`). The one-line removal
   is in `docs/vps-crons.md`.
 - `vps-ops.yml`'s `cron-install-missing` task is gone (it appended un-marked lines).
+
+## 133. Recent Changes (November 2026) — A client's default dashboard (wiki Decision E)
+
+The wiki dashboard was arranged per person only (§66), so a client always opened on the code's
+order. The team can now save ONE arrangement per client as its starting layout.
+
+- **Edit → "Save as client's default"** (team, 'Manage clients' + access to the client) stores the
+  current arrangement on `ClientWiki.dashboardLayout` (additive Json) via
+  `PUT /api/clients/[slug]/wiki/dashboard-layout`. "Clear client default" removes it. There is no
+  client route.
+- **Precedence** (`effectiveLayout`): a person's own browser layout, then the client's default, then
+  the code's. "Reset to default" now goes back to the client's default. Saving drops the saver's own
+  copy, so later changes to the default reach them too.
+- ⚠️ **The client's copy names only cards it shows** (`scopeDefaultLayout` in `forPublic`, computed
+  from `visibleSections`), so a hidden or retired section can't leak its id through the layout. And
+  like any layout it only arranges cards the viewer has; it can never add one.
