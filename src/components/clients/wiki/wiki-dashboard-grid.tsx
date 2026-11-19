@@ -33,8 +33,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { ArrowUturnLeftIcon, EyeSlashIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { DragHandle } from "@/components/proposals/sortable-list";
 import {
-  EMPTY_LAYOUT,
   clearLayout,
+  effectiveLayout,
   hideCard,
   isDefaultLayout,
   loadLayout,
@@ -176,18 +176,27 @@ export function WikiDashboardGrid({
   wikiId,
   cards,
   roman,
+  clientDefault = null,
+  onSaveDefault,
 }: {
   wikiId: string;
   /** Available cards in their default order. */
   cards: DashboardCardDef[];
   roman: (n: number) => string;
+  /** The team's default arrangement for this client (Decision E); null = the code's default. */
+  clientDefault?: DashboardLayout | null;
+  /** Team only: save (or clear, with null) the current arrangement as the client's default. */
+  onSaveDefault?: (layout: DashboardLayout | null) => Promise<unknown>;
 }) {
   const { editing } = useDashboardEdit();
-  const [layout, setLayout] = useState<DashboardLayout>(EMPTY_LAYOUT);
+  // This person's own arrangement; null until they arrange it, which means "the client's default".
+  const [personal, setPersonal] = useState<DashboardLayout | null>(null);
+  const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const layout = effectiveLayout(personal, clientDefault);
 
   // Read the saved layout after mount: storage is per browser, so the server renders the
   // default and this swaps in the viewer's own arrangement.
-  useEffect(() => setLayout(loadLayout(wikiId)), [wikiId]);
+  useEffect(() => setPersonal(loadLayout(wikiId)), [wikiId]);
 
   // Tell the header button there is a dashboard to edit; leaving it ends edit mode.
   useEffect(() => {
@@ -201,8 +210,23 @@ export function WikiDashboardGrid({
   const spans = spanClasses(resolved.visible.map((c) => c.size));
 
   function update(next: DashboardLayout) {
-    setLayout(next);
+    setPersonal(next);
     saveLayout(wikiId, next);
+    setSaving("idle");
+  }
+
+  async function saveDefault(next: DashboardLayout | null) {
+    if (!onSaveDefault) return;
+    setSaving("saving");
+    try {
+      await onSaveDefault(next);
+      // Their own copy now matches the default, so drop it: later changes to the default reach them.
+      clearLayout(wikiId);
+      setPersonal(null);
+      setSaving("saved");
+    } catch {
+      setSaving("error");
+    }
   }
 
   const sensors = useSensors(
@@ -250,23 +274,51 @@ export function WikiDashboardGrid({
             <p className="text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
               Hidden {resolved.hidden.length > 0 ? `· ${resolved.hidden.length}` : ""}
             </p>
-            <button
-              type="button"
-              disabled={isDefaultLayout(layout, ids)}
-              onClick={() => {
-                clearLayout(wikiId);
-                setLayout(EMPTY_LAYOUT);
-              }}
-              className="inline-flex items-center gap-1.5 text-[12px] text-[var(--text-3)] hover:text-[var(--text-1)] disabled:opacity-40"
-            >
-              <ArrowUturnLeftIcon className="h-3.5 w-3.5" />
-              Reset to default
-            </button>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {onSaveDefault ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={saving === "saving"}
+                    onClick={() => void saveDefault(layout)}
+                    title="Everyone who hasn't arranged this dashboard themselves, the client included, starts from this layout."
+                    className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--brand-700)] hover:underline disabled:opacity-40"
+                  >
+                    {saving === "saving" ? "Saving…" : saving === "saved" ? "Saved as client's default" : "Save as client's default"}
+                  </button>
+                  {clientDefault ? (
+                    <button
+                      type="button"
+                      disabled={saving === "saving"}
+                      onClick={() => void saveDefault(null)}
+                      className="text-[12px] text-[var(--text-3)] hover:text-[var(--text-1)] disabled:opacity-40"
+                    >
+                      Clear client default
+                    </button>
+                  ) : null}
+                  {saving === "error" ? (
+                    <span className="text-[12px] text-[var(--danger-500)]">Couldn&rsquo;t save. Try again.</span>
+                  ) : null}
+                </>
+              ) : null}
+              <button
+                type="button"
+                disabled={personal === null || isDefaultLayout(layout, ids)}
+                onClick={() => {
+                  clearLayout(wikiId);
+                  setPersonal(null);
+                }}
+                className="inline-flex items-center gap-1.5 text-[12px] text-[var(--text-3)] hover:text-[var(--text-1)] disabled:opacity-40"
+              >
+                <ArrowUturnLeftIcon className="h-3.5 w-3.5" />
+                Reset to default
+              </button>
+            </div>
           </div>
           {resolved.hidden.length === 0 ? (
             <p className="mt-2 text-[13px] text-[var(--text-4)]">
               Nothing hidden. Drag cards by their handle, choose a width, or hide what you don&rsquo;t need.
-              This layout is saved in this browser, for you only.
+              Your own layout is saved in this browser, for you only.
             </p>
           ) : (
             <div className="mt-2 flex flex-wrap gap-2">
