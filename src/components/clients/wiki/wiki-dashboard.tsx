@@ -1084,11 +1084,11 @@ export function WikiDashboard({
 
       {/* Every card — Daily updates included — goes through the arrangeable grid. Each
           viewer can reorder, resize (1-3 columns, always one row tall) and hide cards for
-          themselves; see wiki-dashboard-grid.tsx. The numerals follow THEIR order, so the
-          i. ii. iii. run never reads out of sequence after a drag. */}
+          themselves; see wiki-dashboard-grid.tsx. The NN numbers follow THEIR order, so the
+          01, 02, 03 run never reads out of sequence after a drag. */}
       <WikiDashboardGrid
         wikiId={wiki.id}
-        roman={toRomanLower}
+        roman={cardNumber}
         cards={[
           { id: STANDUPS_CARD, label: "Daily updates", render: standupsCard },
           ...sections.map((section) => ({
