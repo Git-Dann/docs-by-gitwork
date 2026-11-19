@@ -10,6 +10,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { BriefcaseIcon, MapPinIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import type { PublicProfile } from "@/server/public-profile";
 import { ProfileShareActions } from "./profile-share-actions";
+import { ProfileBusinessCard } from "./profile-card";
 import { PlatformMark } from "@/lib/platform-icons";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -39,76 +40,98 @@ function Card({ title, step, children }: { title: string; step: number; children
 
 export function PublicProfileView({ profile }: { profile: PublicProfile }) {
   const p = profile;
+  // With a card, the card already shows the company and location.
   const meta = [
-    { icon: BriefcaseIcon, text: p.company },
-    p.location ? { icon: MapPinIcon, text: p.location } : null,
+    p.card ? null : { icon: BriefcaseIcon, text: p.company },
+    p.card || !p.location ? null : { icon: MapPinIcon, text: p.location },
     p.yearsExperience ? { icon: SparklesIcon, text: `${p.yearsExperience}+ years' experience` } : null,
   ].filter((m): m is { icon: typeof BriefcaseIcon; text: string } => Boolean(m));
   let step = 1;
+  const pageUrl = `${(process.env.NEXT_PUBLIC_APP_URL || "https://foundry.gitwork.co.uk").replace(/\/$/, "")}/u/${p.slug}`;
 
   return (
     <main className="min-h-screen bg-[var(--surface-canvas,var(--surface-1))] px-3 pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-14">
       <div className="mx-auto w-full max-w-[680px] space-y-4">
-        {/* Header card: brand band, photo, name, headline, the facts, the bio, the links. */}
+        {/* Header: their business card when they've designed one, otherwise a band, photo and name.
+            Either way the facts, the bio and the row of links follow. */}
         <section className="motion-rise overflow-hidden rounded-[16px] border border-[var(--border-1)] bg-[var(--surface-0)]">
-          <div
-            aria-hidden
-            className="h-28 sm:h-32"
-            style={{
-              background:
-                "radial-gradient(120% 140% at 0% 0%, var(--brand-500) 0%, transparent 55%), linear-gradient(135deg, var(--brand-700), #312E81)",
-            }}
-          />
-          <div className="px-5 pb-6 sm:px-8">
-            <div className="-mt-12 flex items-end justify-between gap-4">
-              {p.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={p.avatarUrl}
-                  alt=""
-                  width={104}
-                  height={104}
-                  className="h-[104px] w-[104px] rounded-full border-4 border-[var(--surface-0)] bg-[var(--surface-1)] object-cover"
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  className="flex h-[104px] w-[104px] items-center justify-center rounded-full border-4 border-[var(--surface-0)] bg-[var(--brand-50)] text-[32px] text-[var(--brand-700)]"
+          {p.card ? (
+            <div className="p-3 sm:p-4">
+              {/* Tilts to the pointer and turns over to a QR code of this page. */}
+              <ProfileBusinessCard card={p.card} person={{ name: p.name, headline: p.headline, company: p.company, location: p.location, avatarUrl: p.avatarUrl }} url={pageUrl} />
+              <p className="mt-2 text-center text-[11px] text-[var(--text-4)]">Tap the card for a QR code</p>
+            </div>
+          ) : (
+            <div
+              aria-hidden
+              className="h-16 sm:h-20"
+              style={{
+                background:
+                  "radial-gradient(120% 160% at 0% 0%, var(--brand-500) 0%, transparent 60%), linear-gradient(135deg, var(--brand-700), #312E81)",
+              }}
+            />
+          )}
+          <div className="px-5 pb-5 sm:px-7">
+            {p.card ? (
+              // The card shows the name; the page still needs its heading.
+              <h1 className="sr-only">{p.name}</h1>
+            ) : (
+              <>
+                {/* A rounded square with a ring outside it, not a circle with a border over it: a photo
+                    framed tight to the head keeps the head. */}
+                {p.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.avatarUrl}
+                    alt=""
+                    width={84}
+                    height={84}
+                    className="relative -mt-10 block h-[84px] w-[84px] rounded-[20px] bg-[var(--surface-1)] object-cover ring-4 ring-[var(--surface-0)]"
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="relative -mt-10 flex h-[84px] w-[84px] items-center justify-center rounded-[20px] bg-[var(--brand-50)] text-[28px] text-[var(--brand-700)] ring-4 ring-[var(--surface-0)]"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    {initials(p.name)}
+                  </span>
+                )}
+                <h1
+                  className="mt-3 break-words text-[28px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)] [overflow-wrap:anywhere] sm:text-[34px]"
                   style={{ fontFamily: "var(--font-display)" }}
                 >
-                  {initials(p.name)}
-                </span>
-              )}
-            </div>
-            <h1
-              className="mt-4 break-words text-[30px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)] [overflow-wrap:anywhere] sm:text-[38px]"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              {p.name}
-              {p.pronouns ? <span className="ml-2 align-middle font-sans text-[14px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-sans), system-ui, sans-serif" }}>({p.pronouns})</span> : null}
-            </h1>
-            {p.headline ? <p className="mt-1.5 text-[16px] leading-6 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.headline}</p> : null}
-            {meta.length ? (
-              <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+                  {p.name}
+                  {p.pronouns ? <span className="ml-2 align-middle font-sans text-[14px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-sans), system-ui, sans-serif" }}>({p.pronouns})</span> : null}
+                </h1>
+                {p.headline ? <p className="mt-1 text-[15px] leading-6 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.headline}</p> : null}
+              </>
+            )}
+            {meta.length || (p.card && p.pronouns) ? (
+              <ul className={`${p.card ? "mt-1" : "mt-2.5"} flex flex-wrap gap-x-4 gap-y-1`}>
                 {meta.map((m) => (
                   <li key={m.text} className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-3)]">
                     <m.icon aria-hidden className="h-4 w-4 text-[var(--text-4)]" />
                     {m.text}
                   </li>
                 ))}
+                {p.card && p.pronouns ? <li className="text-[13px] text-[var(--text-4)]">{p.pronouns}</li> : null}
               </ul>
             ) : null}
-            {p.bio ? <p className="mt-4 text-[15px] leading-7 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.bio}</p> : null}
-            {p.links.length ? (
-              <ul className="mt-5 flex flex-wrap gap-x-2 gap-y-3" aria-label="Links">
-                {p.links.map((l, i) => (
-                  <li key={`${l.label}-${i}`} className="motion-rise" style={rise(i + 1)}>
-                    <ProfileLinkTile label={l.label} url={l.url} />
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            <ProfileShareActions data={{ name: p.name, headline: p.headline, company: p.company, links: p.links }} />
+            {p.bio ? <p className="mt-3 text-[15px] leading-6 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.bio}</p> : null}
+            {/* One row: the links, then Share and Save pushed right, all the same tile. Five fit a phone. */}
+            <div className="mt-4 flex flex-wrap items-start gap-x-1.5 gap-y-3">
+              {p.links.length ? (
+                <ul className="contents" aria-label="Links">
+                  {p.links.map((l, i) => (
+                    <li key={`${l.label}-${i}`} className="motion-rise" style={rise(i + 1)}>
+                      <ProfileLinkTile label={l.label} url={l.url} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <ProfileShareActions data={{ name: p.name, headline: p.headline, company: p.company, links: p.links }} />
+            </div>
           </div>
         </section>
 
@@ -186,7 +209,7 @@ function ProfileLinkTile({ label, url }: { label: string; url: string }) {
       target="_blank"
       rel="noopener noreferrer me"
       title={label}
-      className="group flex w-[64px] flex-col items-center gap-1.5 rounded-[12px] transition hover:-translate-y-0.5 focus-visible:-translate-y-0.5"
+      className="group flex w-[56px] flex-col items-center gap-1.5 rounded-[12px] transition hover:-translate-y-0.5 focus-visible:-translate-y-0.5"
     >
       {isLinkedIn(url) ? (
         <span className="flex h-14 w-14 items-center justify-center rounded-[12px] border border-[var(--border-3)] bg-[var(--surface-1)] transition group-hover:border-[var(--brand-500)]">

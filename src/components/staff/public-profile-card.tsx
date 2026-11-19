@@ -7,6 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { ArrowTopRightOnSquareIcon, LinkIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ProfileCardDesigner } from "@/components/staff/profile-card-designer";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { useToast } from "@/components/ui/toast";
 import { useMyPublicProfile, useSaveMyPublicProfile } from "@/hooks/use-staff";
@@ -17,7 +18,7 @@ const label = "block text-[12px] font-medium text-[var(--text-2)]";
 /** 16px on a phone, so iOS doesn't zoom the page when a field takes focus. */
 const input = "app-input mt-1 w-full text-base sm:text-[14px]";
 
-type Draft = Omit<MyPublicProfile, "enabled" | "suggestedSlug" | "completeness">;
+type Draft = Omit<MyPublicProfile, "enabled" | "suggestedSlug" | "completeness" | "preview">;
 
 const toDraft = (p: MyPublicProfile): Draft => ({
   slug: p.slug || p.suggestedSlug,
@@ -29,6 +30,7 @@ const toDraft = (p: MyPublicProfile): Draft => ({
   portfolioUrl: p.portfolioUrl,
   achievements: p.achievements,
   links: p.links,
+  card: p.card,
 });
 
 export function PublicProfileCard({ number }: { number: string }) {
@@ -111,6 +113,15 @@ export function PublicProfileCard({ number }: { number: string }) {
             </button>
           </div>
           {draft.slug && slugError ? <p className="mt-1 text-[12px] text-[var(--danger-500)]">{slugError}</p> : null}
+        </div>
+
+        <div className="border-t border-[var(--border-1)] pt-4">
+          <ProfileCardDesigner
+            card={draft.card}
+            url={url}
+            person={{ name: p.preview.name, company: p.preview.company, avatarUrl: p.preview.avatarUrl, headline: draft.headline || null, location: draft.location || null }}
+            onChange={(card) => set("card", card)}
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

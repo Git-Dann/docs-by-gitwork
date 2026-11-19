@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
  * A grid with no column count on a phone gets one implicit `auto` track, sized to its widest
  * content. A card whose client list doesn't wrap then pushes the column past the edge of a
  * `.widget-card` (overflow: hidden), and the card is cut off. That is what Staff → People did
- * on a phone (Nov 2026). `grid-cols-1` is minmax(0, 1fr), which can't grow past its container.
+ * on a phone (Nov 2026). `grid-cols-1` is minmax(0, 1fr), which can't grow past its container; any unprefixed
+ * `grid-cols-N` is N such columns, so it holds too (the profile card's 2-up thumbnails).
  */
 const DIR = join(process.cwd(), "src/components/staff");
 
@@ -17,11 +18,11 @@ describe("Staff grids have one bounded column on a phone", () => {
     expect(files.length).toBeGreaterThan(5);
   });
 
-  it("gives every breakpoint grid an explicit grid-cols-1", () => {
+  it("gives every breakpoint grid an explicit phone column count", () => {
     const offenders: string[] = [];
     for (const f of files) {
       for (const m of readFileSync(join(DIR, f), "utf8").matchAll(/className="(grid [^"]*?\b(?:sm|md|lg):grid-cols-[^"]*)"/g)) {
-        if (!/\bgrid-cols-1\b/.test(m[1])) offenders.push(`${f}: ${m[1]}`);
+        if (!/(?:^|\s)grid-cols-\d+\b/.test(m[1])) offenders.push(`${f}: ${m[1]}`);
       }
     }
     expect(offenders).toEqual([]);

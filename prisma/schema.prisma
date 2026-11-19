@@ -2732,6 +2732,8 @@ model Candidate {
   profileAchievements Json?
   /// [{ label, url }], http(s) only, at most 8 (LinkedIn/portfolio/GitHub have their own fields).
   profileLinks        Json?
+  /// The business card at the top of the public page: { layout, font, colour, pattern } (src/lib/profile-card.ts). Null = the plain header.
+  profileCard Json?
   yearsExperience      Int?
   hourlyRate           Decimal?               @db.Decimal(10, 2)
   currency             String?                @db.VarChar(3)

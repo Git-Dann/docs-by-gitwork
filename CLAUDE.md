@@ -10955,6 +10955,16 @@ in block by block and works in light and dark.
 - Data: six additive columns on `Candidate` (`profilePublic`, `profileSlug` indexed and unique
   across workspaces in code, `profileHeadline`, `profileSummary`, `profileAchievements`,
   `profileLinks`). Rules in `src/lib/public-profile.ts`. Demo at `/demo/profile`.
+- **Business card** (like LinkedIn's): the person designs a card in Backstage → Me → Public
+  profile (layout · font · colour · pattern, each option drawn as a real thumbnail of their own
+  card). With one set, it replaces the page's band header: it tilts to the pointer with a sheen,
+  and a tap turns it over to a QR code of the page (`src/components/profile/profile-card.tsx`;
+  encoding by the `qrcode` package, only the drawing is ours). Stored as `Candidate.profileCard`
+  (additive JSON, null = plain header), read through `readCard` (`src/lib/profile-card.ts`), which
+  turns anything unknown into a default. Card colours are fixed hex on purpose (a card looks the
+  same in both themes) and a test holds every pair to 4.5:1. Fonts are only the three the app
+  already loads. Not built: stickers/doodles on the back, and Apple Wallet (needs a Pass Type ID
+  certificate from the Apple developer account).
 
 **Staff audit.** Hiring's "Overview" (tier mix, bench, calibre, costs, client coverage) described
 the developers you have, not hiring, so it is now **Developers → Insights** (`developers-views.tsx`,
