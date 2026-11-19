@@ -43,6 +43,9 @@ export default function robots(): MetadataRoute.Robots {
           // consent step and a takedown path, neither of which exists yet.
           "/scan/",
           "/countermark/",
+          // Public profiles (§139): shared by link. A person opting in to a page isn't opting in
+          // to search engines; the page also says noindex.
+          "/u/",
           "/sign/",
           "/onboarding/",
           "/timeline/",

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { StaffDetailsUpdate, StaffRoster } from "@/lib/staff";
 import type { DeveloperSelfDetails, OwnDeveloperDetails } from "@/lib/developer-self-details";
+import type { MyPublicProfile, MyPublicProfileInput } from "@/server/public-profile";
 
 const STAFF_KEY = ["staff", "roster"] as const;
 
@@ -70,5 +71,30 @@ export function useUpdateOwnDeveloperDetails() {
       void qc.invalidateQueries({ queryKey: STAFF_KEY });
       void qc.invalidateQueries({ queryKey: ["codeclear"] });
     },
+  });
+}
+
+const PUBLIC_PROFILE_KEY = ["staff", "me", "public-profile"] as const;
+
+/** Your own public profile settings (CLAUDE.md §139). */
+export function useMyPublicProfile() {
+  return useQuery({
+    queryKey: PUBLIC_PROFILE_KEY,
+    queryFn: () => apiFetch<MyPublicProfile>("/api/staff/me/public-profile"),
+  });
+}
+
+export function useSaveMyPublicProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MyPublicProfileInput) =>
+      apiFetch<MyPublicProfile>("/api/staff/me/public-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    // Only this key: a broad ["staff"] invalidation would re-fetch the logged personal-details
+    // read (§94), and nothing else shows these fields.
+    onSuccess: (saved) => qc.setQueryData(PUBLIC_PROFILE_KEY, saved),
   });
 }

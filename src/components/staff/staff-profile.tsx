@@ -33,6 +33,7 @@ import { DetailsDialog } from "@/components/staff/staff-roster";
 import { DocumentsCard } from "@/components/staff/staff-documents";
 import { DeveloperCard, DeveloperNotesCard } from "@/components/staff/developer-card";
 import { MyDeveloperCard } from "@/components/staff/my-developer-card";
+import { PublicProfileCard } from "@/components/staff/public-profile-card";
 import { DateWithAttention, Field, HeaderAction, formatDate, label, today } from "@/components/staff/profile-parts";
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -848,6 +849,8 @@ export function StaffProfileView({
   const developer = showDeveloper ? <DeveloperCard recordId={p.recordId} number={next()} /> : null;
   // In Me, a developer fills in what only they know (handle, stack, links).
   const myDeveloper = mode === "me" && p.isDeveloper ? <MyDeveloperCard number={next()} /> : null;
+  // Everyone gets a shareable public page, edited only by the person (§139).
+  const publicProfile = mode === "me" ? <PublicProfileCard number={next()} /> : null;
   const employment = p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={next()} /> : null;
   const timeOff = p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={next()} /> : null;
   const notes = showDeveloper ? <DeveloperNotesCard recordId={p.recordId} number={next()} /> : null;
@@ -899,6 +902,7 @@ export function StaffProfileView({
           {overview}
           {developer}
           {myDeveloper}
+          {publicProfile}
           {employment}
           {timeOff}
           {notes}

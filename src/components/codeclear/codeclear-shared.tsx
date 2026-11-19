@@ -82,8 +82,7 @@ const staffTabs: readonly CodeTab[] = [
 ];
 
 const hiringTabs: readonly CodeTab[] = [
-  // The developer overview (tiers, GitHub signal). Was the module's landing page.
-  { href: "/app/staff/hiring", label: "Overview" },
+  // Hiring opens on Pipeline. Its old Overview is Developers → Insights (Staff audit, Nov 2026).
   { href: "/app/staff/hiring/pipeline", label: "Pipeline" },
   { href: "/app/staff/hiring/devsignal", label: "DevSignal", devsignal: true },
 ];

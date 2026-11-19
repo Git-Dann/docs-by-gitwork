@@ -73,7 +73,8 @@ const DEV_SORTS: Array<{ value: DevSortMode; label: string; ratesOnly?: boolean 
   { value: "rate-asc", label: "Monthly: low → high", ratesOnly: true },
 ];
 
-export function CodeClearCandidatesWorkspace() {
+/** `hideTabs`: drawn inside the Developers views, which draw the Staff tabs themselves. */
+export function CodeClearCandidatesWorkspace({ hideTabs = false }: { hideTabs?: boolean } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const { canManageCode, canViewRates, isAdminOrAbove } = usePermissions();
@@ -195,7 +196,7 @@ export function CodeClearCandidatesWorkspace() {
 
   return (
     <div className="space-y-6">
-      <CodeClearTabs />
+      {hideTabs ? null : <CodeClearTabs />}
 
       <section className="app-card p-6">
         {/* One toolbar row: search grows, the four filters sit inline beside it,

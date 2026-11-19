@@ -10921,3 +10921,44 @@ Every wiki page puts its actions in the same place, by these rules (Dan, Nov 202
   Design System page), so an action can never silently disappear.
 - Checked by surveying every demo wiki page in headless Chrome for anything between the header and
   the first card: nothing, apart from the doc tabs.
+
+## 139. Recent Changes (November 2026) — Public profiles, and a Staff audit
+
+**Everyone on Foundry can have a public profile at `/u/<handle>`**, LinkedIn substance in a
+link-in-bio shape: brand band, photo, name, headline, company, location, bio, link buttons,
+About, an achievements timeline and skills, with a small "Profile on Foundry" footer. It animates
+in block by block and works in light and dark.
+
+- **Edited in Backstage → Me → Public profile** (`public-profile-card.tsx`): handle (with copy
+  link), headline, bio, about, location, LinkedIn, portfolio, more links, achievements. A
+  completeness meter names what's missing, to get people to fill it in. Developers' GitHub and
+  stack show automatically.
+- ⚠️ **Off until the PERSON publishes it.** Only they can switch it on
+  (`PATCH /api/staff/me/public-profile`, their own record). Someone managing Staff can take it
+  down (`DELETE /api/staff/[id]/public-profile`) and never put it up.
+- ⚠️ **The public read is an allow-list** (`SELECT` in `src/server/public-profile.ts`): rates,
+  email, clients, placements, notes and HR fields are never selected, and a test checks that. An
+  archived record or an archived login has no page; every miss is the same 404.
+- **Photos** come from `/api/u/<handle>/avatar` (public, in `PUBLIC_API_PATHS`), which serves one
+  person's photo only while their page is live. The normal avatar route needs a sign-in, the
+  client-wiki trap again.
+- **Not in search:** `noindex` on the page and `/u/` in `robots.ts`. Shared by link.
+- **Links are a row of logo tiles with captions**, never stacked full-width rows (Dan). Official
+  marks only: Simple Icons via `PlatformMark` (X, Instagram, Dribbble, Behance and Medium were
+  added to `platform-icons.tsx`), and LinkedIn's own file at `public/brand/linkedin.svg`, because
+  Simple Icons carries no LinkedIn mark (LinkedIn had it removed). Anything else is a globe.
+- **Built for phones:** Share profile opens the device's share sheet (copies the link where there
+  isn't one), Save contact downloads a vCard with only what the page shows (never email or
+  phone), tap targets are ≥48px, long names and URLs wrap, the bottom respects the home-bar inset,
+  and the browser bar takes the brand colour. Measured at 320, 375 and 390 (and `?long=1`, the
+  awkward-content demo) with 0 overflow.
+- Data: six additive columns on `Candidate` (`profilePublic`, `profileSlug` indexed and unique
+  across workspaces in code, `profileHeadline`, `profileSummary`, `profileAchievements`,
+  `profileLinks`). Rules in `src/lib/public-profile.ts`. Demo at `/demo/profile`.
+
+**Staff audit.** Hiring's "Overview" (tier mix, bench, calibre, costs, client coverage) described
+the developers you have, not hiring, so it is now **Developers → Insights** (`developers-views.tsx`,
+`?view=insights`). Hiring opens on **Pipeline**, which also carries the DevSignal banner;
+`/app/staff/hiring` redirects there. Everything else in Staff earns its place: DevSignal's
+sub-pages are its settings, Suppliers is HR-only, Archived lives under People, and the
+`/app/codeclear/*` redirects keep old links working.
