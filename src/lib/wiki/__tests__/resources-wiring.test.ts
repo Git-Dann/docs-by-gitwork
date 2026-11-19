@@ -26,7 +26,7 @@ const strip = (s: string) =>
 const LABEL_SITES = [
   "src/components/clients/wiki/wiki-workspace.tsx",
   "src/components/clients/wiki/wiki-sidebar.tsx",
-  "src/components/clients/wiki/wiki-public-view.tsx",
+  "src/lib/wiki-page-meta.ts", // page titles for both views, since Nov 2026
   "src/components/clients/wiki/wiki-dashboard.tsx",
   "src/components/clients/wiki/wiki-access-settings.tsx",
   // The section itself — its own header, toolbar and empty states.
