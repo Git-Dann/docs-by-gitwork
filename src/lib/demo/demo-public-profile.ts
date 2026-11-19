@@ -15,9 +15,11 @@ export const DEMO_PUBLIC_PROFILE: PublicProfile = {
   yearsExperience: 8,
   skills: ["TypeScript", "React", "Node.js", "Swift", "PostgreSQL", "Design systems"],
   achievements: [
-    { title: "Led the rebuild of a golf app's round tracking", year: 2026, detail: "Cut sync errors by 90% and shipped to iOS and Android in one release." },
-    { title: "Speaker, Manchester Web Meetup", year: 2025, detail: null },
-    { title: "Shipped a design system used across six products", year: 2024, detail: "Tokens, components and docs, adopted by every team in a quarter." },
+    { title: "Senior Product Engineer, Gitwork", year: 2024, current: true, kind: "role", detail: "Delivery lead for consumer apps on iOS, Android and web." },
+    { title: "Led the rebuild of a golf app's round tracking", year: 2026, kind: "award", detail: "Cut sync errors by 90% and shipped to iOS and Android in one release." },
+    { title: "BSc Computer Science, University of Manchester", year: 2014, endYear: 2017, kind: "education", detail: null },
+    { title: "Speaker, Manchester Web Meetup", year: 2025, kind: "award", detail: null },
+    { title: "Shipped a design system used across six products", year: 2024, kind: "award", detail: "Tokens, components and docs, adopted by every team in a quarter." },
   ],
   links: [
     { label: "LinkedIn", url: "https://www.linkedin.com/in/example" },
@@ -25,6 +27,21 @@ export const DEMO_PUBLIC_PROFILE: PublicProfile = {
     { label: "GitHub", url: "https://github.com/example" },
   ],
   bookingUrl: "https://cal.com/example/30min",
+  extras: {
+    highlights: [
+      { value: "8 yrs", label: "building products, prototype to production" },
+      { value: "2M+", label: "people using products I've shipped" },
+      { value: "6", label: "products on one design system" },
+    ],
+    featured: [
+      { title: "Round tracking rebuild", detail: "Rebuilt sync for a golf app's live scoring. 90% fewer sync errors.", url: "https://example.com/rounds" },
+      { title: "Shared design system", detail: "Tokens, components and docs adopted across six products in a quarter.", url: null },
+    ],
+    testimonials: [
+      { quote: "Priya turns vague briefs into calm, shippable plans. The team moves faster around her.", name: "Sam Patel", role: "CTO, example client" },
+    ],
+    clients: ["Northwind", "Fairway", "Cadenza"],
+  },
   card: { layout: "photo-top", font: "clean", colour: "navy", pattern: "topo" },
 };
 

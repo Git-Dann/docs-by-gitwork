@@ -22,8 +22,26 @@ const schema = z
     linkedinUrl: z.string().max(PROFILE_LIMITS.url).optional(),
     portfolioUrl: z.string().max(PROFILE_LIMITS.url).optional(),
     bookingUrl: z.string().max(PROFILE_LIMITS.url).optional(),
+    // Shape and length are settled by readExtras; this only bounds the request.
+    extras: z
+      .object({
+        highlights: z.array(z.object({ value: z.string().max(60), label: z.string().max(200) })).max(12).optional(),
+        featured: z.array(z.object({ title: z.string().max(200), detail: z.string().max(600).nullable().optional(), url: z.string().max(PROFILE_LIMITS.url).nullable().optional() })).max(12).optional(),
+        testimonials: z.array(z.object({ quote: z.string().max(800), name: z.string().max(120), role: z.string().max(200).nullable().optional() })).max(12).optional(),
+        clients: z.array(z.string().max(80)).max(48).optional(),
+      })
+      .optional(),
     achievements: z
-      .array(z.object({ title: z.string().max(300), year: z.number().int().nullable(), detail: z.string().max(600).nullable() }))
+      .array(
+        z.object({
+          title: z.string().max(300),
+          year: z.number().int().nullable(),
+          detail: z.string().max(600).nullable(),
+          kind: z.enum(["role", "education", "award"]).optional(),
+          endYear: z.number().int().nullable().optional(),
+          current: z.boolean().optional(),
+        }),
+      )
       .max(PROFILE_LIMITS.achievements)
       .optional(),
     card: z

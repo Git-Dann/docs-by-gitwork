@@ -12,12 +12,13 @@
  * address, and both are dynamic.
  */
 import type { CSSProperties, ReactNode } from "react";
-import { BriefcaseIcon, CalendarDaysIcon, MapPinIcon, PencilSquareIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { AcademicCapIcon, ArrowTopRightOnSquareIcon, BriefcaseIcon, TrophyIcon, CalendarDaysIcon, MapPinIcon, PencilSquareIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import type { PublicProfile } from "@/server/public-profile";
 import { ProfileSharePanel, ProfileShareTile, type ProfileShareData } from "./profile-share-actions";
 import { Pattern, ProfileBusinessCard } from "./profile-card";
 import { PlatformMark } from "@/lib/platform-icons";
 import { cardColour } from "@/lib/profile-card";
+import { achievementPeriod, type ProfileAchievement, type ProfileExtras } from "@/lib/public-profile";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const rise = (i: number): CSSProperties => ({ animationDelay: `${i * 70}ms` });
@@ -123,6 +124,142 @@ function Skills({ p, step }: { p: PublicProfile; step: number }) {
       </ul>
     </Card>
   ) : null;
+}
+
+const KIND_TITLE = { role: "Experience", education: "Education", award: "Achievements" } as const;
+
+/** Roles, education and achievements, each its own card, newest first as entered. */
+function Entries({ items, step }: { items: ProfileAchievement[]; step: number }) {
+  const groups = (["role", "education", "award"] as const)
+    .map((k) => ({ k, list: items.filter((a) => (a.kind ?? "role") === k) }))
+    .filter((g) => g.list.length);
+  return (
+    <>
+      {groups.map((g, gi) => (
+        <Card key={g.k} title={KIND_TITLE[g.k]} step={step + gi}>
+          <ol className="divide-y divide-[var(--border-1)]">
+            {g.list.map((a, i) => {
+              const { role, org } = g.k === "role" ? splitRole(a.title) : { role: a.title, org: null };
+              const period = achievementPeriod(a);
+              return (
+                <li key={`${a.title}-${i}`} className="flex gap-3.5 py-4 first:pt-0 last:pb-0 sm:gap-4">
+                  <span
+                    aria-hidden
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] text-[15px] text-[var(--text-2)] sm:h-12 sm:w-12 sm:text-[16px]"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    {g.k === "education" ? (
+                      <AcademicCapIcon className="h-5 w-5 text-[var(--text-3)]" />
+                    ) : g.k === "award" ? (
+                      <TrophyIcon className="h-5 w-5 text-[var(--text-3)]" />
+                    ) : (
+                      initials(org ?? role)
+                    )}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-semibold text-[var(--text-1)] [overflow-wrap:anywhere] sm:text-[16px]">{role}</p>
+                    {org ? <p className="text-[14px] text-[var(--text-2)]">{org}</p> : null}
+                    {period ? (
+                      <p className="mt-0.5 text-[12px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                        {period}
+                      </p>
+                    ) : null}
+                    {a.detail ? <p className="mt-1.5 max-w-[68ch] text-[14px] leading-6 text-[var(--text-3)]">{a.detail}</p> : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </Card>
+      ))}
+    </>
+  );
+}
+
+/** Headline numbers: a large figure over a short line, DESIGN.md's stat grammar. */
+function Highlights({ items, className = "" }: { items: ProfileExtras["highlights"]; className?: string }) {
+  if (!items.length) return null;
+  return (
+    <ul className={`grid grid-cols-2 gap-px overflow-hidden rounded-[12px] border border-[var(--border-1)] bg-[var(--border-1)] sm:grid-cols-3 ${className}`}>
+      {items.map((h) => (
+        <li key={`${h.value}-${h.label}`} className="bg-[var(--surface-0)] px-4 py-3.5">
+          <p className="text-[26px] leading-none text-[var(--text-1)] sm:text-[30px]" style={{ fontFamily: "var(--font-display)" }}>
+            {h.value}
+          </p>
+          <p className="mt-1.5 text-[12px] leading-4 text-[var(--text-3)]">{h.label}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Featured({ items, step }: { items: ProfileExtras["featured"]; step: number }) {
+  if (!items.length) return null;
+  return (
+    <Card title="Featured" step={step}>
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {items.map((f) => {
+          const body = (
+            <>
+              <span className="flex items-start justify-between gap-2">
+                <span className="text-[15px] font-semibold text-[var(--text-1)]">{f.title}</span>
+                {f.url ? <ArrowTopRightOnSquareIcon aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-4)] group-hover:text-[var(--brand-600)]" /> : null}
+              </span>
+              {f.detail ? <span className="mt-1 block text-[13px] leading-5 text-[var(--text-3)]">{f.detail}</span> : null}
+            </>
+          );
+          const box = "group block h-full rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4";
+          return (
+            <li key={f.title}>
+              {f.url ? (
+                <a href={f.url} target="_blank" rel="noopener noreferrer" className={`${box} transition hover:border-[var(--brand-500)]`}>
+                  {body}
+                </a>
+              ) : (
+                <div className={box}>{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
+function Recommendations({ items, step }: { items: ProfileExtras["testimonials"]; step: number }) {
+  if (!items.length) return null;
+  return (
+    <Card title="Recommendations" step={step}>
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {items.map((t) => (
+          <li key={`${t.name}-${t.quote.slice(0, 20)}`}>
+            <figure className="h-full rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
+              <blockquote className="text-[15px] leading-6 text-[var(--text-1)]">“{t.quote}”</blockquote>
+              <figcaption className="mt-3 text-[13px] text-[var(--text-2)]">
+                <span className="font-semibold">{t.name}</span>
+                {t.role ? <span className="block text-[12px] text-[var(--text-4)]">{t.role}</span> : null}
+              </figcaption>
+            </figure>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function WorkedWith({ clients, step }: { clients: string[]; step: number }) {
+  if (!clients.length) return null;
+  return (
+    <Card title="Worked with" step={step}>
+      <ul className="flex flex-wrap gap-2">
+        {clients.map((c) => (
+          <li key={c} className="rounded-[6px] border border-[var(--border-1)] bg-[var(--surface-0)] px-2.5 py-1 text-[13px] font-medium text-[var(--text-2)]">
+            {c}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
 }
 
 function Footer({ p, step }: { p: PublicProfile; step: number }) {
@@ -239,26 +376,13 @@ function PhoneProfile({ p, isOwner, pageUrl, share, person }: ViewProps) {
         </div>
       </section>
 
+      <Highlights items={p.extras.highlights} />
       <About p={p} step={step++} />
-      {p.achievements.length ? (
-        <Card title="Achievements" step={step++}>
-          <ol className="relative space-y-5 border-l border-[var(--border-1)] pl-5">
-            {p.achievements.map((a, i) => (
-              <li key={`${a.title}-${i}`} className="relative">
-                <span aria-hidden className="absolute -left-[25px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--surface-0)] bg-[var(--brand-600)]" />
-                {a.year ? (
-                  <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-                    {a.year}
-                  </p>
-                ) : null}
-                <p className="text-[15px] font-medium text-[var(--text-1)] [overflow-wrap:anywhere]">{a.title}</p>
-                {a.detail ? <p className="mt-0.5 text-[14px] leading-6 text-[var(--text-3)]">{a.detail}</p> : null}
-              </li>
-            ))}
-          </ol>
-        </Card>
-      ) : null}
+      <Featured items={p.extras.featured} step={step++} />
+      <Entries items={p.achievements} step={step} />
+      <Recommendations items={p.extras.testimonials} step={(step += 3)} />
       <Skills p={p} step={step++} />
+      <WorkedWith clients={p.extras.clients} step={step++} />
       <Footer p={p} step={step + 1} />
     </div>
   );
@@ -322,43 +446,15 @@ function DesktopProfile({ p, isOwner, pageUrl, share, person }: ViewProps) {
                 </a>
               ))}
             </div>
+            <Highlights items={p.extras.highlights} className="mt-6" />
           </div>
         </section>
 
         <About p={p} step={step++} />
 
-        {p.achievements.length ? (
-          <Card title="Experience" step={step++}>
-            <ol className="divide-y divide-[var(--border-1)]">
-              {p.achievements.map((a, i) => {
-                const { role, org } = splitRole(a.title);
-                return (
-                  <li key={`${a.title}-${i}`} className="flex gap-4 py-4 first:pt-0 last:pb-0">
-                    <span
-                      aria-hidden
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] text-[16px] text-[var(--text-2)]"
-                      style={{ fontFamily: "var(--font-display)" }}
-                    >
-                      {initials(org ?? role)}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[16px] font-semibold text-[var(--text-1)]">{role}</p>
-                      {org || a.year ? (
-                        <p className="text-[14px] text-[var(--text-2)]">
-                          {org}
-                          {org && a.year ? " · " : ""}
-                          {a.year ? <span className="text-[var(--text-3)]">{a.year}</span> : null}
-                        </p>
-                      ) : null}
-                      {a.detail ? <p className="mt-1.5 max-w-[68ch] text-[14px] leading-6 text-[var(--text-3)]">{a.detail}</p> : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </Card>
-        ) : null}
-
+        <Featured items={p.extras.featured} step={step++} />
+        <Entries items={p.achievements} step={step} />
+        <Recommendations items={p.extras.testimonials} step={(step += 3)} />
         <Skills p={p} step={step++} />
       </div>
 
@@ -391,7 +487,8 @@ function DesktopProfile({ p, isOwner, pageUrl, share, person }: ViewProps) {
             </ul>
           </Card>
         ) : null}
-        <Footer p={p} step={4} />
+        <WorkedWith clients={p.extras.clients} step={4} />
+        <Footer p={p} step={5} />
       </aside>
     </div>
   );

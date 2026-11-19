@@ -11,7 +11,7 @@ import { ProfileCardDesigner } from "@/components/staff/profile-card-designer";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { useToast } from "@/components/ui/toast";
 import { useMyPublicProfile, useSaveMyPublicProfile } from "@/hooks/use-staff";
-import { PROFILE_LIMITS, slugProblem, type ProfileAchievement, type ProfileLink } from "@/lib/public-profile";
+import { ACHIEVEMENT_KINDS, EXTRAS_LIMITS, PROFILE_LIMITS, slugProblem, type ProfileAchievement, type ProfileFeatured, type ProfileHighlight, type ProfileLink, type ProfileTestimonial } from "@/lib/public-profile";
 import type { MyPublicProfile } from "@/server/public-profile";
 
 const label = "block text-[12px] font-medium text-[var(--text-2)]";
@@ -32,6 +32,7 @@ const toDraft = (p: MyPublicProfile): Draft => ({
   links: p.links,
   card: p.card,
   bookingUrl: p.bookingUrl,
+  extras: p.extras,
 });
 
 export function PublicProfileCard({ number }: { number: string }) {
@@ -41,10 +42,15 @@ export function PublicProfileCard({ number }: { number: string }) {
   const p = query.data ?? null;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Kept as typed, so a trailing comma or space isn't swallowed mid-edit.
+  const [clientsText, setClientsText] = useState<string | null>(null);
 
   useEffect(() => {
     if (p && draft === null) setDraft(toDraft(p));
   }, [p, draft]);
+  useEffect(() => {
+    if (p && clientsText === null) setClientsText(p.extras.clients.join(", "));
+  }, [p, clientsText]);
 
   if (!p || !draft) return null;
   const url = typeof window === "undefined" ? `/u/${draft.slug}` : `${window.location.origin}/u/${draft.slug}`;
@@ -177,16 +183,101 @@ export function PublicProfileCard({ number }: { number: string }) {
           addLabel="Add achievement"
           max={PROFILE_LIMITS.achievements}
           items={draft.achievements}
-          blank={{ title: "", year: null, detail: null } as ProfileAchievement}
+          blank={{ title: "", year: null, detail: null, kind: "role" } as ProfileAchievement}
           onChange={(v) => set("achievements", v)}
           render={(a, update) => (
-            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-[96px_1fr]">
-              <input className="app-input w-full text-base sm:text-[14px]" inputMode="numeric" placeholder="Year" value={a.year ?? ""} onChange={(e) => update({ ...a, year: /^\d{4}$/.test(e.target.value) ? Number(e.target.value) : null })} />
-              <input className="app-input w-full text-base sm:text-[14px]" placeholder="What you did" value={a.title} maxLength={PROFILE_LIMITS.achievementTitle} onChange={(e) => update({ ...a, title: e.target.value })} />
-              <input className="app-input w-full text-base sm:col-span-2 sm:text-[14px]" placeholder="A line of detail (optional)" value={a.detail ?? ""} maxLength={PROFILE_LIMITS.achievementDetail} onChange={(e) => update({ ...a, detail: e.target.value || null })} />
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-[130px_96px_96px_1fr]">
+              <select aria-label="Kind" className="app-select w-full text-base sm:text-[14px]" value={a.kind ?? "role"} onChange={(e) => update({ ...a, kind: e.target.value as ProfileAchievement["kind"] })}>
+                {ACHIEVEMENT_KINDS.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
+              <input aria-label="From" className="app-input w-full text-base sm:text-[14px]" inputMode="numeric" placeholder="From" value={a.year ?? ""} onChange={(e) => update({ ...a, year: /^\d{4}$/.test(e.target.value) ? Number(e.target.value) : null })} />
+              <input
+                aria-label="To"
+                className="app-input w-full text-base disabled:opacity-50 sm:text-[14px]"
+                inputMode="numeric"
+                placeholder={a.current ? "Present" : "To"}
+                disabled={a.current}
+                value={a.endYear ?? ""}
+                onChange={(e) => update({ ...a, endYear: /^\d{4}$/.test(e.target.value) ? Number(e.target.value) : null })}
+              />
+              <input className="app-input w-full text-base sm:text-[14px]" placeholder="Role, Organisation (or what you did)" value={a.title} maxLength={PROFILE_LIMITS.achievementTitle} onChange={(e) => update({ ...a, title: e.target.value })} />
+              <input className="app-input w-full text-base sm:col-span-4 sm:text-[14px]" placeholder="A line of detail (optional)" value={a.detail ?? ""} maxLength={PROFILE_LIMITS.achievementDetail} onChange={(e) => update({ ...a, detail: e.target.value || null })} />
+              {(a.kind ?? "role") === "role" ? (
+                <label className="flex items-center gap-2 text-[12px] text-[var(--text-3)] sm:col-span-4">
+                  <input type="checkbox" className="h-4 w-4 accent-[var(--brand-600)]" checked={Boolean(a.current)} onChange={(e) => update({ ...a, current: e.target.checked, endYear: e.target.checked ? null : a.endYear })} />
+                  I work here now
+                </label>
+              ) : null}
             </div>
           )}
         />
+
+        <ListEditor
+          title="Headline numbers"
+          addLabel="Add a number"
+          max={EXTRAS_LIMITS.highlights}
+          items={draft.extras.highlights}
+          blank={{ value: "", label: "" } as ProfileHighlight}
+          onChange={(v) => set("extras", { ...draft.extras, highlights: v })}
+          render={(h, update) => (
+            <>
+              <input className="app-input w-full text-base sm:w-28 sm:text-[14px]" placeholder="15 yrs" value={h.value} maxLength={EXTRAS_LIMITS.highlightValue} onChange={(e) => update({ ...h, value: e.target.value })} />
+              <input className="app-input w-full min-w-0 flex-1 text-base sm:text-[14px]" placeholder="What it counts" value={h.label} maxLength={EXTRAS_LIMITS.highlightLabel} onChange={(e) => update({ ...h, label: e.target.value })} />
+            </>
+          )}
+        />
+
+        <ListEditor
+          title="Featured work"
+          addLabel="Add a project"
+          max={EXTRAS_LIMITS.featured}
+          items={draft.extras.featured}
+          blank={{ title: "", detail: null, url: null } as ProfileFeatured}
+          onChange={(v) => set("extras", { ...draft.extras, featured: v })}
+          render={(f, update) => (
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+              <input className="app-input w-full text-base sm:text-[14px]" placeholder="Project" value={f.title} maxLength={EXTRAS_LIMITS.featuredTitle} onChange={(e) => update({ ...f, title: e.target.value })} />
+              <input className="app-input w-full text-base sm:text-[14px]" placeholder="Link (optional)" value={f.url ?? ""} onChange={(e) => update({ ...f, url: e.target.value || null })} />
+              <input className="app-input w-full text-base sm:col-span-2 sm:text-[14px]" placeholder="What it was and what it did" value={f.detail ?? ""} maxLength={EXTRAS_LIMITS.featuredDetail} onChange={(e) => update({ ...f, detail: e.target.value || null })} />
+            </div>
+          )}
+        />
+
+        <ListEditor
+          title="Recommendations"
+          addLabel="Add a recommendation"
+          max={EXTRAS_LIMITS.testimonials}
+          items={draft.extras.testimonials}
+          blank={{ quote: "", name: "", role: null } as ProfileTestimonial}
+          onChange={(v) => set("extras", { ...draft.extras, testimonials: v })}
+          render={(t, update) => (
+            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+              <textarea className="app-input min-h-[64px] w-full py-2 text-base sm:col-span-2 sm:text-[14px]" placeholder="What they said" value={t.quote} maxLength={EXTRAS_LIMITS.quote} onChange={(e) => update({ ...t, quote: e.target.value })} />
+              <input className="app-input w-full text-base sm:text-[14px]" placeholder="Their name" value={t.name} maxLength={EXTRAS_LIMITS.quoteName} onChange={(e) => update({ ...t, name: e.target.value })} />
+              <input className="app-input w-full text-base sm:text-[14px]" placeholder="Their role (optional)" value={t.role ?? ""} maxLength={EXTRAS_LIMITS.quoteRole} onChange={(e) => update({ ...t, role: e.target.value || null })} />
+            </div>
+          )}
+        />
+
+        <div>
+          <label className={label} htmlFor="pp-clients">
+            Worked with
+          </label>
+          <input
+            id="pp-clients"
+            className={input}
+            placeholder="Clients and partners, separated by commas"
+            value={clientsText ?? ""}
+            onChange={(e) => {
+              setClientsText(e.target.value);
+              set("extras", { ...draft.extras, clients: e.target.value.split(",").map((c) => c.trim()).filter(Boolean) });
+            }}
+          />
+        </div>
 
         {error ? <p className="text-[13px] text-[var(--danger-500)]">{error}</p> : null}
 

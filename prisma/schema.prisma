@@ -2736,6 +2736,8 @@ model Candidate {
   profileCard Json?
   /// A booking link (Cal.com, Calendly, Google appointments) shown as "Book a call" on the public page.
   profileBookingUrl String?
+  /// The rest of a fuller profile: { highlights, featured, testimonials, clients } (readExtras, src/lib/public-profile.ts).
+  profileExtras Json?
   yearsExperience      Int?
   hourlyRate           Decimal?               @db.Decimal(10, 2)
   currency             String?                @db.VarChar(3)
