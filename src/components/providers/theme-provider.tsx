@@ -38,8 +38,10 @@ const EVENT = "gitwork:theme-changed";
 // `/demo` is deliberately NOT here (Nov 2026). It mirrors the app, and the app supports dark,
 // so the demo honours the same `gitwork.theme.v1` setting. Forcing it light meant dark mode had
 // never been looked at on any surface the demo is used to verify. `?theme=dark|light|system` on a
-// /demo page sets that mode (see DEMO_THEME_PARAM), so a headless check can choose one.
-const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|guidelines|onboarding|preview|embed|apply|vet|login|portal\/login)(?:\/|$)/;
+// /demo page sets that mode (see demoThemeParam), so a headless check can choose one. The one
+// exception is /demo/pulse-embed: it shows the scanner embedded in Gitwork's own (light) website,
+// and the real /embed is forced light too.
+const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|guidelines|onboarding|preview|embed|apply|vet|login|portal\/login|demo\/pulse-embed)(?:\/|$)/;
 
 /**
  * Routes that must ALWAYS render dark, regardless of the visitor's OS / stored
