@@ -132,6 +132,8 @@ export interface WikiBoardTableProps {
   canDelete: boolean;
   /** Done columns send their newest cards; how many weren't sent. */
   hiddenCount: number;
+  /** A Done column's older cards are still being read. */
+  loadingOlder?: boolean;
   groupBy: TableGroupBy | null;
   onGroupBy: (g: TableGroupBy) => void;
   sort: TableSort | null;
@@ -147,7 +149,7 @@ export interface WikiBoardTableProps {
 }
 
 export function WikiBoardTable(props: WikiBoardTableProps) {
-  const { cards, allCards, section, target, asClient, addLanes, canAdd, canDelete, hiddenCount, onOpen, refresh } = props;
+  const { cards, allCards, section, target, asClient, addLanes, canAdd, canDelete, hiddenCount, loadingOlder = false, onOpen, refresh } = props;
   const toast = useToast();
   const ctx: TableContext = useMemo(
     () => ({ lanes: section.lanes.map((l) => ({ key: l.key, label: l.label })), releases: section.releases.map((r) => ({ id: r.id, label: r.label })) }),
@@ -459,8 +461,10 @@ export function WikiBoardTable(props: WikiBoardTableProps) {
       )}
 
       {hiddenCount > 0 ? (
-        <p className="text-[12px] text-[var(--text-4)]">
-          {hiddenCount} older done card{hiddenCount === 1 ? " isn’t" : "s aren’t"} shown: a done column carries its newest {BOARD_LIMITS.doneLaneCards}.
+        <p className="text-[12px] text-[var(--text-4)]" data-board-table-older>
+          {loadingOlder
+            ? `Loading ${hiddenCount} older done card${hiddenCount === 1 ? "" : "s"}…`
+            : `${hiddenCount} older done card${hiddenCount === 1 ? " isn’t" : "s aren’t"} loaded yet.`}
         </p>
       ) : null}
 

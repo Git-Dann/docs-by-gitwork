@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { FeedbackKind } from "@/lib/wiki-board";
+import { DONE_PAGE_MAX, type DoneLaneKind, type DoneLanePage } from "@/lib/wiki-board-layout";
 import type { TaskPriority, TaskStatus } from "@/types/tasks";
 import type { WikiBoardCard, WikiBoardFeedback, WikiBoardKeyDate } from "@/types/wiki-board";
 
@@ -200,6 +201,37 @@ export async function restoreBoardImageApi(slug: string, taskId: string, imageId
 export async function readBoardCardApi(target: BoardTarget, taskId: string): Promise<WikiBoardCard> {
   const res = await apiFetch<{ card: WikiBoardCard }>(cardUrl(target, taskId));
   return res.card;
+}
+
+/** Where a Done column's older cards are read from (src/server/wiki-board.ts `loadBoardLanePage`). */
+function laneUrl(target: BoardTarget, laneKey: string, kind: DoneLaneKind, offset: number): string {
+  const base =
+    target.mode === "public"
+      ? `/api/wiki/${encodeURIComponent(target.token)}/board/lanes/${encodeURIComponent(laneKey)}`
+      : `/api/clients/${encodeURIComponent(target.slug)}/wiki/board/lanes/${encodeURIComponent(laneKey)}`;
+  return `${base}?kind=${kind}&offset=${offset}&limit=${DONE_PAGE_MAX}`;
+}
+
+/**
+ * Every card of one kind in a Done column, page by page (a page is up to `DONE_PAGE_MAX`). Starts
+ * from the top, so the cards the board already shows come back too: merging them is how a card
+ * that finished between the two reads can't be missed. Stops at `maxPages` as a safety net, and
+ * says so, rather than looping on a server that keeps answering.
+ */
+export async function fetchDoneLane(
+  target: BoardTarget,
+  laneKey: string,
+  kind: DoneLaneKind,
+  maxPages = 50,
+): Promise<{ cards: WikiBoardCard[]; complete: boolean }> {
+  const cards: WikiBoardCard[] = [];
+  let offset: number | null = 0;
+  for (let i = 0; offset !== null && i < maxPages; i += 1) {
+    const page: DoneLanePage = await apiFetch<DoneLanePage>(laneUrl(target, laneKey, kind, offset));
+    cards.push(...page.cards);
+    offset = page.nextOffset;
+  }
+  return { cards, complete: offset === null };
 }
 
 function keyDatesUrl(target: BoardTarget): string {

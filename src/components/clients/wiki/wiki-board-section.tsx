@@ -47,7 +47,7 @@ import { WikiBoardSchedule } from "@/components/clients/wiki/wiki-board-schedule
 import { useToast } from "@/components/ui/toast";
 import { CardProgressChip, ItemTypeChip, SignOffChip, TierChip } from "@/components/tasks/product-card-parts";
 import { ITEM_TYPE_LABELS } from "@/lib/tasks/product-cards";
-import { groupByRelease } from "@/lib/wiki-board-layout";
+import { groupByRelease, laneKindsToRead, laneLeftOut, mergeBoardCards } from "@/lib/wiki-board-layout";
 import { readBoardPrefs, writeBoardPrefs, type BoardView, type TableGroupBy, type TableSort } from "@/lib/wiki-board-table";
 import { WikiBoardTable } from "@/components/clients/wiki/wiki-board-table";
 import { WikiBoardCardDialog } from "@/components/clients/wiki/wiki-board-card-dialog";
@@ -59,8 +59,7 @@ import {
   restoreBoardCardApi,
   useBoardRefresh,
   useSetWikiBoardShowAllTasks,
-  type BoardTarget,
-} from "@/hooks/use-wiki-board";
+  type BoardTarget, fetchDoneLane } from "@/hooks/use-wiki-board";
 import type { WikiBoardCard, WikiBoardDeletedCard, WikiBoardLane, WikiBoardSection } from "@/types/wiki-board";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
@@ -121,9 +120,44 @@ export function WikiBoardSectionView({
   // differently on the server and in the browser, which fails hydration. A React id is the same
   // on both.
   const dndId = useId();
+  // A Done column arrives with its newest cards only (`BOARD_LIMITS.doneLaneCards`). Its older
+  // cards are read when someone asks: "Show older" on the column, or opening the Table or the
+  // Schedule, which need every card to count and to log what happened (§126.5).
+  const [older, setOlder] = useState<Record<string, WikiBoardCard[]>>({});
+  const [wanted, setWanted] = useState<string[]>([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [cards, setCards] = useState<WikiBoardCard[]>(() => flatten(section));
-  // A refetch or router.refresh brings the server's board back: it replaces the local copy.
-  useEffect(() => setCards(flatten(section)), [section]);
+  // A refetch or router.refresh brings the server's board back: it replaces the local copy, with
+  // the older cards already read kept beside it until they are read again.
+  useEffect(() => setCards(mergeBoardCards(flatten(section), Object.values(older).flat())), [section, older]);
+  const seeOther = audience === "team" || section.showAllTasks;
+  useEffect(() => {
+    const lanes = section.lanes.filter((l) => wanted.includes(l.key) && laneKindsToRead(l, seeOther).length > 0);
+    if (!lanes.length) return;
+    let stale = false;
+    setLoadingOlder(true);
+    void Promise.all(
+      lanes.map(async (l) => {
+        const reads = await Promise.all(laneKindsToRead(l, seeOther).map((kind) => fetchDoneLane(target, l.key, kind)));
+        return [l.key, reads.flatMap((r) => r.cards)] as const;
+      }),
+    )
+      .then((pairs) => {
+        if (!stale) setOlder((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+      })
+      .catch((err) => {
+        if (!stale) toast.error("Couldn't load the older done cards", err instanceof Error ? err.message : "Please try again.");
+      })
+      .finally(() => {
+        if (!stale) setLoadingOlder(false);
+      });
+    return () => {
+      stale = true;
+    };
+    // `target` is stable per page; `toast` is a stable context value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, wanted, seeOther]);
+  const wantOlder = (keys: string[]) => setWanted((prev) => [...new Set([...prev, ...keys])]);
 
   const hasCards = cards.some((c) => c.isCard);
   const hasOther = cards.some((c) => !c.isCard);
@@ -171,6 +205,13 @@ export function WikiBoardSectionView({
     setTableSortState(s);
     remember({ sort: s });
   };
+
+  // The Table and the Schedule count and log every card, so opening one reads every Done column's older cards.
+  useEffect(() => {
+    if (view === "table" || view === "schedule") wantOlder(section.lanes.filter((l) => l.stage === "DONE").map((l) => l.key));
+  }, [view, section.lanes]);
+  const countOther = !(mode === "cards" || (mode === "client" && !section.showAllTasks));
+  const leftOut = (lane: WikiBoardLane) => laneLeftOut(lane, countOther, Boolean(older[lane.key]));
 
   const visible = useMemo(() => {
     let list =
@@ -333,6 +374,7 @@ export function WikiBoardSectionView({
             cards={visible}
             releases={section.releases}
             keyDates={section.keyDates ?? []}
+            loadingOlder={loadingOlder}
             target={target}
             readOnly={readOnly}
             // A date is a card edit: the client's own cards on their link, any card the team may
@@ -356,10 +398,8 @@ export function WikiBoardSectionView({
             addLanes={addLanes}
             canAdd={canAdd && mode !== "client"}
             canDelete={mode !== "client" && (audience === "client" ? target.mode === "public" : target.mode === "internal")}
-            hiddenCount={section.lanes.reduce(
-              (n, l) => n + (mode === "cards" || (mode === "client" && !section.showAllTasks) ? l.hidden.cards : l.hidden.cards + l.hidden.other),
-              0,
-            )}
+            hiddenCount={section.lanes.reduce((n, l) => n + leftOut(l), 0)}
+            loadingOlder={loadingOlder}
             groupBy={groupBy}
             onGroupBy={setGroupBy}
             sort={tableSort}
@@ -385,7 +425,9 @@ export function WikiBoardSectionView({
                     visible.filter((c) => c.laneKey === lane.key),
                     section,
                   )}
-                  hidden={mode === "cards" || (mode === "client" && !section.showAllTasks) ? lane.hidden.cards : lane.hidden.cards + lane.hidden.other}
+                  hidden={leftOut(lane)}
+                  loadingOlder={loadingOlder && wanted.includes(lane.key)}
+                  onShowOlder={() => wantOlder([lane.key])}
                   canAdd={canAdd && lane.canAdd}
                   onAdd={() => setAdding(lane.key)}
                   onOpen={setOpenId}
@@ -415,22 +457,35 @@ export function WikiBoardSectionView({
             const lane = section.lanes.find((l) => l.key === phoneLane);
             if (!lane) return null;
             const groups = groupsFor(visible.filter((c) => c.laneKey === lane.key), section);
+            const more = (
+              <ShowOlder
+                count={leftOut(lane)}
+                loading={loadingOlder && wanted.includes(lane.key)}
+                onClick={() => wantOlder([lane.key])}
+              />
+            );
             return groups.length ? (
-              groups.map((g) => (
-                <div key={g.key} className="space-y-2">
-                  <GroupHeading group={g} />
-                  {g.cards.map((c) => (
-                    <CardFace
-                      key={c.id}
-                      card={c}
-                      onOpen={() => setOpenId(c.id)}
-                      readOnly={audience === "client" && !clientMayActOn(c)}
-                    />
-                  ))}
-                </div>
-              ))
+              <>
+                {groups.map((g) => (
+                  <div key={g.key} className="space-y-2">
+                    <GroupHeading group={g} />
+                    {g.cards.map((c) => (
+                      <CardFace
+                        key={c.id}
+                        card={c}
+                        onOpen={() => setOpenId(c.id)}
+                        readOnly={audience === "client" && !clientMayActOn(c)}
+                      />
+                    ))}
+                  </div>
+                ))}
+                {more}
+              </>
             ) : (
-              <p className="py-6 text-center text-[13px] text-[var(--text-4)]">{filtered ? "Nothing matches." : "No cards here."}</p>
+              <>
+                <p className="py-6 text-center text-[13px] text-[var(--text-4)]">{filtered ? "Nothing matches." : "No cards here."}</p>
+                {more}
+              </>
             );
           })()}
         </div>
@@ -740,10 +795,31 @@ function DeletedCards({
   );
 }
 
+/**
+ * A Done column's older cards, on request. The board carries a Done column's newest cards; this
+ * reads the rest of that column (§126.5). Nothing when nothing is left out.
+ */
+function ShowOlder({ count, loading, onClick }: { count: number; loading: boolean; onClick: () => void }) {
+  if (count <= 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className="app-button app-button-secondary app-button-sm w-full justify-center"
+      data-board-show-older
+    >
+      {loading ? "Loading older cards…" : `Show ${count} older`}
+    </button>
+  );
+}
+
 function Lane({
   lane,
   groups,
   hidden,
+  loadingOlder = false,
+  onShowOlder,
   canAdd,
   onAdd,
   onOpen,
@@ -752,7 +828,10 @@ function Lane({
 }: {
   lane: WikiBoardLane;
   groups: ViewGroup[];
+  /** Older cards this Done column leaves out for this view. */
   hidden: number;
+  loadingOlder?: boolean;
+  onShowOlder?: () => void;
   canAdd: boolean;
   /** The team previewing the client's view: dev tasks render read-only, as the client sees them. */
   asClient?: boolean;
@@ -808,11 +887,7 @@ function Lane({
           </div>
         ))}
         {count === 0 ? <p className="py-6 text-center text-[12px] text-[var(--text-4)]">No cards</p> : null}
-        {done && hidden > 0 ? (
-          <p className="text-center text-[11px] text-[var(--text-4)]" style={MONO}>
-            +{hidden} older
-          </p>
-        ) : null}
+        {done && onShowOlder ? <ShowOlder count={hidden} loading={loadingOlder} onClick={onShowOlder} /> : null}
       </div>
     </div>
   );

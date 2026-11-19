@@ -16,10 +16,11 @@
 import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
 import { boardLanes, laneKeyFor, parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
 import { cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
-import { layoutBoard } from "@/lib/wiki-board-layout";
+import { doneLanePage, layoutBoard } from "@/lib/wiki-board-layout";
 import {
   cardDescription,
   clientCanAddToStage,
+  clientMayActOn,
   deriveSignOff,
   feedbackRefusal,
   isClientCardType,
@@ -283,6 +284,23 @@ for (const [id, title, status] of [
   const sub = mkTask({ id, release: REL.v140, title, clientSlug: "northwind", status, unassigned: true, card: { itemType: "subitem", area: "Search & discovery" } });
   sub.parentId = "c1";
   demoBoardTasks.push(sub);
+}
+// A long-running board's Done column: more finished cards than the board carries
+// (`BOARD_LIMITS.doneLaneCards`), so "Show older", the Table and the Schedule read the rest (§126.5).
+for (let i = 1; i <= 58; i += 1) {
+  const area = ["Search & discovery", "Analytics", "Mobile", "Accounts"][i % 4];
+  demoBoardTasks.push(
+    mkTask({
+      id: `sh${i}`,
+      title: `Shipped improvement ${i}: ${area.toLowerCase()} tidy-up`,
+      clientSlug: "northwind",
+      status: "DONE",
+      unassigned: true,
+      completedAt: atDays(-(12 + i * 3)),
+      touchedDaysAgo: 12 + i * 3,
+      card: { itemType: i % 5 === 0 ? "bug" : "feature", area },
+    }),
+  );
 }
 // Which dev tasks deliver which card.
 for (const [devId, cardId] of [["t13", "c1"], ["t14", "c1"], ["t19", "c1"], ["t20", "c2"]] as const) {
@@ -4513,8 +4531,25 @@ function bodyOf(init?: { body?: unknown }): Record<string, unknown> {
 }
 
 /** undefined = not a board route. */
-function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unknown }): unknown {
+function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unknown }, search?: URLSearchParams): unknown {
   const method = (init?.method ?? "GET").toUpperCase();
+  // Older cards in a Done column, page by page, as the server reads them (§126.5).
+  const lanePage = /^\/api\/(wiki\/[^/]+\/board|clients\/[^/]+\/wiki\/board)\/lanes\/([^/]+)$/.exec(pathname);
+  if (lanePage && method === "GET") {
+    const tasks = demoTasksWithCards().filter((t) => t.client.slug === "northwind" && !t.parentId && !t.archivedAt);
+    const all = tasks.map((t) => demoBoardCard(t, demoBoardColumns));
+    const client = lanePage[1].startsWith("wiki/");
+    const seen = client ? all.filter((c) => clientMayActOn(c) || demoBoardShowAllTasks) : all;
+    const kind = search?.get("kind") === "other" ? "other" : "cards";
+    return doneLanePage({
+      cards: seen,
+      laneKey: decodeURIComponent(lanePage[2]),
+      kind,
+      completedAt: new Map(tasks.map((t) => [t.id, t.completedAt])),
+      offset: Number(search?.get("offset") ?? 0),
+      limit: Number(search?.get("limit") ?? 100),
+    });
+  }
   if (/^\/api\/clients\/[^/]+\/wiki\/board$/.test(pathname) && method === "PATCH") {
     const body = bodyOf(init);
     if (typeof body.enabled === "boolean") demoBoardEnabled = body.enabled;
@@ -5388,7 +5423,7 @@ export function resolveDemoApi(
   }
   // The client Board (src/server/wiki-board.ts): feedback, client moves and new cards, in memory.
   {
-    const board = resolveDemoBoard(pathname, init);
+    const board = resolveDemoBoard(pathname, init, search);
     if (board !== undefined) return board;
   }
   if (pathname.startsWith("/api/tasks/")) {

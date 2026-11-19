@@ -12,6 +12,50 @@ function recency(c: WikiBoardCard, completedAt: ReadonlyMap<string, string | nul
   return new Date(completedAt.get(c.id) ?? c.updatedAt).getTime();
 }
 
+/**
+ * A Done column's cards in the order it shows them: newest first, ties by id so two reads always
+ * agree on the order (a page boundary can't skip or repeat a card that finished at the same time).
+ */
+export function byRecency(cards: readonly WikiBoardCard[], completedAt: ReadonlyMap<string, string | null>): WikiBoardCard[] {
+  return [...cards].sort((a, b) => recency(b, completedAt) - recency(a, completedAt) || a.id.localeCompare(b.id));
+}
+
+/** Which half of a Done column a page reads: product cards, or the team's other tasks. */
+export type DoneLaneKind = "cards" | "other";
+
+/** The most cards one page of a Done column carries. */
+export const DONE_PAGE_MAX = 100;
+
+export interface DoneLanePage {
+  cards: WikiBoardCard[];
+  /** Everything of this kind in the column. */
+  total: number;
+  /** Where the next page starts, or null when this was the last. */
+  nextOffset: number | null;
+}
+
+/**
+ * One page of a Done column, newest first, from the same ordering the board caps by, so page one
+ * starts with the cards the board already shows. The board sends only the newest
+ * `BOARD_LIMITS.doneLaneCards`; this is how the rest is read when someone asks for it.
+ */
+export function doneLanePage(input: {
+  cards: readonly WikiBoardCard[];
+  laneKey: string;
+  kind: DoneLaneKind;
+  completedAt: ReadonlyMap<string, string | null>;
+  offset: number;
+  limit: number;
+}): DoneLanePage {
+  const offset = Math.max(0, Math.floor(input.offset));
+  const limit = Math.min(DONE_PAGE_MAX, Math.max(1, Math.floor(input.limit)));
+  const inLane = input.cards.filter((c) => c.laneKey === input.laneKey && (input.kind === "cards" ? c.isCard : !c.isCard));
+  const sorted = byRecency(inLane, input.completedAt);
+  const page = sorted.slice(offset, offset + limit);
+  const end = offset + page.length;
+  return { cards: page, total: sorted.length, nextOffset: end < sorted.length ? end : null };
+}
+
 /** Cards under each release heading, in the releases' order, then "No release" last. */
 export function groupByRelease(
   cards: WikiBoardCard[],
@@ -60,9 +104,7 @@ export function layoutBoard(input: {
     const own = inLane.filter((c) => c.isCard);
     const other = inLane.filter((c) => !c.isCard);
     const cap = (list: WikiBoardCard[]) =>
-      lane.stage === "DONE"
-        ? [...list].sort((a, b) => recency(b, completedAt) - recency(a, completedAt)).slice(0, BOARD_LIMITS.doneLaneCards)
-        : list;
+      lane.stage === "DONE" ? byRecency(list, completedAt).slice(0, BOARD_LIMITS.doneLaneCards) : list;
     const shownCards = cap(own);
     const shownOther = cap(other);
     return {
@@ -82,4 +124,35 @@ export function layoutBoard(input: {
   // Whether the client sees the team's dev tasks too is the wiki's setting, applied by the
   // loader; the layout itself is the same either way.
   return { enabled: true, showAllTasks: false, lanes, releases, areas, keyDates: [] };
+}
+
+/**
+ * The cards on screen: the board's own, plus the older Done cards read since. The board's copy of
+ * a card wins (it's the freshest read), and nothing appears twice.
+ */
+export function mergeBoardCards(shown: readonly WikiBoardCard[], older: readonly WikiBoardCard[]): WikiBoardCard[] {
+  const seen = new Set(shown.map((c) => c.id));
+  return [...shown, ...older.filter((c) => !seen.has(c.id) && seen.add(c.id))];
+}
+
+/**
+ * What a Done column still leaves out for this viewer: its product cards, plus the team's other
+ * tasks when this view counts them. Zero once the column's older cards have been read.
+ */
+export function laneLeftOut(lane: WikiBoardLane, countOther: boolean, loaded: boolean): number {
+  if (loaded || lane.stage !== "DONE") return 0;
+  return lane.hidden.cards + (countOther ? lane.hidden.other : 0);
+}
+
+/**
+ * Which kinds of a Done column to read for a viewer: product cards when any are left out, and the
+ * team's other tasks only when the viewer may see them (the team, or a client while the team
+ * shows them). Empty when the column sends everything already.
+ */
+export function laneKindsToRead(lane: WikiBoardLane, mayseeOther: boolean): DoneLaneKind[] {
+  if (lane.stage !== "DONE") return [];
+  const kinds: DoneLaneKind[] = [];
+  if (lane.hidden.cards > 0) kinds.push("cards");
+  if (mayseeOther && lane.hidden.other > 0) kinds.push("other");
+  return kinds;
 }
