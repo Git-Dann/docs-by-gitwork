@@ -3,7 +3,7 @@
  * the cron routes in step: a route nobody schedules never runs, and nothing else notices. That is
  * how Foreman, the Curator and the retention sweep went months without running (docs/vps-crons.md).
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -83,9 +83,8 @@ describe("deploy/crontab", () => {
     }
   });
 
-  it("vercel.json schedules nothing (Vercel is a rollback target, its crons would run against Neon)", () => {
-    const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as { crons?: unknown[] };
-    expect(vercel.crons ?? []).toEqual([]);
+  it("there is no vercel.json: Vercel was retired (Nov 2026), and its crons ran against Neon", () => {
+    expect(existsSync(join(ROOT, "vercel.json"))).toBe(false);
   });
 
   it("the deploy installs deploy/crontab", () => {

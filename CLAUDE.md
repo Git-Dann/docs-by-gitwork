@@ -56,6 +56,13 @@ It serves two audiences simultaneously:
 
 ## 2. Repo & Deployment
 
+> **Vercel retired (Nov 2026).** `vercel.json` is gone, the middleware no longer treats
+> `*.vercel.app` as a Foundry host, and there are no branch previews. Its builds had started running
+> out of memory, it was wired to the stale Neon database, and nothing served production from it.
+> The Vercel project is to be paused (dashboard → `foundry-by-gitwork` → Settings → Pause), then
+> deleted; Neon is to be backed up once and deleted. Read every Vercel/Neon mention below as
+> history. (`wedge-course-backend.vercel.app` is Big Wedge's own service, not ours: leave it.)
+>
 > **⚠️ INFRASTRUCTURE MIGRATED — July 2026.** Production **no longer runs on Vercel/Neon**. It now
 > runs on a **Fasthosts VPS** (`194.164.127.222`) via **Docker Compose** — the Next.js app container
 > + a self-hosted **PostgreSQL** container (with pgvector), behind a reverse proxy with a **Let's

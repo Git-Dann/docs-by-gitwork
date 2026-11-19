@@ -2,11 +2,13 @@
 // run from somewhere else before anyone is told: a site that only Foundry can't reach is a
 // network problem between us, not an outage (combineLocations in src/lib/monitor-request.ts).
 //
-// The other location is this same app deployed elsewhere (Vercel, a different network and
-// region), answering POST /api/monitor-probe. Configured by two env vars on the VPS:
-//   MONITOR_REMOTE_PROBE_URL  e.g. https://foundry-by-gitwork.vercel.app/api/monitor-probe
+// The other location is anything on a different network and region answering
+// POST /api/monitor-probe with this route's contract: this app deployed elsewhere, or a small
+// worker. Configured by two env vars on the VPS:
+//   MONITOR_REMOTE_PROBE_URL  e.g. https://probe.example.com/api/monitor-probe
 //   MONITOR_PROBE_SECRET      shared with the other deployment
-// Unset → no second opinion, and checks behave exactly as before.
+// Unset → no second opinion, and checks behave exactly as before. It is unset today: it was
+// meant to run on Vercel, which was retired in Nov 2026 (CLAUDE.md §23).
 
 import { timingSafeEqual } from "node:crypto";
 import type { WikiMonitor } from "@prisma/client";
@@ -35,7 +37,6 @@ export function probeSecretMatches(header: string | null): boolean {
 /** Where this deployment is, for the answer it gives. */
 export function probeLocation(): string {
   if (process.env.MONITOR_PROBE_LOCATION) return process.env.MONITOR_PROBE_LOCATION;
-  if (process.env.VERCEL_REGION) return `a second location (Vercel ${process.env.VERCEL_REGION})`;
   return "a second location";
 }
 

@@ -49,8 +49,8 @@ monitors work across the team, so an untagged chat is effectively invisible. Ful
 
 **`main` is production.** Anything that lands on `main` — merged *or* committed directly —
 auto-deploys to the Fasthosts VPS in about 6 minutes. There is **no staging environment and there
-are no branch preview URLs**. (Vercel still comments on PRs; ignore it, it's a vestigial
-integration that deploys nowhere real.)
+are no branch preview URLs** (Vercel built some until it was retired in Nov 2026). Check a branch
+locally: the dev server and the `/demo/**` pages.
 
 **Secrets go in GitHub, not on the box.** The deploy syncs a managed allow-list of Actions secrets
 into the VPS `.env` on every run, so adding or rotating one needs no SSH — set it in repo →
