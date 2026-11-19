@@ -24,6 +24,7 @@ export const DEMO_PUBLIC_PROFILE: PublicProfile = {
     { label: "Portfolio", url: "https://example.com" },
     { label: "GitHub", url: "https://github.com/example" },
   ],
+  bookingUrl: "https://cal.com/example/30min",
   card: { layout: "photo-top", font: "clean", colour: "navy", pattern: "topo" },
 };
 

@@ -10965,6 +10965,16 @@ in block by block and works in light and dark.
   same in both themes) and a test holds every pair to 4.5:1. Fonts are only the three the app
   already loads. Not built: stickers/doodles on the back, and Apple Wallet (needs a Pass Type ID
   certificate from the Apple developer account).
+- **Two layouts, one page.** Below `lg` the page is link-in-bio (card or band, bio, Book a call,
+  a row of link tiles ending in Share). From `lg` it is LinkedIn-shaped: a banner in the card's
+  colour and pattern, a 152px photo, name, headline, facts and action buttons, then About,
+  Experience (an achievement titled "Role, Organisation" is split into the two) and Skills, with
+  a sticky sidebar holding the card, the Share panel and every link written out.
+- **Every profile has a QR code**, card or not: the phone's Share sheet and the desktop Share
+  panel (`ProfileSharePanel`) carry the QR, Copy link, Share and Save contact.
+- **Book a call:** `Candidate.profileBookingUrl` (additive, http(s) only), set in the editor.
+- **Edit profile** shows only to the owner: the page compares the session's user id with the
+  profile's login (`publicAvatarUserId`), never anything in the request. `/demo/profile?owner=1`.
 
 **Staff audit.** Hiring's "Overview" (tier mix, bench, calibre, costs, client coverage) described
 the developers you have, not hiring, so it is now **Developers → Insights** (`developers-views.tsx`,

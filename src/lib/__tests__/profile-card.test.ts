@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -51,5 +53,40 @@ describe("drawing it", () => {
     const html = renderToStaticMarkup(React.createElement(PublicProfileView, { profile: { ...DEMO_PUBLIC_PROFILE, card: null } }));
     expect(html).not.toContain("Turn the card over");
     expect(html).toMatch(/<h1[^>]*>Priya Shah/);
+  });
+});
+
+describe("desktop, booking, QR for everyone, and the owner's Edit button", () => {
+  const render = (props: Record<string, unknown>) =>
+    renderToStaticMarkup(React.createElement(PublicProfileView, { profile: DEMO_PUBLIC_PROFILE, ...props } as never));
+
+  it("draws both layouts: link-in-bio for phones, LinkedIn-shaped from lg", () => {
+    const html = render({});
+    expect(html).toContain("lg:hidden");
+    expect(html).toContain("hidden px-6 py-10 lg:block");
+    expect(html).toContain(">Experience<");
+  });
+
+  it("every profile has a QR code, card or no card", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(PublicProfileView, { profile: { ...DEMO_PUBLIC_PROFILE, card: null } }),
+    );
+    expect(html).toContain("QR code for this profile");
+  });
+
+  it("Book a call appears only with a booking link", () => {
+    expect(render({})).toContain("Book a call");
+    const none = renderToStaticMarkup(React.createElement(PublicProfileView, { profile: { ...DEMO_PUBLIC_PROFILE, bookingUrl: null } }));
+    expect(none).not.toContain("Book a call");
+  });
+
+  it("Edit profile only for the owner", () => {
+    expect(render({})).not.toContain("Edit profile");
+    expect(render({ isOwner: true })).toContain("Edit profile");
+  });
+
+  it("the page decides ownership from the session, never from the request", () => {
+    const page = readFileSync(join(process.cwd(), "src/app/u/[slug]/page.tsx"), "utf8");
+    expect(page).toMatch(/session\?\.user\?\.id === ownerId/);
   });
 });

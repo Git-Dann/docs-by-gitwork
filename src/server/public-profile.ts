@@ -41,6 +41,8 @@ export interface PublicProfile {
   links: ProfileLink[];
   /** The business card they designed; null draws the plain header. */
   card: ProfileCard | null;
+  /** Their booking page, for "Book a call". */
+  bookingUrl: string | null;
 }
 
 export interface MyPublicProfile {
@@ -56,6 +58,7 @@ export interface MyPublicProfile {
   achievements: ProfileAchievement[];
   links: ProfileLink[];
   card: ProfileCard | null;
+  bookingUrl: string;
   /** What the card editor's preview draws: the same name, company and photo the page shows. */
   preview: { name: string; company: string; avatarUrl: string | null };
   completeness: { percent: number; missing: string[] };
@@ -84,6 +87,7 @@ const SELECT = {
   profileAchievements: true,
   profileLinks: true,
   profileCard: true,
+  profileBookingUrl: true,
   workspace: { select: { name: true } },
   member: { select: { archivedAt: true, userId: true, user: { select: { avatarUrl: true } } } },
 } as const satisfies Prisma.CandidateSelect;
@@ -143,6 +147,7 @@ export async function loadPublicProfile(slug: string): Promise<PublicProfile | n
     achievements: readAchievements(r.profileAchievements),
     links: linksOf(r),
     card: r.profileCard ? readCard(r.profileCard) : null,
+    bookingUrl: safeProfileUrl(r.profileBookingUrl),
   };
 }
 
@@ -169,6 +174,7 @@ function toMine(r: Row): MyPublicProfile {
     achievements,
     links,
     card: r.profileCard ? readCard(r.profileCard) : null,
+    bookingUrl: r.profileBookingUrl ?? "",
     preview: {
       name: (r.preferredName?.trim() || r.name).trim(),
       company: r.workspace.name,
@@ -211,6 +217,7 @@ export interface MyPublicProfileInput {
   links?: ProfileLink[];
   /** null switches the card off and goes back to the plain header. */
   card?: Partial<Record<keyof ProfileCard, string>> | null;
+  bookingUrl?: string;
 }
 
 const text = (v: string | undefined, max: number) => (v === undefined ? undefined : v.trim().slice(0, max) || null);
@@ -261,6 +268,8 @@ export async function saveMyPublicProfile(
     }
     data.profileLinks = readLinks(input.links) as unknown as Prisma.InputJsonValue;
   }
+  const booking = urlField(input.bookingUrl, "Booking link");
+  if (booking !== undefined) data.profileBookingUrl = booking;
   if (input.card !== undefined) {
     data.profileCard = input.card === null ? Prisma.DbNull : (readCard(input.card) as unknown as Prisma.InputJsonValue);
   }

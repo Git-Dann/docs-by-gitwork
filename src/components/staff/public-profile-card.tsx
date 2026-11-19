@@ -31,6 +31,7 @@ const toDraft = (p: MyPublicProfile): Draft => ({
   achievements: p.achievements,
   links: p.links,
   card: p.card,
+  bookingUrl: p.bookingUrl,
 });
 
 export function PublicProfileCard({ number }: { number: string }) {
@@ -144,6 +145,11 @@ export function PublicProfileCard({ number }: { number: string }) {
           <div>
             <label className={label} htmlFor="pp-linkedin">LinkedIn</label>
             <input id="pp-linkedin" className={input} placeholder="linkedin.com/in/…" value={draft.linkedinUrl} onChange={(e) => set("linkedinUrl", e.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={label} htmlFor="pp-booking">Booking link</label>
+            <input id="pp-booking" className={input} placeholder="Cal.com, Calendly or a Google booking page" value={draft.bookingUrl} onChange={(e) => set("bookingUrl", e.target.value)} />
+            <p className="mt-1 text-[12px] text-[var(--text-4)]">Shows a Book a call button on your page.</p>
           </div>
           <div className="sm:col-span-2">
             <label className={label} htmlFor="pp-portfolio">Portfolio or website</label>

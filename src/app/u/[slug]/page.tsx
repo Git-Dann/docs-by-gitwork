@@ -6,7 +6,8 @@
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { PublicProfileView } from "@/components/profile/public-profile-view";
-import { loadPublicProfile } from "@/server/public-profile";
+import { auth } from "@/auth";
+import { loadPublicProfile, publicAvatarUserId } from "@/server/public-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -33,5 +34,8 @@ export default async function PublicProfilePage({ params }: Props) {
   const { slug } = await params;
   const profile = await loadPublicProfile(slug);
   if (!profile) notFound();
-  return <PublicProfileView profile={profile} />;
+  // The owner, signed in, gets an Edit button. A failed session read just means no button.
+  const [session, ownerId] = await Promise.all([auth().catch(() => null), publicAvatarUserId(slug)]);
+  const isOwner = Boolean(ownerId && session?.user?.id === ownerId);
+  return <PublicProfileView profile={profile} isOwner={isOwner} />;
 }

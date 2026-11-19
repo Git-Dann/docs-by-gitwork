@@ -21,6 +21,7 @@ const schema = z
     location: z.string().max(200).optional(),
     linkedinUrl: z.string().max(PROFILE_LIMITS.url).optional(),
     portfolioUrl: z.string().max(PROFILE_LIMITS.url).optional(),
+    bookingUrl: z.string().max(PROFILE_LIMITS.url).optional(),
     achievements: z
       .array(z.object({ title: z.string().max(300), year: z.number().int().nullable(), detail: z.string().max(600).nullable() }))
       .max(PROFILE_LIMITS.achievements)

@@ -67,7 +67,7 @@ function wavePaths(): string[] {
 const TOPO = topoPaths();
 const WAVES = wavePaths();
 
-function Pattern({ id }: { id: ProfileCard["pattern"] }) {
+export function Pattern({ id }: { id: ProfileCard["pattern"] }) {
   if (id === "none") return null;
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 0.8 } as const;
   return (
