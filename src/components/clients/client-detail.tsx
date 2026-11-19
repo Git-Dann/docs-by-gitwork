@@ -848,15 +848,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         <StatCard number={num.statPlatforms} label="PLATFORMS" value={platforms.length} icon={Squares2X2Icon} style={rise()} />
         <StatCard number={num.statDesigns} label="DESIGNS" value={designs.length} icon={SwatchIcon} style={rise()} />
         {canViewPulse ? <StatCard number={num.statPulse} label="PULSE SCANS" value={pulseScans.length} icon={SignalIcon} style={rise()} /> : null}
-        <StatCard
-          number={num.statDevs}
-          label="DEVS"
-          value={activeDevCount}
-          icon={UserGroupIcon}
-          href={`/app/portal/${slug}/tasks`}
-          action={<span className="text-[11px] font-medium text-[var(--brand-700)]">Tasks →</span>}
-          style={rise()}
-        />
+        {/* No "Tasks →" here: the header's Tasks button already goes there. */}
+        <StatCard number={num.statDevs} label="DEVS" value={activeDevCount} icon={UserGroupIcon} style={rise()} />
       </div>
 
       {/* ── SLACK ACTIVITY + CONTACT ── Contact sets the row's height; Slack (lg:h-0 + min-h-full)
