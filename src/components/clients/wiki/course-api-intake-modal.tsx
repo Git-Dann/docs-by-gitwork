@@ -1,7 +1,8 @@
 "use client";
 
+import { Modal } from "@/components/ui/modal";
 import { useState } from "react";
-import { XMarkIcon, ClipboardIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { ClipboardIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { useCourseIngest, useSetCourseIngest } from "@/hooks/use-wiki";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
@@ -38,18 +39,7 @@ export function CourseApiIntakeModal({ slug, onClose }: Props) {
   const busy = setIngest.isPending;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="app-dialog-fixed flex w-full max-w-2xl flex-col rounded-[12px] bg-white shadow-xl">
-        <div className="widget-header shrink-0 rounded-t-[12px]">
-          <span className="widget-header__label">Course requests · API intake</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-          >
-            <XMarkIcon className="h-4 w-4" />
-          </button>
-        </div>
+    <Modal open onClose={onClose} title="Course requests · API intake" panelClassName="app-dialog-fixed flex w-full max-w-2xl flex-col">
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <p className="mb-5 text-[13px] leading-6 text-[var(--text-3)]">
@@ -195,7 +185,6 @@ export function CourseApiIntakeModal({ slug, onClose }: Props) {
             )}
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
