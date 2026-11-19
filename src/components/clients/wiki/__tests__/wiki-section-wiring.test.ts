@@ -103,12 +103,12 @@ describe.each(SECTIONS)("$label — the twelve parallel allow-lists", ({ id, lab
     expect(declBlock(dashboard, "const SECTION_META")).toContain(`${id}:`);
   });
 
-  it("is in wiki-workspace's SECTION_TITLES — the internal page heading", () => {
-    expect(declBlock(workspace, "const SECTION_TITLES")).toContain(`${id}: "${label}"`);
-  });
-
-  it("is in wiki-public-view's SECTION_TITLES — the client-facing page heading", () => {
-    expect(declBlock(publicView, "const SECTION_TITLES")).toContain(`${id}: "${label}"`);
+  it("has a page title and description in wiki-page-meta (both views' page header)", () => {
+    const meta = readFileSync(join(ROOT, "lib/wiki-page-meta.ts"), "utf8");
+    expect(declBlock(meta, "export const WIKI_PAGE_TITLES")).toContain(`${id}: "${label}"`);
+    expect(declBlock(meta, "export const WIKI_PAGE_DESCRIPTIONS")).toMatch(new RegExp(`\\b${id}: "`));
+    expect(declBlock(workspace, "const SECTION_TITLES")).toContain("WIKI_PAGE_TITLES");
+    expect(declBlock(publicView, "const SECTION_TITLES")).toContain("WIKI_PAGE_TITLES");
   });
 
   it("is in SHAREABLE_SECTIONS, else setWikiSectionShare throws 'not shareable'", () => {

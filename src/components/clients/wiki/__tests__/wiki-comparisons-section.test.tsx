@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 /**
  * The Comparisons section as rendered markup.
  *
@@ -165,11 +167,15 @@ describe("editing", () => {
     expect(doc.querySelector("[aria-label^='Table options']")).toBeNull();
   });
 
-  it("the team view offers Edit and New table", () => {
+  it("the team view offers Edit, and New table in the page header", () => {
     const doc = section([table(3)], "internal");
     const labels = [...doc.querySelectorAll("button")].map((b) => b.textContent);
     expect(labels).toContain("Edit");
-    expect(labels.some((l) => l?.includes("New table"))).toBe(true);
+    // New table is portalled into the shared page header (WikiPageActions), which a static
+    // render doesn't run, so it is checked in the source.
+    const src = readFileSync(join(process.cwd(), "src/components/clients/wiki/wiki-comparisons-section.tsx"), "utf8");
+    const actions = src.slice(src.indexOf("<WikiPageActions>"), src.indexOf("</WikiPageActions>"));
+    expect(actions).toContain("New table");
   });
 
   it("at 45 columns the add-column control says why it will not add a 46th", () => {

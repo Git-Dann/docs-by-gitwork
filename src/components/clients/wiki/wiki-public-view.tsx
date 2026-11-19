@@ -34,6 +34,8 @@ import { apiFetch } from "@/lib/api";
 import { clientVisibleSections } from "@/lib/wiki-client-visibility";
 import { isDocPageSection } from "@/lib/wiki-section-groups";
 import { WikiDocTabs } from "./wiki-doc-tabs";
+import { WikiPageHeader } from "./wiki-page-header";
+import { WIKI_PAGE_TITLES } from "@/lib/wiki-page-meta";
 
 type WikiPageType =
   | "IA_GUIDE"
@@ -54,37 +56,7 @@ const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
 };
 
 
-const SECTION_TITLES: Record<WikiSection, string> = {
-  dashboard: "Dashboard",
-  settings: "Settings",
-  timeline: "Timeline",
-  monitors: "Monitors",
-  documents: "Resources",
-  intake: "Requests",
-  launchpad: "Launchpad",
-  insights: "Charts",
-  costs: "Running costs",
-  estimates: "Estimates",
-  comparisons: "Comparisons",
-  board: "Board",
-  roundup: "RoundUp",
-  delivery: "Delivery",
-  support: "Support",
-  metrics: "Metrics",
-  meetings: "Meetings",
-  platforms: "Platforms",
-  "code-handover": "Code Handover",
-  "design-system": "Design System",
-  ia: "Information Architecture",
-  "dev-guide": "Developer Guide",
-  "api-docs": "API Docs",
-  architecture: "Architecture",
-  runbook: "Runbook",
-  "data-model": "Data Model",
-  changelog: "Changelog",
-  "course-requests": "Course Requests",
-  "golf-data": "Golf Data",
-};
+const SECTION_TITLES = WIKI_PAGE_TITLES;
 
 // JetBrains Mono stack — consistent with wiki-workspace.tsx
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -391,7 +363,16 @@ export function WikiPublicView({
 
   // Per-page share: render just the one section, no sidebar nav.
   if (onlySection) {
-    return <div className="flex-1 overflow-auto p-4 md:p-8">{renderContent()}</div>;
+    return (
+      <div className="flex-1 overflow-auto p-4 md:p-8">
+        {activeSection !== "dashboard" ? <WikiPageHeader section={activeSection} /> : null}
+        {/* Each page's content rises in once its header has (motion-rise only transforms while it
+            plays, so a dialog opened from the page isn't trapped afterwards, §108.3). */}
+        <div key={activeSection} className="motion-rise" style={{ animationDelay: "60ms" }}>
+          {renderContent()}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -416,7 +397,13 @@ export function WikiPublicView({
         />
       </div>
       <div className="min-w-0 flex-1 overflow-auto p-4 md:p-8">
-        {renderContent()}
+        {/* The same header as the team's wiki (WikiPageHeader); the dashboard has its own hero. */}
+        {activeSection !== "dashboard" ? <WikiPageHeader section={activeSection} /> : null}
+        {/* Each page's content rises in once its header has (motion-rise only transforms while it
+            plays, so a dialog opened from the page isn't trapped afterwards, §108.3). */}
+        <div key={activeSection} className="motion-rise" style={{ animationDelay: "60ms" }}>
+          {renderContent()}
+        </div>
       </div>
     </div>
   );
