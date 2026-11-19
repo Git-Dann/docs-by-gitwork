@@ -10883,6 +10883,22 @@ the page's main action on the right. The content rises in under it on every page
   and the ⋯ menu) and Comparisons (New table) use it. ⚠️ The slot is never re-keyed; only the text
   block re-animates, or a portal would point at a replaced node.
 
+## 137. Recent Changes (November 2026) — Wiki motion: cards stagger in, figures count up
+
+- **Cards rise in one after another** on every wiki page (`.wiki-motion .widget-card` in
+  `globals.css`, 70ms apart, capped at the sixth). The wrapper is the page-content div from §136.
+- **Hover is shadow and border only, never a transform.** ⚠️ A transformed card is the containing
+  block for a fixed popup opened from inside it, and you are always hovering the card you click
+  (§108.3). The rise transforms only while it plays.
+- **Dashboard figures count up** with `CountUpText` (`src/components/ui/motion/count-up-text.tsx`):
+  the number inside an already-formatted string ("85%", "£1,240") is animated and everything around
+  it kept; text with no number is shown as it is.
+- ⚠️ **`useCountUp` jumped straight to its target when interrupted**, so React's development
+  double-mount, and any figure that changed mid-count, skipped the animation entirely, Portal and HQ
+  included. It now carries on from the value on screen. Verified by sampling frames in headless
+  Chrome: `0% → 6% → 9% → 12% …`.
+- Reduced motion: the stagger delays are cleared too, not just the durations.
+
 ## 138. Recent Changes (November 2026) — The wiki page-actions standard
 
 Every wiki page puts its actions in the same place, by these rules (Dan, Nov 2026):
