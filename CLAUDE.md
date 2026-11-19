@@ -686,7 +686,7 @@ npm run deck:verify  # Deck's own regression gate (see §30)
 | Issue | File | Notes |
 |---|---|---|
 | **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. (The "Care never clears `unread`" bug listed here was fixed in July 2026 — see §33.) |
-| Cron scheduling has drifted | `vercel.json` · `docs/vps-crons.md` | `wedge-keepwarm` and `retention` are scheduled **nowhere**; `wiki-monitors` is only in `vercel.json`; the critical `jobs` worker is **missing** from `vercel.json`; three schedules disagree between the two; `foreman` is listed twice in the doc. And `vercel.json` crons are **not** necessarily inert — Vercel crons hit the deployment directly regardless of DNS, so some may be double-running. Reconcile against the live `crontab -l` before changing either. |
+| ~~Cron scheduling has drifted~~ | `deploy/crontab` | **Fixed Nov 2026 (§132):** the repo owns the VPS crontab and every deploy installs it; `vercel.json` has no crons. Only `retention` is unscheduled, deliberately. |
 | `pulse-scan.ts` is 4000+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
 | 26 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
 | Proof is built but hidden | `src/components/app-shell.tsx` | Nav item commented out. Now gated on `proposals`. `src/server/proof.ts` hands out absolute `/app/proof?…` share URLs, so any relocation needs a query-preserving stub. |
@@ -10828,3 +10828,26 @@ in dark, and every PR said "dark mode not verified".
   initials are white on light fills; Monitors' "Acknowledge" is white on `--danger-500` (2.77:1);
   Platform's "6 of 13" chip is light text on a light fill (1.17:1); Studio's type swatch is a
   cream slab. Each wants its own token fix.
+
+## 132. Recent Changes (November 2026) — The repo owns the VPS crontab
+
+Scheduled jobs had drifted for months: foreman, curator and wedge-keepwarm were documented and never
+installed, member-purge and crm-sync waited on a hand edit, and `vercel.json` still listed 14 crons
+that could run against the stale Neon database. Now:
+
+- **`deploy/crontab` is the schedule.** Every deploy (`deploy.yml`, "Install scheduled jobs on the
+  VPS") installs it into the `deploy` user's crontab between `# BEGIN/END foundry-managed` with
+  `deploy/install-crontab.sh`: it replaces the old block, removes un-marked duplicates of managed
+  jobs (printing each), keeps every other line (the weekly `db-backup.sh`), then reads it back and
+  fails the deploy if a managed line is missing or a job runs twice. Before/after go to the log.
+  ⚠️ Don't `crontab -e` a managed job on the box: the next deploy undoes it.
+- **`crontab.test.ts`** fails if a cron route is neither in `deploy/crontab` nor in
+  `UNSCHEDULED_CRONS` (with a reason), if the file names a missing route, or if `vercel.json`
+  regains `crons`. `install-crontab.test.ts` runs the script against fixture crontabs.
+- **No route was removed:** every one has a live caller or purpose. `retention` stays unscheduled
+  (its first run would sweep the whole backlog — Dan's call). `pulse-reconcile` moved daily →
+  every 15 min and `pulse-run-monitors` daily → hourly (both were daily only for Vercel Hobby).
+- **Root's crontab may still run `wedge-keepwarm`.** The deploy user can't touch it, so its
+  watchdog now runs under an advisory lock (`src/server/cron-single-run.ts`). The one-line removal
+  is in `docs/vps-crons.md`.
+- `vps-ops.yml`'s `cron-install-missing` task is gone (it appended un-marked lines).

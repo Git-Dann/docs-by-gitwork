@@ -10,8 +10,8 @@ export const maxDuration = 300; // each monitor runs a full scan; cap how many p
 // triggerMonitorScan re-scans, then evaluates alerts (score drop OR a new CONFIRMED
 // critical) and stamps lastRunAt.
 //
-// NOTE: Vercel Hobby only permits DAILY crons (see CLAUDE.md). On Pro, bump the
-// vercel.json schedule to hourly for tighter monitoring. We cap monitors per run so
+// Hourly (deploy/crontab). It was daily while production ran on Vercel Hobby, which with the
+// per-run cap meant at most 3 monitor scans a day across the platform. We cap monitors per run so
 // the function stays within maxDuration; heavier volumes want a real queue (future).
 const MONITORS_PER_RUN = 3;
 

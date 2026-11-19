@@ -233,7 +233,7 @@ describe("checking faster while something is failing", () => {
   });
 
   it("the cron runs every minute, so a failing monitor really is re-checked that often", () => {
-    const crons = readFileSync(join(process.cwd(), "docs/vps-crons.md"), "utf8");
+    const crons = readFileSync(join(process.cwd(), "deploy/crontab"), "utf8");
     expect(crons).toMatch(/^\* \* \* \* \* \/opt\/apps\/foundry\/run-cron\.sh wiki-monitors/m);
   });
 });

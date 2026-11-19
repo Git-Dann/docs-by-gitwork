@@ -5,6 +5,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { prisma } from "@/lib/prisma";
 import { pingCourseBackend } from "@/server/bigwedge-course-api";
 import { checkCourseFeedWatchdog } from "@/server/wedge-course-feed";
+import { runOnce } from "@/server/cron-single-run";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -12,9 +13,7 @@ export const maxDuration = 30;
 /**
  * Keep-warm ping for the Big Wedge course backend — a tiny authed DB read so its
  * CockroachDB free tier doesn't idle into a cold start (which otherwise makes the
- * console's first load spin for seconds). Run from the VPS host cron every ~5 min:
- *   (every 5 min) curl -s -H "Authorization: Bearer $CRON_SECRET" \
- *     https://foundry.gitwork.co.uk/api/cron/wedge-keepwarm
+ * console's first load spin for seconds). Scheduled every 5 minutes in deploy/crontab.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -29,7 +28,10 @@ export async function GET(request: NextRequest) {
 
     // Rides on this 5-minute cron to notice the HOURLY course-request feed not running at
     // all — the one failure that run cannot report itself. Never allowed to break the ping.
-    await checkCourseFeedWatchdog(workspace.id).catch((err) =>
+    // Under a lock: this route may be scheduled twice (the managed crontab plus an old root
+    // crontab line, see docs/vps-crons.md), and two watchdogs at once could both post the
+    // client's Slack alert before either records it.
+    await runOnce("wedge-keepwarm-watchdog", () => checkCourseFeedWatchdog(workspace.id)).catch((err) =>
       console.error("[wedge-keepwarm] course-feed watchdog failed", err),
     );
 

@@ -9,7 +9,7 @@ export const maxDuration = 60;
 /**
  * Daily auto-archive: soft-archive tasks that have been DONE for >30 days so the active board
  * stays lean (history is preserved — the Archived tab still reads them). CRON_SECRET-guarded
- * like the other crons. Hobby plan = daily only.
+ * like the other crons. Nightly, from deploy/crontab.
  */
 export async function GET(request: NextRequest) {
   try {
