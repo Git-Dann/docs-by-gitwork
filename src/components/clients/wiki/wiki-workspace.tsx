@@ -1668,8 +1668,12 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       const wikiPlatforms = wiki!.platforms;
       return (
         <>
-          {/* Page-level action bar — folded into a 3-dot menu */}
-          <div className="mb-4 flex h-9 items-center justify-end gap-2">
+          {/* The page's actions sit in the shared header (WikiPageHeader). */}
+          <WikiPageActions>
+            <button type="button" onClick={openAddForm} className="app-button app-button-primary app-button-sm inline-flex items-center gap-1.5">
+              <PlusIcon className="h-4 w-4" />
+              Add version
+            </button>
             <ActionMenu
               items={[
                 {
@@ -1681,15 +1685,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                     setShowPlatformModal(true);
                   },
                 },
-                {
-                  key: "add-version",
-                  label: "Add version",
-                  icon: PlusIcon,
-                  onClick: openAddForm,
-                },
               ]}
             />
-          </div>
+          </WikiPageActions>
 
           {/* Widget card */}
           <section className="widget-card">
@@ -1727,7 +1725,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       }
       return (
         <>
-          <div className="mb-4 flex h-9 items-center justify-end gap-2">
+          <WikiPageActions>
+            <button type="button" onClick={openAddCourse} className="app-button app-button-primary app-button-sm inline-flex items-center gap-1.5">
+              <PlusIcon className="h-4 w-4" />
+              Add request
+            </button>
             <ActionMenu
               items={[
                 {
@@ -1741,12 +1743,6 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                   label: "API intake",
                   icon: CodeBracketIcon,
                   onClick: () => setShowCourseApi(true),
-                },
-                {
-                  key: "add",
-                  label: "Add request",
-                  icon: PlusIcon,
-                  onClick: openAddCourse,
                 },
                 {
                   key: "sync",
@@ -1763,7 +1759,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 },
               ]}
             />
-          </div>
+          </WikiPageActions>
 
           {/* Sync error panel */}
           {syncMutation.isError && !syncResult && (

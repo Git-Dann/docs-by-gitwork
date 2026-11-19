@@ -27,6 +27,7 @@ import { DesignSystemViewer } from "./design-system-viewer";
 import { GuidelinesDeck } from "./guidelines-deck";
 import { ImportModal } from "./import-modal";
 import { LogoManagerModal } from "./logo-manager-modal";
+import { WikiPageActions } from "@/components/clients/wiki/wiki-page-header";
 
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 const chipBtn =
@@ -224,7 +225,7 @@ export function DesignSystemWorkspace({
 
   return (
     <div className="px-4 pt-6 md:px-8">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <WikiPageActions>
         {/* Back link — hidden when embedded inside the wiki */}
         {!embedded && (
           <Link
@@ -456,7 +457,7 @@ export function DesignSystemWorkspace({
             </Menu>
           </div>
         )}
-      </div>
+      </WikiPageActions>
 
       {isPending ? (
         <p className="py-20 text-center text-sm text-[var(--text-4)]">Loading…</p>

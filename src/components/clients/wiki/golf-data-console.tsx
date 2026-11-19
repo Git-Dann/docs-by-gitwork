@@ -29,6 +29,7 @@ import type { CourseBackendData, CourseIntegration, RunJobResult } from "@/serve
 import type { GolfClubDTO } from "@/server/golf-clubs";
 import type { UserDataSnapshot } from "@/server/bigwedge-user-data";
 import { LoadingState } from "@/components/ui/motion/loading-state";
+import { WikiPageActions } from "@/components/clients/wiki/wiki-page-header";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
@@ -276,8 +277,8 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
 
   return (
     <div className="space-y-3">
-      {/* Action bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Status, view and Refresh sit in the shared page header (WikiPageActions). */}
+      <WikiPageActions>
         <div className="flex items-center gap-2">
           {snapshot ? (
             <>
@@ -310,13 +311,13 @@ export function GolfDataConsoleView({ slug }: { slug: string; clientName?: strin
             type="button"
             onClick={refetch}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+            className="app-button app-button-secondary app-button-sm inline-flex items-center gap-1.5 disabled:opacity-50"
           >
             <ArrowPathIcon className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             Refresh
           </button>
         </div>
-      </div>
+      </WikiPageActions>
 
       {view === "overview" ? (
         <OverviewView state={overview} />

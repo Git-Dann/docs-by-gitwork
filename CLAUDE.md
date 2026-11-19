@@ -10898,3 +10898,23 @@ the page's main action on the right. The content rises in under it on every page
   included. It now carries on from the value on screen. Verified by sampling frames in headless
   Chrome: `0% → 6% → 9% → 12% …`.
 - Reduced motion: the stagger delays are cleared too, not just the durations.
+
+## 138. Recent Changes (November 2026) — The wiki page-actions standard
+
+Every wiki page puts its actions in the same place, by these rules (Dan, Nov 2026):
+
+1. **Page-level actions go in the header's right-hand slot** with `<WikiPageActions>`: one filled
+   primary button for the page's main job (Add version, Add request, New chart, New table), then
+   any secondary buttons, then a `⋯` menu for the rest. Never a separate bar under the header.
+2. **Controls that change the whole page go there too**: Metrics' Period/Show, Golf Data's status,
+   view and Refresh, Design System's Tokens/Guidelines and Download.
+3. **Actions that belong to one card stay in that card's header** (a table's Edit, the Board's own
+   toolbar, Monitors' Add monitor inside its card).
+4. The one exception is the doc pages' tabs, which switch page rather than act on one.
+
+- The header lets wide actions wrap onto their own line instead of squeezing the title (the title
+  keeps at least 320px; measured at 820 and 1440 on Metrics).
+- `WikiPageActions` falls back to an ordinary toolbar where there is no wiki header (the standalone
+  Design System page), so an action can never silently disappear.
+- Checked by surveying every demo wiki page in headless Chrome for anything between the header and
+  the first card: nothing, apart from the doc tabs.

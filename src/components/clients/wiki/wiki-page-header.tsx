@@ -24,9 +24,11 @@ export function WikiPageHeader({ section, actions }: { section: WikiSection; act
   return (
     <header
       data-wiki-page-header
-      className="mb-6 flex flex-col gap-3 border-b border-[var(--border-1)] pb-5 sm:flex-row sm:items-end sm:justify-between sm:gap-6"
+      className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-b border-[var(--border-1)] pb-5"
     >
-      <div key={section} className="motion-rise min-w-0">
+      {/* The title keeps at least 320px; wide actions wrap onto their own line rather than
+          squeezing the description into a column of single words. */}
+      <div key={section} className="motion-rise min-w-[min(100%,320px)] flex-1">
         {group ? (
           <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
             {group}
@@ -40,16 +42,22 @@ export function WikiPageHeader({ section, actions }: { section: WikiSection; act
         </h1>
         <p className="mt-1.5 max-w-2xl text-[14px] leading-6 text-[var(--text-3)]">{WIKI_PAGE_DESCRIPTIONS[section]}</p>
       </div>
-      <div id={SLOT_ID} className="flex shrink-0 flex-wrap items-center gap-2 empty:hidden">
+      <div id={SLOT_ID} className="flex max-w-full flex-wrap items-center justify-end gap-2 empty:hidden">
         {actions}
       </div>
     </header>
   );
 }
 
-/** Put a page's main action in the shared header's right-hand slot. */
+/**
+ * Put a page's actions in the shared header's right-hand slot. With no wiki header on the page
+ * (a section shown on its own, such as the standalone Design System page), they render where
+ * they are as an ordinary toolbar, so an action can never silently disappear.
+ */
 export function WikiPageActions({ children }: { children: ReactNode }) {
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [slot, setSlot] = useState<HTMLElement | null | undefined>(undefined);
   useEffect(() => setSlot(document.getElementById(SLOT_ID)), []);
-  return slot ? createPortal(children, slot) : null;
+  if (slot === undefined) return null;
+  if (slot === null) return <div className="mb-4 flex flex-wrap items-center justify-end gap-2">{children}</div>;
+  return createPortal(children, slot);
 }
