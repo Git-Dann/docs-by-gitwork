@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { createCodeVersion, deleteCodeModule, updateCodeModule } from "@/server/wiki-code";
 import { clientIdForSlug } from "@/server/clients-scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const moduleUpdateSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -25,6 +26,7 @@ const versionSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string; moduleId: string }> }) {
   try {
     const { slug, moduleId } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const updated = await updateCodeModule(clientId, moduleId, moduleUpdateSchema.parse(await req.json()));
@@ -38,6 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ slug: string; moduleId: string }> }) {
   try {
     const { slug, moduleId } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const ok = await deleteCodeModule(clientId, moduleId);
@@ -52,6 +55,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string; moduleId: string }> }) {
   try {
     const { slug, moduleId } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const version = await createCodeVersion(clientId, moduleId, versionSchema.parse(await req.json()));

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { apiOk, fromError } from "@/lib/api-response";
 import { deleteWikiIntakeItem, updateWikiIntakeItem } from "@/server/wiki";
 import { requireClientIdForSlug, requireRowOfClient } from "@/server/clients-scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const patchSchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).optional(),
@@ -19,6 +20,7 @@ const patchSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string; id: string }> }) {
   try {
     const { slug, id } = await params;
+    await assertClientWriter(req, slug);
     await requireRowOfClient("intakeItem", id, await requireClientIdForSlug(slug, req));
     return apiOk(await updateWikiIntakeItem(id, patchSchema.parse(await req.json())));
   } catch (err) {
@@ -29,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ slug: string; id: string }> }) {
   try {
     const { slug, id } = await params;
+    await assertClientWriter(req, slug);
     await requireRowOfClient("intakeItem", id, await requireClientIdForSlug(slug, req));
     await deleteWikiIntakeItem(id);
     return apiOk({ deleted: true });

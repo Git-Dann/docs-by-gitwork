@@ -7,6 +7,7 @@ import { emailRaiserOnTeamReply, notifyTeamMentionsOnRequest } from "@/server/wi
 import { notifyClientMentionsOnRequest } from "@/server/push/client-notifications";
 import { readReplyInput } from "@/server/wiki-reply-image-upload";
 import { isAtLeast } from "@/types/auth";
+import { assertClientWriter } from "@/server/client-write-access";
 
 /**
  * Post a reply. JSON `{ body, mentionIds }`, or multipart with a `file` screenshot —
@@ -17,6 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   try {
     const user = await requireAuthedUser(req);
     const { slug, id } = await params;
+    await assertClientWriter(req, slug);
     const input = await readReplyInput(req);
     if (!input.ok) return input.response;
     const { body, mentionIds, image } = input;

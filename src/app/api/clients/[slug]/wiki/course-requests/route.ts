@@ -4,6 +4,7 @@ import { addCourseRequest } from "@/server/wiki";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const bodySchema = z.object({
   courseName: z.string().min(1),
@@ -18,6 +19,7 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },

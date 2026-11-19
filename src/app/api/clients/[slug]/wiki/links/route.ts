@@ -2,6 +2,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { addWikiLink, listWikiLinks } from "@/server/wiki-links";
 import { wikiLinkInputSchema } from "@/server/validators";
+import { assertClientWriter } from "@/server/client-write-access";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   try {
     const user = await requireAuthedUser(req);
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const body = wikiLinkInputSchema.parse(await req.json());
     return apiOk(await addWikiLink(user, slug, body), { status: 201 });
   } catch (e) {

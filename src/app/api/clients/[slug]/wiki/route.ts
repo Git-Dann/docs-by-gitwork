@@ -6,6 +6,7 @@ import { internalCommentViewer } from "@/server/wiki-comment-viewer";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 export async function GET(
   req: NextRequest,
@@ -34,6 +35,7 @@ export async function PATCH(
 ) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
 
     const client = await prisma.workspaceClient.findUnique({

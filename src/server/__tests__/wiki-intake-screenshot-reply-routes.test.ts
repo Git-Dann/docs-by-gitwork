@@ -34,6 +34,8 @@ vi.mock("@/server/wiki-access", () => ({
   wikiAccessCookieName: () => "wiki_access_w1",
 }));
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => null) }));
+// Client access is its own concern (client-writes-check-access.test.ts); this file tests reply content.
+vi.mock("@/server/client-write-access", () => ({ assertClientWriter: vi.fn(async () => undefined) }));
 vi.mock("@/server/auth/effective-user", () => ({
   requireAuthedUser: vi.fn(async () => ({ id: "u-harry", name: "Harry Brown", email: "h@g", role: "ADMIN" })),
 }));

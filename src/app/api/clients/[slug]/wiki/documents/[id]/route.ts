@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { updateDocument, deleteDocument } from "@/server/wiki-documents";
 import { z } from "zod";
 import { clientIdForSlug } from "@/server/clients-scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
@@ -15,6 +16,7 @@ export async function PATCH(
 ) {
   try {
     const { slug, id } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = updateSchema.parse(await req.json());
@@ -32,6 +34,7 @@ export async function DELETE(
 ) {
   try {
     const { slug, id } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const ok = await deleteDocument(clientId, id);

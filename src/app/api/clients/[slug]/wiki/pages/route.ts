@@ -4,6 +4,7 @@ import { deleteWikiPage, upsertWikiPage } from "@/server/wiki";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const wikiPageTypeSchema = z.enum([
   "IA_GUIDE",
@@ -35,6 +36,7 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },
@@ -56,6 +58,7 @@ export async function DELETE(
 ) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },

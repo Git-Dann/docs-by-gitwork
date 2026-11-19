@@ -6040,7 +6040,7 @@ Each is a policy decision or a larger change, recorded rather than done silently
    first-admin bootstrap still become Super Admin. `provisioned-role.test.ts` fails if any
    path hardcodes a role again, and also pins that DEVELOPER's defaults carry none of the
    rates/all-clients grants that made the change worth making.
-2. **113 API routes resolve no user at all** and trust any valid session from middleware. After
+2. ✅ **Client writes fixed (Nov 2026, §135).** ~~113 API routes resolve no user at all~~ and trust any valid session from middleware. After
    this PR an archived member's session is cleared within 5 minutes — but those routes also let
    any *active* member of any role call them (a DEVELOPER can PATCH any client's wiki documents).
    That is a general authorisation gap, larger than archiving.
@@ -10816,3 +10816,21 @@ that could run against the stale Neon database. Now:
   watchdog now runs under an advisory lock (`src/server/cron-single-run.ts`). The one-line removal
   is in `docs/vps-crons.md`.
 - `vps-ops.yml`'s `cron-install-missing` task is gone (it appended un-marked lines).
+
+## 135. Recent Changes (November 2026) — Client write routes check the caller can work on that client
+
+§57.6 item 2 said ~113 routes trusted any signed-in session. Re-measured: almost every route has a
+guard, under a module's own helper name. The real hole was narrower and worse: **37 write handlers
+under `/api/clients/[slug]`** (wiki documents, code handover, course requests, requests and their
+comments, links, pages, users, share link, wiki settings, task import) found the client in the
+caller's workspace but never asked whether the caller could work on it. A developer assigned to one
+client could edit any other client's wiki.
+
+- **`assertClientWriter(req, slug)`** (`src/server/client-write-access.ts`) is now the first line of
+  each: Portal's own rule (`assertClientAccessBySlug`). Assigned developers keep their clients;
+  `seeAllClients` keeps everything; the trusted API key still passes. Guests are not blocked
+  outright, only held to what they were given.
+- **`client-writes-check-access.test.ts`** fails on any write handler under `/api/clients/[slug]`
+  that calls no client-access guard, so a new route can't skip it. Proved by removing one.
+- Not changed: READ handlers under `/api/clients/[slug]` (a separate, lower-risk pass), and the
+  public token routes, which have their own posture.

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { deleteCodeVersion, updateCodeVersion } from "@/server/wiki-code";
 import { clientIdForSlug } from "@/server/clients-scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const fileSchema = z.object({
   filename: z.string().trim().min(1).max(200),
@@ -20,6 +21,7 @@ const versionUpdateSchema = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string; versionId: string }> }) {
   try {
     const { slug, versionId } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const updated = await updateCodeVersion(clientId, versionId, versionUpdateSchema.parse(await req.json()));
@@ -33,6 +35,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ slug: string; versionId: string }> }) {
   try {
     const { slug, versionId } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const ok = await deleteCodeVersion(clientId, versionId);

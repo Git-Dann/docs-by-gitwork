@@ -3,6 +3,7 @@ import { requireAuthedUser } from "@/server/auth/effective-user";
 import { importTasks } from "@/server/tasks";
 import { taskImportSchema } from "@/server/validators";
 import { prisma } from "@/lib/prisma";
+import { assertClientWriter } from "@/server/client-write-access";
 
 export const dynamic = "force-dynamic";
 // Bulk insert — allow headroom for large CSVs.
@@ -20,6 +21,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   try {
     const user = await requireAuthedUser(req);
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await resolveClientId(user.workspaceId, slug);
     if (!clientId) return apiError("Client not found", 404);
     const body = taskImportSchema.parse(await req.json());

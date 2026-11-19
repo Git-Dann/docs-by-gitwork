@@ -8,6 +8,7 @@ import {
 } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const updateSchema = z.object({
   email: z.string().email().optional(),
@@ -32,6 +33,7 @@ export async function PATCH(
 ) {
   try {
     const { slug, userId } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await resolveClientId(req, slug);
     if (!clientId) return apiError("Client not found", 404);
     const body = updateSchema.parse(await req.json());
@@ -49,6 +51,7 @@ export async function DELETE(
 ) {
   try {
     const { slug, userId } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await resolveClientId(req, slug);
     if (!clientId) return apiError("Client not found", 404);
     const ok = await deleteWikiUser(clientId, userId);

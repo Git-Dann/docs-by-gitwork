@@ -8,6 +8,7 @@ import {
 } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const createSchema = z.object({
   email: z.string().email(),
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await resolveClientId(req, slug);
     if (!clientId) return apiError("Client not found", 404);
     const body = createSchema.parse(await req.json());

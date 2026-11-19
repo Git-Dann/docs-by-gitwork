@@ -1,6 +1,7 @@
 import { apiOk, fromError } from "@/lib/api-response";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { removeWikiLink } from "@/server/wiki-links";
+import { assertClientWriter } from "@/server/client-write-access";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export async function DELETE(
   try {
     const user = await requireAuthedUser(req);
     const { slug, id } = await params;
+    await assertClientWriter(req, slug);
     await removeWikiLink(user, slug, id);
     return apiOk({ ok: true });
   } catch (e) {

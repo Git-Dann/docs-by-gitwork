@@ -6,6 +6,7 @@ import { MAX_BODY, headersField } from "@/lib/monitor-request";
 import { clientIdForSlug } from "@/server/clients-scope";
 import { assertMonitorWriter } from "@/server/wiki-monitor-access";
 import { MONITOR_ENVIRONMENT_VALUES } from "@/lib/monitor-environment";
+import { assertClientWriter } from "@/server/client-write-access";
 
 export const maxDuration = 60;
 
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { enabled } = toggleSchema.parse(await req.json());

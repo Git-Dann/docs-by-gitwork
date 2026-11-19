@@ -6,6 +6,7 @@ import { addWikiIntakeItem, setWikiIntakeEnabled } from "@/server/wiki";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { resolveRequestedBy } from "@/server/wiki-intake-attribution";
 import { clientIdForSlug } from "@/server/clients-scope";
+import { assertClientWriter } from "@/server/client-write-access";
 
 const bodySchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).default("FEEDBACK"),
@@ -26,6 +27,7 @@ const toggleSchema = z.object({ enabled: z.boolean() });
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = bodySchema.parse(await req.json());
@@ -52,6 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { enabled } = toggleSchema.parse(await req.json());
