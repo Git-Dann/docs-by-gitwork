@@ -82,6 +82,26 @@ export async function listActiveClientDevices(wikiId: string): Promise<ClientDev
   return rows as ClientDeviceTokenRecord[];
 }
 
+/**
+ * One client PERSON's devices in one wiki.
+ *
+ * ⚠️ Scoped to the person, not the wiki. `listActiveClientDevices` returns every phone
+ * on the client — right for a standup, which is addressed to the client as a whole,
+ * and wrong for a mention, which is addressed to one named person. Fanning a mention
+ * out would ring a colleague to tell them someone else was mentioned, and would leak
+ * who is talking to whom inside the client's own team.
+ */
+export async function listActiveClientDevicesForUser(
+  wikiId: string,
+  clientWikiUserId: string,
+): Promise<ClientDeviceTokenRecord[]> {
+  const rows = await prisma.clientDeviceToken.findMany({
+    where: { wikiId, clientWikiUserId, failedAt: null },
+    orderBy: { lastUsedAt: "desc" },
+  });
+  return rows as ClientDeviceTokenRecord[];
+}
+
 export async function markClientDeviceFailed(token: string): Promise<void> {
   await prisma.clientDeviceToken.updateMany({ where: { token }, data: { failedAt: new Date() } });
 }

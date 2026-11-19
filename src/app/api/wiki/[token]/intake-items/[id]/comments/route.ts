@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { resolveRequestedBy } from "@/server/wiki-intake-attribution";
 import { notifyIntakeMentions, resolveMentions } from "@/server/wiki-intake-mentions";
 import { emailRaiserOnTeamReply, notifyTeamMentionsOnRequest } from "@/server/wiki-intake-reply-notify";
+import { notifyClientMentionsOnRequest } from "@/server/push/client-notifications";
 import { readReplyInput } from "@/server/wiki-reply-image-upload";
 
 /**
@@ -62,6 +63,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
             itemId: id,
             authorUserId: staffUserId,
             authorName,
+            body: comment.body,
+            mentions,
+          }),
+          // A client @mentioning a colleague must not ring their own phone, so the
+          // author's wiki user id is passed; on this route the author may BE a client.
+          notifyClientMentionsOnRequest({
+            wikiId,
+            itemId: id,
+            authorName,
+            authorWikiUserId: clientUser?.id ?? null,
             body: comment.body,
             mentions,
           }),

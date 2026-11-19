@@ -4,6 +4,7 @@ import { requireAuthedUser } from "@/server/auth/effective-user";
 import { addWikiIntakeComment, wikiIdForClientSlug } from "@/server/wiki";
 import { notifyIntakeMentions, resolveMentions } from "@/server/wiki-intake-mentions";
 import { emailRaiserOnTeamReply, notifyTeamMentionsOnRequest } from "@/server/wiki-intake-reply-notify";
+import { notifyClientMentionsOnRequest } from "@/server/push/client-notifications";
 import { readReplyInput } from "@/server/wiki-reply-image-upload";
 import { isAtLeast } from "@/types/auth";
 
@@ -35,8 +36,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     );
     if (!comment) return apiError("Request not found", 404);
 
-    // All three are fire-and-forget: a Slack, notification or email failure is logged
-    // by its own helper and never turns a saved reply into a failed one.
+    // All four are fire-and-forget: a Slack, notification, push or email failure is
+    // logged by its own helper and never turns a saved reply into a failed one.
     after(async () => {
       await Promise.allSettled([
         mentions.length > 0
@@ -47,6 +48,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           itemId: id,
           authorUserId: user.id,
           authorName: author,
+          body: comment.body,
+          mentions,
+        }),
+        // The client half of a mention: ring the phone of each client person named.
+        // The author here is a Gitwork user, so no client can be the author.
+        notifyClientMentionsOnRequest({
+          wikiId,
+          itemId: id,
+          authorName: author,
+          authorWikiUserId: null,
           body: comment.body,
           mentions,
         }),
