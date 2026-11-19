@@ -21,6 +21,7 @@ import {
   type ProfileAchievement,
   type ProfileLink,
 } from "@/lib/public-profile";
+import { readCard, type ProfileCard } from "@/lib/profile-card";
 import { getOwnStaffRecordId, StaffInputError } from "@/server/staff";
 
 export interface PublicProfile {
@@ -38,6 +39,8 @@ export interface PublicProfile {
   achievements: ProfileAchievement[];
   /** LinkedIn, portfolio and GitHub first, then the person's own links. */
   links: ProfileLink[];
+  /** The business card they designed; null draws the plain header. */
+  card: ProfileCard | null;
 }
 
 export interface MyPublicProfile {
@@ -52,6 +55,9 @@ export interface MyPublicProfile {
   portfolioUrl: string;
   achievements: ProfileAchievement[];
   links: ProfileLink[];
+  card: ProfileCard | null;
+  /** What the card editor's preview draws: the same name, company and photo the page shows. */
+  preview: { name: string; company: string; avatarUrl: string | null };
   completeness: { percent: number; missing: string[] };
 }
 
@@ -77,6 +83,7 @@ const SELECT = {
   profileSummary: true,
   profileAchievements: true,
   profileLinks: true,
+  profileCard: true,
   workspace: { select: { name: true } },
   member: { select: { archivedAt: true, userId: true, user: { select: { avatarUrl: true } } } },
 } as const satisfies Prisma.CandidateSelect;
@@ -135,6 +142,7 @@ export async function loadPublicProfile(slug: string): Promise<PublicProfile | n
     skills: skillsOf(r),
     achievements: readAchievements(r.profileAchievements),
     links: linksOf(r),
+    card: r.profileCard ? readCard(r.profileCard) : null,
   };
 }
 
@@ -160,6 +168,12 @@ function toMine(r: Row): MyPublicProfile {
     portfolioUrl: r.portfolioUrl ?? "",
     achievements,
     links,
+    card: r.profileCard ? readCard(r.profileCard) : null,
+    preview: {
+      name: (r.preferredName?.trim() || r.name).trim(),
+      company: r.workspace.name,
+      avatarUrl: r.member?.user?.avatarUrl ?? safeProfileUrl(r.avatarUrl),
+    },
     completeness: profileCompleteness({
       avatar: Boolean(r.member?.user?.avatarUrl || safeProfileUrl(r.avatarUrl)),
       headline: Boolean(r.profileHeadline?.trim() || r.jobTitle?.trim()),
@@ -195,6 +209,8 @@ export interface MyPublicProfileInput {
   portfolioUrl?: string;
   achievements?: ProfileAchievement[];
   links?: ProfileLink[];
+  /** null switches the card off and goes back to the plain header. */
+  card?: Partial<Record<keyof ProfileCard, string>> | null;
 }
 
 const text = (v: string | undefined, max: number) => (v === undefined ? undefined : v.trim().slice(0, max) || null);
@@ -244,6 +260,9 @@ export async function saveMyPublicProfile(
       if (l.url.trim() && !safeProfileUrl(l.url)) throw new StaffInputError(`"${l.label || l.url}" isn't a web address (https://…).`);
     }
     data.profileLinks = readLinks(input.links) as unknown as Prisma.InputJsonValue;
+  }
+  if (input.card !== undefined) {
+    data.profileCard = input.card === null ? Prisma.DbNull : (readCard(input.card) as unknown as Prisma.InputJsonValue);
   }
   if (input.enabled !== undefined) {
     const slug = (data.profileSlug as string | undefined) ?? r.profileSlug;

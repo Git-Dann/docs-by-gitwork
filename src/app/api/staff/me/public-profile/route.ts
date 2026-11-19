@@ -25,6 +25,11 @@ const schema = z
       .array(z.object({ title: z.string().max(300), year: z.number().int().nullable(), detail: z.string().max(600).nullable() }))
       .max(PROFILE_LIMITS.achievements)
       .optional(),
+    card: z
+      .object({ layout: z.string().max(40), font: z.string().max(40), colour: z.string().max(40), pattern: z.string().max(40) })
+      .partial()
+      .nullable()
+      .optional(),
     links: z.array(z.object({ label: z.string().max(100), url: z.string().max(PROFILE_LIMITS.url) })).max(PROFILE_LIMITS.links).optional(),
   })
   .strict();
