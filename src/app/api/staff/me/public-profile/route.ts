@@ -1,0 +1,48 @@
+/**
+ * GET   /api/staff/me/public-profile — the signed-in person's own public profile settings.
+ * PATCH /api/staff/me/public-profile — edit them, or switch the page on/off. Their own record only;
+ *       switching a page ON is only ever the person's choice (CLAUDE.md §139).
+ */
+import { z } from "zod";
+import { apiOk, fromError } from "@/lib/api-response";
+import { PROFILE_LIMITS } from "@/lib/public-profile";
+import { requireAuthedUser } from "@/server/auth/effective-user";
+import { getMyPublicProfile, saveMyPublicProfile } from "@/server/public-profile";
+
+export const dynamic = "force-dynamic";
+
+const schema = z
+  .object({
+    enabled: z.boolean().optional(),
+    slug: z.string().max(PROFILE_LIMITS.slugMax + 10).optional(),
+    headline: z.string().max(PROFILE_LIMITS.headline + 50).optional(),
+    bio: z.string().max(PROFILE_LIMITS.bio + 50).optional(),
+    summary: z.string().max(PROFILE_LIMITS.summary + 200).optional(),
+    location: z.string().max(200).optional(),
+    linkedinUrl: z.string().max(PROFILE_LIMITS.url).optional(),
+    portfolioUrl: z.string().max(PROFILE_LIMITS.url).optional(),
+    achievements: z
+      .array(z.object({ title: z.string().max(300), year: z.number().int().nullable(), detail: z.string().max(600).nullable() }))
+      .max(PROFILE_LIMITS.achievements)
+      .optional(),
+    links: z.array(z.object({ label: z.string().max(100), url: z.string().max(PROFILE_LIMITS.url) })).max(PROFILE_LIMITS.links).optional(),
+  })
+  .strict();
+
+export async function GET(request: Request) {
+  try {
+    const user = await requireAuthedUser(request);
+    return apiOk(await getMyPublicProfile(user.workspaceId, user.membershipId));
+  } catch (error) {
+    return fromError(error);
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const user = await requireAuthedUser(request);
+    return apiOk(await saveMyPublicProfile(user.workspaceId, user.membershipId, schema.parse(await request.json())));
+  } catch (error) {
+    return fromError(error);
+  }
+}

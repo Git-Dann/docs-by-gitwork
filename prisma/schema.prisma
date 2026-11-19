@@ -2722,6 +2722,16 @@ model Candidate {
   linkedinUrl          String?
   cvUrl                String?
   portfolioUrl         String?
+  /// Public profile (CLAUDE.md §139): off until the PERSON switches it on. /u/<profileSlug>.
+  profilePublic       Boolean   @default(false)
+  /// The public URL handle. Unique across every workspace, enforced in code (never @unique, §2).
+  profileSlug         String?
+  profileHeadline     String?
+  profileSummary      String?
+  /// [{ title, year?, detail? }], at most 12.
+  profileAchievements Json?
+  /// [{ label, url }], http(s) only, at most 8 (LinkedIn/portfolio/GitHub have their own fields).
+  profileLinks        Json?
   yearsExperience      Int?
   hourlyRate           Decimal?               @db.Decimal(10, 2)
   currency             String?                @db.VarChar(3)
@@ -2749,6 +2759,7 @@ model Candidate {
   @@index([workspaceId, recheckDueAt])
   @@index([workspaceId, origin, published])
   @@index([memberId])
+  @@index([profileSlug])
 }
 
 /// One row per validation finding. Mirrors PulseScanCheck. The most recent run

@@ -37,7 +37,8 @@ function convertCurrency(amount: number, from: string, to: string): number {
   return inGbp / (FX_TO_GBP[to] ?? 1);
 }
 
-export function CodeClearOverview() {
+/** `hideTabs`: drawn inside Developers → Insights, which draws the Staff tabs itself. */
+export function CodeClearOverview({ hideTabs = false }: { hideTabs?: boolean } = {}) {
   const statsQuery = useCodeClearStats();
   // The overview now derives from the full roster (pageSize 100 covers
   // the Gitwork team comfortably). The legacy hiring-pipeline stats —
@@ -192,9 +193,11 @@ export function CodeClearOverview() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <CodeClearTabs />
-      </div>
+      {hideTabs ? null : (
+        <div className="flex flex-wrap items-center gap-3">
+          <CodeClearTabs />
+        </div>
+      )}
 
       {/* Alerts — the "needs source validation" amber banner was removed
           June 2026 (felt like noise above the bento). Re-check overdue

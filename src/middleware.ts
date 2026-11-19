@@ -91,6 +91,9 @@ const PUBLIC_API_PATHS = [
   // Public Pulse lite scanner (embeddable widget). SSRF-guarded + rate-limited
   // inside the handlers; no API key. CORS '*' (below) lets it run cross-origin.
   "/api/public/pulse",
+  // A public profile's photo (CLAUDE.md §139): served only while that person's page is public,
+  // checked inside the handler. Segment-anchored, so this is /api/u/** and never /api/users.
+  "/api/u",
   // Client-facing Pulse score badge. The PulseScan.shareToken in the URL is the
   // auth — the same token that serves /report/[token], so the badge exposes
   // nothing the linked report does not, and unsharing revokes both together.

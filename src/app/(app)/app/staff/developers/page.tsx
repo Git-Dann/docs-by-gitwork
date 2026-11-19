@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
-import { CodeClearCandidatesWorkspace } from "@/components/codeclear/codeclear-candidates-workspace";
+import { DevelopersViews } from "@/components/staff/developers-views";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export default function CodeClearCandidatesPage() {
       subtitle="Search, filter, review, and promote developers through the Gitwork verification pipeline."
     >
       <Suspense>
-        <CodeClearCandidatesWorkspace />
+        <DevelopersViews />
       </Suspense>
     </AppShell>
   );

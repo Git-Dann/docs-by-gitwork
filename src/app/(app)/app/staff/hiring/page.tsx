@@ -1,15 +1,10 @@
-import { AppShell } from "@/components/app-shell";
-import { CodeClearOverview } from "@/components/codeclear/codeclear-overview";
-import { DevSignalEntryBanner } from "@/components/codeclear/devsignal/devsignal-entry-banner";
+import { redirect } from "next/navigation";
 
-export default function CodeClearOverviewPage() {
-  return (
-    <AppShell
-      title="Hiring"
-      subtitle="Verification workflows, developer scoring, GitHub analysis, and pipeline health in one Gitwork workspace."
-    >
-      <DevSignalEntryBanner />
-      <CodeClearOverview />
-    </AppShell>
-  );
+/**
+ * Hiring opens on Pipeline. Its old Overview (tier mix, bench, calibre, costs) described the
+ * developers you have rather than hiring, so it moved to Developers → Insights (Staff audit,
+ * Nov 2026). Old links land on the nearest equivalent.
+ */
+export default function HiringPage() {
+  redirect("/app/staff/hiring/pipeline");
 }
