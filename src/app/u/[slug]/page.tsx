@@ -3,12 +3,15 @@
  * it public. A page that is off, unknown or archived is a plain 404, the same for every case, so
  * the route can't be used to learn who has a profile.
  */
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { PublicProfileView } from "@/components/profile/public-profile-view";
 import { loadPublicProfile } from "@/server/public-profile";
 
 export const dynamic = "force-dynamic";
+
+/** Phones: the browser bar takes the brand colour, and the page can use the full screen width. */
+export const viewport: Viewport = { themeColor: "#1D4ED8", viewportFit: "cover" };
 
 type Props = { params: Promise<{ slug: string }> };
 

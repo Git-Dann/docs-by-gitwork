@@ -10940,6 +10940,15 @@ in block by block and works in light and dark.
   person's photo only while their page is live. The normal avatar route needs a sign-in, the
   client-wiki trap again.
 - **Not in search:** `noindex` on the page and `/u/` in `robots.ts`. Shared by link.
+- **Links are a row of logo tiles with captions**, never stacked full-width rows (Dan). Official
+  marks only: Simple Icons via `PlatformMark` (X, Instagram, Dribbble, Behance and Medium were
+  added to `platform-icons.tsx`), and LinkedIn's own file at `public/brand/linkedin.svg`, because
+  Simple Icons carries no LinkedIn mark (LinkedIn had it removed). Anything else is a globe.
+- **Built for phones:** Share profile opens the device's share sheet (copies the link where there
+  isn't one), Save contact downloads a vCard with only what the page shows (never email or
+  phone), tap targets are ≥48px, long names and URLs wrap, the bottom respects the home-bar inset,
+  and the browser bar takes the brand colour. Measured at 320, 375 and 390 (and `?long=1`, the
+  awkward-content demo) with 0 overflow.
 - Data: six additive columns on `Candidate` (`profilePublic`, `profileSlug` indexed and unique
   across workspaces in code, `profileHeadline`, `profileSummary`, `profileAchievements`,
   `profileLinks`). Rules in `src/lib/public-profile.ts`. Demo at `/demo/profile`.

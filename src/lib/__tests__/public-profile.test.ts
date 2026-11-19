@@ -109,3 +109,21 @@ describe("the page", () => {
     expect(bare).not.toContain(">Achievements<");
   });
 });
+
+describe("share and save contact", () => {
+  it("the vCard escapes values and never carries email or phone", async () => {
+    const { profileVCard } = await import("@/components/profile/profile-share-actions");
+    const card = profileVCard({ name: "Priya Shah", headline: "Engineer, Platform; Tools", company: "Gitwork", links: [{ label: "LinkedIn", url: "https://linkedin.com/in/x" }] }, "https://foundry.gitwork.co.uk/u/priya");
+    expect(card).toContain("N:Shah;Priya;;;");
+    expect(card).toContain("TITLE:Engineer\\, Platform\\; Tools");
+    expect(card).toContain("URL:https://foundry.gitwork.co.uk/u/priya");
+    expect(card).not.toMatch(/EMAIL|TEL/);
+    expect(card.split("\r\n")[0]).toBe("BEGIN:VCARD");
+  });
+
+  it("the page offers Share and Save contact", () => {
+    const html = renderToStaticMarkup(React.createElement(PublicProfileView, { profile: DEMO_PUBLIC_PROFILE }));
+    expect(html).toContain("Share profile");
+    expect(html).toContain("Save contact");
+  });
+});

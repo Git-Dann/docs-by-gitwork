@@ -25,3 +25,16 @@ export const DEMO_PUBLIC_PROFILE: PublicProfile = {
     { label: "GitHub", url: "https://github.com/example" },
   ],
 };
+
+/** The awkward case, for checking small phones: long name, unbroken words, long labels. */
+export const DEMO_PUBLIC_PROFILE_LONG: PublicProfile = {
+  ...DEMO_PUBLIC_PROFILE,
+  slug: "maximiliana-featherstonehaugh",
+  name: "Maximiliana Featherstonehaugh-Montgomery",
+  headline: "Principal Platform Engineer, Infrastructure, Developer Experience and Internal Tooling",
+  bio: "Find my writing at https://example.com/a-very-long-path-that-does-not-break-anywhere-on-a-small-phone-screen and say hello.",
+  links: [
+    ...DEMO_PUBLIC_PROFILE.links,
+    { label: "A link with a really long label that has to truncate", url: "https://example.com/long" },
+  ],
+};

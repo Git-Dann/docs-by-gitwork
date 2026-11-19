@@ -7,8 +7,10 @@
  * external address, and both are dynamic.
  */
 import type { CSSProperties, ReactNode } from "react";
-import { ArrowUpRightIcon, BriefcaseIcon, MapPinIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { BriefcaseIcon, MapPinIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import type { PublicProfile } from "@/server/public-profile";
+import { ProfileShareActions } from "./profile-share-actions";
+import { PlatformMark } from "@/lib/platform-icons";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const rise = (i: number): CSSProperties => ({ animationDelay: `${i * 70}ms` });
@@ -45,7 +47,7 @@ export function PublicProfileView({ profile }: { profile: PublicProfile }) {
   let step = 1;
 
   return (
-    <main className="min-h-screen bg-[var(--surface-canvas,var(--surface-1))] px-4 py-8 sm:py-14">
+    <main className="min-h-screen bg-[var(--surface-canvas,var(--surface-1))] px-3 pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-14">
       <div className="mx-auto w-full max-w-[680px] space-y-4">
         {/* Header card: brand band, photo, name, headline, the facts, the bio, the links. */}
         <section className="motion-rise overflow-hidden rounded-[16px] border border-[var(--border-1)] bg-[var(--surface-0)]">
@@ -79,13 +81,13 @@ export function PublicProfileView({ profile }: { profile: PublicProfile }) {
               )}
             </div>
             <h1
-              className="mt-4 text-[32px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)] sm:text-[38px]"
+              className="mt-4 break-words text-[30px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)] [overflow-wrap:anywhere] sm:text-[38px]"
               style={{ fontFamily: "var(--font-display)" }}
             >
               {p.name}
               {p.pronouns ? <span className="ml-2 align-middle font-sans text-[14px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-sans), system-ui, sans-serif" }}>({p.pronouns})</span> : null}
             </h1>
-            {p.headline ? <p className="mt-1.5 text-[16px] leading-6 text-[var(--text-2)]">{p.headline}</p> : null}
+            {p.headline ? <p className="mt-1.5 text-[16px] leading-6 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.headline}</p> : null}
             {meta.length ? (
               <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
                 {meta.map((m) => (
@@ -96,26 +98,17 @@ export function PublicProfileView({ profile }: { profile: PublicProfile }) {
                 ))}
               </ul>
             ) : null}
-            {p.bio ? <p className="mt-4 text-[15px] leading-7 text-[var(--text-2)]">{p.bio}</p> : null}
+            {p.bio ? <p className="mt-4 text-[15px] leading-7 text-[var(--text-2)] [overflow-wrap:anywhere]">{p.bio}</p> : null}
             {p.links.length ? (
-              <ul className="mt-5 grid gap-2">
+              <ul className="mt-5 flex flex-wrap gap-x-2 gap-y-3" aria-label="Links">
                 {p.links.map((l, i) => (
                   <li key={`${l.label}-${i}`} className="motion-rise" style={rise(i + 1)}>
-                    <a
-                      href={l.url}
-                      target="_blank"
-                      rel="noopener noreferrer me"
-                      className="group flex items-center justify-between gap-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-0)] px-4 py-3 text-[14px] font-medium text-[var(--text-1)] transition hover:border-[var(--brand-500)] hover:bg-[var(--brand-50)]"
-                    >
-                      <span className="min-w-0 truncate" title={l.url}>
-                        {l.label}
-                      </span>
-                      <ArrowUpRightIcon aria-hidden className="h-4 w-4 shrink-0 text-[var(--text-4)] transition group-hover:text-[var(--brand-700)]" />
-                    </a>
+                    <ProfileLinkTile label={l.label} url={l.url} />
                   </li>
                 ))}
               </ul>
             ) : null}
+            <ProfileShareActions data={{ name: p.name, headline: p.headline, company: p.company, links: p.links }} />
           </div>
         </section>
 
@@ -123,7 +116,7 @@ export function PublicProfileView({ profile }: { profile: PublicProfile }) {
           <Card title="About" step={step++}>
             <div className="space-y-3 text-[15px] leading-7 text-[var(--text-2)]">
               {p.summary.split(/\n{2,}/).map((para, i) => (
-                <p key={i} className="whitespace-pre-line">
+                <p key={i} className="whitespace-pre-line [overflow-wrap:anywhere]">
                   {para}
                 </p>
               ))}
@@ -142,7 +135,7 @@ export function PublicProfileView({ profile }: { profile: PublicProfile }) {
                       {a.year}
                     </p>
                   ) : null}
-                  <p className="text-[15px] font-medium text-[var(--text-1)]">{a.title}</p>
+                  <p className="text-[15px] font-medium text-[var(--text-1)] [overflow-wrap:anywhere]">{a.title}</p>
                   {a.detail ? <p className="mt-0.5 text-[14px] leading-6 text-[var(--text-3)]">{a.detail}</p> : null}
                 </li>
               ))}
@@ -171,5 +164,40 @@ export function PublicProfileView({ profile }: { profile: PublicProfile }) {
         </footer>
       </div>
     </main>
+  );
+}
+
+/** LinkedIn's own mark. Simple Icons doesn't carry it (LinkedIn had it removed), so the official
+ *  file is served from public/brand rather than redrawn (no hand-drawn logos, Dan's rule). */
+function isLinkedIn(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h === "linkedin.com" || h.endsWith(".linkedin.com");
+  } catch {
+    return false;
+  }
+}
+
+/** One link as a logo tile: the brand's official mark, the label as its accessible name. */
+function ProfileLinkTile({ label, url }: { label: string; url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer me"
+      title={label}
+      className="group flex w-[64px] flex-col items-center gap-1.5 rounded-[12px] transition hover:-translate-y-0.5 focus-visible:-translate-y-0.5"
+    >
+      {isLinkedIn(url) ? (
+        <span className="flex h-14 w-14 items-center justify-center rounded-[12px] border border-[var(--border-3)] bg-[var(--surface-1)] transition group-hover:border-[var(--brand-500)]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/linkedin.svg" alt="" width={28} height={28} className="h-7 w-7" />
+        </span>
+      ) : (
+        <PlatformMark url={url} size="lg" className="transition group-hover:border-[var(--brand-500)]" />
+      )}
+      {/* The caption is the link's name, so two globe tiles (a site, a custom link) read apart. */}
+      <span className="w-full truncate text-center text-[11px] text-[var(--text-3)]">{label}</span>
+    </a>
   );
 }
