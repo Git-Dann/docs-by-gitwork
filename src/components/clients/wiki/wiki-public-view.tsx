@@ -368,7 +368,7 @@ export function WikiPublicView({
         {activeSection !== "dashboard" ? <WikiPageHeader section={activeSection} /> : null}
         {/* Each page's content rises in once its header has (motion-rise only transforms while it
             plays, so a dialog opened from the page isn't trapped afterwards, §108.3). */}
-        <div key={activeSection} className="motion-rise" style={{ animationDelay: "60ms" }}>
+        <div key={activeSection} className="wiki-motion motion-rise" style={{ animationDelay: "60ms" }}>
           {renderContent()}
         </div>
       </div>
@@ -401,7 +401,7 @@ export function WikiPublicView({
         {activeSection !== "dashboard" ? <WikiPageHeader section={activeSection} /> : null}
         {/* Each page's content rises in once its header has (motion-rise only transforms while it
             plays, so a dialog opened from the page isn't trapped afterwards, §108.3). */}
-        <div key={activeSection} className="motion-rise" style={{ animationDelay: "60ms" }}>
+        <div key={activeSection} className="wiki-motion motion-rise" style={{ animationDelay: "60ms" }}>
           {renderContent()}
         </div>
       </div>
