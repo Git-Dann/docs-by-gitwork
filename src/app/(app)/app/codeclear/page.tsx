@@ -1,15 +1,7 @@
-import { AppShell } from "@/components/app-shell";
-import { CodeClearOverview } from "@/components/codeclear/codeclear-overview";
-import { DevSignalEntryBanner } from "@/components/codeclear/devsignal/devsignal-entry-banner";
+import { redirect } from "next/navigation";
+import { withSearch, type SearchParamsRecord } from "@/lib/legacy-redirect";
 
-export default function CodeClearOverviewPage() {
-  return (
-    <AppShell
-      title="Hiring"
-      subtitle="Verification workflows, developer scoring, GitHub analysis, and pipeline health in one Gitwork workspace."
-    >
-      <DevSignalEntryBanner />
-      <CodeClearOverview />
-    </AppShell>
-  );
+/** Legacy path (CLAUDE.md §87): the page moved under /app/staff. Kept so old links, notifications and bookmarks still land, query string included. */
+export default async function LegacyHiringOverviewRedirect({ searchParams }: { searchParams: Promise<SearchParamsRecord> }) {
+  redirect(withSearch("/app/staff/hiring", await searchParams));
 }

@@ -16,21 +16,24 @@ import { EMPTY_MONITOR_FORM, formToMonitorInput, monitorToForm, type MonitorForm
 import { clientVisibleIncidents, clientVisibleMonitors } from "@/lib/monitor-environment";
 import { EnvironmentTag } from "./monitor-board";
 import { MonitorFormFields } from "./monitor-form-fields";
+import { cardGrid } from "@/lib/card-grid";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
 type Status = "UP" | "DEGRADED" | "DOWN" | "UNKNOWN";
-const META: Record<Status, { label: string; color: string; bg: string }> = {
-  UP: { label: "Operational", color: "#059669", bg: "rgba(16,185,129,0.14)" },
-  DEGRADED: { label: "Degraded", color: "#b45309", bg: "rgba(245,158,11,0.16)" },
-  DOWN: { label: "Down", color: "#e11d48", bg: "rgba(225,29,72,0.12)" },
-  UNKNOWN: { label: "Pending", color: "#6b7280", bg: "rgba(0,0,0,0.05)" },
+// Tokens, never hexes: these flip in dark mode. Label text uses the -700 palette shades
+// (remapped for dark in globals.css), because the -500 tokens are ~3:1 on their own -50 tint.
+const META: Record<Status, { label: string; text: string; bg: string }> = {
+  UP: { label: "Operational", text: "text-emerald-700", bg: "var(--success-50)" },
+  DEGRADED: { label: "Degraded", text: "text-amber-700", bg: "var(--warning-50)" },
+  DOWN: { label: "Down", text: "text-red-700", bg: "var(--danger-50)" },
+  UNKNOWN: { label: "Pending", text: "text-[var(--text-3)]", bg: "var(--surface-1)" },
 };
 const DOT: Record<Status, string> = {
-  UP: "#10b981",
-  DEGRADED: "#f59e0b",
-  DOWN: "#e11d48",
-  UNKNOWN: "#9ca3af",
+  UP: "var(--success-500)",
+  DEGRADED: "var(--warning-500)",
+  DOWN: "var(--danger-500)",
+  UNKNOWN: "var(--text-4)",
 };
 
 const SEVERITY: Record<Status, number> = { UP: 0, UNKNOWN: 1, DEGRADED: 2, DOWN: 3 };
@@ -175,8 +178,8 @@ function StatusPill({ status, label }: { status: Status; label?: string }) {
   const m = META[status];
   return (
     <span
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
-      style={{ background: m.bg, color: m.color }}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold ${m.text}`}
+      style={{ background: m.bg }}
     >
       <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: DOT[status] }} />
       {label ?? m.label}
@@ -204,7 +207,7 @@ export function MonitorStatusBoard({ monitors, incidents = [] }: { monitors: Wik
           style={{ background: ovMeta.bg }}
         >
           <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: DOT[ov] }} />
-          <span className="text-[14px] font-semibold" style={{ color: ovMeta.color }}>
+          <span className={`text-[14px] font-semibold ${ovMeta.text}`}>
             {ov === "UP"
               ? "All systems operational"
               : ov === "UNKNOWN"
@@ -220,7 +223,7 @@ export function MonitorStatusBoard({ monitors, incidents = [] }: { monitors: Wik
         <IncidentList incidents={incidents} slug="" audience="client" />
 
         {visible.length === 0 ? (
-          <p className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
+          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
             No monitors yet.
           </p>
         ) : (
@@ -228,9 +231,9 @@ export function MonitorStatusBoard({ monitors, incidents = [] }: { monitors: Wik
              and one meta line — at full width most of each row sat empty, and a
              client running a dozen containers had to scroll past all of them.
              The strip's bars are flex-1, so they just render narrower. */
-          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {visible.map((m) => (
-              <li key={m.id} className="rounded-[12px] border border-[rgba(0,0,0,0.08)] p-4">
+          <ul className={cardGrid(visible.length, 2).container}>
+            {visible.map((m, i) => (
+              <li key={m.id} className={`rounded-[12px] border border-[var(--border-1)] p-4 ${cardGrid(visible.length, 2).item(i)}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -399,13 +402,13 @@ export function MonitorsManager({
             No monitors yet. Add one to start tracking uptime.
           </p>
         ) : (
-          /* Cards, so a client with several monitors reads at a glance — 2-up from md, 3-up from
-             xl. A single monitor keeps the full width rather than a lone card in a corner. */
-          <ul className={`grid grid-cols-1 gap-3 ${monitors.length > 1 ? "md:grid-cols-2 xl:grid-cols-3" : ""}`}>
-            {monitors.map((m) => (
+          /* Cards, with the columns chosen from the count (cardGrid): four monitors are 2×2,
+             not three and a lone fourth beside two empty slots. */
+          <ul className={cardGrid(monitors.length).container}>
+            {monitors.map((m, i) => (
               <li
                 key={m.id}
-                className="flex min-w-0 flex-col rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4"
+                className={`flex min-w-0 flex-col rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4 ${cardGrid(monitors.length).item(i)}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

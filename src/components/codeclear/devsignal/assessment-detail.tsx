@@ -143,7 +143,7 @@ function ProfileHeader({ a }: { a: DevSignalAssessmentDTO }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          href="/app/codeclear/devsignal"
+          href="/app/staff/hiring/devsignal"
           className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-[var(--text-4)] transition hover:text-[var(--text-2)]"
         >
           ← Back to queue

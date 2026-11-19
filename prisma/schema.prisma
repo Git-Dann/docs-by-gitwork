@@ -5745,6 +5745,61 @@ model Countermark {
   @@map("Hallmark")
 }
 
+/// "Keep this mark current" — continuous re-examination of a countermark's subject
+/// (CLAUDE.md §38). One live schedule per subject, enforced in code (no @unique: §2).
+///
+/// It follows the subject, not a frozen mark: `countermarkId` is the mark it currently keeps
+/// current, moved forward each time a re-check strikes a successor. Loose ids throughout,
+/// like Countermark.scanId — a schedule must survive its scan or mark being pruned.
+model CountermarkSchedule {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  subjectName   String
+  countermarkId String
+  enabled       Boolean   @default(true)
+  /// Days between re-examinations, counted from the current mark's issue. Null = re-examine
+  /// when the mark enters its expiry notice window (14 days before it lapses).
+  cadenceDays   Int?
+  /// The issuer whose authority each re-check is struck under. They must still be an active
+  /// member holding `provenance.issue` when a re-check runs, or the schedule pauses.
+  enabledById   String
+  enabledByName String
+  nextDueAt     DateTime
+  /// Set when the schedule stopped itself (issuer lost access, mark revoked, repeated
+  /// failures). A paused schedule never runs until someone with `provenance.issue` resumes it.
+  pausedReason  String?   @db.Text
+  failureStreak Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([workspaceId, subjectName])
+  @@index([enabled, nextDueAt])
+}
+
+/// One re-examination attempt and what came of it. Written for every attempt, including the
+/// ones that kept the old mark, so "nobody re-checked" and "we re-checked and could not
+/// establish it" are never the same silence.
+model CountermarkRecheck {
+  id                String            @id @default(cuid())
+  workspaceId       String
+  scheduleId        String
+  fromCountermarkId String
+  scanId            String?
+  /// running | issued | failed | not_established | paused
+  status            String
+  reason            String?           @db.Text
+  newCountermarkId  String?
+  gradeBefore       CountermarkGrade
+  gradeAfter        CountermarkGrade?
+  issuerName        String
+  startedAt         DateTime          @default(now())
+  finishedAt        DateTime?
+
+  @@index([scheduleId, startedAt])
+  @@index([workspaceId, startedAt])
+  @@index([status, startedAt])
+}
+
 enum CountermarkGrade {
   CERTIFIED
   CONDITIONAL

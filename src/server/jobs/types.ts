@@ -10,7 +10,7 @@
 import type { Prisma, BackgroundJob } from "@prisma/client";
 
 /** Registered job types. Add a member here + a handler in `handlers.ts` to introduce a new job. */
-export type JobType = "CLIENT_ARCHIVE" | "RETENTION_SWEEP" | "CURATOR_RUN" | "FOREMAN_RUN";
+export type JobType = "CLIENT_ARCHIVE" | "RETENTION_SWEEP" | "CURATOR_RUN" | "FOREMAN_RUN" | "COUNTERMARK_RECHECK";
 
 /** Payload shape per job type. Keep these small + serialisable (they live in a JSON column). */
 export interface JobPayloads {
@@ -39,6 +39,11 @@ export interface JobPayloads {
     /** Compute everything but persist a dry_run marker + never notify. */
     dryRun?: boolean;
   };
+  /** Continuous re-examination of a countermark (src/server/provenance/recheck.ts): "start"
+   *  begins a fresh scan of the subject; "poll" watches it and strikes the successor. */
+  COUNTERMARK_RECHECK:
+    | { phase: "start"; scheduleId: string }
+    | { phase: "poll"; recheckId: string; polls: number };
 }
 
 /**

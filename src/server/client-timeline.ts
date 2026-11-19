@@ -4,6 +4,7 @@
 // only. No assignees, notes, priorities, or internal status chatter.
 
 import { blockSpan } from "@/lib/gantt-span";
+import { projectProgress } from "@/lib/wiki-delivery";
 import { releaseLabel, releaseProgress, releaseSpan, releaseStatusCounts, safeReleaseDocUrl, sortReleases } from "@/lib/tasks/releases";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
@@ -83,10 +84,16 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
       // so this share can't drift from either.
       tasks: {
         where: { parentId: null, archivedAt: null },
-        select: { title: true, status: true, dueDate: true },
+        select: { id: true, title: true, status: true, dueDate: true },
         orderBy: { orderKey: "asc" },
       },
     },
+  });
+  // Every live top-level task, so work on no phase counts toward the headline figure —
+  // the same set the wiki Timeline uses (loadWikiTimeline), worked out the same way.
+  const allTasks = await prisma.task.findMany({
+    where: { clientId: client.id, parentId: null, archivedAt: null },
+    select: { id: true, status: true },
   });
 
   // Sections render once they have a span — explicit dates, or derived from the
@@ -111,6 +118,15 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
       };
     })
     .filter((b): b is PublicTimelineBlock => b !== null);
+
+  // Loose work, by subtraction exactly as loadWikiTimeline does: a block dropped for having
+  // no resolvable span puts its tasks back in the loose set.
+  const onTimeline = new Set(
+    blocks.flatMap((b) => (publicBlocks.some((pb) => pb.id === b.id) ? b.tasks.map((t) => t.id) : [])),
+  );
+  const loose = allTasks.filter((t) => !onTimeline.has(t.id)).map((t) => ({ done: t.status === "DONE" }));
+  // The ONE project rule — this share page must say what the wiki says.
+  const overallPercent = projectProgress({ blocks: publicBlocks, unassigned: loose }).percent;
 
   // Releases, built exactly like the wiki Timeline's (loadWikiTimeline): own dates, else
   // estimated from their tasks' due dates; titles and done-ness only.
@@ -153,6 +169,7 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
   return {
     clientName: client.name,
     generatedAt: new Date().toISOString(),
+    overallPercent,
     blocks: publicBlocks,
     releases: publicReleases,
     milestones: milestoneRows.map((m) => ({

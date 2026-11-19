@@ -6,7 +6,7 @@
  * department, employment type and the clients they're on.
  *
  * A developer's Code side (GitHub, Bench, rate, clients, CV, notes) is on their Staff page
- * too: one page per developer. /app/codeclear/candidates/[id] now serves Hiring's external
+ * too: one page per developer. /app/staff/hiring/candidates/[id] now serves Hiring's external
  * candidates only and sends anyone on the team here.
  */
 

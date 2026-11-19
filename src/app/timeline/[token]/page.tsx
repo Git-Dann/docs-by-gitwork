@@ -39,10 +39,8 @@ export default async function PublicTimelinePage({
   const blocks: GanttBlock[] = timeline.blocks.map(toGantt);
   const releases: GanttBlock[] = (timeline.releases ?? []).map(toGantt);
 
-  const overall =
-    blocks.length === 0
-      ? 0
-      : Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
+  // Worked out server-side by the one project rule, so this share says what the wiki says.
+  const overall = timeline.overallPercent;
 
   return (
     <main className="min-h-[100dvh] bg-[#FAFAF9] px-4 py-10 sm:px-8">
@@ -61,7 +59,7 @@ export default async function PublicTimelinePage({
             {timeline.clientName}
           </h1>
           <p className="mt-1.5 text-sm text-[var(--text-3)]">
-            Live delivery roadmap · {overall}% complete · updated {formatDate(timeline.generatedAt)}
+            Live delivery roadmap · {overall === null ? "no tasks yet" : `${overall}% complete`} · updated {formatDate(timeline.generatedAt)}
           </p>
         </header>
 

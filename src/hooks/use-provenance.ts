@@ -60,8 +60,38 @@ export interface Countermark {
   daysRemaining: number;
 }
 
+/** One re-examination attempt (src/server/provenance/recheck.ts). */
+export interface CountermarkRecheck {
+  id: string;
+  status: "running" | "issued" | "failed" | "not_established" | "paused" | string;
+  reason: string | null;
+  gradeBefore: CountermarkGrade;
+  gradeAfter: CountermarkGrade | null;
+  newCountermarkId: string | null;
+  newCountermarkToken: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  issuerName: string;
+}
+
+/** "Keep this mark current" for one subject. */
+export interface CountermarkSchedule {
+  id: string;
+  subjectName: string;
+  countermarkId: string;
+  enabled: boolean;
+  /** Null = re-examine when the mark enters its 14-day notice window. */
+  cadenceDays: number | null;
+  enabledByName: string;
+  nextDueAt: string;
+  pausedReason: string | null;
+  failureStreak: number;
+  history: CountermarkRecheck[];
+}
+
 interface CountermarkListResponse {
   countermarks: Countermark[];
+  schedules?: CountermarkSchedule[];
   sealingConfigured: boolean;
 }
 
@@ -98,6 +128,21 @@ export function useRevokeCountermark() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+    },
+  });
+}
+
+export function useSetCountermarkSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled, cadenceDays }: { id: string; enabled: boolean; cadenceDays: 30 | 60 | 90 | null }) =>
+      apiFetch<{ schedule: CountermarkSchedule }>(`/api/provenance/countermarks/${id}/schedule`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, cadenceDays }),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: KEY });

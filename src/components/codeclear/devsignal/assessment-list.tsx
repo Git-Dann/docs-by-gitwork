@@ -139,7 +139,7 @@ function FiltersDropdown({
 }
 
 function AssessmentRow({ a }: { a: DevSignalAssessmentDTO }) {
-  const href = `/app/codeclear/devsignal/${a.id}`;
+  const href = `/app/staff/hiring/devsignal/${a.id}`;
   const label = a.bestMatchSummary?.labelDisplay ?? "Not scored yet";
   return (
     <div className="group flex items-center gap-3 px-4 py-3 transition hover:bg-[var(--surface-1)] sm:grid" style={{ gridTemplateColumns: GRID_COLS }}>

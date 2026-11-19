@@ -341,6 +341,31 @@
 [data-theme="dark"] .bg-blue-100,
 [data-theme="dark"] .bg-sky-100,
 [data-theme="dark"] .bg-indigo-100 { background-color: rgba(96, 165, 250, 0.18); }
+[data-theme="dark"] .bg-violet-50,
+[data-theme="dark"] .bg-purple-50,
+[data-theme="dark"] .bg-fuchsia-50,
+[data-theme="dark"] .bg-pink-50    { background-color: rgba(167, 139, 250, 0.12); }
+[data-theme="dark"] .bg-violet-100,
+[data-theme="dark"] .bg-purple-100,
+[data-theme="dark"] .bg-violet-200 { background-color: rgba(167, 139, 250, 0.20); }
+[data-theme="dark"] .bg-cyan-50    { background-color: rgba(34, 211, 238, 0.12); }
+
+/* The same tints written with an opacity modifier (bg-red-50/60) are separate classes, so the
+   remaps above never reached them and they painted a pale slab under dark text on the dark shell
+   (the Schedule's Overdue box, Nov 2026). A touch lighter than the full tint, as in light mode. */
+[data-theme="dark"] .bg-red-50\/50,
+[data-theme="dark"] .bg-red-50\/60   { background-color: rgba(248, 113, 113, 0.09); }
+[data-theme="dark"] .bg-amber-50\/50 { background-color: rgba(251, 191, 36, 0.09); }
+[data-theme="dark"] .bg-teal-50\/60  { background-color: rgba(52, 211, 153, 0.09); }
+[data-theme="dark"] .bg-blue-50\/50  { background-color: rgba(96, 165, 250, 0.09); }
+
+/* White text on the brand fill. In dark mode --brand-600 lifts to a light blue (#6BA0FF), where
+   white is 2.6:1 — the demo banner's DEMO tag, avatars, This-week badges and link buttons all
+   failed it (Nov 2026). Dark ink instead, as .app-button-primary does in dark (8:1). */
+[data-theme="dark"] .bg-\[var\(--brand-600\)\].text-white,
+[data-theme="dark"] .bg-\[var\(--brand-700\)\].text-white {
+  color: #0B0B0C !important;
+}
 
 /* Hover fills (action-plan rows etc.) — keep them tinted, not bright. */
 [data-theme="dark"] .hover\:bg-red-100:hover,
@@ -383,6 +408,17 @@
 [data-theme="dark"] .text-sky-600,
 [data-theme="dark"] .text-sky-700,
 [data-theme="dark"] .text-sky-800   { color: #38bdf8; }
+[data-theme="dark"] .text-violet-600,
+[data-theme="dark"] .text-violet-700,
+[data-theme="dark"] .text-violet-800,
+[data-theme="dark"] .text-violet-900,
+[data-theme="dark"] .text-purple-600,
+[data-theme="dark"] .text-purple-700,
+[data-theme="dark"] .text-purple-800 { color: #c4b5fd; }
+[data-theme="dark"] .text-cyan-700,
+[data-theme="dark"] .text-cyan-800  { color: #22d3ee; }
+[data-theme="dark"] .text-pink-700,
+[data-theme="dark"] .text-pink-800  { color: #f472b6; }
 
 /* Light status borders → translucent so they show on dark without glaring. */
 [data-theme="dark"] .border-red-200,
@@ -399,6 +435,11 @@
 [data-theme="dark"] .border-blue-200,
 [data-theme="dark"] .border-sky-200,
 [data-theme="dark"] .border-indigo-200 { border-color: rgba(96, 165, 250, 0.30); }
+[data-theme="dark"] .border-violet-200,
+[data-theme="dark"] .border-violet-300,
+[data-theme="dark"] .border-purple-200,
+[data-theme="dark"] .border-pink-200   { border-color: rgba(167, 139, 250, 0.30); }
+[data-theme="dark"] .border-cyan-200   { border-color: rgba(34, 211, 238, 0.30); }
 
 /* Neutral-scale text remap for dark mode.
  *

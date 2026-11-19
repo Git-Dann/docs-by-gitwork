@@ -203,7 +203,7 @@ export function CodeClearOverview() {
       {(stats?.recheckDue ?? 0) > 0 ? (
         <div className="flex flex-col gap-2 sm:flex-row">
           <Link
-            href="/app/codeclear/candidates?status=RECHECK_DUE"
+            href="/app/staff/developers?status=RECHECK_DUE"
             className="flex flex-1 items-center gap-3 rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 transition hover:border-rose-300"
           >
             <ClockIcon className="h-4 w-4 shrink-0 text-rose-600" />

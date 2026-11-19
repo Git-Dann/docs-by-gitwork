@@ -6,6 +6,7 @@ vi.mock("@/lib/prisma", () => ({
     workspaceClient: { findFirst: async () => ({ id: "c1", name: "Wedge" }) },
     featureBlock: { findMany: async () => [] },
     milestone: { findMany: async () => [] },
+    task: { findMany: async () => [] },
     clientRelease: {
       findMany: async () => [
         {

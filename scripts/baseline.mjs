@@ -6,6 +6,7 @@
  *   node scripts/baseline.mjs --update        # record a new snapshot (deliberate changes only)
  *   node scripts/baseline.mjs --url=http://localhost:3100
  *   node scripts/baseline.mjs --only=/demo/care   # just the pages starting with that path
+ *   node scripts/baseline.mjs --theme=dark       # check run with every /demo page in dark mode
  *
  * Written for the multi-tenant work (docs/multi-tenant-roadmap.md), where the
  * rule is "Gitwork sees zero change unless the change is deliberate". `/app` is
@@ -53,6 +54,11 @@ const MAX_PAGES = 80
 // --only narrows a check run to pages starting with that path, for a quick loop
 // while working. It never records: a partial snapshot would drop every other page.
 const ONLY = args.find((a) => a.startsWith('--only='))?.split('=')[1] ?? null
+// --theme=dark|light: a check run in that mode (stored mode + OS preference). The snapshot is
+// recorded in the default (light) mode, so --theme can't be combined with --update.
+const THEME = args.find((a) => a.startsWith('--theme='))?.split('=')[1] ?? null
+if (THEME && THEME !== 'dark' && THEME !== 'light') { console.error('--theme must be dark or light'); process.exit(2) }
+if (THEME && UPDATE) { console.error('--theme cannot be combined with --update'); process.exit(2) }
 if (ONLY && UPDATE) { console.error('--only cannot be combined with --update'); process.exit(2) }
 const inScope = (p) => !ONLY || p.startsWith(ONLY)
 
@@ -155,7 +161,8 @@ async function checkGates() {
 }
 
 async function visit(browser, path, [w, h]) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h } })
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: THEME ?? undefined })
+  if (THEME) await ctx.addInitScript((t) => { try { localStorage.setItem('gitwork.theme.v1', t) } catch {} }, THEME)
   const page = await ctx.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))

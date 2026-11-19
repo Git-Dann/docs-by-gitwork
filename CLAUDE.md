@@ -268,7 +268,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 > |---|---|
 > | `/app/portal` | `/app/clients` → `redirect()` stubs |
 > | `/app/care` | `/app/support` — ⚠️ still a **live, different** UI, not a stub |
-> | `/app/code` | `/app/codeclear` — ⚠️ its `candidates/`, `pipeline/`, `devsignal/**` subtrees live **only** here |
+> | `/app/staff` | `/app/code` and `/app/codeclear/**` → query-preserving `redirect()` stubs (§87.1) |
 > | `/app/docs` | `/app/proposals` → `redirect()` stubs |
 >
 > Note the **server module name is a third thing again** and doesn't match either: Portal →
@@ -280,7 +280,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Foundry HQ** | `/app` | — | Dashboard overview. `/app/projects/[slug]` hangs off it (project detail; `app-shell.tsx` deliberately highlights HQ for it) |
 | **Pulse** | `/app/pulse` | `src/server/pulse*.ts` + `pulse-agents/` | AI project validation — ~600 checks in `checks-registry.ts`, gap analysis, GitHub fix-agent, continuous monitors. Also hosts the optional **Study** research tool (no longer a top-level module — see §26) |
 | **Provenance** (lab) | `/app/provenance` | `src/server/provenance/` | Attestation layer — strikes a **Countermark** from a completed Pulse scan: a frozen, digest-and-seal-verified certificate of what a piece of software was found to be, what could **not** be established, and how long the mark is valid for. Public certificate at `/countermark/[token]` (no auth, noindex). **No sidebar item** — entry point is Settings → Labs (§4a) while it's an experiment. Gated by the **admin-only `provenance` feature perm** (default-off, NOT a module id — see §38); issuing/revoking is the separate high-risk `provenance.issue`. See §38 + `docs/provenance.md` |
-| **Code** | `/app/code` (legacy `/app/codeclear`) | `src/server/codeclear*.ts` | Developer hiring pipeline — GitHub analysis, scoring, candidate management. ⚠️ `candidates/`, `pipeline/` and `devsignal/**` still live ONLY under the legacy `/app/codeclear/*` prefix — moving them is a separate PR, and the `/app/codeclear/devsignal` `MODULE_PATHS` entry must be renamed **in place** or admin-only DevSignal silently regates onto the staff-inherited `codeclear` module |
+| **Staff** (was Code) | `/app/staff` · Developers `/app/staff/developers` · Hiring `/app/staff/hiring/**` (legacy `/app/code`, `/app/codeclear/**` redirect) | `src/server/codeclear*.ts` | People, developers, and Hiring (overview, pipeline, DevSignal). See §87.1 for the path map. ⚠️ `/app/staff/hiring/devsignal` must stay ahead of `/app/staff` in `MODULE_PATHS`, or admin-only DevSignal regates onto the staff-inherited `codeclear` module |
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio`. **No sidebar item since Aug 2026** — reached from **Settings → Labs**, which is Super-Admin-gated, so this narrows it from the `studio` module perm (§4a) |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
@@ -686,8 +686,7 @@ npm run deck:verify  # Deck's own regression gate (see §30)
 | Issue | File | Notes |
 |---|---|---|
 | **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. (The "Care never clears `unread`" bug listed here was fixed in July 2026 — see §33.) |
-| **`/app/codeclear/*` subtrees not yet moved** | `src/app/(app)/app/codeclear/` | `candidates/`, `pipeline/` and `devsignal/**` exist only under the legacy prefix; 33 refs across 10 files. When moving, rename the `/app/codeclear/devsignal` `MODULE_PATHS` entry **in place** — appending it after `/app/code` regates admin-only DevSignal onto `codeclear`, which STAFF auto-inherits. Silent privilege escalation, no compile error. |
-| ~~Cron scheduling has drifted~~ | `deploy/crontab` | **Fixed Nov 2026 (§128):** the repo owns the VPS crontab and every deploy installs it; `vercel.json` has no crons. Only `retention` is unscheduled, deliberately. |
+| ~~Cron scheduling has drifted~~ | `deploy/crontab` | **Fixed Nov 2026 (§132):** the repo owns the VPS crontab and every deploy installs it; `vercel.json` has no crons. Only `retention` is unscheduled, deliberately. |
 | `pulse-scan.ts` is 4000+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
 | 26 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
 | Proof is built but hidden | `src/components/app-shell.tsx` | Nav item commented out. Now gated on `proposals`. `src/server/proof.ts` hands out absolute `/app/proof?…` share URLs, so any relocation needs a query-preserving stub. |
@@ -2531,12 +2530,33 @@ and what is unresolved.
 
 **Deferred, highest-value first:** ~~commit pinning~~ (**done October 2026**: a repo mark is
 pinned to the commit the code-health measure read, sealed, and shown as "Version examined");
-**continuous re-examination** as a `COUNTERMARK_RECHECK` job on the existing Curator/Foreman cron spine
-(this is the subscription); **licensed issuers** for white label (issuer record + per-issuer
+~~continuous re-examination~~ (**done November 2026**, §38.1); **licensed issuers** for white label (issuer record + per-issuer
 certificate branding + a public issuer directory); a **public `SAS-1` page** at a stable URL so
 a contract can cite it; **Docs integration** (embed a mark in a handover; require a live mark
 before e-sign acceptance); and an **insurer/marketplace API**, which needs a partner before it
 needs code.
+
+### 38.1 Keeping a mark current (November 2026)
+
+"Keep this mark current" on a register row re-examines the subject on a schedule
+(`CountermarkSchedule`, one per subject, enforced in code — no `@unique`; `CountermarkRecheck`
+records every attempt). Full contract: `docs/provenance.md` §4a.
+
+- **On the `jobs` worker, no new crontab line.** `startDueRechecks` enqueues a deduped
+  `COUNTERMARK_RECHECK` "start" job; it starts a fresh Pulse scan **without awaiting it** and hands
+  off to "poll" jobs (every 2 min, 90 min ceiling). A day-long lease on `nextDueAt` stops a second scan.
+- ⚠️ **Supersede only on success.** `issueCountermark` gained `requireEstablished` (throws
+  `ProvenanceNotEstablishedError` before any write when the grade is `INCOMPLETE`) and `supersedesId`
+  (supersedes that exact mark in the issue transaction, even if the subject name changed or it lapsed
+  while the scan ran; never a revoked one). A failed/timed-out scan or an unestablished grade keeps
+  the old mark untouched and records the reason. Re-examination never lapses or revokes.
+- ⚠️ **Re-examining is issuing.** The issuer who switched it on must still be active with
+  `provenance.issue`, checked before the scan AND before striking; otherwise it pauses with a reason.
+  Revoked marks and 5 straight failures pause too. Max 5 started per workspace per 24h.
+- Notifies `provenance.recheck` (holders of `provenance.issue`) on a grade change, failure or pause.
+  The certificate shows "Re-examination of the mark issued …" and a superseded mark links forward.
+- Tests `recheck-rules.test.ts` + `recheck.test.ts`, each rule proved by breaking it (dedupe key,
+  INCOMPLETE struck, permission ignored, failed scan struck).
 
 ## 39. Recent Changes (July 2026) — Badges: "Foundry Approved" + an embeddable Pulse score
 
@@ -6903,6 +6923,16 @@ Eight items from the wiki backlog, built in parallel and merged as one change.
 **Requests (§69 follow-ups).**
 - **Team mentions notify in Foundry**: event `wiki.request_mention` (in-app + push) to each `team:`
   person mentioned, never the author. Runs beside the Slack post, after the reply is saved.
+- **Client mentions ring the client's phone** (Nov 2026; `notifyClientMentionsOnRequest` in
+  `src/server/push/client-notifications.ts`, rule `clientMentionRecipients` in
+  `src/lib/wiki-intake-reply-notify.ts`). A `client:` mention on a request reply, from either
+  reply route, pushes to **that person's** registered devices only (`listActiveClientDevicesForUser`),
+  never a colleague's and never the author. The id must be a client user of that wiki (re-checked
+  against the table), kind and prefix must both say client, `contact:primary` has no device. Quiet
+  hours as for the standup (nothing claimed out of hours); one alert per person per request per 10
+  minutes and at most 10 an hour per person, enforced with `ClientPushReceipt` keys
+  `mention:<wikiUserId>:<requestId>:<window>`. The payload carries `section: "intake"` and
+  `requestId`, never a staff path. Board card threads have no @mentions, so they are not covered.
 - **The client is emailed when Gitwork replies** (`src/server/wiki-intake-reply-notify.ts`, pure
   rules in `src/lib/wiki-intake-reply-notify.ts`). The raiser is found by matching `requestedBy`
   to the wiki's `ClientWikiUser`s (email, then name); ambiguous or no match → no email. Never to
@@ -7378,8 +7408,9 @@ and yearly counts share the `subs` card.
 
 The sidebar had grown to 28 possible sections in one flat list, one row per feature as each shipped.
 Measured on production (17 wikis): most clients show 2–6 sections, Wedge shows 13 and After Desk 9.
-Sections now sit in five groups — **Overview · Working together · Numbers · Product · Docs &
-handover** — with Dashboard alone at the top and Settings pinned at the foot.
+Sections now sit in six groups — **Overview · Working together · Numbers · Plans & costs ·
+Product · Docs & handover** (Numbers is what the product measures: Metrics, Charts, Golf Data;
+Plans & costs is what the client is buying or deciding: Comparisons, Estimates, Running costs) — with Dashboard alone at the top and Settings pinned at the foot.
 
 - **One map:** `SECTION_GROUP` in `src/lib/wiki-section-groups.ts` is read by the sidebar *and* the
   "+ Add New" picker. `wiki-section-groups.test.ts` fails if a section is in no group, or if the
@@ -8617,8 +8648,8 @@ with the demo); every change goes to the business's own audit log as
 across workspaces. Demo at `/demo/platform`; demo handlers can now refuse a write with
 `{ error, __status }`.
 
-**Not verified:** any of this against production data, the console in dark mode (the demo shell
-ignores the theme switch), and the iOS app (its repo isn't in this session yet).
+**Not verified:** any of this against production data, and the iOS app (its repo isn't in this
+session yet). (The console's dark mode can now be checked on the demo: §131.)
 
 ### 85.6 The console is built for many businesses (Oct 2026)
 
@@ -8689,6 +8720,34 @@ the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenan
   `md` each person is a card. Sortable Person, Job title and Started (`sortStaffBy`: blanks last both
   ways), 20 a page. Avatars use the shared `Avatar`, which falls back to initials when an image fails.
   `SortHeader` now lives in `src/components/ui/sort-header.tsx`.
+
+### 87.1 The Staff pages left `/app/codeclear` (Nov 2026)
+
+Every page under `/app/codeclear/**` moved; the old paths are `redirect()` stubs that keep the
+query string (`withSearch` + `movedCodeclearPath` in `src/lib/legacy-redirect.ts`), so old links,
+notifications and Slack messages still land.
+
+| Old | New |
+|---|---|
+| `/app/codeclear` | `/app/staff/hiring` (Hiring → Overview) |
+| `/app/codeclear/pipeline` | `/app/staff/hiring/pipeline` |
+| `/app/codeclear/devsignal/**` | `/app/staff/hiring/devsignal/**` |
+| `/app/codeclear/candidates` | `/app/staff/developers` (Staff tab) |
+| `/app/codeclear/candidates/[id]` | `/app/staff/hiring/candidates/[id]` (external candidates; team members still redirect to `/app/staff/[id]`) |
+| `/app/codeclear/archived` | `/app/staff?view=archived` |
+
+- **Why `/app/staff/…` and not `/app/code`:** the tabs already read Staff = People · Developers and
+  Hiring = Overview · Pipeline · DevSignal under one Staff sidebar item, and `/app/code` already
+  redirects to `/app/staff`. Paths now follow the tabs.
+- **Gates:** `/app/staff/hiring/devsignal` (`devsignal`) sits ahead of `/app/staff` in
+  `MODULE_PATHS`, renamed in place; the legacy `/app/codeclear/devsignal` entry stays so the stubs
+  keep the same gate. Workspace modules: all of `/app/staff/hiring` is Hiring (`devsignal`), which
+  also closes the old gap where a Staff-only business could open Hiring's Overview by URL.
+- Developers list rows open `/app/staff/[id]` directly; Pipeline rows open the Hiring candidate page.
+- The permission id stays `codeclear`. `/api/codeclear/**` is unchanged.
+- Tests: `src/lib/__tests__/legacy-redirect.test.ts` (map, query strings, every stub, and a sweep
+  that no `/app/codeclear` path is left in `src` outside the stubs and the gates),
+  `staff-tabs.test.ts`, and the module-gate / workspace-module cases for the new paths.
 
 ## 88. Recent Changes (October 2026) — Phase 2 begins in shadow mode
 
@@ -10632,8 +10691,7 @@ the route returns `reason` `ok` · `stale` · `no_ai_key` · `ai_failed` with `a
 latest four messages, and **Try again** (`?refresh=1`) for people who may use AI.
 
 Verified at `/demo/portal` at 1440 · 1024 · 768 · 390: 0 clipping findings, 0 page overflow, 0
-console errors. ⚠️ The demo shell ignores the theme switch, so dark mode was not seen; everything
-uses tokens. Not verified against live data: post-deploy, open Wedge and check the Slack card
+console errors. Dark mode was checked once the demo followed the theme (§131). Not verified against live data: post-deploy, open Wedge and check the Slack card
 either shows a digest or says why, and press Try again.
 
 ### 129.1 Icons and colour, only where they mean something
@@ -10726,9 +10784,52 @@ unchanged (admin bento, developer view, Siân's people-ops tiles, guests, "view 
   reaches no server), with a roll-up roster fixture. Several tiles crashed on the demo's `{}`
   catch-all (broadcast list, client faces, expenses, HR, agentic card) and now treat a non-list as
   empty.
-- **Not verified:** dark mode (the demo shell ignores the theme switch), and live data.
+- **Not verified:** live data. (Dark mode was checked afterwards, §131.)
 
-## 128. Recent Changes (November 2026) — The repo owns the VPS crontab
+## 131. Recent Changes (November 2026) — The demo follows the theme, so dark mode can be checked
+
+Every `/demo` page was forced light (it was in `FORCE_LIGHT`, both in `theme-provider.tsx` and the
+anti-flash script in `layout.tsx`). So none of the surfaces verified on the demo had ever been seen
+in dark, and every PR said "dark mode not verified".
+
+- **`/demo` is out of `FORCE_LIGHT`.** It follows `gitwork.theme.v1` exactly as `/app` does. Client
+  deliverables and the sign-in pages stay forced light, unchanged. The demo banner carries the same
+  Light / Dark / System `ThemeToggle` as the app's profile menu (rendered once mounted, since the
+  mode lives in localStorage).
+- **`?theme=dark|light|system` on any `/demo` page** sets the mode, as clicking the switch would (it
+  is stored). The anti-flash script applies it before first paint. ⚠️ Demo only
+  (`DEMO_THEME_PATHS`, `demoThemeParam`): a link must never change a signed-in person's saved
+  preference on `/app`. `src/components/__tests__/demo-theme.test.ts` pins both.
+- **Harnesses:** `npm run audit:clipping <url> -- --theme=dark` and `node scripts/baseline.mjs
+  --theme=dark` emulate the OS preference and set the stored mode before any script runs.
+  `--theme` can't be combined with `--update` (the snapshot is light).
+- **What the first dark pass found and fixed** (HQ, `/demo/hq?desk=long`, `/demo/dev`, the portal
+  page incl. `?shape=dense` and View history, the wiki dashboard, and the Board, Table, Timeline,
+  Schedule and card popup, at 1440 and 390):
+  - White text on `bg-[var(--brand-600)]` was **2.6:1** in dark (the brand lifts to `#6BA0FF`): the
+    demo tag, avatars, the Schedule's "This week" badge, link buttons, Reply. One global rule in
+    `globals.css` now gives it dark ink (`#0B0B0C`, 8:1), the same answer `.app-button-primary`
+    already uses in dark and the seasonal themes used for their brands.
+  - **Opacity-modified tints** (`bg-red-50/60`, `/50` on red, amber, teal, blue) are separate
+    classes, so the dark remaps never reached them and they painted a pale slab under red text —
+    the Schedule's Overdue box measured 1:1. Remapped.
+  - **Violet, purple, fuchsia, pink and cyan** weren't remapped at all. A Gantt bar coloured violet
+    was a light slab on the dark board. Tints, text (`-600`…`-900`) and borders now flip like the
+    other families.
+  - The wiki hero's small labels (`text-white/35`…`/45` on navy) were 3.2–4.5:1 in **both** modes;
+    raised to `/60`–`/65`. The wiki dashboard's monitor status text used fixed hexes (rose 3.9:1 in
+    dark); it now uses the palette classes that flip, keeping the hex for the dot.
+- After the fixes: 0 text below AA, 0 light slabs, 0 clipping findings, 0 page overflow and no
+  console errors on all of those, at both widths. Screenshots in the PR.
+- **`/demo/pulse-embed` stays forced light** (added to `FORCE_LIGHT` and the anti-flash script): it
+  shows the scanner embedded in Gitwork's own light website, as the real `/embed` is.
+- ⚠️ **Not fixed, found by a desktop sweep of the other demo pages** (outside this pass): Docs
+  cards use fixed dark hexes for their accent text (1.75–2.55:1 in dark); Backstage calendar
+  initials are white on light fills; Monitors' "Acknowledge" is white on `--danger-500` (2.77:1);
+  Platform's "6 of 13" chip is light text on a light fill (1.17:1); Studio's type swatch is a
+  cream slab. Each wants its own token fix.
+
+## 132. Recent Changes (November 2026) — The repo owns the VPS crontab
 
 Scheduled jobs had drifted for months: foreman, curator and wedge-keepwarm were documented and never
 installed, member-purge and crm-sync waited on a hand edit, and `vercel.json` still listed 14 crons

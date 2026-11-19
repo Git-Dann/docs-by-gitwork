@@ -799,6 +799,8 @@ export async function listConversations(
     priority?: ConversationPriority;
     issueType?: string;
     source?: SupportSource;
+    /** The sentiment the triage agent tagged — the legacy inbox's filter, now a server param. */
+    sentiment?: Conversation["sentiment"];
     /** Filter by derived reply state — applied in SQL so a page is complete, not a sample. */
     replyState?: ReplyState;
     /** Free-text over subject / preview / customer, applied in SQL for the same reason. */
@@ -829,6 +831,7 @@ export async function listConversations(
   if (opts.priority) where.priority = toDbConversationPriority(opts.priority);
   if (opts.issueType) where.issueType = opts.issueType;
   if (opts.source) where.source = toDbSource(opts.source);
+  if (opts.sentiment) where.sentiment = opts.sentiment.toUpperCase() as PrismaConversationSentiment;
   if (opts.replyState) and.push(replyStateWhere(opts.replyState));
 
   const q = opts.q?.trim();

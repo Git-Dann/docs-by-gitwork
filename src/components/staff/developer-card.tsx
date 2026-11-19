@@ -4,7 +4,7 @@
  * A developer's Code side, on their Staff page (docs/hr-platform.md, "One page per developer"):
  * GitHub, stack and links, Bench or Off Bench, their monthly rate (rate-gated), the clients
  * they're on, the CV and the edit-dev dialog. Plus their notes. What used to be a second page
- * at /app/codeclear/candidates/[id], which now sends team members here.
+ * at /app/staff/hiring/candidates/[id], which now sends team members here.
  *
  * The pieces are the Hiring review's own (candidate-parts.tsx), so the two can't drift.
  */

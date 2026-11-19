@@ -14,7 +14,7 @@ export function DevSignalEntryBanner() {
 
   return (
     <Link
-      href="/app/codeclear/devsignal"
+      href="/app/staff/hiring/devsignal"
       className="mb-6 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 transition hover:border-blue-300 hover:bg-blue-100"
     >
       <div>

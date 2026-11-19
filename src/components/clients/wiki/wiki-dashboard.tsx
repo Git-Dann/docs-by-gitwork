@@ -37,7 +37,7 @@ import {
   VideoCameraIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
-import { summariseDelivery } from "@/lib/wiki-delivery";
+import { projectProgress, summariseDelivery } from "@/lib/wiki-delivery";
 import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
 import { buildEstimateReadout, planDurationParts, formatShortDate, isPlannable } from "@/lib/wiki-estimates";
 import { summariseRoundup } from "@/lib/wiki-roundup";
@@ -62,9 +62,6 @@ const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, mo
 // DM Serif. Used for the hero name + pull-out stat figures per the Gitwork brand
 // guide, paired with mono labels (the DESIGN.md data signature).
 const SERIF = "var(--font-fraunces), var(--font-display), 'Times New Roman', Georgia, serif";
-// Playfair Display italic — the Gitwork brand-guide "step numeral" motif, used as
-// a faint editorial index on each widget card.
-const PLAYFAIR = "var(--font-playfair), var(--font-fraunces), Georgia, serif";
 
 type DocSection = "ia" | "dev-guide" | "api-docs" | "architecture" | "runbook" | "data-model";
 
@@ -110,26 +107,15 @@ const SECTION_PAGE_TYPE: Record<DocSection, string> = {
   "data-model": "DATA_MODEL",
 };
 
-/** Weighted overall completion across all timeline blocks (by task count). */
+/**
+ * Overall completion — the ONE project rule (`projectProgress`, src/lib/wiki-delivery.ts),
+ * so this tile can never disagree with Timeline, Delivery or RoundUp. Null when there is
+ * nothing to count: no phases, or phases with no tasks yet (§49.1 — never a fall-back to
+ * averaging the phase bars, which is how the same project read 41% here and 29% there).
+ */
 function overallProgress(wiki: WikiDTO): number | null {
-  const blocks = wiki.timeline.blocks;
-  if (blocks.length === 0) return null;
-  let done = 0;
-  let total = 0;
-  for (const b of blocks) {
-    total += b.tasks.length;
-    done += b.tasks.filter((t) => t.done).length;
-  }
-  // ⚠️ Live work that is on no phase counts too. Without this GAIA Bloom's card read
-  // 98% (46 of 47 phase tasks) while six items, two of them in progress, were counted
-  // nowhere on the client's portal. The honest figure for her is 87%.
-  const loose = wiki.timeline.unassigned;
-  total += loose.length;
-  done += loose.filter((t) => t.done).length;
-  if (total === 0) {
-    return Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
-  }
-  return Math.round((done / total) * 100);
+  if (wiki.timeline.blocks.length === 0) return null;
+  return projectProgress({ blocks: wiki.timeline.blocks, unassigned: wiki.timeline.unassigned }).percent;
 }
 
 function formatDate(iso: string): string {
@@ -218,71 +204,67 @@ function endpointCount(content: unknown): number | null {
   return null;
 }
 
-const ROMAN_NUMERALS: [number, string][] = [
-  [1000, "m"], [900, "cm"], [500, "d"], [400, "cd"],
-  [100, "c"], [90, "xc"], [50, "l"], [40, "xl"],
-  [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"],
-];
-
-/** Lowercase roman numeral — the editorial section marker (i., ii., iii. …). */
-function toRomanLower(n: number): string {
-  let num = n;
-  let result = "";
-  for (const [value, symbol] of ROMAN_NUMERALS) {
-    while (num >= value) {
-      result += symbol;
-      num -= value;
-    }
-  }
-  return result;
+/** "01", "02" … — the `NN //` index every card on the platform carries (DESIGN.md). */
+function cardNumber(n: number): string {
+  return String(n).padStart(2, "0");
 }
 
-/** A widget tile — a clickable card that surfaces real data from its section. */
+/**
+ * A widget tile — a clickable card that surfaces real data from its section.
+ *
+ * ⚠️ No minimum height. Rows are as tall as their tallest card and every card stretches to
+ * the row, so a floor (it was 220px) left 71–166px of empty card under short content — the
+ * dashboard no-gaps rule. Card bodies are kept to a similar, short shape instead.
+ *
+ * It is a container: when the grid closes a row by stretching a card across two or three
+ * columns, the header moves to the left and the body sits beside it, so a wide card holds
+ * its few lines in one band rather than becoming a wide empty slab.
+ */
 function Widget({
   section,
   onSelect,
   children,
   numeral,
+  label,
 }: {
   section: WikiSection;
   onSelect: (s: WikiSection) => void;
   children: ReactNode;
   numeral?: string;
+  /** Overrides the section's own label (the folded Docs card). */
+  label?: string;
 }) {
   const meta = SECTION_META[section as Exclude<WikiSection, "dashboard" | "settings">];
   const Icon = meta.icon;
+  const title = label ?? meta.label;
   return (
     <button
       type="button"
       onClick={() => onSelect(section)}
-      // `min-h-[220px]`: rows now size to their own tallest card (a row can hold the
-      // Daily updates card), so a floor keeps short cards from collapsing to a sliver.
-      className="group relative flex h-full min-h-[220px] flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]"
+      className="group @container relative flex h-full flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]"
     >
-      <div className="relative mb-3 flex items-center gap-2">
-        {/* Editorial step numeral (Playfair italic) — a real section marker,
-            echoing the Gitwork brand guide's "i. ii. iii." motif. */}
-        {numeral && (
-          <span
-            aria-hidden
-            className="text-[15px] text-[var(--brand-600)]"
-            style={{ fontFamily: PLAYFAIR, fontStyle: "italic", fontWeight: 500 }}
-          >
-            {numeral}.
+      <div className="flex flex-1 flex-col @min-[620px]:flex-row @min-[620px]:items-start @min-[620px]:gap-8">
+        <div className="relative mb-3 flex min-w-0 items-center gap-2 @min-[620px]:mb-0 @min-[620px]:w-[220px] @min-[620px]:shrink-0">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[var(--brand-50)] text-[var(--brand-700)]">
+            <Icon className="h-5 w-5" />
           </span>
-        )}
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] bg-[var(--brand-50)] text-[var(--brand-700)]">
-          <Icon className="h-5 w-5" />
-        </span>
-        <span
-          className="text-[11px] uppercase tracking-[0.08em] text-[var(--text-2)]"
-          style={{ fontFamily: MONO }}
-        >
-          {meta.label}
-        </span>
-        <ArrowRightIcon className="ml-auto h-4 w-4 text-[var(--text-4)] opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
+          <span
+            className="min-w-0 truncate text-[11px] uppercase tracking-[0.08em] text-[var(--text-2)]"
+            style={{ fontFamily: MONO }}
+            title={numeral ? `${numeral} // ${title}` : title}
+          >
+            {numeral ? (
+              <>
+                <span className="text-[var(--brand-600)]">{numeral}</span>
+                <span className="text-[var(--text-4)]">{" // "}</span>
+              </>
+            ) : null}
+            {title}
+          </span>
+          <ArrowRightIcon className="ml-auto h-4 w-4 shrink-0 text-[var(--text-4)] opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
+        </div>
+        <div className="relative min-w-0 flex-1">{children}</div>
       </div>
-      <div className="relative flex-1">{children}</div>
     </button>
   );
 }
@@ -480,11 +462,11 @@ export function WikiDashboard({
         );
       }
       case "monitors": {
-        const M: Record<string, { label: string; color: string }> = {
-          UP: { label: "All systems operational", color: "#059669" },
-          DEGRADED: { label: "Some systems degraded", color: "#b45309" },
-          DOWN: { label: "Service disruption", color: "#e11d48" },
-          UNKNOWN: { label: "Monitoring pending", color: "#6b7280" },
+        const M: Record<string, { label: string; color: string; tone: string }> = {
+          UP: { label: "All systems operational", color: "#059669", tone: "text-emerald-700" },
+          DEGRADED: { label: "Some systems degraded", color: "#b45309", tone: "text-amber-700" },
+          DOWN: { label: "Service disruption", color: "#e11d48", tone: "text-red-700" },
+          UNKNOWN: { label: "Monitoring pending", color: "#6b7280", tone: "text-[var(--text-3)]" },
         };
         const meta = M[worstMonitor ?? "UNKNOWN"];
         const up = activeMonitors.filter((m) => m.status === "UP").length;
@@ -492,7 +474,8 @@ export function WikiDashboard({
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: meta.color }} />
-              <span className="text-[14px] font-semibold" style={{ color: meta.color }}>
+              {/* Text uses the palette classes that flip in dark mode; the dot keeps the hue. */}
+              <span className={`text-[14px] font-semibold ${meta.tone}`}>
                 {meta.label}
               </span>
             </div>
@@ -620,10 +603,16 @@ export function WikiDashboard({
               <Metric value={String(waiting)} label="Waiting for your review" />
               <Metric value={String(approved)} label="Approved" />
             </div>
-            <p className="truncate text-[12px] text-[var(--text-4)]">
-              {cards.length} card{cards.length === 1 ? "" : "s"}
-              {changes ? ` · ${changes} with changes asked for` : ""}
-            </p>
+            {(() => {
+              const line = `${cards.length} card${cards.length === 1 ? "" : "s"}${
+                changes ? ` · ${changes} with changes asked for` : ""
+              }`;
+              return (
+                <p className="truncate text-[12px] text-[var(--text-4)]" title={line}>
+                  {line}
+                </p>
+              );
+            })()}
           </div>
         );
       }
@@ -710,6 +699,9 @@ export function WikiDashboard({
           blocks: wiki.timeline.blocks,
           milestones: wiki.timeline.milestones,
           blockers: wiki.blockers,
+          // Loose work counts, as on the Delivery page itself — without it this tile and
+          // the page it links to disagreed.
+          unassigned: wiki.timeline.unassigned,
         });
         return d.noTimeline ? (
           <p className="text-[13px] text-[var(--text-4)]">No delivery plan yet.</p>
@@ -865,6 +857,36 @@ export function WikiDashboard({
           </div>
         );
       }
+      case "code-handover": {
+        // A real case (§52.1): without it the card fell through to the doc default and read
+        // "Documentation.". The newest version across every module leads.
+        const modules = wiki.codeHandover.modules;
+        if (modules.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No code handed over yet.</p>;
+        }
+        const versions = modules.flatMap((m) =>
+          m.versions.map((v) => ({ module: m.name, label: v.label, createdAt: v.createdAt, files: v.files.length, isCurrent: v.isCurrent })),
+        );
+        const newest = [...versions].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+        const currentFiles = modules.reduce(
+          (n, m) => n + (m.versions.find((v) => v.isCurrent) ?? m.versions[0])?.files.length || 0,
+          0,
+        );
+        const latestLine = newest ? `${newest.module} ${newest.label} · ${formatDate(newest.createdAt)}` : "";
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={String(modules.length)} label={modules.length === 1 ? "Module" : "Modules"} />
+              <Metric value={String(currentFiles)} label="Files" />
+            </div>
+            {newest && (
+              <p className="truncate text-[12px] text-[var(--text-4)]" title={`Latest: ${latestLine}`}>
+                Latest: {latestLine}
+              </p>
+            )}
+          </div>
+        );
+      }
       case "api-docs": {
         const page = docPage("api-docs");
         const n = endpointCount(page?.content);
@@ -966,7 +988,7 @@ export function WikiDashboard({
             {(wiki.productTeam.length > 0 || wiki.team.length > 0) && (
               <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
                 <span
-                  className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/35"
+                  className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/60"
                   style={{ fontFamily: MONO }}
                 >
                   Team · {teamCount}
@@ -1055,11 +1077,11 @@ export function WikiDashboard({
 
       {/* Every card — Daily updates included — goes through the arrangeable grid. Each
           viewer can reorder, resize (1-3 columns, always one row tall) and hide cards for
-          themselves; see wiki-dashboard-grid.tsx. The numerals follow THEIR order, so the
-          i. ii. iii. run never reads out of sequence after a drag. */}
+          themselves; see wiki-dashboard-grid.tsx. The NN numbers follow THEIR order, so the
+          01, 02, 03 run never reads out of sequence after a drag. */}
       <WikiDashboardGrid
         wikiId={wiki.id}
-        roman={toRomanLower}
+        roman={cardNumber}
         cards={[
           { id: STANDUPS_CARD, label: "Daily updates", render: standupsCard },
           ...sections.map((section) => ({
@@ -1105,7 +1127,7 @@ function WikiFooter({ clientName, facts }: { clientName: string; facts: FooterFa
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <p
-            className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45"
+            className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/65"
             style={{ fontFamily: MONO }}
           >
             Knowledge Wiki
@@ -1123,7 +1145,7 @@ function WikiFooter({ clientName, facts }: { clientName: string; facts: FooterFa
             {facts.map((f) => (
               <div key={f.label} className="flex items-baseline gap-2">
                 <dt
-                  className="text-[10px] uppercase tracking-[0.12em] text-white/45"
+                  className="text-[10px] uppercase tracking-[0.12em] text-white/65"
                   style={{ fontFamily: MONO }}
                 >
                   {f.label}
@@ -1163,7 +1185,7 @@ function WikiFooter({ clientName, facts }: { clientName: string; facts: FooterFa
         </p>
       </div>
       <p
-        className="mt-3 text-[10px] leading-relaxed tracking-[0.04em] text-white/35"
+        className="mt-3 text-[10px] leading-relaxed tracking-[0.04em] text-white/60"
         style={{ fontFamily: MONO }}
       >
         {companyDisclosureLine()}
@@ -1247,7 +1269,7 @@ function TeamStack({ label, members }: { label: string; members: WikiDTO["team"]
   return (
     <div className="flex items-center gap-2">
       <span
-        className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/40"
+        className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/60"
         style={{ fontFamily: MONO }}
       >
         {label}

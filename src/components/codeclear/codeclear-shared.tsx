@@ -77,24 +77,30 @@ type CodeTab = { href: string; label: string; devsignal?: boolean };
  */
 const staffTabs: readonly CodeTab[] = [
   { href: "/app/staff", label: "People" },
-  { href: "/app/codeclear/candidates", label: "Developers" },
+  { href: "/app/staff/developers", label: "Developers" },
   // Leavers (developers included) are under People → Archived, not a tab of their own.
 ];
 
 const hiringTabs: readonly CodeTab[] = [
   // The developer overview (tiers, GitHub signal). Was the module's landing page.
-  { href: "/app/codeclear", label: "Overview" },
-  { href: "/app/codeclear/pipeline", label: "Pipeline" },
-  { href: "/app/codeclear/devsignal", label: "DevSignal", devsignal: true },
+  { href: "/app/staff/hiring", label: "Overview" },
+  { href: "/app/staff/hiring/pipeline", label: "Pipeline" },
+  { href: "/app/staff/hiring/devsignal", label: "DevSignal", devsignal: true },
 ];
 
-/** Is `tab` the active one for the current path? Overview is the bare /app/codeclear
+/** Pages under /app/staff that are their own tab, not a person's profile. */
+const STAFF_SIBLINGS = ["/app/staff/suppliers", "/app/staff/developers", "/app/staff/hiring"];
+
+/** Is `tab` the active one for the current path? Overview is the bare /app/staff/hiring
  *  page only; every other tab also matches its own sub-routes (detail pages) so the
  *  tab stays lit when you drill in. */
 export function isTabActive(href: string, pathname: string): boolean {
-  if (href === "/app/codeclear") return pathname === "/app/codeclear";
-  // People owns profiles (/app/staff/[id]) but not its sibling tab, Suppliers.
-  if (href === "/app/staff") return pathname === href || (pathname.startsWith("/app/staff/") && !pathname.startsWith("/app/staff/suppliers"));
+  if (href === "/app/staff/hiring") return pathname === "/app/staff/hiring";
+  // People owns profiles (/app/staff/[id]) but not its sibling tabs, which live under the
+  // same prefix: Suppliers, Developers and the Hiring pages.
+  if (href === "/app/staff") {
+    return pathname === href || (pathname.startsWith("/app/staff/") && !STAFF_SIBLINGS.some((s) => pathname === s || pathname.startsWith(s + "/")));
+  }
   return pathname === href || pathname.startsWith(href + "/");
 }
 

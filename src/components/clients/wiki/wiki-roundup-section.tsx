@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 /**
  * RoundUp — the weekly summary pack, for the client.
  *
@@ -24,7 +26,7 @@ import {
   type DeliveryBlocker,
   type DeliveryMilestone,
 } from "@/lib/wiki-delivery";
-import { summariseRoundup, type RoundupBlock, type RoundupItem } from "@/lib/wiki-roundup";
+import { levelledRowCount, summariseRoundup, type RoundupBlock, type RoundupItem } from "@/lib/wiki-roundup";
 
 /** `d MMM`, in UTC so the label cannot drift by a day with the reader's timezone. */
 function shortDay(iso: string): string {
@@ -114,6 +116,9 @@ export function WikiRoundupSection({
 }) {
   const at = now ?? new Date();
   const r = summariseRoundup(blocks, at, { unassigned });
+  // On now and Up next sit side by side: both show the same number of rows so they end level.
+  const [showAllLists, setShowAllLists] = useState(false);
+  const rowCap = showAllLists ? Infinity : levelledRowCount(r.inFlight.length, r.upNext.length);
   const d = summariseDelivery({ blocks, milestones, blockers, unassigned });
 
   // ⚠️ "more than last week" is only sayable when BOTH weeks are measurable. With
@@ -205,7 +210,7 @@ export function WikiRoundupSection({
           <div className="p-5 sm:p-6">
             {r.inFlight.length > 0 ? (
               <ul>
-                {r.inFlight.map((item, i) => (
+                {r.inFlight.slice(0, rowCap).map((item, i) => (
                   <ItemRow key={`${item.title}-${i}`} item={item} showDate={false} />
                 ))}
               </ul>
@@ -220,13 +225,13 @@ export function WikiRoundupSection({
             {r.upNext.length > 0 ? (
               <>
                 <ul>
-                  {r.upNext.map((item, i) => (
+                  {r.upNext.slice(0, rowCap).map((item, i) => (
                     <ItemRow key={`${item.title}-${i}`} item={item} showDate={false} />
                   ))}
                 </ul>
-                {r.totals.planned > r.upNext.length && (
+                {r.totals.planned > Math.min(r.upNext.length, rowCap) && !(r.upNext.length > rowCap) && (
                   <p className="mt-3 text-[12px] text-[var(--text-4)]">
-                    and {r.totals.planned - r.upNext.length} more
+                    and {r.totals.planned - Math.min(r.upNext.length, rowCap)} more
                   </p>
                 )}
               </>
@@ -236,6 +241,21 @@ export function WikiRoundupSection({
           </div>
         </Panel>
       </div>
+      {(r.inFlight.length > levelledRowCount(r.inFlight.length, r.upNext.length) ||
+        r.upNext.length > levelledRowCount(r.inFlight.length, r.upNext.length)) && (
+        <button
+          type="button"
+          onClick={() => setShowAllLists((v) => !v)}
+          className="-mt-2 text-[12px] font-medium text-[var(--brand-600)] hover:underline"
+        >
+          {showAllLists
+            ? "Show fewer"
+            : `Show ${
+                Math.max(r.inFlight.length, r.upNext.length) -
+                levelledRowCount(r.inFlight.length, r.upNext.length)
+              } more`}
+        </button>
+      )}
 
       <Panel number="04" label="THE WORK TIMELINE" status={`${blocks.length} PHASES`}>
         <div className="p-5 sm:p-6">

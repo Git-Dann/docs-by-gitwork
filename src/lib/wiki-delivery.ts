@@ -104,6 +104,36 @@ function totalOf(block: DeliveryBlock): number {
   return (block.tasks ?? []).length;
 }
 
+/**
+ * THE project completion figure: tasks done ÷ tasks, over every phase plus the live work
+ * on no phase. One rule, used by every surface that prints a project's "% complete" —
+ * Timeline's header, Delivery, RoundUp and the wiki dashboard (`project-progress.test.ts`
+ * fails if any of them computes it another way).
+ *
+ * ⚠️ Not the average of phase progress. Timeline used to average `block.progress`, so a
+ * one-task phase that was finished weighed the same as a forty-task phase that wasn't,
+ * and the same project read 41% on Timeline and 29% on Delivery. A client reading two
+ * pages got two answers.
+ *
+ * `percent` is null when there is nothing to count — no phases, or phases with no tasks
+ * yet (§49.1: "nobody has broken this down" is not "0% done", and never "100%").
+ */
+export function projectProgress(input: {
+  blocks: readonly DeliveryBlock[];
+  unassigned?: readonly { done: boolean }[];
+}): { done: number; total: number; percent: number | null } {
+  let done = 0;
+  let total = 0;
+  for (const block of input.blocks) {
+    done += doneOf(block);
+    total += totalOf(block);
+  }
+  const loose = input.unassigned ?? [];
+  done += loose.filter((t) => t.done).length;
+  total += loose.length;
+  return { done, total, percent: total === 0 ? null : Math.round((done / total) * 100) };
+}
+
 export function summariseDelivery(input: {
   blocks: readonly DeliveryBlock[];
   milestones: readonly DeliveryMilestone[];
@@ -126,8 +156,6 @@ export function summariseDelivery(input: {
   const now = input.now ?? new Date();
   const blocks = input.blocks;
 
-  let done = 0;
-  let total = 0;
   let phasesComplete = 0;
   let phasesInFlight = 0;
   let phasesNotStarted = 0;
@@ -135,8 +163,6 @@ export function summariseDelivery(input: {
   for (const block of blocks) {
     const d = doneOf(block);
     const t = totalOf(block);
-    done += d;
-    total += t;
     // A phase with no tasks is "not started" rather than "complete". Dividing by zero
     // and calling the result 100% is how an empty plan reports as finished.
     if (t === 0) phasesNotStarted += 1;
@@ -145,18 +171,18 @@ export function summariseDelivery(input: {
     else phasesNotStarted += 1;
   }
 
-  const loose = input.unassigned ?? [];
-  done += loose.filter((t) => t.done).length;
-  total += loose.length;
+  // Overall figures come from the one rule, so this page can never disagree with the
+  // Timeline header or the dashboard.
+  const overall = projectProgress({ blocks, unassigned: input.unassigned });
 
   const upcoming = input.milestones
     .filter((m) => new Date(m.date).getTime() >= now.getTime())
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   return {
-    done,
-    total,
-    percent: total === 0 ? null : Math.round((done / total) * 100),
+    done: overall.done,
+    total: overall.total,
+    percent: overall.percent,
     phasesComplete,
     phasesInFlight,
     phasesNotStarted,

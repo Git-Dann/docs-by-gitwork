@@ -133,8 +133,16 @@ describe("wiki Resources — the card grid", () => {
     // ⚠️ Assert the USE, not just the declaration. Swapping `height: COVER_H`
     // for `minHeight: 128` leaves the const declared and this test green while
     // the cards go ragged again — which is exactly what a sabotage run showed.
-    expect([...card.matchAll(/height: COVER_H,/g)]).toHaveLength(2);
+    expect([...card.matchAll(/height: COVER_H\b/g)]).toHaveLength(2);
     expect(card).not.toMatch(/minHeight:/);
+  });
+
+  it("draws neutral cards from tokens: no tinted gradients, no hex, no pill filters", () => {
+    // Per-card pastel gradients in hex didn't flip in dark mode and used colour for decoration.
+    expect(card).not.toMatch(/linear-gradient/);
+    expect(card).not.toMatch(/#[0-9a-fA-F]{6}\b/);
+    expect(card).not.toMatch(/rounded-full/);
+    expect(card).toMatch(/<Segmented/);
   });
 
   it("reserves a fixed two-line box for the title, and keeps the full text reachable", () => {

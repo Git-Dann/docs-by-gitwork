@@ -459,6 +459,8 @@ export type PublicTimelineMilestone = {
 export type PublicTimelineDTO = {
   clientName: string;
   generatedAt: string;
+  /** Project completion by the one rule (`projectProgress`); null when there is nothing to count. */
+  overallPercent: number | null;
   blocks: PublicTimelineBlock[];
   /** The same view grouped by release, client-safe fields only. Empty when there are none. */
   releases: PublicTimelineBlock[];

@@ -1,15 +1,14 @@
-import { AppShell } from "@/components/app-shell";
-import { CodeClearCandidateProfile } from "@/components/codeclear/codeclear-candidate-profile";
+import { redirect } from "next/navigation";
+import { withSearch, type SearchParamsRecord } from "@/lib/legacy-redirect";
 
-type RouteContext = {
+/** Legacy path (CLAUDE.md §87): the page moved under /app/staff. Kept so old links, notifications and bookmarks still land, query string included. */
+export default async function LegacyCandidateRedirect({
+  params,
+  searchParams,
+}: {
   params: Promise<{ id: string }>;
-};
-
-export default async function CodeClearCandidateProfilePage({ params }: RouteContext) {
+  searchParams: Promise<SearchParamsRecord>;
+}) {
   const { id } = await params;
-  return (
-    <AppShell title="Staff" subtitle="Dev validation profile.">
-      <CodeClearCandidateProfile candidateId={id} />
-    </AppShell>
-  );
+  redirect(withSearch(`/app/staff/hiring/candidates/${encodeURIComponent(id)}`, await searchParams));
 }

@@ -1517,24 +1517,21 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // client's Tasks board, not here.
     if (activeSection === "timeline") {
       return (
-        <>
-          <div className="mb-4 flex h-9 items-center justify-between gap-2">
-            <p className="text-[13px] text-[var(--text-4)]">
-              Pulls live from this client&apos;s project phases — edit on the Tasks board.
-            </p>
-            <ActionMenu
-              items={[
-                {
-                  key: "tasks",
-                  label: "Edit on Tasks board",
-                  icon: ArrowTopRightOnSquareIcon,
-                  onClick: () => window.location.assign(`/app/portal/${slug}/tasks`),
-                },
-              ]}
-            />
-          </div>
-          <WikiTimelineSection timeline={wiki!.timeline} />
-        </>
+        // The "edit it on the Tasks board" pointer lives IN the card's header — it used to
+        // sit loose above the card, flush to the page edge, with an orphan ⋯ menu.
+        <WikiTimelineSection
+          timeline={wiki!.timeline}
+          teamAction={
+            <a
+              href={`/app/portal/${slug}/tasks`}
+              title="Phases come live from this client's Tasks board — edit them there"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-600)] hover:underline"
+            >
+              Edit on Tasks board
+              <ArrowTopRightOnSquareIcon aria-hidden className="h-3 w-3" />
+            </a>
+          }
+        />
       );
     }
 

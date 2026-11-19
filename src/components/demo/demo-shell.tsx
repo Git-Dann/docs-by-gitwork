@@ -19,6 +19,7 @@ import { Cog8ToothIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { DeskDrawer } from "@/components/desk/desk-drawer";
 import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import "@/lib/demo/demo-fetch";
 import { demoSession } from "@/lib/demo/dev-demo-data";
@@ -195,6 +196,9 @@ export function DemoShell({
                 </span>
                 {withBrand("Foundry — the developer experience, running on sample data.")}
               </p>
+              {/* The same Light / Dark / System control as the app's profile menu. Rendered once
+                  mounted: the chosen mode lives in localStorage, so the server can't know it. */}
+              {mounted ? <ThemeToggle iconOnly className="shrink-0" /> : <span className="h-[30px] w-[98px] shrink-0" aria-hidden />}
             </div>
 
             <header className="halloween-clear hidden items-start justify-between gap-4 border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8 lg:flex">

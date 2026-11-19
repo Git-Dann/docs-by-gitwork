@@ -105,6 +105,22 @@ export class ProvenanceError extends Error {
 }
 
 /**
+ * The evidence did not establish a grade (INCOMPLETE) and the caller asked for nothing to be
+ * written in that case. Thrown BEFORE any write, so the previous mark is untouched. Used by
+ * re-examination (recheck.ts): a fresh scan that cannot establish a critical clause must not
+ * replace a mark that did.
+ */
+export class ProvenanceNotEstablishedError extends ProvenanceError {
+  grade: CountermarkGrade;
+  gradeReason: string;
+  constructor(grade: CountermarkGrade, gradeReason: string) {
+    super(`The examination did not establish a grade: ${gradeReason}`, 409);
+    this.grade = grade;
+    this.gradeReason = gradeReason;
+  }
+}
+
+/**
  * Provenance a completed Pulse scan and issue a countermark against it.
  *
  * Refuses an incomplete scan outright. Attesting on partial evidence is the exact mistake
@@ -116,6 +132,16 @@ export async function issueCountermark(input: {
   scanId: string;
   standardId?: string;
   issuerName: string;
+  /** Refuse, before writing anything, when the evidence does not establish a grade. */
+  requireEstablished?: boolean;
+  /**
+   * A specific mark this one replaces (re-examination). It is superseded even when the
+   * subject name changed between scans (a store listing's name, a renamed project) — the
+   * name-based sweep below would miss it — and even if it lapsed while the scan ran, because
+   * "superseded by a newer examination" is then more accurate than "nobody re-checked".
+   * Never a revoked mark: a withdrawal outranks everything.
+   */
+  supersedesId?: string;
 }): Promise<CountermarkRecord> {
   const standard = getStandard(input.standardId ?? DEFAULT_STANDARD_ID);
   if (!standard) throw new ProvenanceError(`Unknown standard "${input.standardId}".`, 400);
@@ -146,6 +172,9 @@ export async function issueCountermark(input: {
     detail: c.detail,
   }));
   const result = evaluateStandard(evidence, standard);
+  if (input.requireEstablished && result.grade === "INCOMPLETE") {
+    throw new ProvenanceNotEstablishedError(result.grade, result.gradeReason);
+  }
 
   const issuedAt = new Date();
   const expiresAt = expiryFor(issuedAt, standard.id, result.grade);
@@ -217,6 +246,17 @@ export async function issueCountermark(input: {
       },
       data: { supersededById: row.id },
     });
+    if (input.supersedesId) {
+      await tx.countermark.updateMany({
+        where: {
+          id: input.supersedesId,
+          workspaceId: input.workspaceId,
+          revokedAt: null,
+          supersededById: null,
+        },
+        data: { supersededById: row.id },
+      });
+    }
 
     return tx.countermark.update({
       where: { id: row.id },
