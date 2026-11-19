@@ -105,51 +105,17 @@ Rules of thumb:
 - **Stay tidy** → prune stale worktrees (`git worktree prune`) and don't leave dozens of
   abandoned branches around. Auto-delete handles remote branches post-merge.
 
-### ⛔ `main`'s history was re-rooted — DO NOT prune remote branches
+### Branch history (resolved Nov 2026)
 
-**Read this before deleting any branch.** `main` currently holds **55 commits and its root commit
-is `3242110b`, dated 2026-07-17**. It contains nothing older. **43 of the 45 remote branches share
-a completely different root** (`bd8d7145`, the repo's initial commit, 2026-03-11) and have **no
-merge base with `main` at all**.
+`main`'s history was re-rooted in July 2026 and then reattached (§33): its root is `bd8d7145`
+(2026-03-11), so the old lineage is in `main` again. On 19 Nov 2026 every old branch was cleaned
+up: each one was either already in `main` or had its tip tagged first (`archive/branch/<name>` for
+GitHub branches, `archive/local/<name>` for local ones), and each tag was checked against the
+branch's commit before the branch was deleted. To bring one back:
+`git push origin archive/branch/<name>^{commit}:refs/heads/<name>`.
 
-Those branches are the **only** copy of **1,365 commits** — the project's entire history from
-March to July 2026. Deleting them destroys it permanently. Almost certainly fallout from the June
-mirror-clone repair described below, where a rebuilt `main` was force-pushed.
-
-Three consequences that will bite you:
-
-1. **`git branch --merged` and three-dot diffs are useless here.** With no merge base,
-   `git diff main...branch` returns **empty** — which reads as "this branch adds nothing, safe to
-   delete". It is the exact opposite. An audit built that test in July 2026 and it reported all 33
-   unreferenced branches as safe; checking one by hand (`homepage-redesign`: 108 commits ahead,
-   23,112 files differing) caught it before anything was deleted. **Use
-   `git merge-base --is-ancestor <branch> main` and treat an empty `git merge-base` output as
-   "orphaned, do not touch".**
-2. **`git log` / `git blame` lie about anything before 17 July.** `3242110b` is a root commit, so
-   it appears to *add* every file in the repo — it will show as the last-touch commit for most of
-   the tree and as the origin of files it never touched.
-3. **Nine of the eleven open PRs are built on the orphaned lineage** (e.g. #37's base is
-   `ddf707d7`, not on `main`), which is why they report `mergeable_state: unknown` and why some
-   have sat since May. They cannot be merged normally — they need re-creating from current `main`.
-
-**To make the branches safe to delete**, first anchor the history with tags, then prune:
-
-```bash
-# Tag every orphaned tip (annotated, namespaced) — objects stay reachable via the tag.
-for b in $(git ls-remote --heads origin | sed 's|.*refs/heads/||' | grep -v '^main$'); do
-  git merge-base --is-ancestor "origin/$b" origin/main 2>/dev/null && continue
-  [ -n "$(git merge-base origin/main "origin/$b" 2>/dev/null)" ] && continue   # based on main, skip
-  git tag -a "archive/pre-reroot/$b" "origin/$b" -m "Archived tip of $b (pre-2026-07-17 re-root)."
-done
-git push origin --tags     # ⚠️ blocked by the sandbox git proxy (403) — run this locally
-# Verify BEFORE deleting anything: expect 1365
-git rev-list --count $(git tag -l 'archive/pre-reroot/*' | tr '\n' ' ') --not origin/main
-```
-
-The better long-term fix is to reattach the history to `main` so it stops depending on loose refs:
-`git merge -s ours --allow-unrelated-histories <orphan-tip>` records the old lineage as a second
-parent **without changing a single file**. It needs a merge commit on `main`, which this repo
-otherwise forbids (§2), so it is Dan's call.
+⚠️ Before deleting a branch, check `git merge-base --is-ancestor <branch> main`. A squash-merged
+PR's branch is NOT an ancestor (its commits differ from the squash), so tag it first.
 
 ### Git hygiene — prevent object store corruption
 
@@ -168,9 +134,8 @@ git branch | grep claude/ | xargs git branch -D 2>/dev/null || true
 git gc --prune=now
 ```
 
-> ⚠️ That `git branch -D` line is **local-only and must stay that way**. Do not adapt it to
-> `git push origin --delete` — see the re-root warning above; the remote branches are load-bearing
-> until the archive tags are pushed.
+> ⚠️ That `git branch -D` line deletes `claude/` branches with no check. Before deleting any other
+> branch, local or remote, tag it unless it is already in `main` (see "Branch history" above).
 
 **If `git gc` fails** with "bad tree object" or "unable to read [sha]":
 1. **Do NOT use `--depth=20`** for repair — shallow clone packs have their own missing bases.
@@ -686,7 +651,7 @@ npm run deck:verify  # Deck's own regression gate (see §30)
 | Issue | File | Notes |
 |---|---|---|
 | **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. (The "Care never clears `unread`" bug listed here was fixed in July 2026 — see §33.) |
-| ~~Cron scheduling has drifted~~ | `deploy/crontab` | **Fixed Nov 2026 (§132):** the repo owns the VPS crontab and every deploy installs it; `vercel.json` has no crons. Only `retention` is unscheduled, deliberately. |
+| ~~Cron scheduling has drifted~~ | `deploy/crontab` | **Fixed Nov 2026 (§132):** the repo owns the VPS crontab and every deploy installs it; `vercel.json` has no crons. Every cron route is scheduled. |
 | `pulse-scan.ts` is 4000+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
 | 26 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
 | Proof is built but hidden | `src/components/app-shell.tsx` | Nav item commented out. Now gated on `proposals`. `src/server/proof.ts` hands out absolute `/app/proof?…` share URLs, so any relocation needs a query-preserving stub. |
@@ -10844,13 +10809,29 @@ that could run against the stale Neon database. Now:
 - **`crontab.test.ts`** fails if a cron route is neither in `deploy/crontab` nor in
   `UNSCHEDULED_CRONS` (with a reason), if the file names a missing route, or if `vercel.json`
   regains `crons`. `install-crontab.test.ts` runs the script against fixture crontabs.
-- **No route was removed:** every one has a live caller or purpose. `retention` stays unscheduled
-  (its first run would sweep the whole backlog — Dan's call). `pulse-reconcile` moved daily →
+- **No route was removed:** every one has a live caller or purpose. `retention` is scheduled too (daily since 19 Nov 2026,
+  Dan's call): it only tiers Docs view events older than 60 days to cold storage, 200 a run. `pulse-reconcile` moved daily →
   every 15 min and `pulse-run-monitors` daily → hourly (both were daily only for Vercel Hobby).
 - **Root's crontab may still run `wedge-keepwarm`.** The deploy user can't touch it, so its
   watchdog now runs under an advisory lock (`src/server/cron-single-run.ts`). The one-line removal
   is in `docs/vps-crons.md`.
 - `vps-ops.yml`'s `cron-install-missing` task is gone (it appended un-marked lines).
+
+## 133. Recent Changes (November 2026) — A client's default dashboard (wiki Decision E)
+
+The wiki dashboard was arranged per person only (§66), so a client always opened on the code's
+order. The team can now save ONE arrangement per client as its starting layout.
+
+- **Edit → "Save as client's default"** (team, 'Manage clients' + access to the client) stores the
+  current arrangement on `ClientWiki.dashboardLayout` (additive Json) via
+  `PUT /api/clients/[slug]/wiki/dashboard-layout`. "Clear client default" removes it. There is no
+  client route.
+- **Precedence** (`effectiveLayout`): a person's own browser layout, then the client's default, then
+  the code's. "Reset to default" now goes back to the client's default. Saving drops the saver's own
+  copy, so later changes to the default reach them too.
+- ⚠️ **The client's copy names only cards it shows** (`scopeDefaultLayout` in `forPublic`, computed
+  from `visibleSections`), so a hidden or retired section can't leak its id through the layout. And
+  like any layout it only arranges cards the viewer has; it can never add one.
 
 ## 134. Recent Changes (November 2026) — A client's bug or feedback goes to Requests (wiki Decision B)
 

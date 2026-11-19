@@ -8,6 +8,14 @@
  * default again. That also means no write route and no auth question: a client on an open
  * share link can arrange their own view without being able to change anyone else's.
  *
+ * ## The client's default (Decision E, Nov 2026)
+ *
+ * The team can save ONE arrangement per client (`ClientWiki.dashboardLayout`). It is the
+ * starting layout for everyone, team and client; a person's own arrangement still wins, and
+ * "Reset to default" goes back to the client's default, not the code's. It obeys the same
+ * rule as a personal layout: it only ARRANGES cards the viewer has, so it can never surface
+ * a section they can't see — and the client's copy names only sections it shows.
+ *
  * ## The grid is 3 columns and every card is ONE row tall
  *
  * Only the width changes: 1, 2 or 3 columns. A card can never be two rows tall, so the
@@ -187,13 +195,44 @@ export function layoutStorageKey(wikiId: string): string {
 }
 
 /** Read the saved layout. Storage can throw (private mode, blocked site data) — that reads as none. */
-export function loadLayout(wikiId: string): DashboardLayout {
+/**
+ * This person's own saved layout, or null when they have never arranged the dashboard. Null
+ * means "use the client's default"; an empty layout would mean "use the code's" and silently
+ * ignore what the team set. Storage can throw (private mode, blocked site data) — that reads
+ * as none.
+ */
+export function loadLayout(wikiId: string): DashboardLayout | null {
   try {
     const raw = window.localStorage.getItem(layoutStorageKey(wikiId));
-    return raw ? readLayout(JSON.parse(raw)) : EMPTY_LAYOUT;
+    return raw ? readLayout(JSON.parse(raw)) : null;
   } catch {
-    return EMPTY_LAYOUT;
+    return null;
   }
+}
+
+/** A stored client default, read defensively: malformed or empty is null (the code's default). */
+export function readDefaultLayout(raw: unknown): DashboardLayout | null {
+  if (!raw || typeof raw !== "object") return null;
+  const l = readLayout(raw);
+  return l.order.length || l.hidden.length || Object.keys(l.sizes).length ? l : null;
+}
+
+/** What a viewer sees: their own arrangement, else the client's default, else the code's. */
+export function effectiveLayout(personal: DashboardLayout | null, clientDefault: DashboardLayout | null): DashboardLayout {
+  return personal ?? clientDefault ?? EMPTY_LAYOUT;
+}
+
+/** The client's default cut down to the ids an audience can have, so it names nothing else. */
+export function scopeDefaultLayout(layout: DashboardLayout | null, allowed: readonly string[]): DashboardLayout | null {
+  if (!layout) return null;
+  const ok = new Set(allowed);
+  const sizes: Record<string, CardSize> = {};
+  for (const [k, v] of Object.entries(layout.sizes)) if (ok.has(k)) sizes[k] = v;
+  return readDefaultLayout({
+    order: layout.order.filter((id) => ok.has(id)),
+    hidden: layout.hidden.filter((id) => ok.has(id)),
+    sizes,
+  });
 }
 
 export function saveLayout(wikiId: string, layout: DashboardLayout): void {

@@ -1133,6 +1133,7 @@ const demoWiki: WikiDTO = {
   // produces (§53). A demo carrying only the healthy shape cannot express the bug,
   // and so cannot verify the fix (§42.15).
   // A healthy feed — the banner is verified separately against the failing shape.
+  dashboardLayout: null,
   courseFeed: {
     lastRunAt: new Date(Date.now() - 20 * 60_000).toISOString(),
     lastSuccessAt: new Date(Date.now() - 20 * 60_000).toISOString(),

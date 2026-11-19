@@ -56,6 +56,7 @@ import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
 import { EMPTY_BOARD, forPublicBoard, loadWikiBoard, scopeBoardToSection } from "./wiki-board";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { clientVisibleSections } from "@/lib/wiki-client-visibility";
+import { readDefaultLayout, scopeDefaultLayout, STANDUPS_CARD, type DashboardLayout } from "@/lib/wiki-dashboard-layout";
 import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSection } from "./wiki-metrics";
 import { EMPTY_MEETINGS, loadWikiMeetings, type WikiMeetingsSection } from "./wiki-meetings";
 import { loadWikiPlatforms } from "./wiki-platforms";
@@ -385,6 +386,9 @@ export interface WikiDTO {
    *  Null when it has never run — and ALWAYS null on a public read: it is our plumbing,
    *  not the client's business, and its errors name our own configuration. */
   courseFeed: CourseFeedStatus | null;
+  /** The team's default dashboard arrangement for this client (Decision E); null = the code's.
+   *  On the client's copy it names only cards the client has (`forPublic`). */
+  dashboardLayout: DashboardLayout | null;
   /**
    * The sections a CLIENT can see, in the order their rail shows them.
    *
@@ -1093,6 +1097,7 @@ async function buildDTO(
     status: WikiEntryStatus;
   }>;
   courseFeedStatus?: unknown;
+  dashboardLayout?: unknown;
   courseRequests?: Array<{
     id: string;
     courseName: string;
@@ -1273,6 +1278,7 @@ async function buildDTO(
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeCourseRequest),
     courseFeed: parseFeedStatus(wiki.courseFeedStatus),
+    dashboardLayout: readDefaultLayout(wiki.dashboardLayout),
     intakeItems: (wiki.intakeItems ?? [])
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -3492,7 +3498,23 @@ function forPublic(dto: WikiDTO): WikiDTO {
   // drifted: a different order, and two predicates that disagreed (`metrics` without
   // its `source` check, `estimates` without `isPlannable`). One list, from the one
   // function, and a client sees the same sections in the same order wherever they look.
-  return { ...trimmed, visibleSections: clientVisibleSections(trimmed) };
+  const visibleSections = clientVisibleSections(trimmed);
+  return {
+    ...trimmed,
+    visibleSections,
+    // The team's default arrangement, naming only cards the client has: a hidden or retired
+    // section must not leak its name through the layout.
+    dashboardLayout: scopeDefaultLayout(trimmed.dashboardLayout, [STANDUPS_CARD, ...visibleSections]),
+  };
+}
+
+/** Save (or clear, with null) the team's default dashboard arrangement for a client. */
+export async function setWikiDashboardLayout(clientId: string, layout: DashboardLayout | null): Promise<void> {
+  await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, dashboardLayout: layout ? (layout as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
+    update: { dashboardLayout: layout ? (layout as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
+  });
 }
 
 /**

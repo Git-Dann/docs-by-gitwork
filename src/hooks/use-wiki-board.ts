@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { FeedbackKind } from "@/lib/wiki-board";
+import type { DashboardLayout } from "@/lib/wiki-dashboard-layout";
 import { DONE_PAGE_MAX, type DoneLaneKind, type DoneLanePage } from "@/lib/wiki-board-layout";
 import type { TaskPriority, TaskStatus } from "@/types/tasks";
 import type { WikiBoardCard, WikiBoardFeedback, WikiBoardKeyDate } from "@/types/wiki-board";
@@ -328,6 +329,20 @@ export function useSetWikiBoardShowAllTasks(slug: string) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ showAllTasks }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/** The team's default dashboard arrangement for a client (Decision E); null clears it. */
+export function useSetWikiDashboardDefault(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (layout: DashboardLayout | null) =>
+      apiFetch(`/api/clients/${slug}/wiki/dashboard-layout`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layout }),
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });

@@ -43,7 +43,8 @@ import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-sec
 import { WikiCostsSection } from "./wiki-costs-section";
 import { WikiEstimatesSection } from "./wiki-estimates-section";
 import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
-import { useSetWikiBoardEnabled } from "@/hooks/use-wiki-board";
+import { useSetWikiBoardEnabled, useSetWikiDashboardDefault } from "@/hooks/use-wiki-board";
+import { usePermissions } from "@/hooks/use-permissions";
 import { WikiBoardSectionView } from "./wiki-board-section";
 import { WikiRoundupSection } from "./wiki-roundup-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
@@ -978,6 +979,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setEstimatesEnabled = useSetWikiEstimatesEnabled(slug);
   const setComparisonsEnabled = useSetWikiComparisonsEnabled(slug);
   const setBoardEnabled = useSetWikiBoardEnabled(slug);
+  const setDashboardDefault = useSetWikiDashboardDefault(slug);
+  const { canManageClients } = usePermissions();
   const setRoundupEnabled = useSetWikiRoundupEnabled(slug);
   const setDeliveryEnabled = useSetWikiDeliveryEnabled(slug);
   const setSupportEnabled = useSetWikiSupportEnabled(slug);
@@ -1498,6 +1501,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           wiki={wiki!}
           availableSections={availableSections}
           onSelect={setActiveSection}
+          onSaveDefaultLayout={canManageClients ? (layout) => setDashboardDefault.mutateAsync(layout) : undefined}
         />
       );
     }

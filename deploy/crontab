@@ -46,6 +46,10 @@
 0 9,13 * * * /opt/apps/foundry/run-cron.sh meet-transcripts >> /tmp/foundry-cron.log 2>&1
 0 10 * * * /opt/apps/foundry/run-cron.sh care-digest >> /tmp/foundry-cron.log 2>&1
 0 11 * * * /opt/apps/foundry/run-cron.sh absence-cover-reconcile >> /tmp/foundry-cron.log 2>&1
+# Retention, daily: moves Docs per-section view events older than 60 days to cold storage (at most
+# 200 views a run, the cold copy written before the hot rows go). Nothing is deleted for good
+# without an admin-approved purge, and it does nothing until a cold store is configured.
+30 4 * * * /opt/apps/foundry/run-cron.sh retention >> /tmp/foundry-cron.log 2>&1
 
 # Weekly (Monday 01:00)
 0 1 * * 1 /opt/apps/foundry/run-cron.sh curator >> /tmp/foundry-cron.log 2>&1
