@@ -137,9 +137,17 @@ function cardUrl(target: BoardTarget, taskId: string): string {
   return `${cardsUrl(target)}/${encodeURIComponent(taskId)}`;
 }
 
+/**
+ * What adding a card did. A client's Bug or Feedback is logged in Requests rather than put on the
+ * board (Decision B, CLAUDE.md §134): then `card` is null and `request` names what was logged.
+ */
+export type BoardAddResult =
+  | { card: WikiBoardCard; request: null }
+  | { card: null; request: { id: string; title: string } };
+
 /** Add a card: the client on their link, or the team on the internal wiki. */
-export async function addBoardCardApi(target: BoardTarget, input: BoardCardForm): Promise<WikiBoardCard> {
-  const res = await apiFetch<{ card: WikiBoardCard }>(
+export async function addBoardCardApi(target: BoardTarget, input: BoardCardForm): Promise<BoardAddResult> {
+  const res = await apiFetch<{ card: WikiBoardCard | null; request?: { id: string; title: string } | null }>(
     cardsUrl(target),
     json({
       ...input,
@@ -150,8 +158,14 @@ export async function addBoardCardApi(target: BoardTarget, input: BoardCardForm)
       description: input.description.trim() || null,
     }),
   );
-  return res.card;
+  return res.card ? { card: res.card, request: null } : { card: null, request: res.request! };
 }
+
+/** The toast for a card that went to Requests instead of the board. */
+export const LOGGED_AS_REQUEST = {
+  title: "Logged in Requests",
+  body: "Bugs and feedback go to Requests, where the team picks them up and adds them to the board.",
+};
 
 /** Edit a card. Only the fields given change. */
 export async function updateBoardCardApi(
@@ -178,6 +192,20 @@ export async function uploadBoardImagesApi(target: BoardTarget, taskId: string, 
   for (const f of files) form.append("file", f);
   const res = await apiFetch<{ card: WikiBoardCard }>(`${cardUrl(target, taskId)}/images`, { method: "POST", body: form });
   return res.card;
+}
+
+/**
+ * Attach a screenshot to a request a client's bug card became (§134). A request holds one
+ * image, so this sends the first; the caller says so when there were more.
+ */
+export async function uploadRequestImageApi(target: BoardTarget, requestId: string, file: File): Promise<void> {
+  if (target.mode !== "public") return;
+  const form = new FormData();
+  form.append("file", file);
+  await apiFetch(`/api/wiki/${encodeURIComponent(target.token)}/intake-items/${encodeURIComponent(requestId)}/image`, {
+    method: "POST",
+    body: form,
+  });
 }
 
 /** Take a screenshot off a card. Answers with the card as the caller may see it. */

@@ -10851,3 +10851,19 @@ that could run against the stale Neon database. Now:
   watchdog now runs under an advisory lock (`src/server/cron-single-run.ts`). The one-line removal
   is in `docs/vps-crons.md`.
 - `vps-ops.yml`'s `cron-install-missing` task is gone (it appended un-marked lines).
+
+## 134. Recent Changes (November 2026) — A client's bug or feedback goes to Requests (wiki Decision B)
+
+A client could raise a bug as a Board card *and* as a request, so the same thing was filed twice
+and triaged in two places. Now Requests is the one door for bugs and feedback; the Board is the plan.
+
+- **The rule is on the server** (`POST /api/wiki/[token]/board/tasks`): a CLIENT writer adding a
+  `bug` or `feedback` card gets a Request instead (`addRequestFromBoard` in `src/server/wiki.ts`,
+  the same ingest path as the Requests form), named after the signed-in client. Every client path
+  gets it: the card dialog, the Table's quick add and paste. The response is
+  `{ card: null, request: { id, title } }`; `addBoardCardApi` returns a `BoardAddResult`.
+- ⚠️ **When Requests is off for that client it stays a Board card**, so nothing a client sends is
+  lost. The team's own adds, and a Gitwork session on the client's page, are never re-routed.
+- Screenshots on the card go to the request (`uploadRequestImageApi`); a request holds one, so the
+  first is attached and the toast says so.
+- The add dialog tells the client before they press Add.

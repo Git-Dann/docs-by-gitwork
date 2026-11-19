@@ -64,6 +64,8 @@ import {
 } from "@/lib/wiki-board-card-dialog";
 import {
   addBoardCardApi,
+  LOGGED_AS_REQUEST,
+  uploadRequestImageApi,
   boardImageUrl,
   deleteBoardCardApi,
   moveBoardCardApi,
@@ -480,7 +482,8 @@ function CardDialogBody(props: BodyProps) {
     setSubError(null);
     const before = new Set(local.subtasks.flatMap((s) => (s.id ? [s.id] : [])));
     try {
-      const saved = await addBoardCardApi(target, { ...EMPTY_CARD_FORM, title, itemType: "subitem", parentId: local.id, laneKey: subLane });
+      const { card: saved } = await addBoardCardApi(target, { ...EMPTY_CARD_FORM, title, itemType: "subitem", parentId: local.id, laneKey: subLane });
+      if (!saved) throw new Error("Couldn't add the sub-item. Please try again.");
       setLocal(saved);
       props.onSaved(saved);
       setSubDraft("");
@@ -501,7 +504,23 @@ function CardDialogBody(props: BodyProps) {
     setAdding(true);
     setAddError(null);
     try {
-      let saved = await addBoardCardApi(target, { ...form, title });
+      const res = await addBoardCardApi(target, { ...form, title });
+      if (!res.card) {
+        // A client's bug or feedback goes to Requests, where the team picks it up (§134).
+        let note = LOGGED_AS_REQUEST.body;
+        if (files.length) {
+          try {
+            await uploadRequestImageApi(target, res.request.id, files[0]);
+            if (files.length > 1) note += " A request holds one screenshot, so the first was attached.";
+          } catch {
+            note += " The screenshot didn't upload; add it on the request.";
+          }
+        }
+        toast.success(LOGGED_AS_REQUEST.title, note);
+        onClose();
+        return;
+      }
+      let saved = res.card;
       if (files.length && form.itemType !== "subitem") {
         try {
           for (const batch of uploadBatches(files)) saved = await uploadBoardImagesApi(target, saved.id, batch);
@@ -1225,6 +1244,11 @@ function Properties({
           />
         )}
       </Row>
+      {isAdd && audience === "client" && target.mode === "public" && (values.itemType === "bug" || values.itemType === "feedback") ? (
+        <p className="col-span-2 px-2 pb-1 text-[12px] leading-snug text-[var(--text-3)]" data-goes-to-requests>
+          This goes to Requests, where the team picks it up and adds it to the board.
+        </p>
+      ) : null}
       {isAdd && values.itemType === "subitem" ? (
         <Row label="Feature">
           <PickCell

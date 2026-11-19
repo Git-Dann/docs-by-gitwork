@@ -2329,6 +2329,20 @@ export async function addWikiIntakeItemByToken(
 }
 
 /**
+ * A Bug or Feedback card a client adds on their Board, logged in Requests instead (wiki
+ * Decision B, CLAUDE.md §134), so a bug isn't filed twice: once as a card, once as a request.
+ * The team triages it there and promotes it to a task. Null when Requests is off for this
+ * client: the caller then keeps it as a Board card, so nothing a client sends is lost.
+ */
+export async function addRequestFromBoard(
+  wikiId: string,
+  item: WikiItemIngestItem,
+): Promise<WikiIntakeItemRecord | null> {
+  const result = await ingestWikiItemsIntoWiki(wikiId, [item]);
+  return result?.created[0] ?? null;
+}
+
+/**
  * Update one intake item over the public API, addressed by OUR id or by the
  * client's own `externalRef` — an integrator shouldn't have to store our ids to
  * keep status in sync from their side.
