@@ -54,7 +54,7 @@ import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
 import { WikiStandupsCard } from "./wiki-standups-card";
 import { WikiDashboardGrid } from "./wiki-dashboard-grid";
-import { STANDUPS_CARD } from "@/lib/wiki-dashboard-layout";
+import { STANDUPS_CARD, type DashboardLayout } from "@/lib/wiki-dashboard-layout";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -292,10 +292,13 @@ export function WikiDashboard({
   wiki,
   availableSections,
   onSelect,
+  onSaveDefaultLayout,
 }: {
   wiki: WikiDTO;
   availableSections: WikiSection[];
   onSelect: (section: WikiSection) => void;
+  /** Team only: save this arrangement as the client's default dashboard (Decision E). */
+  onSaveDefaultLayout?: (layout: DashboardLayout | null) => Promise<unknown>;
 }) {
   const activeMonitors = wiki.monitors.monitors.filter((m) => m.enabled);
   const monitorSeverity: Record<string, number> = { UP: 0, UNKNOWN: 1, DEGRADED: 2, DOWN: 3 };
@@ -1082,6 +1085,8 @@ export function WikiDashboard({
       <WikiDashboardGrid
         wikiId={wiki.id}
         roman={cardNumber}
+        clientDefault={wiki.dashboardLayout ?? null}
+        onSaveDefault={onSaveDefaultLayout}
         cards={[
           { id: STANDUPS_CARD, label: "Daily updates", render: standupsCard },
           ...sections.map((section) => ({
