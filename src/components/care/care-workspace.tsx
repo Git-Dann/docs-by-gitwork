@@ -22,6 +22,7 @@ export function CareWorkspace() {
   const clientsQ = useSupportClients();
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
   const [initialSection, setInitialSection] = useState<CareSection>("conversations");
+  const [initialConversation, setInitialConversation] = useState<string | null>(null);
 
   // Read once on mount. window.location rather than useSearchParams, which would force a
   // Suspense boundary onto the page for a value only needed at start-up.
@@ -32,6 +33,7 @@ export function CareWorkspace() {
     const section = params.get("section");
     if (linked) {
       setActiveClientId(linked);
+      setInitialConversation(params.get("conversation"));
       if (isCareSection(section)) setInitialSection(section);
       return;
     }
@@ -50,6 +52,7 @@ export function CareWorkspace() {
   function select(client: SupportClient | null) {
     setActiveClientId(client?.id ?? null);
     setInitialSection("conversations");
+    setInitialConversation(null);
     syncUrl(client?.id ?? null, null);
     if (typeof window !== "undefined") {
       if (client) window.localStorage.setItem(ACTIVE_CLIENT_KEY, client.id);
@@ -65,6 +68,7 @@ export function CareWorkspace() {
         key={activeClient.id}
         client={activeClient}
         initialSection={initialSection}
+        initialConversationId={initialConversation}
         onSectionChange={(section) => syncUrl(activeClient.id, section)}
         onBack={() => select(null)}
       />

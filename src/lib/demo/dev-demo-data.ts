@@ -72,6 +72,7 @@ import { resolveDemoDrive } from "@/lib/demo/demo-drive";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import { demoAchievements, demoDealDraft, demoMoney, demoNeedsYou } from "@/lib/demo/demo-money";
+import { demoDeliveryTimeline, demoSearch, demoWeeklyUpdate } from "@/lib/demo/demo-delivery";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
@@ -5093,6 +5094,23 @@ export function resolveDemoApi(
   // HQ's "Needs you" and the Money page, through the real rules (src/lib/demo/demo-money.ts).
   if (pathname === "/api/hq/needs-you") return demoNeedsYou();
   if (pathname === "/api/money") return demoMoney();
+  if (pathname === "/api/search") return demoSearch(search?.get("q") ?? null);
+  // The Portal client's Timeline card and its weekly update draft, through the real rules.
+  {
+    const tl = pathname.match(/^\/api\/clients\/([^/]+)\/delivery-timeline$/);
+    if (tl) return demoDeliveryTimeline(decodeURIComponent(tl[1]));
+    const wu = pathname.match(/^\/api\/clients\/([^/]+)\/weekly-update$/);
+    if (wu && init?.method === "POST") {
+      const raw = typeof init.body === "string" ? init.body : "{}";
+      let week: "this" | "last" = "this";
+      try {
+        week = (JSON.parse(raw) as { week?: string }).week === "last" ? "last" : "this";
+      } catch {
+        // keep "this"
+      }
+      return demoWeeklyUpdate(decodeURIComponent(wu[1]), week);
+    }
+  }
   // Your achievements (the demo's "me"), through the real rules.
   if (pathname === "/api/me/achievements") return demoAchievements();
   // Record a deal: the demo saves nothing, and reads any file as a sample order form.

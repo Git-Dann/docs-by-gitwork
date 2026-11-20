@@ -100,7 +100,29 @@ function Headline({ m, index }: { m: MoneySummary; index: number }) {
         />
         <Figure label="Pipeline" value={<Money value={m.pipeline} base={m.base} />} note={`${m.pipelineDeals} sent, waiting on a decision`} />
       </div>
+      {m.margin != null ? <MarginLine m={m} /> : null}
     </section>
+  );
+}
+
+/** Margin this month: revenue under contract less what the teams cost at rate-card rates. */
+function MarginLine({ m }: { m: MoneySummary }) {
+  const margin = m.margin ?? 0;
+  const share = m.marginShare;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[var(--border-1)] px-4 py-3 text-sm" data-money-margin>
+      <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]" style={MONO}>
+        Margin this month
+      </span>
+      <span className={cn("tabular-nums font-medium", margin >= 0 ? "text-[var(--text-1)]" : "text-[var(--danger-500)]")}>
+        <Money value={margin} base={m.base} compact={false} />
+        {share != null ? ` · ${Math.round(share * 100)}%` : ""}
+      </span>
+      <span className="text-xs text-[var(--text-3)]">
+        after {formatMoney(m.teamCost, m.base)} of team cost
+        {m.unpricedDevs > 0 ? `, leaving out ${m.unpricedDevs} developer${m.unpricedDevs === 1 ? "" : "s"} with no rate` : ""}
+      </span>
+    </div>
   );
 }
 
@@ -256,7 +278,8 @@ function ClientsTable({ m, index }: { m: MoneySummary; index: number }) {
                   <Cell label="This month" value={formatMoney(c.thisMonth, m.base)} />
                   <Cell label="Still to come" value={formatMoney(c.toCome, m.base)} />
                   <Cell label="Contracted to" value={contracted(c)} />
-                  <Cell label="Team at rate card" value={c.teamAtRateCard == null ? "—" : `${formatMoney(c.teamAtRateCard, m.base)}/mo`} />
+                  <Cell label="Team cost" value={c.teamCost == null ? "—" : `${formatMoney(c.teamCost, m.base)}/mo`} />
+                  <Cell label="Margin" value={c.margin == null ? "—" : formatMoney(c.margin, m.base)} />
                 </dl>
               </li>
             ))}
@@ -264,7 +287,7 @@ function ClientsTable({ m, index }: { m: MoneySummary; index: number }) {
 
           {/* From md: a table in its own scroller (the card clips, it doesn't scroll). */}
           <div className="hidden overflow-x-auto md:block">
-            <table className="app-table app-table--dense min-w-[760px]">
+            <table className="app-table app-table--dense min-w-[860px]">
               <thead>
                 <tr>
                   <th className="text-left">Client</th>
@@ -272,8 +295,11 @@ function ClientsTable({ m, index }: { m: MoneySummary; index: number }) {
                   <th className="text-right">Still to come</th>
                   <th className="text-left">Contracted to</th>
                   <th className="text-right">Won (12m)</th>
-                  <th className="text-right" title="What the developers on this client are worth at rate-card rates">
-                    Team at rate card
+                  <th className="text-right" title="What the developers on this client cost per month at rate-card rates">
+                    Team cost
+                  </th>
+                  <th className="text-right" title="This month less team cost">
+                    Margin
                   </th>
                   <th className="text-left">Retainer</th>
                 </tr>
@@ -291,12 +317,15 @@ function ClientsTable({ m, index }: { m: MoneySummary; index: number }) {
                     <td>{contracted(c)}</td>
                     <td className="text-right tabular-nums">{c.wonLast12 ? formatMoney(c.wonLast12, m.base) : "—"}</td>
                     <td className="text-right tabular-nums">
-                      {c.teamAtRateCard == null ? "—" : `${formatMoney(c.teamAtRateCard, m.base)}/mo`}
+                      {c.teamCost == null ? "—" : `${formatMoney(c.teamCost, m.base)}/mo`}
                       {c.unpricedDevs > 0 ? (
                         <span className="ml-1 text-[var(--text-4)]" title={`${c.unpricedDevs} developer(s) with no rate`}>
                           +{c.unpricedDevs}
                         </span>
                       ) : null}
+                    </td>
+                    <td className={cn("text-right tabular-nums", c.margin != null && c.margin < 0 && "text-[var(--danger-500)]")}>
+                      {c.margin == null ? "—" : formatMoney(c.margin, m.base)}
                     </td>
                     <td>
                       {c.retainer ? <RetainerBar used={c.retainer.used} allowance={c.retainer.allowance} /> : <span className="text-[var(--text-4)]">—</span>}
@@ -461,7 +490,7 @@ function HowWorkedOut({ m }: { m: MoneySummary }) {
               : ""}
           </li>
           <li>
-            Team at rate card is what the developers on a client are worth at rate-card rates.
+            Team cost is what the developers on a client cost Gitwork each month at rate-card rates (the rate card is cost). Margin is this month&apos;s revenue under contract less that cost.
             {m.unpricedDevs > 0 ? ` ${m.unpricedDevs} developer${m.unpricedDevs === 1 ? " has" : "s have"} no rate and aren't in it.` : ""}
           </li>
         </ul>
@@ -487,6 +516,9 @@ export function summaryText(m: MoneySummary): string {
     `Revenue under contract this month: ${f(m.thisMonth)}${change}`,
     `Signed and still to bill: ${f(m.toCome)}`,
     `Won in the last 12 months: ${f(m.wonLast12)} across ${m.dealsLast12} ${m.dealsLast12 === 1 ? "deal" : "deals"}`,
+    m.margin != null
+      ? `Margin this month: ${f(m.margin)}${m.marginShare != null ? ` (${Math.round(m.marginShare * 100)}%)` : ""} after ${f(m.teamCost)} of team cost`
+      : null,
     `Pipeline: ${f(m.pipeline)} across ${m.pipelineDeals} sent ${m.pipelineDeals === 1 ? "document" : "documents"}`,
     top.length ? `Largest this month: ${top.map((c) => `${c.name} ${f(c.thisMonth)}`).join(", ")}` : null,
   ]

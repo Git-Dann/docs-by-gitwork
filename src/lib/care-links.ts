@@ -24,10 +24,12 @@ export function isCareSection(value: string | null | undefined): value is CareSe
 }
 
 /** A link into Care: a client and (optionally) one of its sections. */
-export function careHref(opts: { clientId?: string | null; section?: CareSection | null } = {}): string {
+export function careHref(opts: { clientId?: string | null; section?: CareSection | null; conversationId?: string | null } = {}): string {
   const qs = new URLSearchParams();
   if (opts.clientId) qs.set("client", opts.clientId);
   if (opts.clientId && opts.section && opts.section !== "conversations") qs.set("section", opts.section);
+  // One conversation, opened on arrival (search results link straight to it).
+  if (opts.clientId && opts.conversationId && (!opts.section || opts.section === "conversations")) qs.set("conversation", opts.conversationId);
   const s = qs.toString();
   return s ? `/app/care?${s}` : "/app/care";
 }

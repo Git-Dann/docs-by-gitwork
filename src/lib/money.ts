@@ -162,7 +162,7 @@ export interface ClientMoneyInput {
   id: string;
   name: string;
   slug: string;
-  /** What the team on the client is worth at rate-card rates, per month (client-metrics.ts). */
+  /** What the team on the client costs Gitwork per month at rate-card rates (client-metrics.ts). The rate card is cost. */
   team: { amount: number; currency: string; unpricedDevs: number } | null;
   retainerDays: number | null;
   retainerDaysUsed: number | null;
@@ -181,8 +181,10 @@ export interface ClientMoneyRow {
   ongoing: boolean;
   /** Won from this client in the last 12 months (document totals). */
   wonLast12: number;
-  /** The team on it now at rate-card rates per month, base currency. */
-  teamAtRateCard: number | null;
+  /** What the team on it now costs per month (the rate card is cost), base currency. */
+  teamCost: number | null;
+  /** thisMonth minus teamCost. Null when there's no team cost to take off. */
+  margin: number | null;
   unpricedDevs: number;
   retainer: { used: number; allowance: number } | null;
 }
@@ -216,6 +218,12 @@ export interface MoneySummary {
   /** Amounts left out of totals because their currency had no rate, per currency. */
   unconverted: Record<string, number>;
   unpricedDevs: number;
+  /** What every client's team costs per month, base currency. */
+  teamCost: number;
+  /** thisMonth minus teamCost; null when no client has a priced team. */
+  margin: number | null;
+  /** margin as a share of thisMonth; null when there's no revenue this month. */
+  marginShare: number | null;
   fxAsOf: string | null;
 }
 
@@ -307,10 +315,17 @@ export function summariseMoney(input: {
   }
 
   let unpricedDevs = 0;
+  let teamCostTotal = 0;
+  let anyTeam = false;
   const clients: ClientMoneyRow[] = input.clients.map((c) => {
     const a = byClient.get(c.id);
     const team = c.team ? (c.team.amount > 0 ? conv(c.team.amount, c.team.currency) : 0) : null;
     unpricedDevs += c.team?.unpricedDevs ?? 0;
+    if (team != null) {
+      anyTeam = true;
+      teamCostTotal += team;
+    }
+    const earned = round2(a?.thisMonth ?? 0);
     return {
       id: c.id,
       name: c.name,
@@ -320,7 +335,8 @@ export function summariseMoney(input: {
       contractedTo: a?.ongoing ? null : a?.contractedTo ?? null,
       ongoing: a?.ongoing ?? false,
       wonLast12: round2(a?.wonLast12 ?? 0),
-      teamAtRateCard: team,
+      teamCost: team,
+      margin: team == null ? null : round2(earned - team),
       unpricedDevs: c.team?.unpricedDevs ?? 0,
       retainer: c.retainerDays ? { used: c.retainerDaysUsed ?? 0, allowance: c.retainerDays } : null,
     };
@@ -347,6 +363,8 @@ export function summariseMoney(input: {
 
   thisMonth = round2(thisMonth);
   lastMonth = round2(lastMonth);
+  const teamCost = round2(teamCostTotal);
+  const margin = anyTeam ? round2(thisMonth - teamCost) : null;
   return {
     base: fx.base,
     thisMonth,
@@ -362,6 +380,9 @@ export function summariseMoney(input: {
     recentWins: recentWins.slice(0, 8),
     unconverted,
     unpricedDevs,
+    teamCost,
+    margin,
+    marginShare: margin != null && thisMonth > 0 ? margin / thisMonth : null,
     fxAsOf: fx.asOf,
   };
 }

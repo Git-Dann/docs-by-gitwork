@@ -91,6 +91,7 @@ import { portalSectionNumbers } from "@/lib/client-portal-layout";
 import { meetingStatusChip } from "@/lib/meeting-status";
 import { ClientDevelopersCard } from "@/components/clients/client-developers-card";
 import { ClientLifecycleCard } from "@/components/clients/client-lifecycle";
+import { ClientDeliveryCard } from "@/components/clients/client-delivery-card";
 import { ClientPulseCard, ClientStudiesCard } from "@/components/clients/client-portal-cards";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
@@ -343,6 +344,8 @@ export function ClientDetail({ slug }: { slug: string }) {
         return proofDocuments.length > 0;
       case "lifecycle":
         return lifecycle.length > 0;
+      case "timeline":
+        return !isSuggested;
       default:
         return true;
     }
@@ -1033,6 +1036,13 @@ export function ClientDetail({ slug }: { slug: string }) {
       <div className="motion-rise" style={rise()}>
         <ClientDevelopersCard number={num.developers} clientId={client.id} placements={placements ?? []} />
       </div>
+
+      {/* ── TIMELINE: what happened on the work, week by week, and the weekly update draft ── */}
+      {!isSuggested ? (
+        <div className="motion-rise" style={rise()}>
+          <ClientDeliveryCard number={num.timeline} slug={slug} />
+        </div>
+      ) : null}
 
       {/* ── MEETING NOTES + DESIGNS ── both stretch to the taller one, so neither leaves a hole. */}
       <div className="grid grid-cols-1 items-stretch gap-4 lg:min-h-[320px] lg:grid-cols-2" data-pair-row>

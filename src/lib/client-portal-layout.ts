@@ -16,6 +16,7 @@ export const PORTAL_SECTIONS = [
   "billing",
   "platforms",
   "developers",
+  "timeline",
   "meetings",
   "designs",
   "documents",

@@ -5786,3 +5786,23 @@ export async function getMoney(): Promise<import("@/lib/money").MoneySummary> {
 export async function getMyAchievements(): Promise<{ achievements: import("@/lib/achievements").AchievementProgress[] }> {
   return apiFetch("/api/me/achievements");
 }
+
+// ── Client delivery timeline + weekly update (Portal) ──────────────────────────
+
+export async function getDeliveryTimeline(
+  slug: string,
+  weeks = 8,
+): Promise<import("@/lib/client-delivery-timeline").LoadedTimeline> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/delivery-timeline?weeks=${weeks}`);
+}
+
+export async function draftWeeklyUpdateApi(
+  slug: string,
+  body: { week: "this" | "last"; regenerate?: boolean },
+): Promise<import("@/lib/weekly-update").WeeklyUpdateResult> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/weekly-update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
