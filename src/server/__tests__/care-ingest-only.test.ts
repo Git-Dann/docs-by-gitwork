@@ -28,6 +28,11 @@ vi.mock("@/lib/prisma", () => ({
       count: vi.fn(async (args: unknown) => { calls.count.push(args); return 0; }),
       findMany: vi.fn(async (args: unknown) => { calls.findMany.push(args); return []; }),
     },
+    // The per-client count of connectors that have stopped delivering rides in the same batched
+    // round trip, and must be scoped to desk clients like everything else here.
+    accountConnection: {
+      groupBy: vi.fn(async (args: unknown) => { calls.groupBy.push(args); return []; }),
+    },
   },
 }));
 
@@ -52,11 +57,36 @@ describe("getClientQueueSummaries", () => {
     const { getClientQueueSummaries } = await import("@/server/support");
     await getClientQueueSummaries("ws-a");
 
-    expect(calls.groupBy.length).toBeGreaterThanOrEqual(5);
+    expect(calls.groupBy.length).toBeGreaterThanOrEqual(6);
     for (const arg of calls.groupBy) {
       const client = where(arg).client as Record<string, unknown>;
       expect(client).toMatchObject({ workspaceId: "ws-a", ingestOnly: false, courseRequestOnly: false });
     }
+  });
+
+  it("counts a failing connector only for a desk client", async () => {
+    /*
+     * An ingest-only client's connector going down is still worth knowing about — but not on the
+     * support desk, which is a board of customers waiting on a reply. Wedge's mailbox feeding a
+     * golf-course importer is not a customer, and a "Channel down" chip beside a client that is
+     * deliberately not on the desk would be the ingest-only exclusion leaking back in through a
+     * different column.
+     */
+    calls.groupBy.length = 0;
+    const { getClientQueueSummaries } = await import("@/server/support");
+    await getClientQueueSummaries("ws-a");
+
+    const connectorQueries = calls.groupBy.filter((a) => {
+      const w = where(a);
+      return "health" in w;
+    });
+    expect(connectorQueries.length).toBe(1);
+    expect(where(connectorQueries[0]).health).toBe("ERROR");
+    expect(where(connectorQueries[0]).client).toMatchObject({
+      workspaceId: "ws-a",
+      ingestOnly: false,
+      courseRequestOnly: false,
+    });
   });
 
   it("excludes BOTH flags, not just the new one", async () => {

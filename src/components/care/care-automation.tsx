@@ -488,9 +488,21 @@ function AgentsView({ clientId, firstNumber = 1 }: { clientId: string; firstNumb
                       {agentName}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-[var(--text-2)]">{actionLabel}</p>
+                      <p
+                        className={cn(
+                          "text-xs font-medium",
+                          log.reason ? "text-amber-700" : "text-[var(--text-2)]",
+                        )}
+                      >
+                        {actionLabel}
+                      </p>
+                      {/* A failure that only says it failed sends someone to read the server logs.
+                          The reason is already in plain words (`describeAiError`), so show it. */}
+                      {log.reason && (
+                        <p className="mt-0.5 text-xs text-[var(--text-3)]">{log.reason}</p>
+                      )}
                       {log.target && (
-                        <p className="mt-0.5 truncate text-xs text-[var(--text-3)]">{log.target}</p>
+                        <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">{log.target}</p>
                       )}
                     </div>
                   </div>

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCron } from "@/server/auth/cron";
 import { prisma } from "@/lib/prisma";
+import { nextConnectorHealth, readHealthState } from "@/lib/care-connector-health";
 import { decryptScraperConfig } from "@/server/support";
 import { runAnalytics, type AnalyticsConnectionConfig } from "@/server/support-analytics";
 import { forEachWorkspace } from "@/server/workspaces/for-each";
@@ -76,21 +77,54 @@ async function snapshotWorkspace(
         create: { clientId: conn.clientId, period, metrics: snapshot.metrics as object },
         update: { metrics: snapshot.metrics as object, capturedAt: new Date() },
       });
+      const ok = nextConnectorHealth({
+        previousHealth: conn.health,
+        previous: readHealthState(conn.lastSyncStats),
+        errors: [],
+      });
       await prisma.accountConnection.update({
         where: { id: conn.id },
         data: {
           lastSyncedAt: new Date(),
-          lastSyncStats: { ingested: snapshot.metrics.length, filtered: 0, errors: [], at: new Date().toISOString() } as object,
-          health: "CONNECTED",
+          lastSyncStats: {
+            ingested: snapshot.metrics.length,
+            filtered: 0,
+            errors: [],
+            at: new Date().toISOString(),
+            consecutiveFailures: ok.consecutiveFailures,
+            failingSince: ok.failingSince,
+          } as object,
+          health: ok.health,
         },
       });
       captured++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`${conn.client.name}: ${msg}`);
+      /*
+       * ⚠️ One failed run is not a broken connector — this used to flip straight to ERROR, so a
+       * single provider hiccup painted the badge red until the next day. The badge has to mean
+       * the same thing on every connector, so it goes through the same two-failure rule as the
+       * mail sync (`care-connector-health.ts`).
+       */
+      const bad = nextConnectorHealth({
+        previousHealth: conn.health,
+        previous: readHealthState(conn.lastSyncStats),
+        errors: [msg],
+      });
       await prisma.accountConnection.update({
         where: { id: conn.id },
-        data: { lastSyncStats: { ingested: 0, filtered: 0, errors: [msg], at: new Date().toISOString() } as object, health: "ERROR" },
+        data: {
+          lastSyncStats: {
+            ingested: 0,
+            filtered: 0,
+            errors: [msg],
+            at: new Date().toISOString(),
+            consecutiveFailures: bad.consecutiveFailures,
+            failingSince: bad.failingSince,
+          } as object,
+          health: bad.health,
+        },
       }).catch(() => {});
     }
   }

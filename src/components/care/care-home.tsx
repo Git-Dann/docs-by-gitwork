@@ -160,6 +160,7 @@ function ClientRow({
   const oldest = summary?.oldestAwaitingAt ?? null;
   const stale = oldest ? isLongWait(oldest) : false;
   const urgent = summary?.urgent ?? 0;
+  const failing = summary?.connectorsFailing ?? 0;
 
   return (
     <div
@@ -167,7 +168,9 @@ function ClientRow({
         "group flex items-center border-b border-l-2 border-[var(--border-3)] transition last:border-b-0 hover:bg-[var(--surface-1)]",
         // The one structural signal: a client with someone waiting too long is marked down the
         // left edge, so triage order is legible before you read a single number.
-        urgent > 0
+        // A dead channel outranks a late reply: an empty queue on a broken connector is not
+        // calm, it is a client whose messages are not arriving at all.
+        urgent > 0 || failing > 0
           ? "border-l-[var(--danger-500)]"
           : stale
             ? "border-l-[var(--warning-500)]"
@@ -207,6 +210,17 @@ function ClientRow({
               <>
                 <span aria-hidden className="text-[var(--text-4)]">·</span>
                 <span className="font-semibold text-[var(--danger-500)]">{urgent} urgent</span>
+              </>
+            )}
+            {failing > 0 && (
+              <>
+                <span aria-hidden className="text-[var(--text-4)]">·</span>
+                <span
+                  className="font-semibold text-[var(--danger-500)]"
+                  title="Mail is not arriving on this channel. Open the client and check its connectors."
+                >
+                  {failing === 1 ? "Channel down" : `${failing} channels down`}
+                </span>
               </>
             )}
           </span>

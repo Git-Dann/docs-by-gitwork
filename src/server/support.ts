@@ -458,13 +458,16 @@ export function serializeAuditLog(row: {
   actorId: string | null;
   action: string;
   target: string | null;
+  metadata?: unknown;
   createdAt: Date;
 }): AuditLog {
+  const meta = (row.metadata ?? null) as { reason?: unknown } | null;
   return {
     id: row.id,
     clientId: row.clientId,
     actor: row.actorId ?? "System",
     action: row.action,
+    reason: typeof meta?.reason === "string" ? meta.reason : null,
     target: row.target ?? "",
     createdAt: row.createdAt.toISOString(),
   };
@@ -1113,9 +1116,14 @@ export async function getClientQueueSummaries(workspaceId: string): Promise<Reco
     AND: [replyStateWhere("awaiting_reply")],
   };
 
-  const [openRows, awaitingRows, unassignedRows, urgentRows, oldestRows] = await Promise.all([
+  const [openRows, awaitingRows, repliedRows, unassignedRows, urgentRows, oldestRows, failingRows] = await Promise.all([
     prisma.supportConversation.groupBy({ by: ["clientId"], where: active, _count: { _all: true } }),
     prisma.supportConversation.groupBy({ by: ["clientId"], where: awaiting, _count: { _all: true } }),
+    prisma.supportConversation.groupBy({
+      by: ["clientId"],
+      where: { ...active, AND: [replyStateWhere("replied")] },
+      _count: { _all: true },
+    }),
     prisma.supportConversation.groupBy({
       by: ["clientId"],
       where: { ...awaiting, assigneeId: null },
@@ -1131,11 +1139,18 @@ export async function getClientQueueSummaries(workspaceId: string): Promise<Reco
       where: awaiting,
       _min: { lastInboundAt: true },
     }),
+    // A channel that has stopped delivering reads exactly like a quiet week, so the count rides
+    // with the queue figures instead of waiting on the Settings screen to be opened.
+    prisma.accountConnection.groupBy({
+      by: ["clientId"],
+      where: { health: "ERROR", client: { workspaceId, ...SUPPORT_DESK_CLIENT } },
+      _count: { _all: true },
+    }),
   ]);
 
   const out: Record<string, ClientQueueSummary> = {};
   const ensure = (clientId: string): ClientQueueSummary =>
-    (out[clientId] ??= { awaiting: 0, replied: 0, unassigned: 0, urgent: 0, open: 0, oldestAwaitingAt: null });
+    (out[clientId] ??= { awaiting: 0, replied: 0, unassigned: 0, urgent: 0, open: 0, oldestAwaitingAt: null, connectorsFailing: 0 });
 
   for (const r of openRows) ensure(r.clientId).open = r._count._all;
   for (const r of awaitingRows) ensure(r.clientId).awaiting = r._count._all;
@@ -1144,9 +1159,21 @@ export async function getClientQueueSummaries(workspaceId: string): Promise<Reco
   for (const r of oldestRows) {
     ensure(r.clientId).oldestAwaitingAt = r._min.lastInboundAt?.toISOString() ?? null;
   }
-  // "Replied" is the rest of the active set — derived rather than counted, saving a query and
-  // guaranteeing awaiting + replied === open instead of three numbers that can disagree.
-  for (const s of Object.values(out)) s.replied = Math.max(0, s.open - s.awaiting);
+  /*
+   * ⚠️ "Replied" is COUNTED, not derived from `open - awaiting`.
+   *
+   * Reply state has three values, not two: `awaiting_reply`, `replied` and `no_inbound` — a
+   * thread we started, or one rebuilt from the Sent folder, where no customer has written at all
+   * (§42.2). Subtracting folded `no_inbound` in with replied, so Care home said a client had
+   * N replied conversations while opening that client said something smaller, from the same
+   * data, on the next screen. Two numbers for one thing is exactly what destroys trust in a
+   * dashboard — the paragraph above this function says so about a different pair.
+   *
+   * It costs one more groupBy in a Promise.all that already runs five, and it uses the same
+   * `replyStateWhere("replied")` the per-client counts use, so they cannot disagree.
+   */
+  for (const r of repliedRows) ensure(r.clientId).replied = r._count._all;
+  for (const r of failingRows) ensure(r.clientId).connectorsFailing = r._count._all;
 
   return out;
 }

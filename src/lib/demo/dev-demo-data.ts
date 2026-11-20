@@ -2693,10 +2693,33 @@ const demoSupportMembers = [
  * connections alone the dropdown loses "Gmail" while gmail rows stay in the table, visible and
  * unfilterable; built from the union it does not.
  */
+/*
+ * ⚠️ `health`, not `status` — the DTO field is `Connection.health`, so the old `status` key was
+ * read by nothing and every demo connector rendered with no health at all. A demo that cannot
+ * express a state cannot verify it (§42.8, §43.3), and "a channel has stopped delivering" is the
+ * state Care most needs to show, so one of these is deliberately broken.
+ */
 const demoSupportConnections = [
-  { id: "sup-cn1", clientId: "sup-northwind", source: "imap", status: "connected", label: "support@northwind.co", scraperConfig: {}, lastSyncedAt: atDays(0) },
-  { id: "sup-cn2", clientId: "sup-northwind", source: "discord", status: "connected", label: "Northwind community", scraperConfig: {}, lastSyncedAt: atDays(0) },
-  { id: "sup-cn3", clientId: "sup-northwind", source: "app_reviews", status: "connected", label: "App Store · Northwind", scraperConfig: {}, lastSyncedAt: atDays(0) },
+  { id: "sup-cn1", clientId: "sup-northwind", source: "imap", health: "connected", label: "support@northwind.co", authMode: "manual", scraperConfig: {}, lastSyncedAt: atDays(0), lastSyncStats: { ingested: 4, filtered: 1, errors: [], at: atDays(0), consecutiveFailures: 0, failingSince: null } },
+  { id: "sup-cn2", clientId: "sup-northwind", source: "discord", health: "connected", label: "Northwind community", authMode: "bot_token", scraperConfig: {}, lastSyncedAt: atDays(0), lastSyncStats: { ingested: 2, filtered: 0, errors: [], at: atDays(0), consecutiveFailures: 0, failingSince: null } },
+  {
+    id: "sup-cn3",
+    clientId: "sup-northwind",
+    source: "app_reviews",
+    health: "error",
+    label: "App Store · Northwind",
+    authMode: "api_key",
+    scraperConfig: {},
+    lastSyncedAt: atDays(-2),
+    lastSyncStats: {
+      ingested: 0,
+      filtered: 0,
+      errors: ["App Store Connect rejected the key (401). It may have been revoked."],
+      at: atDays(0),
+      consecutiveFailures: 6,
+      failingSince: atDays(-2),
+    },
+  },
 ];
 
 const demoMessagesByConversation: Record<string, unknown[]> = {
@@ -2837,6 +2860,9 @@ function demoQueueCounts(clientId: string) {
     closed: rows.filter((c) => c.status === "closed" || c.status === "ignored").length,
     all: rows.length,
     oldestAwaitingAt: oldest,
+    // Mirrors the server: connectors whose health is ERROR, so "Channel down" can be seen on
+    // Care home and the HQ tile before merge.
+    connectorsFailing: demoSupportConnections.filter((c) => c.clientId === clientId && c.health === "error").length,
     // Which channels the conversations actually came from — what the cockpit's channel filter is
     // built from, alongside the live connections.
     sources: Object.entries(

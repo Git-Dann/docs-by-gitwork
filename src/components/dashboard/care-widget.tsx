@@ -60,6 +60,12 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
   });
 
   const totalAwaiting = Object.values(summaries).reduce((n, s) => n + s.awaiting, 0);
+  /*
+   * A dead channel outranks the queue in the tile's status line. An empty queue on a broken
+   * connector is not a calm week — it is a client whose messages are not reaching us at all, and
+   * HQ is where someone would see it without opening Care.
+   */
+  const clientsWithDeadChannel = Object.values(summaries).filter((s) => s.connectorsFailing > 0).length;
   const maxAwaiting = Object.values(summaries).reduce((n, s) => Math.max(n, s.awaiting), 0);
 
   return (
@@ -69,8 +75,16 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
         label="CARE"
         href="/app/care"
         hrefLabel="Open"
-        status={summariesQ.isLoading ? "·" : totalAwaiting > 0 ? `${totalAwaiting} AWAITING` : "ALL REPLIED"}
-        statusTone={totalAwaiting > 0 ? "warning" : "success"}
+        status={
+          summariesQ.isLoading
+            ? "·"
+            : clientsWithDeadChannel > 0
+              ? `${clientsWithDeadChannel} CHANNEL${clientsWithDeadChannel === 1 ? "" : "S"} DOWN`
+              : totalAwaiting > 0
+                ? `${totalAwaiting} AWAITING`
+                : "ALL REPLIED"
+        }
+        statusTone={clientsWithDeadChannel > 0 ? "danger" : totalAwaiting > 0 ? "warning" : "success"}
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -89,6 +103,7 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
                 const oldest = s?.oldestAwaitingAt ?? null;
                 const stale = oldest ? isLongWait(oldest) : false;
                 const awaiting = s?.awaiting ?? 0;
+                const failing = s?.connectorsFailing ?? 0;
                 // Bars are relative to the busiest client, so the worst queue reads at a glance.
                 const width = maxAwaiting > 0 ? Math.max(awaiting > 0 ? 4 : 0, (awaiting / maxAwaiting) * 100) : 0;
                 return (
@@ -96,11 +111,19 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
                     key={c.id}
                     href="/app/care"
                     className="block rounded-[6px] px-2 py-1.5 transition-colors hover:bg-[var(--surface-1)]"
-                    title={`${awaiting} awaiting a reply${oldest ? ` · longest ${formatAge(oldest)}` : ""}`}
+                    title={
+                      (failing > 0 ? `${failing} channel${failing === 1 ? "" : "s"} not delivering · ` : "") +
+                      `${awaiting} awaiting a reply${oldest ? ` · longest ${formatAge(oldest)}` : ""}`
+                    }
                   >
                     <span className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm text-[var(--text-1)]">{c.name}</span>
                       <span className="flex shrink-0 items-center gap-2">
+                        {failing > 0 && (
+                          <span className="widget-data-label text-[var(--danger-500)]">
+                            {failing === 1 ? "Channel down" : `${failing} down`}
+                          </span>
+                        )}
                         {oldest && (
                           <span className={cn("widget-data-label", stale && "text-[var(--warning-500)]")}>
                             {formatAge(oldest)}
@@ -118,7 +141,10 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
                     </span>
                     <span className="mt-1 block h-1 w-full overflow-hidden rounded-[2px] bg-[var(--surface-2)]" aria-hidden>
                       <span
-                        className={cn("block h-full transition-[width] duration-500", stale ? "bg-[var(--warning-500)]" : "bg-[var(--brand-500)]")}
+                        className={cn(
+                          "block h-full transition-[width] duration-500",
+                          failing > 0 ? "bg-[var(--danger-500)]" : stale ? "bg-[var(--warning-500)]" : "bg-[var(--brand-500)]",
+                        )}
                         style={{ width: `${width}%` }}
                       />
                     </span>

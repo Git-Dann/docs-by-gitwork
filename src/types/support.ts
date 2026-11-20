@@ -248,6 +248,14 @@ export interface ClientQueueSummary {
   open: number;
   /** ISO timestamp of the longest-waiting customer message, or null when nobody is waiting. */
   oldestAwaitingAt: string | null;
+  /**
+   * How many of this client's connectors have stopped working.
+   *
+   * A dead channel is the one thing a support queue can be most wrong about: it looks like a
+   * quiet week. So it rides with the queue figures rather than waiting to be noticed on the
+   * Settings screen, which is a screen nobody opens while things are fine.
+   */
+  connectorsFailing: number;
 }
 
 /** An internal, staff-only note on a conversation (never shown to the customer). */
@@ -314,6 +322,12 @@ export interface AuditLog {
   action: string;
   target: string;
   createdAt: string;
+  /**
+   * Why, in plain words, for the entries where "it happened" is not the whole story —
+   * `enrichment_failed` carries the reason an AI classification could not be made. Already run
+   * through `describeAiError`, never a provider's raw text. Null for every other action.
+   */
+  reason: string | null;
 }
 
 export interface SupportReportPayload {
