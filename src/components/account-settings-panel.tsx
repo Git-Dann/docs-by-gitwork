@@ -12,6 +12,7 @@ import { isPasswordLoginAllowed, roleLabel } from "@/types/auth";
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
+import { HeaderAction } from "@/components/staff/profile-parts";
 
 /**
  * Settings → Profile. Where a business has Staff, a person's photo, name, password and public
@@ -62,16 +63,26 @@ export function AccountSettingsPanel() {
 export function MyAccountCard({ number }: { number: string }) {
   const account = useAccount();
   const ownsPassword = isPasswordLoginAllowed(account.data?.role, account.data?.workspaceSlug);
+  // The password form is three fields most people never touch, so it stays folded behind
+  // the header action instead of making the card three times taller for everyone.
+  const [changingPassword, setChangingPassword] = useState(false);
   return (
-    <WidgetCard number={number} name="Account">
-      <div className="proposal-form-theme @container space-y-5">
+    <WidgetCard
+      number={number}
+      name="Account"
+      action={
+        ownsPassword ? (
+          <HeaderAction onClick={() => setChangingPassword((o) => !o)} label={changingPassword ? "Close password" : "Change password"}>
+            {changingPassword ? "Done" : "Password"}
+          </HeaderAction>
+        ) : undefined
+      }
+    >
+      <div className="proposal-form-theme space-y-4">
         <AccountProfileBody compact />
-        {ownsPassword ? (
+        {ownsPassword && changingPassword ? (
           <div className="border-t border-[var(--border-1)] pt-4">
-            <p className="text-[13px] font-medium text-[var(--text-1)]">Password</p>
-            <div className="mt-2">
-              <PasswordBody />
-            </div>
+            <PasswordBody />
           </div>
         ) : null}
       </div>
@@ -117,6 +128,63 @@ function AccountProfileBody({ compact = false }: { compact?: boolean }) {
       onError: (err) =>
         setSaveError(err instanceof Error ? err.message : "Couldn't save — try again."),
     });
+  }
+
+  const editor = (
+    <AvatarEditModal
+      open={editing}
+      onClose={() => setEditing(false)}
+      name={sessionName}
+      googleAvatarUrl={googleAvatarUrl}
+      initialAvatarUrl={profile?.avatarUrl ?? ""}
+      initialPosition={profile?.avatarPosition ?? ""}
+      saving={updateAccount.isPending}
+      onSave={handleSave}
+    />
+  );
+
+  // On a profile page the Overview card already shows the email and the role, so the account
+  // card is just the two things you change here: your photo, and your name if it is yours.
+  if (compact) {
+    return (
+      <>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+            {resolved.isInitials ? (
+              <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-xl font-semibold text-[var(--brand-700)]">{initials}</div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={resolved.src} alt="Your profile" className="h-full w-full object-cover" style={{ objectPosition: position }} />
+            )}
+          </div>
+          <div className="min-w-0 flex-1 basis-[180px]">
+            {ownsOwnName ? (
+              <NameField initial={sessionName} />
+            ) : (
+              <>
+                <p className="truncate text-[15px] font-medium text-[var(--text-1)]" title={sessionName}>
+                  {sessionName || "—"}
+                </p>
+                <p className="text-[12px] text-[var(--text-4)]">Your name comes from your Google account.</p>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            className="app-button app-button-secondary app-button-sm inline-flex items-center gap-1.5"
+            onClick={() => {
+              setSaveError(null);
+              setEditing(true);
+            }}
+          >
+            <PencilSquareIcon aria-hidden className="h-4 w-4" />
+            Edit photo
+          </button>
+        </div>
+        {saveError ? <p className="mt-2 text-xs text-[var(--danger-500)]">{saveError}</p> : null}
+        {editor}
+      </>
+    );
   }
 
   return (
