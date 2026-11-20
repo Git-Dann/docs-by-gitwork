@@ -258,6 +258,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
 | **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops. ⚠️ **Two UIs are live.** `/app/care` is the rebuilt cockpit; `/app/support` still serves the 5,535-line legacy dashboard and exclusively owns add-client, Tickets, monthly Reports, health scoring, AI search and workflow rules. `client-cockpit.tsx` imports `ConnectorsView` *out of* the legacy file, so it cannot be deleted yet. Finishing the port is a two-way merge, not a cutover |
 | **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip |
+| **Money** | `/app/money` | `src/server/money.ts` · `money-deals.ts` | Revenue under contract, still to bill, won, pipeline, recorded deals (§141). **Super Admins + `clients.viewFinancials` only**, checked by the page (404) and `/api/money` (403); in `UNGATED_APP_PREFIXES` because Siân holds the permission without Portal. **No sidebar item** — a mono `· MONEY` link in the HQ context strip |
 | **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate. **No sidebar item since Aug 2026** — a mono `· STARTERS` link in the HQ context strip |
 | **Handbook** | `/app/handbook` | — | Internal developer knowledgebase. Deliberately readable by every internal user (no module gate); writes are Admin+ (enforced in `/api/handbook`) |
 | **Templates** | `/app/templates` | `src/server/proposals.ts` | Document templates. Linked from the Docs workspace; gated on `proposals` since July 2026 |
@@ -1784,7 +1785,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments · Money** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -11126,3 +11127,89 @@ finding, which is deliberate for `/app`.
   require a signed-in client user of the wiki or this client's own team, a link for the whole
   wiki or for Course Requests, and a rate limit (`src/server/wiki-course-request-access.ts`).
   `PATCH`/`DELETE /api/wiki/[token]/course-requests` change many in one write.
+
+## 141. Recent Changes (November 2026) — Needs you, and Money
+
+The first slice of "go deep, not wide" (Dan, Nov 2026). Rules for this programme: **no new Prisma
+models**, simplicity first, money for Dan, Harry and (maybe) Siân only.
+
+### 141.1 Needs you (HQ card 01)
+
+One ranked list of what every watcher found, so nobody visits five pages to learn what's on fire.
+Rules in `src/lib/needs-you.ts` (pure, tested), reader `src/server/needs-you.ts`, route
+`GET /api/hq/needs-you`, card `src/components/dashboard/needs-you-card.tsx`.
+
+- **Sources, each gated and scoped exactly like its own page:** Monitors (`monitors`; production down
+  = critical), Foreman's latest risks (Admin+; blind spots left out), Care (`support`; a customer
+  waiting 24h+, red at 72h), new client Requests (`clients`, scoped to the caller's clients), stalled
+  Docs (sent and read with no decision, or never opened, after 5 days) and Pulse projects needing a
+  look. Docs and Pulse only for people who see every client, because those lists aren't scoped.
+  Workspace modules are respected.
+- **Read independently** (`Promise.allSettled`): a failed source is named ("Couldn't check Care"),
+  never turned into "nothing to do". All clear names what was checked.
+- **Suggested, never acted on:** every row links to where it's dealt with.
+- **Hide until tomorrow** per browser (`foundry.needsyou.hidden.v1`, with Undo). A hidden row comes
+  back early when its fingerprint changes (it got worse). ⚠️ A critical row can't be hidden.
+- Refreshes every 2 minutes. Desk numbering shifts by one (Needs you is 01).
+
+### 141.2 Money (`/app/money`)
+
+Revenue under contract, still to bill, won in 12 months, pipeline, revenue by month (12 back, 6
+forward), per client, and deals. Rules `src/lib/money.ts` (pure, tested), reader
+`src/server/money.ts`, route `GET /api/money`, page `src/components/money/money-workspace.tsx`.
+
+- ⚠️ **Gate:** Super Admins and `clients.viewFinancials` only, checked on the page (live membership,
+  404 otherwise) and the route (403). `/app/money` is in `UNGATED_APP_PREFIXES` because Siân holds
+  the permission without Portal; it belongs to the `clients` workspace module. Linked from the HQ
+  context strip (· MONEY) for those people only.
+- **Model, with no new data:** an accepted (or DocuSeal-signed) document with cost lines is a
+  revenue schedule. Role lines (`rate-card:` / `proposal-role:` / `custom-role:`, the cost table's
+  rate × months) earn their monthly rate for `quantity` months from the month won; other lines are
+  one-offs that month; a `RECURRING` line runs on (counted 12 months in totals). After discount,
+  without VAT. ⚠️ Keep `ROLE_LINE_PREFIXES` in step with `cost-breakdown-table.tsx`.
+- **It is what the documents commit to, not invoices.** The page says so. A proposal and an SOW for
+  the same job are both counted if both were accepted.
+- **FX:** `loadFxRates` in `src/server/fx.ts` (ECB via Frankfurter, 12h fetch cache). No rate means
+  the amount is left out of totals and listed, never guessed.
+- **"Team at rate card"** is the developers on a client at rate-card rates (`computeClientFinancials`).
+  It is NOT called margin: whether the rate card is cost or price is Dan's call (open).
+- "Copy as an update" puts a few plain lines on the clipboard for an investor update.
+- Demos: `/demo/hq` (Needs you) and `/demo/money`, both through the real rules
+  (`src/lib/demo/demo-money.ts`).
+
+### 141.3 Record a deal (prices that didn't come from Docs)
+
+Money → Deals → **Record a deal** (`src/components/money/record-deal-dialog.tsx`, rules
+`src/lib/money-deals.ts`, server `src/server/money-deals.ts`). Drop a PDF/Word/text file and the
+workspace AI proposes the figures (`POST /api/money/read-file`, needs `ai.generate`, saves nothing),
+or type them. **Save** (`POST /api/money/deals`) creates an ACCEPTED `PROPOSAL` document labelled
+"Recorded deal" with `metadata.recordedDeal` and cost lines written so `docTerms` reads them back as
+the same schedule. No new model.
+
+- ⚠️ **Every amount read from a file is checked against the file's text** (`amountInText`); one that
+  isn't written there is outlined amber and named in a note. The reader is told never to invent,
+  add up or guess a date. A person confirms before anything is saved.
+- **The file is not kept**, only the confirmed figures (and its file name).
+- Client matching is by name among the workspace's clients, never guessing between two.
+- **To take a deal out, archive its document in Docs:** Money skips archived documents.
+- Money viewers only (`clients.viewFinancials` or Super Admin), on both routes.
+
+### 141.4 Achievements (gamification that rewards keeping Foundry true)
+
+Your own Staff page (Backstage → Me) has an **Achievements** card; HQ announces a newly reached
+tier with a toast. Rules `src/lib/achievements.ts` (pure, tested), reader
+`src/server/achievements.ts`, route `GET /api/me/achievements` (your own only, no route for anyone
+else's), card `src/components/achievements/achievements-card.tsx`, toast `celebrate.tsx`. The
+confetti moved to `src/components/ui/motion/confetti.tsx` (the Morning Brief uses it too).
+
+- ⚠️ **The design rule: reward what keeps Foundry true, never activity.** §67 measured 583 of ~720
+  done tasks being created and closed the same day, so "tasks done" is NOT an achievement and must
+  not become one. v1 is standup streak (leave and bank holidays never break it; today only counts
+  once posted), **on the plan** (planned tasks that existed before the day they were finished),
+  **on time**, and **deals won**. Each has bronze/silver/gold.
+- **Earned, never stored:** all derived from DailyUpdate, LeaveRequest, Task and Document rows.
+- **Personal, not ranked:** no leaderboard. Never shown to anyone but the person.
+- A browser that sees someone's achievements for the first time only remembers them
+  (`foundry.achievements.celebrated.v1`), so nobody gets confetti for months-old work.
+- Not built yet: team goals, Care replies (SupportMessage has no author user), showing achievements
+  on the public profile (needs the person's opt-in).

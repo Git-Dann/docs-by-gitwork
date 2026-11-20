@@ -11,6 +11,7 @@
  * the person is logged.
  */
 
+import { AchievementsCard } from "@/components/achievements/achievements-card";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useState, type ReactNode } from "react";
@@ -866,6 +867,8 @@ export function StaffProfileView({
   const self = mode === "me" || p.relation === "self";
   const developer = (num: string) => showDeveloper ? <DeveloperCard recordId={p.recordId} number={num} /> : null;
   // In Me, a developer fills in what only they know (handle, stack, links).
+  // Your own achievements, on your own page only: they're never shown to anyone else.
+  const achievements = (num: string) => (self ? <AchievementsCard number={num} /> : null);
   const myDeveloper = (num: string) => mode === "me" && p.isDeveloper ? <MyDeveloperCard number={num} /> : null;
   const employment = (num: string) => p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={num} /> : null;
   const timeOff = (num: string) => p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={num} /> : null;
@@ -879,6 +882,7 @@ export function StaffProfileView({
   const cards = (
     [
       ["overview", overview],
+      ["achievements", achievements],
       ["activity", activityCard],
       ["developer", developer],
       ["my-developer", myDeveloper],

@@ -80,8 +80,8 @@ export const WORKSPACE_MODULES: WorkspaceModuleDef[] = [
     description: "Clients, projects, tasks and client wikis",
     // /app/monitors reads the uptime monitors that live in client wikis, so a business
     // without Portal has none to show.
-    pagePrefixes: ["/app/portal", "/app/clients", "/app/projects", "/app/monitors"],
-    apiPrefixes: ["/api/monitors"],
+    pagePrefixes: ["/app/portal", "/app/clients", "/app/projects", "/app/monitors", "/app/money"],
+    apiPrefixes: ["/api/monitors", "/api/money"],
   },
   {
     id: "support",

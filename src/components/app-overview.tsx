@@ -37,6 +37,8 @@ import { cn } from "@/lib/format";
 import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 import { FadeIn } from "@/components/ui/motion/fade-in";
 import { HqTodayBand } from "@/components/dashboard/hq-today-band";
+import { NeedsYouCard } from "@/components/dashboard/needs-you-card";
+import { AchievementCelebrator } from "@/components/achievements/celebrate";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -279,6 +281,8 @@ export function AppOverview() {
   // the dashboard numbering below stays gap-free (declared before any early
   // return to respect the rules of hooks).
   const [deskVisible, setDeskVisible] = useState(false);
+  // "Needs you" hides when the viewer can read none of its sources; same reporting as the desk.
+  const [needsVisible, setNeedsVisible] = useState(true);
 
   // Wait for role/permissions so a restricted developer never flashes the full
   // agency grid before their task-focused view loads.
@@ -363,14 +367,21 @@ export function AppOverview() {
   }
 
   if (isDeveloper) {
-    return <DevOverview />;
+    return (
+      <>
+        {previewPerms === null ? <AchievementCelebrator /> : null}
+        <DevOverview />
+      </>
+    );
   }
 
 
   // ── Sequential numbering, computed from what actually renders so there are
   //    never holes (01, 02, 03 …). The desk card is always slot 1 when shown;
   //    the roll-up follows; then the bento feeds, then the bento summaries. ──
-  let counter = deskVisible ? 1 : 0;
+  const needsNumber = needsVisible ? 1 : 0;
+  const deskNumber = needsNumber + 1;
+  let counter = needsNumber + (deskVisible ? 1 : 0);
   const rollupNumber = canPublishRollup ? (counter += 1) : 0;
   const broadcastNumber = canBroadcast ? (counter += 1) : 0;
   const feeds = widgets
@@ -396,6 +407,10 @@ export function AppOverview() {
         {/* Super-Admin tools, moved off the sidebar (Aug 2026): neither is a
             product you work in daily, and both were taking a permanent rail row
             for one person. Quiet mono text links. (Deck moved to Settings → Labs, Oct 2026.) */}
+        {(isSuperAdmin(viewRole) || resolvedPermissions.includes("clients.viewFinancials")) &&
+        workspaceHasModule("clients", account.data?.workspaceModules) ? (
+          <StripLink href="/app/money" label="Money" title="Revenue under contract, still to bill and pipeline" />
+        ) : null}
         {isSuperAdmin(viewRole) && workspaceHasModule("analytics", account.data?.workspaceModules) ? (
           <StripLink href="/app/analytics" label="Analytics" title="Delivery, output & AI usage" />
         ) : null}
@@ -405,6 +420,8 @@ export function AppOverview() {
       </div>
 
       {isEffectiveAdmin ? <GettingStartedCard /> : null}
+      {/* A new achievement tier is announced wherever you land; no UI of its own. */}
+      {previewPerms === null ? <AchievementCelebrator /> : null}
 
       {/* What needs me now: a few figures, each a link to where it's dealt with. Every
           tile reads a query a card below already makes, and only shows to someone who
@@ -419,6 +436,10 @@ export function AppOverview() {
         }}
       />
 
+      {/* Needs you: one ranked list of what every watcher found, each a link to where it's
+          dealt with (src/lib/needs-you.ts). */}
+      <NeedsYouCard index={needsNumber || 1} onVisibilityChange={setNeedsVisible} />
+
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
           and the DevOps lead's "Daily roll-up". Side-by-side only when both
           render; otherwise the present card fills the row. */}
@@ -428,7 +449,7 @@ export function AppOverview() {
           className={cn("scroll-mt-4", todayTwoUp && "xl:relative xl:min-h-[420px]", !deskVisible && "contents")}
         >
         <OnYourDeskCard
-          index={1}
+          index={deskNumber}
           onVisibilityChange={setDeskVisible}
           canApprove={canApprove}
           canSeeTasks={canSeeTasks}
