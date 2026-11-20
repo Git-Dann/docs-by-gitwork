@@ -6,6 +6,7 @@ export const DEMO_PUBLIC_PROFILE: PublicProfile = {
   name: "Priya Shah",
   pronouns: "she/her",
   headline: "Senior Product Engineer",
+  position: "Senior Product Engineer",
   location: "Manchester, UK",
   bio: "I build calm, fast product for teams who'd rather ship than wait. Mostly React, Node and Swift.",
   summary:
@@ -51,6 +52,7 @@ export const DEMO_PUBLIC_PROFILE_LONG: PublicProfile = {
   slug: "maximiliana-featherstonehaugh",
   name: "Maximiliana Featherstonehaugh-Montgomery",
   headline: "Principal Platform Engineer, Infrastructure, Developer Experience and Internal Tooling",
+  position: "Principal Platform Engineer, Infrastructure, Developer Experience and Internal Tooling",
   bio: "Find my writing at https://example.com/a-very-long-path-that-does-not-break-anywhere-on-a-small-phone-screen and say hello.",
   links: [
     ...DEMO_PUBLIC_PROFILE.links,

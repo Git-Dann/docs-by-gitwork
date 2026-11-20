@@ -11061,6 +11061,27 @@ sub-pages are its settings, Suppliers is HR-only, Archived lives under People, a
     header with the other facts instead of a card of its own, and the cards number from 01.
     The public `/u/` page needed nothing: its side column is sticky, so it never shows a gap.
 
+### 139.2 Doc cards: attribute a person in a document
+
+**Copy doc card** on a person's Staff banner (anyone who can see the record, while their public
+page is live) puts their card on the clipboard for pasting into a Google Doc (or Word, or Gmail):
+- an image, `/u/[slug]/doc-card` (1200×360, shown at 300×90), in their card colour, with their
+  photo, name and position (`PublicProfile.position` = the Staff job title, falling back to the
+  headline), linked to their `/u/` page;
+- then a text line, "Name, Position", also linked, because an image can't be searched or read aloud.
+
+Rules in `src/lib/doc-card.ts` (pure, tested, every value escaped); the drawing is
+`src/lib/og/profile-doc-card.tsx`; a demo copy is at `/demo/profile/doc-card`.
+- **Nothing is inserted automatically** (Dan's call, 20 Nov 2026: he places cards himself for now).
+  Docs export and the Drive backup are unchanged.
+- The image route 404s for a page that's off, so a doc never gets a card linking to "not found".
+  Google Docs copies the image when it's pasted, so a pasted card is a snapshot; paste again to
+  refresh it.
+- `StaffProfile.publicSlug` is their live page's address (null when off or archived): the page is
+  already public, so any viewer of the record may copy the card.
+- Not built: a hover card ("smart chip") for the team via a Google Workspace add-on. That's the
+  later layer if the team ends up working in Google Docs daily.
+
 ## 140. Recent Changes (November 2026) — The wiki got fast: course requests load on their own
 
 Lighthouse on Wedge's wiki: Performance 60, 1,070 ms blocking time, 861 KB of unused JavaScript.
