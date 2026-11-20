@@ -76,6 +76,21 @@ describe("Developer switch on Staff details", () => {
     expect(developerBox().disabled).toBe(true);
     expect(document.body.textContent).toContain("because they have a GitHub handle");
   });
+
+  it("can remove a GitHub handle that's someone else's, then be switched off", async () => {
+    await render(<DetailsDialog inline person={person({ isDeveloper: true, hasGithubHandle: true })} people={[]} onClose={() => {}} />);
+    await click(button("Wrong GitHub account? Remove the handle"));
+    expect(developerBox().disabled).toBe(false);
+    expect(developerBox().checked).toBe(false);
+    await click(button("Save"));
+    expect(calls.update).toEqual([{ recordId: "r1", update: expect.objectContaining({ isDeveloper: false, removeGithubHandle: true }) }]);
+  });
+
+  it("never sends removeGithubHandle unless asked", async () => {
+    await render(<DetailsDialog inline person={person({ isDeveloper: true, hasGithubHandle: true })} people={[]} onClose={() => {}} />);
+    await click(button("Save"));
+    expect((calls.update[0] as { update: object }).update).not.toHaveProperty("removeGithubHandle");
+  });
 });
 
 describe("MyDeveloperCard (Backstage → Me)", () => {

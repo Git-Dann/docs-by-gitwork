@@ -85,6 +85,11 @@ export interface StaffDetailsUpdate {
   managerRecordId?: string | null;
   /** Listed under Code → Developers. */
   isDeveloper?: boolean;
+  /**
+   * Remove a GitHub handle that's wrong (e.g. it names someone else). A handle lists them as a
+   * developer whatever `isDeveloper` says, so this is the only way to undo one from the screen.
+   */
+  removeGithubHandle?: boolean;
 }
 
 /** Roster order: by name, ignoring case and accents. */
@@ -166,6 +171,7 @@ export function normaliseStaffDetails(input: StaffDetailsUpdate): { ok: true; va
   }
   if (input.managerRecordId !== undefined) out.managerRecordId = input.managerRecordId || null;
   if (input.isDeveloper !== undefined) out.isDeveloper = input.isDeveloper === true;
+  if (input.removeGithubHandle === true) out.removeGithubHandle = true;
   return { ok: true, value: out };
 }
 

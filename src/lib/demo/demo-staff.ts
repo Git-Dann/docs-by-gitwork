@@ -91,6 +91,8 @@ function apply(p: StaffPerson, v: StaffDetailsUpdate) {
   if (v.employmentType !== undefined) p.employmentType = v.employmentType;
   if (v.startDate !== undefined) p.startDate = v.startDate;
   if (v.managerRecordId !== undefined) p.managerRecordId = v.managerRecordId;
+  if (v.isDeveloper !== undefined) p.isDeveloper = v.isDeveloper;
+  if (v.removeGithubHandle) p.hasGithubHandle = false;
   relink();
 }
 

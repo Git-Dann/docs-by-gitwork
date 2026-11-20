@@ -28,6 +28,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     // Shared by link, not found by search: a person opting in to a page isn't opting in to Google.
     robots: { index: false, follow: false },
     openGraph: { title: `${p.name} · ${p.company}`, description, type: "profile" },
+    // The image itself is ./opengraph-image.tsx: their own card, photo and name.
+    twitter: { card: "summary_large_image", title: `${p.name} · ${p.company}`, description },
   };
 }
 

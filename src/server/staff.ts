@@ -320,6 +320,7 @@ export async function updateStaffDetails(workspaceId: string, recordId: string, 
       ...(v.startDate !== undefined ? { startDate: v.startDate ? new Date(`${v.startDate}T00:00:00Z`) : null } : {}),
       ...(v.managerRecordId !== undefined ? { managerId: v.managerRecordId } : {}),
       ...(v.isDeveloper !== undefined ? { isDeveloper: v.isDeveloper } : {}),
+      ...(v.removeGithubHandle ? { githubHandle: null } : {}),
     },
   });
 }
