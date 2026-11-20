@@ -11324,9 +11324,15 @@ synced by `deploy.yml`), to that Slack channel (`src/server/ops-alert.ts`). Mark
   from outside: `/api/health?cron=1` answers 503 naming any stopped job, and `foundry-watchdog.yml`
   now probes that URL.
 - **Disk.** Hourly from the `jobs` worker (`src/server/disk-watch.ts`): alerts at 80% used, clears
-  below 75%, and names the database's size. The db container has `oom_score_adj: -500`, so under
-  memory pressure the kernel kills the app (restarted in seconds) before Postgres. No `mem_limit`:
-  nobody has measured what the database needs.
+  below 75%, and names the database's size.
+- **Database growth.** One size reading a day (`recordDaily`, kept 14 days in `RateLimitHit` rows
+  as `system:series:db-size:<bytes>`). Alerts when it grew 25% and 1 GB+ in about a week
+  (`weeklyGrowth`, compared with the reading 6–8 days old), clears under 10%. Says nothing in the
+  first week, when there's no old reading to compare.
+- **Memory.** The app is capped at 6 GB (`mem_limit`), sized from the box (24 GB; app peak
+  715 MiB, Postgres 523 MiB, 20 Nov 2026), and the db container has `oom_score_adj: -500`, so the
+  app is killed and restarted alone before it can starve Postgres. VPS ops → `inspect` now prints
+  memory, container peaks and OOM kills: re-measure there before changing the cap.
 - **`run-cron.sh` is in the repo** (`deploy/run-cron.sh`). Each deploy runs the new copy against
   `jobs` and only installs it at `/opt/apps/foundry/run-cron.sh` when that works. The secret goes
   to curl on stdin, never argv.
