@@ -69,6 +69,9 @@ export const NOTIFICATION_EVENTS = [
   "hr.weekly_digest",
   // A message a person wrote and addressed to you (src/server/team-messages.ts)
   "team.message",
+  // The platform needs a look: a scheduled job stopped, the disk is filling, a backup failed
+  // (src/server/ops-alert.ts)
+  "system.ops_alert",
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 
@@ -130,6 +133,9 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   // down with Google Cloud in Oct 2026 and the client told us first. Posts to
   // channelRoutes["clients.monitor_alert"] (Gitwork's ops channel) as well as admins' devices.
   "clients.monitor_alert": ["inApp", "push", "slack"],
+  // To admins only, once per problem and once when it clears. The Slack copy goes through
+  // SLACK_OPS_WEBHOOK_URL (src/server/ops-alert.ts), not a channel route.
+  "system.ops_alert": ["inApp", "push"],
   // Directed at one person, by name, in a conversation a client may be waiting on —
   // the same weight as being @mentioned on a task.
   "wiki.request_mention": ["inApp", "push"],

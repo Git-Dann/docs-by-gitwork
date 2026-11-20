@@ -51,5 +51,9 @@
 # without an admin-approved purge, and it does nothing until a cold store is configured.
 30 4 * * * /opt/apps/foundry/run-cron.sh retention >> /tmp/foundry-cron.log 2>&1
 
+# Off-site, encrypted database backup (src/server/db-backup.ts). Does nothing until the
+# BACKUP_S3_* bucket and BACKUP_ENCRYPTION_KEY are set. Quiet hours, after the other dailies.
+45 3 * * * /opt/apps/foundry/run-cron.sh db-backup >> /tmp/foundry-cron.log 2>&1
+
 # Weekly (Monday 01:00)
 0 1 * * 1 /opt/apps/foundry/run-cron.sh curator >> /tmp/foundry-cron.log 2>&1

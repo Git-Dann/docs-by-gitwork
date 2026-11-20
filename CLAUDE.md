@@ -258,6 +258,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
 | **Care** | `/app/care` (legacy `/app/support` → redirect stub) | `src/server/support.ts` | Client support ops: one UI since Nov 2026 (§42.16). Conversations · Reports · Automation · Channels & settings per client. Operator runbook: `docs/care.md` |
 | **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip |
+| **Money** | `/app/money` | `src/server/money.ts` · `money-deals.ts` | Revenue under contract, still to bill, won, pipeline, recorded deals (§141). **Super Admins + `clients.viewFinancials` only**, checked by the page (404) and `/api/money` (403); in `UNGATED_APP_PREFIXES` because Siân holds the permission without Portal. **No sidebar item** — a mono `· MONEY` link in the HQ context strip |
 | **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate. **No sidebar item since Aug 2026** — a mono `· STARTERS` link in the HQ context strip |
 | **Handbook** | `/app/handbook` | — | Internal developer knowledgebase. Deliberately readable by every internal user (no module gate); writes are Admin+ (enforced in `/api/handbook`) |
 | **Templates** | `/app/templates` | `src/server/proposals.ts` | Document templates. Linked from the Docs workspace; gated on `proposals` since July 2026 |
@@ -1783,7 +1784,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments · Money** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -11177,19 +11178,55 @@ sub-pages are its settings, Suppliers is HR-only, Archived lives under People, a
   too, after a confirm). A blank handle field still never removes one; only these two do. Getting
   back on the list is an admin's call or an invite.
 - **A profile page is short and has no gaps** (Dan, 20 Nov 2026: "a super long page is insane").
-  - The Public profile card is a summary: how complete it is, the link, Publish/Hide, **Edit page**.
-    The editor is a fixed-height popup (`.app-dialog-fixed`) with a section rail: Page and card,
-    About and links, Experience, Headline numbers, Work and clients, Recommendations. Inline, it
-    made the page several screens long. Closing with unsaved changes asks first.
-  - Account is one row: photo, name, Edit photo. Email and role are already in the Overview; the
-    password form folds behind the card's Password action.
+  - **One banner at the top replaces three repeats** (the header, the Account card and the Public
+    profile card all showed the photo and name; Dan, 20 Nov 2026). `staff/profile-banner.tsx`: a
+    full-width band in the person's own card colour and pattern (the brand gradient if they have
+    no card), photo (camera button on your own), name, role, the record's actions, and two tiles:
+    **Public page** (Live/Off, link, Copy, View, Publish) and **Profile** (% complete). **Edit my
+    page** opens the sectioned, fixed-height editor popup (`PublicProfileEditor`).
+  - **The banner's frame is shared** (`src/components/profile/profile-banner-shell.tsx`:
+    `ProfileBannerShell` + `BannerTile`), used by the Staff profile and the Hiring candidate
+    profile, so the two can't drift. Name and buttons start 12px below the band. Rare actions
+    live in its ⋯ menu, each with its own dialog: on Staff that's Same person as…, Archive… and
+    Delete… (only Restore stays a button, on an archived record); on a candidate, Move to
+    Bench/Off Bench and Delete…. A candidate's Group, Monthly and Current clients are tiles.
+  - ⚠️ **Hide is never a button.** It's in the banner's ⋯ menu and asks first ("Keep it live" /
+    "Hide page"). The editor's footer only offers Save and publish, never Hide.
+  - Your photo, and your name and password for a password sign-in, are reached from the banner
+    (`AccountEditors` in `account-settings-panel.tsx`). There's no Account card any more.
   - **Cards are laid out by `BalancedColumns`** (`src/components/ui/balanced-columns.tsx`): each
     card goes in whichever column is shorter, so both columns end level for every viewer, whatever
     cards they can see. Cards are absolutely positioned in one parent so moving a card never
-    remounts it, and a card that grows stays put while the ones after it move. It re-measures on
+    remounts it, and a card that grows stays put while the ones after it move. ⚠️ The card
+    wrappers carry **no z-index**: one makes the card its own layer, and a dialog opened from
+    inside it then sits under On Your Desk (it did, for a day). It re-measures on
     ResizeObserver AND MutationObserver: a background tab draws no frames, so ResizeObserver alone
     left cards on top of each other there. Numbers are given after unseen cards are dropped, so
     they run 01, 02, 03. Measured on the demo: columns end within 75px, no overlaps.
+  - The Hiring candidate profile (external candidates) got the same pass: the email sits in the
+    header with the other facts instead of a card of its own, and the cards number from 01.
+    The public `/u/` page needed nothing: its side column is sticky, so it never shows a gap.
+
+### 139.2 Doc cards: attribute a person in a document
+
+**Copy doc card** on a person's Staff banner (anyone who can see the record, while their public
+page is live) puts their card on the clipboard for pasting into a Google Doc (or Word, or Gmail):
+- an image, `/u/[slug]/doc-card` (1200×360, shown at 300×90), in their card colour, with their
+  photo, name and position (`PublicProfile.position` = the Staff job title, falling back to the
+  headline), linked to their `/u/` page;
+- then a text line, "Name, Position", also linked, because an image can't be searched or read aloud.
+
+Rules in `src/lib/doc-card.ts` (pure, tested, every value escaped); the drawing is
+`src/lib/og/profile-doc-card.tsx`; a demo copy is at `/demo/profile/doc-card`.
+- **Nothing is inserted automatically** (Dan's call, 20 Nov 2026: he places cards himself for now).
+  Docs export and the Drive backup are unchanged.
+- The image route 404s for a page that's off, so a doc never gets a card linking to "not found".
+  Google Docs copies the image when it's pasted, so a pasted card is a snapshot; paste again to
+  refresh it.
+- `StaffProfile.publicSlug` is their live page's address (null when off or archived): the page is
+  already public, so any viewer of the record may copy the card.
+- Not built: a hover card ("smart chip") for the team via a Google Workspace add-on. That's the
+  later layer if the team ends up working in Google Docs daily.
 
 ## 140. Recent Changes (November 2026) — The wiki got fast: course requests load on their own
 
@@ -11235,3 +11272,236 @@ finding, which is deliberate for `/app`.
   require a signed-in client user of the wiki or this client's own team, a link for the whole
   wiki or for Course Requests, and a rate limit (`src/server/wiki-course-request-access.ts`).
   `PATCH`/`DELETE /api/wiki/[token]/course-requests` change many in one write.
+
+## 141. Recent Changes (November 2026) — Needs you, and Money
+
+The first slice of "go deep, not wide" (Dan, Nov 2026). Rules for this programme: **no new Prisma
+models**, simplicity first, money for Dan, Harry and (maybe) Siân only.
+
+### 141.1 Needs you (HQ card 01)
+
+One ranked list of what every watcher found, so nobody visits five pages to learn what's on fire.
+Rules in `src/lib/needs-you.ts` (pure, tested), reader `src/server/needs-you.ts`, route
+`GET /api/hq/needs-you`, card `src/components/dashboard/needs-you-card.tsx`.
+
+- **Sources, each gated and scoped exactly like its own page:** Monitors (`monitors`; production down
+  = critical), Foreman's latest risks (Admin+; blind spots left out), Care (`support`; a customer
+  waiting 24h+, red at 72h), new client Requests (`clients`, scoped to the caller's clients), stalled
+  Docs (sent and read with no decision, or never opened, after 5 days) and Pulse projects needing a
+  look. Docs and Pulse only for people who see every client, because those lists aren't scoped.
+  Workspace modules are respected.
+- **Read independently** (`Promise.allSettled`): a failed source is named ("Couldn't check Care"),
+  never turned into "nothing to do". All clear names what was checked.
+- **Suggested, never acted on:** every row links to where it's dealt with.
+- **Hide until tomorrow** per browser (`foundry.needsyou.hidden.v1`, with Undo). A hidden row comes
+  back early when its fingerprint changes (it got worse). ⚠️ A critical row can't be hidden.
+- Refreshes every 2 minutes. Desk numbering shifts by one (Needs you is 01).
+
+### 141.2 Money (`/app/money`)
+
+Revenue under contract, still to bill, won in 12 months, pipeline, revenue by month (12 back, 6
+forward), per client, and deals. Rules `src/lib/money.ts` (pure, tested), reader
+`src/server/money.ts`, route `GET /api/money`, page `src/components/money/money-workspace.tsx`.
+
+- ⚠️ **Gate:** Super Admins and `clients.viewFinancials` only, checked on the page (live membership,
+  404 otherwise) and the route (403). `/app/money` is in `UNGATED_APP_PREFIXES` because Siân holds
+  the permission without Portal; it belongs to the `clients` workspace module. Linked from the HQ
+  context strip (· MONEY) for those people only.
+- **Model, with no new data:** an accepted (or DocuSeal-signed) document with cost lines is a
+  revenue schedule. Role lines (`rate-card:` / `proposal-role:` / `custom-role:`, the cost table's
+  rate × months) earn their monthly rate for `quantity` months from the month won; other lines are
+  one-offs that month; a `RECURRING` line runs on (counted 12 months in totals). After discount,
+  without VAT. ⚠️ Keep `ROLE_LINE_PREFIXES` in step with `cost-breakdown-table.tsx`.
+- **It is what the documents commit to, not invoices.** The page says so. A proposal and an SOW for
+  the same job are both counted if both were accepted.
+- **FX:** `loadFxRates` in `src/server/fx.ts` (ECB via Frankfurter, 12h fetch cache). No rate means
+  the amount is left out of totals and listed, never guessed.
+- **The rate card is cost** (Dan, 20 Nov 2026). **Team cost** is what the developers on a client
+  cost per month at rate-card rates (`computeClientFinancials`), and **margin** is this month's
+  revenue under contract less it, per client and overall (`MoneySummary.margin` / `marginShare`).
+  Developers with no rate are left out and the page says how many.
+- "Copy as an update" puts a few plain lines on the clipboard for an investor update.
+- Demos: `/demo/hq` (Needs you) and `/demo/money`, both through the real rules
+  (`src/lib/demo/demo-money.ts`).
+
+### 141.3 Record a deal (prices that didn't come from Docs)
+
+Money → Deals → **Record a deal** (`src/components/money/record-deal-dialog.tsx`, rules
+`src/lib/money-deals.ts`, server `src/server/money-deals.ts`). Drop a PDF/Word/text file and the
+workspace AI proposes the figures (`POST /api/money/read-file`, needs `ai.generate`, saves nothing),
+or type them. **Save** (`POST /api/money/deals`) creates an ACCEPTED `PROPOSAL` document labelled
+"Recorded deal" with `metadata.recordedDeal` and cost lines written so `docTerms` reads them back as
+the same schedule. No new model.
+
+- ⚠️ **Every amount read from a file is checked against the file's text** (`amountInText`); one that
+  isn't written there is outlined amber and named in a note. The reader is told never to invent,
+  add up or guess a date. A person confirms before anything is saved.
+- **The file is not kept**, only the confirmed figures (and its file name).
+- Client matching is by name among the workspace's clients, never guessing between two.
+- **To take a deal out, archive its document in Docs:** Money skips archived documents.
+- Money viewers only (`clients.viewFinancials` or Super Admin), on both routes.
+
+### 141.4 Achievements (gamification that rewards keeping Foundry true)
+
+Your own Staff page (Backstage → Me) has an **Achievements** card; HQ announces a newly reached
+tier with a toast. Rules `src/lib/achievements.ts` (pure, tested), reader
+`src/server/achievements.ts`, route `GET /api/me/achievements` (your own only, no route for anyone
+else's), card `src/components/achievements/achievements-card.tsx`, toast `celebrate.tsx`. The
+confetti moved to `src/components/ui/motion/confetti.tsx` (the Morning Brief uses it too).
+
+- ⚠️ **The design rule: reward what keeps Foundry true, never activity.** §67 measured 583 of ~720
+  done tasks being created and closed the same day, so "tasks done" is NOT an achievement and must
+  not become one. v1 is standup streak (leave and bank holidays never break it; today only counts
+  once posted), **on the plan** (planned tasks that existed before the day they were finished),
+  **on time**, and **deals won**. Each has bronze/silver/gold.
+- **Earned, never stored:** all derived from DailyUpdate, LeaveRequest, Task and Document rows.
+- **Personal, not ranked:** no leaderboard. Never shown to anyone but the person.
+- A browser that sees someone's achievements for the first time only remembers them
+  (`foundry.achievements.celebrated.v1`), so nobody gets confetti for months-old work.
+- Not built yet: team goals, Care replies (SupportMessage has no author user), showing achievements
+  on the public profile (needs the person's opt-in).
+
+## 142. Recent Changes (November 2026) — The client timeline, the weekly update, and ⌘K across records
+
+Built from the "go deep" plan (§141). No new Prisma models.
+
+### 142.1 Timeline (Portal client page)
+
+A `NN // TIMELINE` card under Developers: what happened on the client's work, week by week, and
+where things stand now. Rules `src/lib/client-delivery-timeline.ts` (pure, tested), loader
+`src/server/client-delivery-timeline.ts`, route `GET /api/clients/[slug]/delivery-timeline?weeks=`
+(client access checked), card `src/components/clients/client-delivery-card.tsx`.
+
+- **Sources:** tasks finished, started and blocked (top-level only); changelog releases; client
+  requests; meetings (first sentence of the summary); monitor incidents (with how long they lasted);
+  documents sent and accepted. Each is read on its own; one that fails is named on the card (§35).
+- **Weeks start Monday, UTC**, and an empty week shows as "A quiet week", never dropped.
+- **Now panel:** waiting on the client (unanswered blockers, releases waiting for approval), the
+  next release with progress, in progress, up next.
+- ⚠️ **Internal only.** It names developers, so it is never part of a client-facing DTO.
+- **Checked against Campfire's real board (Nov 2026), three fixes:**
+  - **A board tidy-up is not work.** Nine tasks created in June were closed in the same second on
+    3 Nov with nobody on them, and read as "9 done" (and would have gone into the weekly email).
+    `findTidyUps` marks a batch only when 3+ tasks share the exact `completedAt`, none was started
+    before it was closed, and all were created 14+ days earlier; it shows as one "Tidy-up" line and
+    isn't counted as done. A developer closing four real tasks at once stays as work.
+  - **A late task says so.** In progress and Up next show `dueWords` ("3 days late" in red,
+    "due today", "due 24 Nov"), by calendar day, never by hour.
+  - **Two or more quiet weeks in a row fold into one line** (`foldQuietWeeks`); this week never folds.
+
+### 142.2 Weekly update (the Friday email)
+
+**Weekly update** on the Timeline card drafts the email Dan sends clients (modelled on his Campfire
+and Gaia emails), in the house two-column popup: the draft to edit on the left, what it was written
+from on the right. Rules `src/lib/weekly-update.ts`, server `src/server/weekly-update.ts`, route
+`POST /api/clients/[slug]/weekly-update { week: "this"|"last", regenerate? }`.
+
+- **Drafted, never sent.** Copy, or **Open in Gmail** (a compose link with the draft filled in, to
+  the client's primary contact and wiki users).
+- One standard-tier AI call, cached on the week's facts (£0 to reopen), told to use only the facts.
+  A reply that describes finished work in a quiet week is thrown away. Without AI, no permission or
+  a failed call, the **plain draft** is used and the reason is shown.
+- The style rules live in `WEEKLY_UPDATE_SYSTEM`: greet by first name, lead with what got done and
+  what it means for the client, group by workstream, what's next, "What we need from you", no em
+  dashes, "Have a great weekend," on a Friday.
+
+### 142.3 ⌘K searches records
+
+`GET /api/search?q=` (`src/server/global-search.ts`, rules `src/lib/global-search.ts`) searches
+tasks, client requests, meetings, Care conversations and people. Each group only for someone who can
+open it: tasks/requests/meetings need Portal and are limited to the person's clients; Care needs
+`support`; people need Staff; workspace modules respected. Every word must match. A group that fails
+is named in the menu ("Couldn't search care just now"), never shown as no results.
+
+- The vendored EasyUI menu gained `hint`, `onQueryChange` and `note` (recorded in its header).
+- **Care links to one conversation** now: `careHref({ clientId, conversationId })` →
+  `/app/care?client=…&conversation=…` opens it.
+
+### 142.4 Infrastructure audit
+
+Done in November 2026 and shared with Dan privately. ⚠️ **Not committed, on purpose: this repo
+is public**, and an audit lists exactly what an attacker would want. Keep future audits and
+incident write-ups that name a live weakness out of the repo until the weakness is fixed.
+
+## 143. Recent Changes (November 2026) — Deploys check themselves, and can be undone
+
+Four fixes from the November infrastructure audit (the audit itself stays out of the repo, §142.4).
+
+- **Health check after every deploy, with automatic rollback.** Before pulling, `deploy.yml` tags
+  the running image `:previous`. After the restart, `deploy/health-check.sh` polls
+  `http://127.0.0.1:3000/api/health?deep=1` for up to 120s and needs the deployed commit in the
+  answer. Not healthy → `:previous` is put back, recreated and checked, and the run fails.
+  `docker image prune -f` runs only after a healthy release, so `:previous` always survives.
+- **`/api/health?deep=1`** runs `SELECT 1` and answers 503 when Postgres can't be reached; the plain
+  form still never touches the database. (The watchdog still calls the plain form.)
+- **One-click rollback:** Actions → VPS ops → task `rollback`, `rollback_to` = `previous` or a full
+  40-character sha (GHCR keeps every `:<sha>` image). `deploy/rollback.sh` puts the running image
+  back if the target isn't healthy. It shares the `deploy-production` concurrency group, so it can't
+  race a deploy. ⚠️ It doesn't touch the database (schema changes are additive), and the next push
+  to `main` deploys over it. The scripts are also copied to `/opt/apps/foundry/deploy/` on every
+  deploy, so `bash deploy/rollback.sh previous` works over SSH too.
+- **The app port is localhost only** (`127.0.0.1:3000:3000`). On every interface, anyone could
+  skip nginx and TLS and send their own `X-Real-IP`, which every IP rate limit trusts; Docker
+  publishes past ufw. Staging's 3001 and 5433 are bound the same way.
+- **Logs are capped:** `json-file` with `max-size 50m` × 5 on both containers, and
+  `/tmp/foundry-cron.log` is trimmed to its newest 10 MB once it passes 50 MB, on every deploy.
+- **The box's `docker-compose.yml` now follows the repo** (`deploy/sync-compose.sh`, run before the
+  pull). It is replaced only when its sha256 is in `deploy/compose-history.sha256`; a hand-edited
+  box file is left alone with a warning and a diff, and the old file is kept as
+  `docker-compose.yml.before-deploy`. ⚠️ **Changing `docker-compose.yml`? Append its new sha256 to
+  `deploy/compose-history.sha256`** (a test fails otherwise). A logging change recreates the db
+  container on that deploy: a few seconds of Postgres restart.
+- Tests: `src/__tests__/deploy-scripts.test.ts` (fake `docker`/`curl`), `src/app/api/health/__tests__`.
+- **Still needs Dan:** off-site backups (a bucket), and error alerts (a Sentry DSN or Slack webhook).
+
+## 144. Recent Changes (November 2026) — The platform tells us when it needs a look
+
+Round two of the infrastructure audit. Each alert goes to Gitwork's admins in Foundry
+(`system.ops_alert`, in-app + push) and, once `SLACK_OPS_WEBHOOK_URL` is set (a GitHub secret,
+synced by `deploy.yml`), to that Slack channel (`src/server/ops-alert.ts`). Markers live in
+`RateLimitHit` rows under `system:<name>` (`src/server/system-markers.ts`), so no new table.
+
+- **Stopped scheduled jobs.** Every authorised `/api/cron/<name>` call records when it ran
+  (`assertCron`). The `jobs` worker compares that with `CRON_MAX_GAP` (`src/lib/cron-watch.ts`)
+  and alerts once per stopped job, then once when it runs again. A job never seen counts from when
+  the watch began, so the first deploy reports nothing. ⚠️ **A new line in `deploy/crontab` needs a
+  `CRON_MAX_GAP` entry** (`crontab.test.ts` fails otherwise). The `jobs` worker itself is watched
+  from outside: `/api/health?cron=1` answers 503 naming any stopped job, and `foundry-watchdog.yml`
+  now probes that URL.
+- **Disk.** Hourly from the `jobs` worker (`src/server/disk-watch.ts`): alerts at 80% used, clears
+  below 75%, and names the database's size.
+- **Database growth.** One size reading a day (`recordDaily`, kept 14 days in `RateLimitHit` rows
+  as `system:series:db-size:<bytes>`). Alerts when it grew 25% and 1 GB+ in about a week
+  (`weeklyGrowth`, compared with the reading 6–8 days old), clears under 10%. Says nothing in the
+  first week, when there's no old reading to compare.
+- **Memory.** The app is capped at 6 GB (`mem_limit`), sized from the box (24 GB; app peak
+  715 MiB, Postgres 523 MiB, 20 Nov 2026), and the db container has `oom_score_adj: -500`, so the
+  app is killed and restarted alone before it can starve Postgres. VPS ops → `inspect` now prints
+  memory, container peaks and OOM kills: re-measure there before changing the cap.
+- **`run-cron.sh` is in the repo** (`deploy/run-cron.sh`). Each deploy runs the new copy against
+  `jobs` and only installs it at `/opt/apps/foundry/run-cron.sh` when that works. The secret goes
+  to curl on stdin, never argv.
+- **Off-site backups, off until configured** (`src/server/db-backup.ts`, cron `db-backup` daily
+  03:45). `pg_dump -Fc` → `pg_restore --list` → AES-256-GCM → one PUT to its own bucket. Needs
+  `BACKUP_S3_BUCKET/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY` (+ `BACKUP_S3_ENDPOINT` for non-AWS)
+  and `BACKUP_ENCRYPTION_KEY` (`openssl rand -base64 32`; ⚠️ keep a copy outside Foundry, without it
+  no backup can be read). With none set it answers `{ skipped }`; half set is an error and alerts.
+  Restore: `scripts/decrypt-backup.mjs`, then `pg_restore`. Retention is the bucket's lifecycle
+  rule. Refuses over 1 GB (one PUT, buffered); multipart is the next step past that.
+  The runner image now installs `postgresql17-client`.
+- **Server errors to Slack** (`onRequestError` in `src/instrumentation.ts` →
+  `src/server/error-alerts.ts`): only while `SLACK_OPS_WEBHOOK_URL` is set. One post per distinct
+  error an hour, at most 10 an hour, with the route template, method, error type/code, digest and
+  the first line with emails and long numbers removed. Never the real path. `src/app/global-error.tsx`
+  is the page shown when the root layout itself fails.
+- **Platform popup on Monitors** (`src/components/monitors/platform-health.tsx`): a small
+  "Platform" button with a coloured dot in the STATUS header opens the house two-column popup:
+  scheduled jobs, disk, database size and growth, the app's memory (from its cgroup), backups and
+  Slack alerts. Rules in `src/lib/platform-health.ts`: a part that couldn't be read is "Couldn't
+  read", never fine. ⚠️ **Platform admins only** (`GET /api/monitors/platform`,
+  `requirePlatformAdmin`): it describes the server every business runs on. The popup is
+  portalled to `<body>` because the button sits inside the page's FadeIn (§108.3).
+- **Next.js 15.5.29** (security release).
+- **The box's compose file** was the old repo file minus one comment; its hash is now in
+  `deploy/compose-history.sha256`, so the next deploy applies §143's port and log fixes.
+

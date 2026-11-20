@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default function DemoMonitorsPage() {
   return (
     <DemoShell active="Monitors" title="Monitors" subtitle="Every client's uptime, in one place.">
-      <MonitorsWorkspace />
+      <MonitorsWorkspace demo />
     </DemoShell>
   );
 }

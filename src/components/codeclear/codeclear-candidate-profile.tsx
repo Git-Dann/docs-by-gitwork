@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CvModal } from "./cv-modal";
-import { Avatar } from "@/components/ui/avatar";
+import { BannerTile, ProfileBannerShell } from "@/components/profile/profile-banner-shell";
 import {
   useBulkUpdateCodeClearCandidates,
   useCodeClearCandidate,
@@ -25,7 +25,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { formatMoney, useUsdToGbpRate } from "@/hooks/use-fx";
 import { cn, formatDate } from "@/lib/format";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
-import { AvailabilityBadge, CandidateNotes, EditDevModal, ExternalLinks, HeroStat } from "@/components/codeclear/candidate-parts";
+import { AvailabilityBadge, CandidateNotes, EditDevModal, ExternalLinks } from "@/components/codeclear/candidate-parts";
 import { Skeleton, SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 /**
@@ -103,152 +103,110 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         Back to candidates
       </Link>
 
-      {/* Hero */}
-      <section className="app-card overflow-hidden">
-        <div className="border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_100%)] px-6 py-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-1 items-start gap-4">
-              {/* Falls back to initials if the stored avatar URL is dead. */}
-              <Avatar src={candidate.avatarUrl} name={candidate.name} size={64} />
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate font-display text-[32px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)]">
-                    {candidate.name}
-                  </h1>
-                  <AvailabilityBadge availability={candidate.availability} />
-                </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-4)]">
-                  {candidate.githubHandle ? (
-                    <a
-                      href={`https://github.com/${candidate.githubHandle}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 font-mono text-[var(--brand-700)] hover:underline"
-                    >
-                      @{candidate.githubHandle}
-                      <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    <span className="font-mono">No GitHub yet</span>
-                  )}
-                  <span>{candidate.primaryStack}</span>
-                  {candidate.location ? <span>· {candidate.location}</span> : null}
-                  {candidate.timezone ? <span>· {candidate.timezone}</span> : null}
-                </div>
-                <ExternalLinks
-                  linkedinUrl={candidate.linkedinUrl}
-                  cvUrl={candidate.cvUrl}
-                  portfolioUrl={candidate.portfolioUrl}
-                />
-              </div>
+      {/* The same banner as a Staff profile (profile-banner-shell). Rare actions (move between
+          Bench and Off Bench, delete) sit in the ⋯ menu rather than as buttons. */}
+      <ProfileBannerShell
+        avatarUrl={candidate.avatarUrl}
+        name={candidate.name}
+        title={
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="truncate font-display text-[26px] font-normal leading-[1.15] tracking-[-0.01em] text-[var(--text-1)] sm:text-[30px]" title={candidate.name}>
+              {candidate.name}
+            </h1>
+            <AvailabilityBadge availability={candidate.availability} />
+          </div>
+        }
+        subtitle={
+          <>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {candidate.githubHandle ? (
+                <a
+                  href={`https://github.com/${candidate.githubHandle}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-[var(--brand-700)] hover:underline"
+                >
+                  @{candidate.githubHandle}
+                  <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                </a>
+              ) : (
+                <span className="font-mono">No GitHub yet</span>
+              )}
+              {candidate.primaryStack ? <span>{candidate.primaryStack}</span> : null}
+              {candidate.location ? <span>· {candidate.location}</span> : null}
+              {candidate.timezone ? <span>· {candidate.timezone}</span> : null}
+              {candidate.email ? (
+                <a href={`mailto:${candidate.email}`} className="inline-flex items-center gap-1 hover:text-[var(--brand-700)] hover:underline">
+                  <EnvelopeIcon className="h-3.5 w-3.5" aria-hidden />
+                  {candidate.email}
+                </a>
+              ) : null}
             </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              {/* Admin-only: move this dev between Bench and Off Bench
-                  in one click. Same SET_DEV_GROUP server action the
-                  list-page bulk bar uses. */}
-              {isAdminOrAbove ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
+            <ExternalLinks linkedinUrl={candidate.linkedinUrl} cvUrl={candidate.cvUrl} portfolioUrl={candidate.portfolioUrl} />
+          </>
+        }
+        actions={
+          canManageCode ? (
+            <>
+              <Button type="button" variant="secondary" size="sm" leadingIcon={<DocumentTextIcon className="h-3.5 w-3.5" />} onClick={() => setShowCv(true)}>
+                CV
+              </Button>
+              <Button type="button" variant="primary" size="sm" leadingIcon={<PencilIcon className="h-3.5 w-3.5" />} onClick={() => setShowEdit(true)}>
+                Edit
+              </Button>
+            </>
+          ) : null
+        }
+        menu={[
+          ...(isAdminOrAbove
+            ? [
+                {
+                  label: `Move to ${candidate.devGroup === "PRO_BONO" ? "Bench" : "Off Bench"}`,
+                  onClick: () =>
                     bulkUpdate.mutate({
                       action: "SET_DEV_GROUP",
                       ids: [candidate.id],
                       devGroup: candidate.devGroup === "PRO_BONO" ? "BENCH" : "PRO_BONO",
-                    })
-                  }
-                  loading={bulkUpdate.isPending}
-                >
-                  Move to {candidate.devGroup === "PRO_BONO" ? "Bench" : "Off Bench"}
-                </Button>
-              ) : null}
-              {canManageCode ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    leadingIcon={<DocumentTextIcon className="h-3.5 w-3.5" />}
-                    onClick={() => setShowCv(true)}
-                  >
-                    CV
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    leadingIcon={<PencilIcon className="h-3.5 w-3.5" />}
-                    onClick={() => setShowEdit(true)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="tertiary"
-                    size="sm"
-                    leadingIcon={<TrashIcon className="h-3.5 w-3.5" />}
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    Delete
-                  </Button>
-                </>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {/* Stats strip + current client. Hourly rate is hidden for users without
-            `code.viewRates` — the grid column count follows the visible count so the
-            row always fills evenly (no empty cell). */}
-        <div
-          className={cn(
-            "grid gap-0",
-            canViewRates ? "sm:grid-cols-2" : "sm:grid-cols-1",
-          )}
-        >
-          {/* Hero stats — Tier dropped (CodeClear concept, not used).
-              Group + Monthly are the two signals that actually matter
-              for team mgmt today. */}
-          <HeroStat
-            label="Group"
-            value={candidate.devGroup === "PRO_BONO" ? "Off Bench" : "Bench"}
-            sub={candidate.devGroup === "PRO_BONO" ? "Free to Gitwork" : undefined}
-          />
+                    }),
+                },
+              ]
+            : []),
+          ...(canManageCode ? [{ label: "Delete…", onClick: () => setShowDeleteConfirm(true), danger: true }] : []),
+        ]}
+      >
+        {/* Hourly rate is hidden without `code.viewRates`; the tiles follow the visible count so
+            the row always fills. */}
+        <div className={cn("grid grid-cols-1 gap-3", canViewRates ? "sm:grid-cols-2" : "")}>
+          <BannerTile label="Group" status={candidate.devGroup === "PRO_BONO" ? "Free to Gitwork" : undefined}>
+            <p className="font-display text-[24px] leading-[1.1] text-[var(--text-1)]">{candidate.devGroup === "PRO_BONO" ? "Off Bench" : "Bench"}</p>
+          </BannerTile>
           {canViewRates ? (
-            <HeroStat
+            <BannerTile
               label="Monthly"
-              value={
-                candidate.monthlyRate != null && candidate.monthlyRateCurrency
-                  ? formatMoney(candidate.monthlyRate, candidate.monthlyRateCurrency)
-                  : "—"
-              }
-              sub={
-                candidate.monthlyRate != null &&
-                candidate.monthlyRateCurrency?.toUpperCase() === "USD" &&
-                fxRate != null
+              status={
+                candidate.monthlyRate != null && candidate.monthlyRateCurrency?.toUpperCase() === "USD" && fxRate != null
                   ? `≈ ${formatMoney(candidate.monthlyRate * fxRate, "GBP")}`
                   : undefined
               }
-            />
+            >
+              <p className="font-display text-[24px] leading-[1.1] text-[var(--text-1)]">
+                {candidate.monthlyRate != null && candidate.monthlyRateCurrency ? formatMoney(candidate.monthlyRate, candidate.monthlyRateCurrency) : "—"}
+              </p>
+            </BannerTile>
           ) : null}
-        </div>
-
-        {/* Current clients (multi-select) */}
-        <div className="border-t border-[var(--border-2)] px-6 py-4">
-          <div className="flex flex-wrap items-start gap-3">
-            <span className="widget-data-label mt-1.5">Current clients</span>
-            <CurrentClientPicker
-              candidateId={candidate.id}
-              candidateName={candidate.name}
-              currentClients={candidate.currentClients}
-              clients={clients}
-              clientsLoading={clientsQuery.isLoading}
-            />
+          <div className={canViewRates ? "sm:col-span-2" : ""}>
+            <BannerTile label="Current clients">
+              <CurrentClientPicker
+                candidateId={candidate.id}
+                candidateName={candidate.name}
+                currentClients={candidate.currentClients}
+                clients={clients}
+                clientsLoading={clientsQuery.isLoading}
+              />
+            </BannerTile>
           </div>
         </div>
-      </section>
+      </ProfileBannerShell>
 
       {/* CALIBRE BREAKDOWN + VALIDATION CHECKS sections removed in
           June 2026 — CodeClear scoring isn't running, so the sub-score
@@ -260,7 +218,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
           past grey. Allocation % is shown when set so admins can see
           if a dev is split across multiple clients. */}
       <WidgetCard
-        number="02"
+        number="01"
         name="ENGAGEMENTS"
         status={
           candidate.placements.length > 0
@@ -340,24 +298,9 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         )}
       </WidgetCard>
 
-      {/* Contact — email (mailto) link. Surfaces the dev's @gitwork.co.uk
-          (or external) email front-and-centre so admins can reach them
-          without digging through Slack. */}
-      {candidate.email ? (
-        <WidgetCard number="03" name="CONTACT" status="" statusTone="muted">
-          <a
-            href={`mailto:${candidate.email}`}
-            className="inline-flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-2)] transition hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
-          >
-            <EnvelopeIcon className="h-4 w-4" />
-            {candidate.email}
-          </a>
-        </WidgetCard>
-      ) : null}
-
       {/* Notes */}
       <WidgetCard
-        number={candidate.email ? "04" : "03"}
+        number="02"
         name="NOTES"
         status={candidate.notes.length > 0 ? `${candidate.notes.length}` : "EMPTY"}
         statusTone="muted"

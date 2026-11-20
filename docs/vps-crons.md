@@ -49,8 +49,20 @@ deploy replaces a hand-edited managed line and removes an un-marked duplicate.
 ## Auth
 
 Every cron route is guarded by `CRON_SECRET` and must be called with
-`Authorization: Bearer $CRON_SECRET`. `run-cron.sh` (on the box at `/opt/apps/foundry/run-cron.sh`,
-not in this repo) does that and logs each endpoint's JSON result to `/tmp/foundry-cron.log`.
+`Authorization: Bearer $CRON_SECRET`. `run-cron.sh` does that and logs each endpoint's JSON result
+to `/tmp/foundry-cron.log`. Its source is `deploy/run-cron.sh`. Every deploy runs the new copy once
+against `jobs` and only then installs it at `/opt/apps/foundry/run-cron.sh` (the old one is kept
+as `run-cron.sh.before-deploy`); if that call fails, the box keeps the copy it had. It passes the
+secret to curl on stdin, so it never shows in `ps`.
+
+## Noticing a job that stopped
+
+Every authorised call to `/api/cron/<name>` records when it happened. The `jobs` worker compares
+that with each job's longest allowed gap (`CRON_MAX_GAP`, `src/lib/cron-watch.ts`) and alerts
+Gitwork's admins once when a job stops and once when it runs again (`system.ops_alert`, plus
+Slack when `SLACK_OPS_WEBHOOK_URL` is set). The `jobs` worker itself is watched from outside:
+`foundry-watchdog.yml` probes `/api/health?cron=1`, which answers 503 naming any stopped job.
+A new line in `deploy/crontab` needs a `CRON_MAX_GAP` entry; `crontab.test.ts` fails without one.
 
 ## Vercel
 

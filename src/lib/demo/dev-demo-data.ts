@@ -71,6 +71,8 @@ import type { WikiComparison } from "@/types/wiki-comparisons";
 import { resolveDemoDrive } from "@/lib/demo/demo-drive";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
+import { demoAchievements, demoDealDraft, demoMoney, demoNeedsYou } from "@/lib/demo/demo-money";
+import { demoDeliveryTimeline, demoSearch, demoWeeklyUpdate } from "@/lib/demo/demo-delivery";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
@@ -5133,6 +5135,32 @@ export function resolveDemoApi(
   }
   // The Monitors page (/demo/monitors): the same board, and every client openable.
   if (pathname === "/api/monitors") return { ...demoMonitorBoard(), openableClientIds: null };
+  if (pathname === "/api/monitors/platform") return demoPlatformHealth();
+  // HQ's "Needs you" and the Money page, through the real rules (src/lib/demo/demo-money.ts).
+  if (pathname === "/api/hq/needs-you") return demoNeedsYou();
+  if (pathname === "/api/money") return demoMoney();
+  if (pathname === "/api/search") return demoSearch(search?.get("q") ?? null);
+  // The Portal client's Timeline card and its weekly update draft, through the real rules.
+  {
+    const tl = pathname.match(/^\/api\/clients\/([^/]+)\/delivery-timeline$/);
+    if (tl) return demoDeliveryTimeline(decodeURIComponent(tl[1]));
+    const wu = pathname.match(/^\/api\/clients\/([^/]+)\/weekly-update$/);
+    if (wu && init?.method === "POST") {
+      const raw = typeof init.body === "string" ? init.body : "{}";
+      let week: "this" | "last" = "this";
+      try {
+        week = (JSON.parse(raw) as { week?: string }).week === "last" ? "last" : "this";
+      } catch {
+        // keep "this"
+      }
+      return demoWeeklyUpdate(decodeURIComponent(wu[1]), week);
+    }
+  }
+  // Your achievements (the demo's "me"), through the real rules.
+  if (pathname === "/api/me/achievements") return demoAchievements();
+  // Record a deal: the demo saves nothing, and reads any file as a sample order form.
+  if (pathname === "/api/money/deals" && init?.method === "POST") return { id: "demo-deal" };
+  if (pathname === "/api/money/read-file" && init?.method === "POST") return demoDealDraft();
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors$/.test(pathname) && init?.method === "POST") {
     return demoAddMonitor(pathname, init.body);
   }
@@ -5666,3 +5694,24 @@ const demoPulseEmbedConfig = {
   turnstileSiteKey: null,
   turnstileConfigured: true,
 };
+
+/** The Platform popup on /demo/monitors: a healthy server with backups and Slack not yet set up,
+ *  which is the real state until those secrets exist. */
+function demoPlatformHealth(): import("@/lib/platform-health").PlatformHealth {
+  const now = Date.now();
+  const ago = (min: number) => new Date(now - min * 60_000).toISOString();
+  const jobs: Array<[string, number, number]> = [
+    ["jobs", 1, 10], ["wiki-monitors", 1, 10], ["wedge-keepwarm", 3, 30], ["pulse-reconcile", 9, 60],
+    ["pulse-run-monitors", 40, 180], ["wedge-course-feed", 45, 180], ["crm-sync", 70, 4320],
+    ["docs-gdrive-backup", 1260, 1560], ["support-sync", 600, 1560], ["foreman", 840, 1560], ["curator", 6000, 11520],
+  ];
+  return {
+    readAt: new Date(now).toISOString(),
+    jobs: jobs.map(([name, last, gap]) => ({ name, lastRun: ago(last), maxGapMinutes: gap, stale: false })),
+    disk: { usedShare: 0.41, freeBytes: 118e9, totalBytes: 200e9 },
+    database: { bytes: 2.4e9, weekAgoBytes: 2.3e9, growthShare: 0.043 },
+    memory: { usedBytes: 705e6, limitBytes: 6 * 2 ** 30, peakBytes: 1.1e9, hostBytes: 24e9 },
+    backups: { state: "off", reason: null, lastOk: null },
+    alerts: { slack: false },
+  };
+}

@@ -76,9 +76,31 @@ jobs:
     needs: build-and-push
 
     steps:
+      # The release scripts and the compose file travel to the box as one base64 tar over the SSH
+      # channel (the box has no checkout of the repo), like the crontab below. None holds a secret.
+      - name: Checkout (release files only)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: |
+            docker-compose.yml
+            deploy/compose-history.sha256
+            deploy/sync-compose.sh
+            deploy/health-check.sh
+            deploy/rollback.sh
+            deploy/crontab
+            deploy/install-crontab.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Encode the release files
+        id: release
+        run: |
+          echo "bundle_b64=$(tar czf - docker-compose.yml deploy/compose-history.sha256 deploy/sync-compose.sh deploy/health-check.sh deploy/rollback.sh | base64 -w0)" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         env:
+          FOUNDRY_RELEASE_B64: ${{ steps.release.outputs.bundle_b64 }}
+          DEPLOY_SHA: ${{ github.sha }}
           # ── Managed secrets ───────────────────────────────────────────────────
           # Secrets set HERE (repo → Settings → Secrets and variables → Actions) are
           # synced into the VPS `.env` on every deploy, so setting one no longer needs
@@ -135,6 +157,13 @@ jobs:
           BLOB_S3_ENDPOINT: ${{ secrets.BLOB_S3_ENDPOINT }}
           BLOB_S3_ACCESS_KEY_ID: ${{ secrets.BLOB_S3_ACCESS_KEY_ID }}
           BLOB_S3_SECRET_ACCESS_KEY: ${{ secrets.BLOB_S3_SECRET_ACCESS_KEY }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          SLACK_OPS_WEBHOOK_URL: ${{ secrets.SLACK_OPS_WEBHOOK_URL }}
           APPLE_PASS_TYPE_ID: ${{ secrets.APPLE_PASS_TYPE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_PASS_CERT_P12: ${{ secrets.APPLE_PASS_CERT_P12 }}
@@ -146,7 +175,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           # Passed over the SSH channel, never interpolated into a logged command line.
-          envs: FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET,BIGWEDGE_API_USERNAME,BIGWEDGE_API_PASSWORD,MONITOR_REMOTE_PROBE_URL,MONITOR_PROBE_SECRET,PERPLEXITY_API_KEY,ANTHROPIC_API_KEY,AUTH_GOOGLE_BUSINESS_ID,AUTH_GOOGLE_BUSINESS_SECRET,BLOB_STORAGE_DRIVER,BLOB_S3_BUCKET,BLOB_S3_REGION,BLOB_S3_ENDPOINT,BLOB_S3_ACCESS_KEY_ID,BLOB_S3_SECRET_ACCESS_KEY,APPLE_PASS_TYPE_ID,APPLE_TEAM_ID,APPLE_PASS_CERT_P12,APPLE_PASS_CERT_PASSWORD,GOOGLE_WALLET_ISSUER_ID,GOOGLE_WALLET_SERVICE_ACCOUNT
+          envs: FOUNDRY_RELEASE_B64,DEPLOY_SHA,FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET,BIGWEDGE_API_USERNAME,BIGWEDGE_API_PASSWORD,MONITOR_REMOTE_PROBE_URL,MONITOR_PROBE_SECRET,PERPLEXITY_API_KEY,ANTHROPIC_API_KEY,AUTH_GOOGLE_BUSINESS_ID,AUTH_GOOGLE_BUSINESS_SECRET,BLOB_STORAGE_DRIVER,BLOB_S3_BUCKET,BLOB_S3_REGION,BLOB_S3_ENDPOINT,BLOB_S3_ACCESS_KEY_ID,BLOB_S3_SECRET_ACCESS_KEY,BACKUP_S3_BUCKET,BACKUP_S3_REGION,BACKUP_S3_ENDPOINT,BACKUP_S3_ACCESS_KEY_ID,BACKUP_S3_SECRET_ACCESS_KEY,BACKUP_ENCRYPTION_KEY,SLACK_OPS_WEBHOOK_URL,APPLE_PASS_TYPE_ID,APPLE_TEAM_ID,APPLE_PASS_CERT_P12,APPLE_PASS_CERT_PASSWORD,GOOGLE_WALLET_ISSUER_ID,GOOGLE_WALLET_SERVICE_ACCOUNT
           script: |
             cd /opt/apps/foundry
 
@@ -223,6 +252,15 @@ jobs:
             upsert_env BLOB_S3_ENDPOINT "${BLOB_S3_ENDPOINT:-}"
             upsert_env BLOB_S3_ACCESS_KEY_ID "${BLOB_S3_ACCESS_KEY_ID:-}"
             upsert_env BLOB_S3_SECRET_ACCESS_KEY "${BLOB_S3_SECRET_ACCESS_KEY:-}"
+            # Off-site database backups (src/server/db-backup.ts): off until all are set.
+            upsert_env BACKUP_S3_BUCKET "${BACKUP_S3_BUCKET:-}"
+            upsert_env BACKUP_S3_REGION "${BACKUP_S3_REGION:-}"
+            upsert_env BACKUP_S3_ENDPOINT "${BACKUP_S3_ENDPOINT:-}"
+            upsert_env BACKUP_S3_ACCESS_KEY_ID "${BACKUP_S3_ACCESS_KEY_ID:-}"
+            upsert_env BACKUP_S3_SECRET_ACCESS_KEY "${BACKUP_S3_SECRET_ACCESS_KEY:-}"
+            upsert_env BACKUP_ENCRYPTION_KEY "${BACKUP_ENCRYPTION_KEY:-}"
+            # Ops alerts to Slack (src/server/ops-alert.ts): stopped jobs, disk, backups, errors.
+            upsert_env SLACK_OPS_WEBHOOK_URL "${SLACK_OPS_WEBHOOK_URL:-}"
             # Wallet passes for public profiles (CLAUDE.md §139); each wallet stays off until set.
             upsert_env APPLE_PASS_TYPE_ID "${APPLE_PASS_TYPE_ID:-}"
             upsert_env APPLE_TEAM_ID "${APPLE_TEAM_ID:-}"
@@ -230,6 +268,29 @@ jobs:
             upsert_env APPLE_PASS_CERT_PASSWORD "${APPLE_PASS_CERT_PASSWORD:-}"
             upsert_env GOOGLE_WALLET_ISSUER_ID "${GOOGLE_WALLET_ISSUER_ID:-}"
             upsert_env GOOGLE_WALLET_SERVICE_ACCOUNT "${GOOGLE_WALLET_SERVICE_ACCOUNT:-}"
+
+            # Release scripts + the repo's compose file (see "Encode the release files").
+            RELEASE="$(mktemp -d)"
+            trap 'rm -rf "$RELEASE"' EXIT
+            printf '%s' "$FOUNDRY_RELEASE_B64" | base64 -d | tar xzf - -C "$RELEASE"
+            # Keep the scripts on the box, so a rollback can be run by hand over SSH as well.
+            mkdir -p deploy
+            cp "$RELEASE"/deploy/health-check.sh "$RELEASE"/deploy/rollback.sh deploy/
+            chmod +x deploy/health-check.sh deploy/rollback.sh
+
+            # Localhost-only port and log rotation live in the compose file, which CI never copied
+            # up before Nov 2026. A hand-edited box file is left alone with a warning.
+            if ! bash "$RELEASE/deploy/sync-compose.sh" "$RELEASE/docker-compose.yml" "$RELEASE/deploy/compose-history.sha256"; then
+              exit 1
+            fi
+
+            # Remember what is running now, so a release that is not healthy can be undone, and
+            # so `vps-ops.yml → rollback` can put it back later. Tagged, so prune keeps it.
+            RUNNING="$(docker inspect foundry --format '{{.Image}}' 2>/dev/null || true)"
+            if [ -n "$RUNNING" ]; then
+              docker tag "$RUNNING" ghcr.io/git-dann/docs-by-gitwork:previous
+              echo "Running image tagged :previous ($RUNNING)"
+            fi
 
             docker compose pull app
             docker compose up -d db
@@ -248,6 +309,21 @@ jobs:
             fi
             # Recreate so the container picks up any .env change made above.
             docker compose up -d --no-deps --force-recreate app
+
+            # A deploy is only green once the new code answers with its own commit AND can reach
+            # Postgres (/api/health?deep=1). Until Nov 2026 the job went green as soon as compose
+            # returned, so a release that crashed on boot read as a success (§50.3).
+            if ! bash deploy/health-check.sh "$DEPLOY_SHA"; then
+              if [ -n "$RUNNING" ]; then
+                echo "::error::The new release is not healthy. Putting the previous image back."
+                docker tag ghcr.io/git-dann/docs-by-gitwork:previous ghcr.io/git-dann/docs-by-gitwork:latest
+                docker compose up -d --no-deps --force-recreate app
+                bash deploy/health-check.sh || echo "::error::The previous image is not healthy either. The site needs a look now."
+              else
+                echo "::error::The new release is not healthy and there was no previous image to put back."
+              fi
+              exit 1
+            fi
             docker image prune -f
 
       # ── Scheduled jobs ──────────────────────────────────────────────────────
@@ -261,36 +337,56 @@ jobs:
       # deploy of the app itself; it still fails the run, loudly, if the schedule did
       # not install. Both files travel over the SSH channel as base64 env vars (the
       # box has no checkout of the repo). Neither contains a secret.
-      - name: Checkout (schedule files only)
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          sparse-checkout: |
-            deploy/crontab
-            deploy/install-crontab.sh
-          sparse-checkout-cone-mode: false
-
       - name: Encode the schedule
         id: schedule
         run: |
           echo "crontab_b64=$(base64 -w0 deploy/crontab)" >> "$GITHUB_OUTPUT"
           echo "installer_b64=$(base64 -w0 deploy/install-crontab.sh)" >> "$GITHUB_OUTPUT"
+          echo "runner_b64=$(base64 -w0 deploy/run-cron.sh)" >> "$GITHUB_OUTPUT"
 
       - name: Install scheduled jobs on the VPS
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         env:
           FOUNDRY_CRONTAB_B64: ${{ steps.schedule.outputs.crontab_b64 }}
           FOUNDRY_CRON_INSTALLER_B64: ${{ steps.schedule.outputs.installer_b64 }}
+          FOUNDRY_CRON_RUNNER_B64: ${{ steps.schedule.outputs.runner_b64 }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: FOUNDRY_CRONTAB_B64,FOUNDRY_CRON_INSTALLER_B64
+          envs: FOUNDRY_CRONTAB_B64,FOUNDRY_CRON_INSTALLER_B64,FOUNDRY_CRON_RUNNER_B64
           script: |
             set -e
             WORK="$(mktemp -d)"
             trap 'rm -rf "$WORK"' EXIT
             printf '%s' "$FOUNDRY_CRONTAB_B64" | base64 -d > "$WORK/crontab"
             printf '%s' "$FOUNDRY_CRON_INSTALLER_B64" | base64 -d > "$WORK/install-crontab.sh"
+            printf '%s' "$FOUNDRY_CRON_RUNNER_B64" | base64 -d > "$WORK/run-cron.sh"
+            # run-cron.sh lives in the repo (deploy/run-cron.sh). Run the new copy once against
+            # `jobs` (idempotent, every minute anyway) and only replace the box's copy when it
+            # works, so a broken script can never stop every scheduled job at once.
+            RUNNER=/opt/apps/foundry/run-cron.sh
+            if bash "$WORK/run-cron.sh" jobs >> /tmp/foundry-cron.log 2>&1; then
+              if [ -f "$RUNNER" ] && cmp -s "$WORK/run-cron.sh" "$RUNNER"; then
+                echo "run-cron.sh: unchanged"
+              else
+                if [ -f "$RUNNER" ]; then cp -p "$RUNNER" "$RUNNER.before-deploy" || true; fi
+                if install -m 0755 "$WORK/run-cron.sh" "$RUNNER"; then
+                  echo "run-cron.sh: installed from the repo (old copy kept as run-cron.sh.before-deploy)"
+                else
+                  echo "::warning::Could not write $RUNNER (owned by another user?). The box's old copy keeps running the jobs."
+                fi
+              fi
+            else
+              echo "::warning::The repo's run-cron.sh could not call /api/cron/jobs; kept the box's copy. See /tmp/foundry-cron.log."
+            fi
             # Keep a copy of what was there, in case a managed change needs undoing by hand.
             crontab -l > "$HOME/crontab.before-deploy" 2>/dev/null || true
             bash "$WORK/install-crontab.sh" "$WORK/crontab"
+            # The cron log has no rotation and every job writes to it. Keep the newest 10 MB once
+            # it passes 50 MB. Runs on every deploy, which is often enough at this size.
+            LOG=/tmp/foundry-cron.log
+            if [ -f "$LOG" ] && [ "$(stat -c %s "$LOG")" -gt 52428800 ]; then
+              tail -c 10485760 "$LOG" > "$LOG.trim" && cat "$LOG.trim" > "$LOG" && rm -f "$LOG.trim"
+              echo "Trimmed $LOG to its newest 10 MB"
+            fi

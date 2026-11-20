@@ -425,9 +425,11 @@ export function ClientCockpit({
   /** Which part of the client's Care to open on — from a deep link (`?section=`). */
   initialSection?: CareSection;
   /**
-   * Open straight on this conversation. Care home's "Needs you first" passes it, because landing
-   * on the client's queue instead would put you on a list sorted newest-first (§42.15) — i.e.
-   * anywhere but the row you just clicked.
+   * Open straight on this conversation, rather than on the client's queue.
+   *
+   * Two callers: Care home's "Needs you first", because landing on the queue instead would put
+   * you on a list sorted newest-first (§42.15) — anywhere but the row you just clicked — and a
+   * `?conversation=` deep link from ⌘K search.
    */
   initialConversationId?: string | null;
   onSectionChange?: (section: CareSection) => void;

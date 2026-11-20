@@ -22,6 +22,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # If the box runs out of memory, the kernel kills the process with the highest OOM score.
+    # Lower the database's so the app (which Docker restarts in seconds) goes first: a killed
+    # Postgres means crash recovery and every request failing meanwhile. Not mem_limit: nobody
+    # has measured what the database needs, and a wrong cap would kill it on purpose.
+    oom_score_adj: -500
+    # Rotate container logs. Without this the json-file driver keeps every line until the
+    # container is recreated, on the same disk as the database (infra audit, Nov 2026).
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   app:
     image: ghcr.io/git-dann/docs-by-gitwork:latest
@@ -31,9 +43,28 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      # Localhost only. nginx proxies 127.0.0.1:3000 and run-cron.sh calls it from the box.
+      # Published on every interface ("3000:3000"), anyone could skip nginx and TLS and send
+      # their own X-Real-IP, which every IP rate limit trusts. Docker publishes ports past
+      # ufw, so the host firewall would not have stopped it.
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env
+    # Memory cap (CLAUDE.md §144), sized from the box, measured 20 Nov 2026: 24 GB RAM, the app
+    # at 672 MiB with a 715 MiB peak, Postgres peaking at 523 MiB, staging ~700 MiB. 6 GB is ~8x
+    # the app's peak (Pulse runs headless Chrome) and still leaves ~17 GB for Postgres and the
+    # rest. A runaway app is now killed and restarted alone instead of starving the database.
+    # memswap_limit = mem_limit: no swapping past the cap. Re-measure with VPS ops → inspect
+    # before changing it.
+    mem_limit: 6g
+    memswap_limit: 6g
+    # Rotate container logs. Without this the json-file driver keeps every line until the
+    # container is recreated, on the same disk as the database (infra audit, Nov 2026).
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
 volumes:
   postgres_data:

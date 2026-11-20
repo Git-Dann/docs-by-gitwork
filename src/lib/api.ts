@@ -4581,6 +4581,11 @@ export async function getMonitorsPageApi(): Promise<MonitorsPageDTO> {
   return apiFetch("/api/monitors");
 }
 
+/** Foundry's own health for the Platform popup on /app/monitors (platform admins only). */
+export async function getPlatformHealthApi(): Promise<import("@/lib/platform-health").PlatformHealth> {
+  return apiFetch("/api/monitors/platform");
+}
+
 export async function runWikiMonitorApi(slug: string, id: string): Promise<WikiMonitorDTO> {
   return apiFetch<WikiMonitorDTO>(`/api/clients/${slug}/wiki/monitors/${id}/run`, { method: "POST" });
 }
@@ -5728,5 +5733,43 @@ export async function updateCommitmentSettings(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+}
+
+// ── HQ: Needs you ───────────────────────────────────────────────────────────
+
+export async function getNeedsYou(): Promise<import("@/lib/needs-you").NeedsYouDTO> {
+  return apiFetch("/api/hq/needs-you");
+}
+
+// ── Money (Super Admins + clients.viewFinancials) ──────────────────────────
+
+export async function getMoney(): Promise<import("@/lib/money").MoneySummary> {
+  return apiFetch("/api/money");
+}
+
+// ── Achievements (your own only) ───────────────────────────────────────────
+
+export async function getMyAchievements(): Promise<{ achievements: import("@/lib/achievements").AchievementProgress[] }> {
+  return apiFetch("/api/me/achievements");
+}
+
+// ── Client delivery timeline + weekly update (Portal) ──────────────────────────
+
+export async function getDeliveryTimeline(
+  slug: string,
+  weeks = 8,
+): Promise<import("@/lib/client-delivery-timeline").LoadedTimeline> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/delivery-timeline?weeks=${weeks}`);
+}
+
+export async function draftWeeklyUpdateApi(
+  slug: string,
+  body: { week: "this" | "last"; regenerate?: boolean },
+): Promise<import("@/lib/weekly-update").WeeklyUpdateResult> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/weekly-update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }

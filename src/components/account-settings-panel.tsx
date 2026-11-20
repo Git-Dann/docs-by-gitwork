@@ -11,8 +11,8 @@ import { avatarPosition, initialsFrom, resolveAvatar } from "@/lib/avatar";
 import { isPasswordLoginAllowed, roleLabel } from "@/types/auth";
 import Link from "next/link";
 import { usePermissions } from "@/hooks/use-permissions";
-import { WidgetCard } from "@/components/codeclear/codeclear-shared";
-import { HeaderAction } from "@/components/staff/profile-parts";
+import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/components/ui/toast";
 
 /**
  * Settings → Profile. Where a business has Staff, a person's photo, name, password and public
@@ -56,42 +56,75 @@ export function AccountSettingsPanel() {
   );
 }
 
-/**
- * Your account on your own Staff profile: photo, name and (for a password sign-in) password.
- * The same pieces Settings → Profile uses, in the profile's card chrome.
- */
-export function MyAccountCard({ number }: { number: string }) {
+/** Whether this person signs in with a password, so their name and password are theirs to change. */
+export function useOwnsPassword(): boolean {
   const account = useAccount();
-  const ownsPassword = isPasswordLoginAllowed(account.data?.role, account.data?.workspaceSlug);
-  // The password form is three fields most people never touch, so it stays folded behind
-  // the header action instead of making the card three times taller for everyone.
-  const [changingPassword, setChangingPassword] = useState(false);
+  return isPasswordLoginAllowed(account.data?.role, account.data?.workspaceSlug);
+}
+
+/**
+ * Your account on your own Staff profile, opened from the profile banner: the photo editor, and
+ * (for a password sign-in) your name and password in one small dialog. The banner already shows
+ * your photo, name and email, so there is no card of its own.
+ */
+export function AccountEditors({
+  photoOpen,
+  onPhotoClose,
+  detailsOpen,
+  onDetailsClose,
+  onSaved,
+}: {
+  photoOpen: boolean;
+  onPhotoClose: () => void;
+  detailsOpen: boolean;
+  onDetailsClose: () => void;
+  /** After a new photo is saved, so the page showing it can refresh. */
+  onSaved?: () => void;
+}) {
+  const { data: session } = useSession();
+  const account = useAccount();
+  const updateAccount = useUpdateAccount();
+  const toast = useToast();
+  const profile = account.data;
+  const name = session?.user?.name || profile?.name || "";
+  const ownsPassword = isPasswordLoginAllowed(profile?.role, profile?.workspaceSlug);
+
+  function handleSave(result: AvatarEditResult) {
+    updateAccount.mutate(result, {
+      onSuccess: () => {
+        onPhotoClose();
+        onSaved?.();
+      },
+      onError: (err) => toast.error("Couldn't save your photo", err instanceof Error ? err.message : "Try again."),
+    });
+  }
+
   return (
-    <WidgetCard
-      number={number}
-      name="Account"
-      action={
-        ownsPassword ? (
-          <HeaderAction onClick={() => setChangingPassword((o) => !o)} label={changingPassword ? "Close password" : "Change password"}>
-            {changingPassword ? "Done" : "Password"}
-          </HeaderAction>
-        ) : undefined
-      }
-    >
-      <div className="proposal-form-theme space-y-4">
-        <AccountProfileBody compact />
-        {ownsPassword && changingPassword ? (
+    <>
+      <AvatarEditModal
+        open={photoOpen}
+        onClose={onPhotoClose}
+        name={name}
+        googleAvatarUrl={session?.user?.image ?? ""}
+        initialAvatarUrl={profile?.avatarUrl ?? ""}
+        initialPosition={profile?.avatarPosition ?? ""}
+        saving={updateAccount.isPending}
+        onSave={handleSave}
+      />
+      <Modal open={detailsOpen && ownsPassword} onClose={onDetailsClose} title="YOUR ACCOUNT" panelClassName="w-full max-w-lg">
+        <div className="proposal-form-theme max-h-[70vh] space-y-5 overflow-y-auto p-5">
+          <NameField initial={name} />
           <div className="border-t border-[var(--border-1)] pt-4">
+            <p className="mb-2 text-sm font-medium text-[var(--text-2)]">Password</p>
             <PasswordBody />
           </div>
-        ) : null}
-      </div>
-    </WidgetCard>
+        </div>
+      </Modal>
+    </>
   );
 }
 
-/** `compact`: the profile card, which sits in half a page: a smaller photo, and the grid follows the card's width. */
-function AccountProfileBody({ compact = false }: { compact?: boolean }) {
+function AccountProfileBody() {
   const { data: session } = useSession();
   const accountQuery = useAccount();
   const updateAccount = useUpdateAccount();
@@ -130,86 +163,21 @@ function AccountProfileBody({ compact = false }: { compact?: boolean }) {
     });
   }
 
-  const editor = (
-    <AvatarEditModal
-      open={editing}
-      onClose={() => setEditing(false)}
-      name={sessionName}
-      googleAvatarUrl={googleAvatarUrl}
-      initialAvatarUrl={profile?.avatarUrl ?? ""}
-      initialPosition={profile?.avatarPosition ?? ""}
-      saving={updateAccount.isPending}
-      onSave={handleSave}
-    />
-  );
-
-  // On a profile page the Overview card already shows the email and the role, so the account
-  // card is just the two things you change here: your photo, and your name if it is yours.
-  if (compact) {
-    return (
-      <>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]">
-            {resolved.isInitials ? (
-              <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-xl font-semibold text-[var(--brand-700)]">{initials}</div>
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={resolved.src} alt="Your profile" className="h-full w-full object-cover" style={{ objectPosition: position }} />
-            )}
-          </div>
-          <div className="min-w-0 flex-1 basis-[180px]">
-            {ownsOwnName ? (
-              <NameField initial={sessionName} />
-            ) : (
-              <>
-                <p className="truncate text-[15px] font-medium text-[var(--text-1)]" title={sessionName}>
-                  {sessionName || "—"}
-                </p>
-                <p className="text-[12px] text-[var(--text-4)]">Your name comes from your Google account.</p>
-              </>
-            )}
-          </div>
-          <button
-            type="button"
-            className="app-button app-button-secondary app-button-sm inline-flex items-center gap-1.5"
-            onClick={() => {
-              setSaveError(null);
-              setEditing(true);
-            }}
-          >
-            <PencilSquareIcon aria-hidden className="h-4 w-4" />
-            Edit photo
-          </button>
-        </div>
-        {saveError ? <p className="mt-2 text-xs text-[var(--danger-500)]">{saveError}</p> : null}
-        {editor}
-      </>
-    );
-  }
-
   return (
     <>
         <p className="text-sm leading-6 text-[var(--text-3)]">
-          {compact
-            ? ownsOwnName
-              ? "Your name and photo are how everyone sees you in Foundry."
-              : "Your photo shows everywhere in Foundry. Your name comes from your Google account."
-            : ownsOwnName
+          {ownsOwnName
             ? "Your name and picture are how you appear to everyone else in Foundry. Your email is what you sign in with and cannot be changed here."
             : "Sign-in identity is managed by Google Workspace — change your name there and it updates here automatically. The profile image below overrides your Google photo inside Foundry, including the sidebar."}
         </p>
 
         <div
-          className={
-            compact
-              ? "mt-4 grid gap-4 @min-[420px]:grid-cols-[120px_minmax(0,1fr)]"
-              : "mt-5 grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]"
-          }
+          className="mt-5 grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]"
         >
           {/* Avatar column */}
           <div className="space-y-2.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Profile image</span>
-            <div className={`aspect-square w-full ${compact ? "max-w-[120px]" : "max-w-[200px]"} overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)]`}>
+            <div className={`aspect-square w-full max-w-[200px] overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)]`}>
               {resolved.isInitials ? (
                 <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-4xl font-semibold text-[var(--brand-700)]">
                   {initials}

@@ -111,8 +111,10 @@ export function BalancedColumns({
               if (el) refs.current.set(key, el);
               else refs.current.delete(key);
             }}
-            // A menu that drops out of a card must sit over the card placed below it.
-            className="min-w-0 focus-within:z-10"
+            // No z-index here, on purpose. A z-index makes the card its own layer, and a dialog
+            // opened from inside it is then trapped below anything outside the columns: On Your
+            // Desk drew over the public profile editor (Nov 2026). Menus are portalled instead.
+            className="min-w-0"
             style={
               wide
                 ? {

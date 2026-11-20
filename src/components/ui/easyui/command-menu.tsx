@@ -15,6 +15,9 @@
  *   - lucide icons swapped for the heroicons Foundry already ships.
  *   - It is a real dialog: focus moves in on open, Tab is trapped, focus returns on close, and the
  *     selected row scrolls into view. Reduced motion skips the spring.
+ *   - A row can carry a muted hint after its title (a task's client and status), the query is
+ *     reported to the parent (onQueryChange) so it can search the server, and a one-line note can
+ *     sit under the results ("Searching…", "Couldn't search Care just now").
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +33,8 @@ export interface EasyCommandItem {
   title: string;
   category: string;
   icon: React.ReactNode;
+  /** Muted second part of the row: a client, a status, a date. */
+  hint?: string;
   shortcut?: string;
   onSelect: () => void;
 }
@@ -42,6 +47,10 @@ export interface EasyCommandMenuProps {
   rank?: (items: EasyCommandItem[], query: string) => EasyCommandItem[];
   placeholder?: string;
   footerLabel?: string;
+  /** Told the query as it changes, e.g. to search the server. */
+  onQueryChange?: (query: string) => void;
+  /** One line under the results. */
+  note?: React.ReactNode;
 }
 
 const substring = (items: EasyCommandItem[], query: string) =>
@@ -58,8 +67,13 @@ export const EasyCommandMenu: React.FC<EasyCommandMenuProps> = ({
   rank = substring,
   placeholder = "Type a command or search…",
   footerLabel = "Foundry",
+  onQueryChange,
+  note,
 }) => {
   const [query, setQuery] = useState("");
+  useEffect(() => {
+    onQueryChange?.(query);
+  }, [query, onQueryChange]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const reduceMotion = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -205,8 +219,9 @@ export const EasyCommandMenu: React.FC<EasyCommandMenuProps> = ({
                       >
                         <div className="flex min-w-0 items-center gap-2.5">
                           {item.icon}
-                          <span className="truncate font-normal" title={item.title}>
+                          <span className="truncate font-normal" title={item.hint ? `${item.title} · ${item.hint}` : item.title}>
                             {item.title}
+                            {item.hint ? <span className="ml-1.5 text-[var(--text-4)]">{item.hint}</span> : null}
                           </span>
                           <span className="ml-1 shrink-0 text-[10px] text-[var(--text-4)]">{item.category}</span>
                         </div>
@@ -224,6 +239,8 @@ export const EasyCommandMenu: React.FC<EasyCommandMenuProps> = ({
                 </div>
               )}
             </div>
+
+            {note ? <div className="border-t border-[var(--border-1)] px-4 py-2 text-[11px] text-[var(--text-3)]">{note}</div> : null}
 
             {/* Footer status */}
             <div className="flex items-center justify-between border-t border-[var(--border-1)] bg-[var(--surface-0)] px-4 py-2 text-[11px] text-[var(--text-4)]">

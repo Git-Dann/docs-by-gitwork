@@ -58,6 +58,7 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   "provenance.recheck": { icon: CheckBadgeIcon, label: "Provenance" },
   "hr.weekly_digest": { icon: UserGroupIcon, label: "HR" },
   "team.message": { icon: ChatBubbleLeftEllipsisIcon, label: "Message" },
+  "system.ops_alert": { icon: ExclamationTriangleIcon, label: "Platform" },
 };
 
 export function eventMeta(event: NotificationEvent): EventMeta {

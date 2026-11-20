@@ -22,8 +22,14 @@ on:
         type: choice
         default: inspect
         options:
-          - inspect # read-only: crontab, cron log, nginx state. Changes nothing.
+          - inspect # read-only: crontab, cron log, nginx state, memory. Changes nothing.
           - nginx-sync # copy deploy/nginx/foundry.conf up, validate, reload
+          - rollback # put an earlier image back (see the `rollback_to` input)
+      rollback_to:
+        description: "rollback only: 'previous' (the image before the last deploy) or a full 40-character commit sha"
+        required: false
+        type: string
+        default: previous
 
 concurrency:
   # Never let two of these overlap on one box, and never race the app deploy's
@@ -112,6 +118,23 @@ jobs:
             cat /etc/nginx/sites-available/foundry 2>&1 | head -60 || echo "(unreadable unprivileged)"
 
             echo
+            echo "=============== memory: box and containers ==============="
+            # Read before setting any container memory limit (CLAUDE.md §144): a limit below what
+            # the app really needs kills it on purpose.
+            free -m 2>&1 || true
+            echo "cpus: $(nproc 2>/dev/null)"
+            docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.CPUPerc}}' 2>&1 | head -10 || true
+            echo "--- peak memory since each container started (cgroup v2):"
+            for c in foundry foundry-db; do
+              id=$(docker inspect -f '{{.Id}}' "$c" 2>/dev/null) || continue
+              for f in /sys/fs/cgroup/system.slice/docker-$id.scope/memory.peak /sys/fs/cgroup/docker/$id/memory.peak; do
+                [ -r "$f" ] && { echo "$c peak: $(( $(cat "$f") / 1048576 )) MiB"; break; }
+              done
+            done
+            echo "--- OOM kills recorded by the kernel (needs dmesg access):"
+            dmesg 2>/dev/null | grep -i "out of memory\|oom-kill" | tail -5 || echo "(dmesg not readable)"
+
+            echo
             echo "=============== which /api/cron routes exist vs are scheduled ==============="
             # Names the app ships, so the gap against the crontab above is explicit.
             ls /opt/apps/foundry 2>/dev/null | head -20 || true
@@ -183,3 +206,53 @@ jobs:
           echo "    chunk: $JS"
           curl -sSI -H 'Accept-Encoding: gzip' "https://foundry.gitwork.co.uk$JS" \
             | grep -iE '^(content-type|content-encoding):' || true
+
+  # Undo a bad release in one click: Actions → VPS ops → task "rollback". The image that was running
+  # before the last deploy is tagged :previous by deploy.yml; any commit main deployed can be named
+  # by its full sha. The database is not touched (schema changes are additive). The next push to
+  # main deploys over the rollback, so revert or fix the bad commit before pushing again.
+  rollback:
+    if: inputs.task == 'rollback'
+    runs-on: ubuntu-latest
+    # Same group as deploy.yml, so a rollback and a deploy can never run at once.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Check the target
+        env:
+          TARGET: ${{ inputs.rollback_to }}
+        run: |
+          if [ "$TARGET" != "previous" ] && ! printf '%s' "$TARGET" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::rollback_to must be 'previous' or a full 40-character commit sha, not '$TARGET'."
+            exit 1
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: |
+            deploy/health-check.sh
+            deploy/rollback.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Encode the scripts
+        id: scripts
+        run: echo "bundle_b64=$(tar czf - deploy/health-check.sh deploy/rollback.sh | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
+        env:
+          FOUNDRY_SCRIPTS_B64: ${{ steps.scripts.outputs.bundle_b64 }}
+          TARGET: ${{ inputs.rollback_to }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: FOUNDRY_SCRIPTS_B64,TARGET
+          script: |
+            set -e
+            cd /opt/apps/foundry
+            mkdir -p deploy
+            printf '%s' "$FOUNDRY_SCRIPTS_B64" | base64 -d | tar xzf - -C .
+            chmod +x deploy/health-check.sh deploy/rollback.sh
+            bash deploy/rollback.sh "$TARGET"

@@ -23,7 +23,11 @@ export function CareWorkspace() {
   const clientsQ = useSupportClients();
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
   const [initialSection, setInitialSection] = useState<CareSection>("conversations");
-  /** Set when Care home's "Needs you first" opened a specific conversation. */
+  /**
+   * A conversation to open on arrival. Two ways in, one piece of state: Care home's
+   * "Needs you first" passes it to `select()`, and a `?conversation=` deep link (⌘K search)
+   * is read on mount.
+   */
   const [initialConversationId, setInitialConversationId] = useState<string | null>(null);
 
   // Read once on mount. window.location rather than useSearchParams, which would force a
@@ -35,6 +39,7 @@ export function CareWorkspace() {
     const section = params.get("section");
     if (linked) {
       setActiveClientId(linked);
+      setInitialConversationId(params.get("conversation"));
       if (isCareSection(section)) setInitialSection(section);
       return;
     }
@@ -52,6 +57,8 @@ export function CareWorkspace() {
 
   function select(client: SupportClient | null, conversationId?: string) {
     setActiveClientId(client?.id ?? null);
+    // Null when nothing was named, so picking a client from the rail does not reopen whatever
+    // the last deep link pointed at.
     setInitialConversationId(conversationId ?? null);
     // An ingest-only client has no queue to open. Land on its Settings, which is the only thing
     // anyone goes there for — the connector that keeps its mail flowing.

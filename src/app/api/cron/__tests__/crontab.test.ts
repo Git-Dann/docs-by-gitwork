@@ -6,6 +6,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CRON_MAX_GAP } from "@/lib/cron-watch";
 
 const ROOT = process.cwd();
 const CRON_DIR = join(ROOT, "src/app/api/cron");
@@ -91,5 +92,10 @@ describe("deploy/crontab", () => {
     const deploy = readFileSync(join(ROOT, ".github/workflows/deploy.yml"), "utf8");
     expect(deploy).toContain("deploy/install-crontab.sh");
     expect(deploy).toContain("base64 -w0 deploy/crontab");
+  });
+
+  it("gives every scheduled job a longest gap for the watchdog, and watches nothing unscheduled", () => {
+    const jobs = scheduledLines().map((l) => l.job).sort();
+    expect(Object.keys(CRON_MAX_GAP).sort()).toEqual(jobs);
   });
 });

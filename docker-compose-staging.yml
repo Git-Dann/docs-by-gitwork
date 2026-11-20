@@ -29,10 +29,9 @@ services:
       # be reached directly from a local psql/DB GUI client for staging debugging.
       # 5433, not 5432 — leaves 5432 free in case anything else ever needs it,
       # and makes it obvious at a glance this is the staging port.
-      # ⚠️ Firewall this to trusted IPs only — do not leave 5433 open to the
-      # internet. Check the Fasthosts cloud firewall rules, not just ufw/iptables
-      # on the box (see the VPS setup memory note on where the firewall lives).
-      - "5433:5432"
+      # Bound to localhost (Nov 2026): reach it over an SSH tunnel
+      # (ssh -L 5433:127.0.0.1:5433 deploy@<vps>), never from the internet.
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_staging_data:/var/lib/postgresql/data
     healthcheck:
@@ -56,7 +55,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     env_file:
       - .env
 

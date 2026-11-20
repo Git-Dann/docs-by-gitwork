@@ -74,6 +74,9 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
  */
 export const UNGATED_APP_PREFIXES = [
   "/app/settings", // own settings; sensitive tabs gate themselves (Labs/Curator = Super Admin)
+  // Money: no module permission; the page and /api/money both refuse anyone who isn't a Super
+  // Admin or granted clients.viewFinancials (Siân holds that without Portal).
+  "/app/money",
   "/app/account-settings",
   // Messages addressed to you. Ungated because being sent one is what grants access:
   // the server only ever returns a message you sent or received (a miss is a 404, not a

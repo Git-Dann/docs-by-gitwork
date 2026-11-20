@@ -168,6 +168,8 @@ function demoProfile(p: StaffPerson): StaffProfile {
     access,
     // The demo viewer is an Admin, so they may edit anyone below them.
     canEditPublicProfile: canEditPublicPage({ relation, actorRole: "ADMIN", targetRole: p.role }),
+    // Priya's page is live in the demo (it's /demo/profile), so her profile offers the doc card.
+    publicSlug: p.recordId === "r1" ? "priya-shah" : null,
     employment: { ...e, supplierName: suppliers.find((s) => s.id === e.supplierId)?.name ?? null },
     hasSensitive: sensitive.has(p.recordId!),
     lifecycle: demoLifecycle(p),
