@@ -5,18 +5,17 @@
  * `recordId` it is someone else's, opened by an Admin: they can edit it and hide it, but only the
  * person can publish it. Rules are in src/lib/public-profile.ts.
  *
- * The card is a summary (how complete it is, the link, publish or hide). The editor is a
- * fixed-height popup with a section rail: inline it made the profile page several screens long.
+ * The editor is a fixed-height popup with a section rail, opened from the profile banner
+ * (staff/profile-banner.tsx), which shows the status, link and completeness. Inline, the editor
+ * made the profile page several screens long.
  */
 import { useState } from "react";
-import { ArrowTopRightOnSquareIcon, LinkIcon, PencilSquareIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { ProfileCardDesigner } from "@/components/staff/profile-card-designer";
-import { WidgetCard } from "@/components/codeclear/codeclear-shared";
-import { HeaderAction } from "@/components/staff/profile-parts";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
 import { useToast } from "@/components/ui/toast";
-import { usePublicProfile, useSavePublicProfile } from "@/hooks/use-staff";
+import { useSavePublicProfile } from "@/hooks/use-staff";
 import { ACHIEVEMENT_KINDS, EXTRAS_LIMITS, PROFILE_LIMITS, slugProblem, type ProfileAchievement, type ProfileFeatured, type ProfileHighlight, type ProfileLink, type ProfileTestimonial } from "@/lib/public-profile";
 import type { MyPublicProfile } from "@/server/public-profile";
 
@@ -26,7 +25,7 @@ const input = "app-input mt-1 w-full text-base sm:text-[14px]";
 
 type Draft = Omit<MyPublicProfile, "enabled" | "suggestedSlug" | "completeness" | "preview">;
 
-const toDraft = (p: MyPublicProfile): Draft => ({
+export const toDraft = (p: MyPublicProfile): Draft => ({
   slug: p.slug || p.suggestedSlug,
   headline: p.headline,
   bio: p.bio,
@@ -51,123 +50,9 @@ const SECTIONS = [
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
-const pageUrl = (slug: string) => (typeof window === "undefined" ? `/u/${slug}` : `${window.location.origin}/u/${slug}`);
+export const pageUrl = (slug: string) => (typeof window === "undefined" ? `/u/${slug}` : `${window.location.origin}/u/${slug}`);
 
-export function PublicProfileCard({
-  number,
-  recordId = null,
-  personName,
-}: {
-  number: string;
-  recordId?: string | null;
-  personName?: string;
-  /** Kept for callers; the card is always a summary now and the editor is a popup. */
-  collapsible?: boolean;
-}) {
-  const query = usePublicProfile(recordId);
-  const save = useSavePublicProfile(recordId);
-  const toast = useToast();
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Editing someone else's page: say "their", and leave publishing to them.
-  const theirs = Boolean(recordId);
-  const first = (personName ?? "").trim().split(/\s+/)[0] || "they";
-  const p = query.data ?? null;
-  if (!p) return null;
-
-  const slug = p.slug || p.suggestedSlug;
-  const url = pageUrl(slug);
-
-  async function setEnabled(enabled: boolean) {
-    if (!p) return;
-    setError(null);
-    try {
-      await save.mutateAsync({ ...toDraft(p), enabled });
-      toast.success(enabled ? "Your profile is live" : theirs ? `${first}'s page is hidden` : "Your profile is hidden");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't save. Try again.");
-    }
-  }
-
-  return (
-    <WidgetCard
-      number={number}
-      name="Public profile"
-      status={p.enabled ? "Live" : "Off"}
-      statusTone={p.enabled ? "success" : "info"}
-      action={
-        <HeaderAction onClick={() => setEditing(true)} label={theirs ? `Edit ${first}'s public profile` : "Edit your public profile"}>
-          Edit
-        </HeaderAction>
-      }
-    >
-      <div className="space-y-4">
-        <div>
-          <p className="text-[13px] font-medium text-[var(--text-1)]">Profile {p.completeness.percent}% complete</p>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-2,var(--border-1))]">
-            <div className="h-full rounded-full bg-[var(--brand-600)] transition-[width] duration-500" style={{ width: `${p.completeness.percent}%` }} />
-          </div>
-          {p.completeness.missing.length ? (
-            <p className="mt-2 text-[12px] text-[var(--text-3)]">Still to add: {p.completeness.missing.join(", ")}.</p>
-          ) : null}
-        </div>
-
-        <div className="flex min-w-0 items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2.5 py-2">
-          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--text-2)]" title={url}>
-            /u/{slug}
-          </span>
-          <button
-            type="button"
-            className="inline-flex shrink-0 items-center gap-1 text-[12px] text-[var(--text-3)] hover:text-[var(--text-1)]"
-            onClick={() => void navigator.clipboard.writeText(url).then(() => toast.success("Link copied"))}
-          >
-            <LinkIcon aria-hidden className="h-4 w-4" />
-            Copy
-          </button>
-          {p.enabled ? (
-            <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-[12px] text-[var(--brand-700)] hover:underline">
-              View <ArrowTopRightOnSquareIcon aria-hidden className="h-3.5 w-3.5" />
-            </a>
-          ) : null}
-        </div>
-
-        {error ? <p className="text-[13px] text-[var(--danger-500)]">{error}</p> : null}
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="min-w-0 flex-1 basis-[200px] text-[12px] text-[var(--text-4)]">
-            {theirs
-              ? p.enabled
-                ? "Anyone with the link can see this page."
-                : `Off. Only ${first} can publish it.`
-              : p.enabled
-                ? "Anyone with the link can see your page."
-                : "Only you can see this until you publish it."}
-          </p>
-          <div className="flex items-center gap-2">
-            <button type="button" className="app-button app-button-secondary app-button-sm inline-flex items-center gap-1.5" onClick={() => setEditing(true)}>
-              <PencilSquareIcon aria-hidden className="h-4 w-4" />
-              Edit page
-            </button>
-            {theirs && !p.enabled ? null : (
-              <button
-                type="button"
-                className={`app-button app-button-sm ${p.enabled ? "app-button-secondary" : "app-button-primary"}`}
-                disabled={save.isPending}
-                onClick={() => void setEnabled(!p.enabled)}
-              >
-                {p.enabled ? (theirs ? "Hide page" : "Hide my page") : "Publish my page"}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {editing ? <PublicProfileEditor profile={p} recordId={recordId} theirs={theirs} first={first} onClose={() => setEditing(false)} /> : null}
-    </WidgetCard>
-  );
-}
-
-function PublicProfileEditor({
+export function PublicProfileEditor({
   profile: p,
   recordId,
   theirs,
@@ -211,7 +96,7 @@ function PublicProfileEditor({
       const next = toDraft(result);
       setDraft(next);
       setSaved(next);
-      toast.success(extra.enabled === true ? "Your profile is live" : extra.enabled === false ? (theirs ? `${first}'s page is hidden` : "Your profile is hidden") : "Profile saved");
+      toast.success(extra.enabled ? "Your profile is live" : "Profile saved");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save. Try again.");
     }
@@ -437,14 +322,16 @@ function PublicProfileEditor({
           <button type="button" className="app-button app-button-secondary app-button-sm" onClick={close}>
             Close
           </button>
-          {theirs && !p.enabled ? null : (
+          {/* Publishing is offered here; hiding isn't. Hiding sits in the banner's menu behind a
+              confirm, so a live page is never one stray click from going dark. */}
+          {theirs || p.enabled ? null : (
             <button
               type="button"
               className="app-button app-button-secondary app-button-sm"
               disabled={save.isPending || Boolean(slugError)}
-              onClick={() => void persist({ enabled: !p.enabled })}
+              onClick={() => void persist({ enabled: true })}
             >
-              {p.enabled ? (theirs ? "Hide page" : "Hide my page") : "Save and publish"}
+              Save and publish
             </button>
           )}
           <button type="button" className="app-button app-button-primary app-button-sm" disabled={save.isPending || Boolean(slugError) || !dirty} onClick={() => void persist()}>

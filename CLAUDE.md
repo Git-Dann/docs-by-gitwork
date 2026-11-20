@@ -11032,16 +11032,22 @@ sub-pages are its settings, Suppliers is HR-only, Archived lives under People, a
   too, after a confirm). A blank handle field still never removes one; only these two do. Getting
   back on the list is an admin's call or an invite.
 - **A profile page is short and has no gaps** (Dan, 20 Nov 2026: "a super long page is insane").
-  - The Public profile card is a summary: how complete it is, the link, Publish/Hide, **Edit page**.
-    The editor is a fixed-height popup (`.app-dialog-fixed`) with a section rail: Page and card,
-    About and links, Experience, Headline numbers, Work and clients, Recommendations. Inline, it
-    made the page several screens long. Closing with unsaved changes asks first.
-  - Account is one row: photo, name, Edit photo. Email and role are already in the Overview; the
-    password form folds behind the card's Password action.
+  - **One banner at the top replaces three repeats** (the header, the Account card and the Public
+    profile card all showed the photo and name; Dan, 20 Nov 2026). `staff/profile-banner.tsx`: a
+    full-width band in the person's own card colour and pattern (the brand gradient if they have
+    no card), photo (camera button on your own), name, role, the record's actions, and two tiles:
+    **Public page** (Live/Off, link, Copy, View, Publish) and **Profile** (% complete). **Edit my
+    page** opens the sectioned, fixed-height editor popup (`PublicProfileEditor`).
+  - ⚠️ **Hide is never a button.** It's in the banner's ⋯ menu and asks first ("Keep it live" /
+    "Hide page"). The editor's footer only offers Save and publish, never Hide.
+  - Your photo, and your name and password for a password sign-in, are reached from the banner
+    (`AccountEditors` in `account-settings-panel.tsx`). There's no Account card any more.
   - **Cards are laid out by `BalancedColumns`** (`src/components/ui/balanced-columns.tsx`): each
     card goes in whichever column is shorter, so both columns end level for every viewer, whatever
     cards they can see. Cards are absolutely positioned in one parent so moving a card never
-    remounts it, and a card that grows stays put while the ones after it move. It re-measures on
+    remounts it, and a card that grows stays put while the ones after it move. ⚠️ The card
+    wrappers carry **no z-index**: one makes the card its own layer, and a dialog opened from
+    inside it then sits under On Your Desk (it did, for a day). It re-measures on
     ResizeObserver AND MutationObserver: a background tab draws no frames, so ResizeObserver alone
     left cards on top of each other there. Numbers are given after unseen cards are dropped, so
     they run 01, 02, 03. Measured on the demo: columns end within 75px, no overlaps.

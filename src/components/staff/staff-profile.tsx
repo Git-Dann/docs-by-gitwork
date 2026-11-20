@@ -27,15 +27,13 @@ import {
   type StaffActivity,
   type StaffProfile,
 } from "@/lib/hr";
-import { Avatar } from "@/components/ui/avatar";
 import { BalancedColumns } from "@/components/ui/balanced-columns";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { DetailsDialog } from "@/components/staff/staff-roster";
 import { DocumentsCard } from "@/components/staff/staff-documents";
 import { DeveloperCard, DeveloperNotesCard } from "@/components/staff/developer-card";
 import { MyDeveloperCard } from "@/components/staff/my-developer-card";
-import { PublicProfileCard } from "@/components/staff/public-profile-card";
-import { MyAccountCard } from "@/components/account-settings-panel";
+import { ProfileBanner } from "@/components/staff/profile-banner";
 import { DateWithAttention, Field, HeaderAction, formatDate, label, today } from "@/components/staff/profile-parts";
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -847,19 +845,11 @@ export function StaffProfileView({
     </WidgetCard>
   );
   // Your own profile is the one place you manage yourself (Me and your page on Staff are the
-  // same view): your account (photo, name, password) and your public page sit here too.
+  // same view). Your photo, name, password and public page are all reached from the banner.
   const self = mode === "me" || p.relation === "self";
-  const account = (num: string) => self ? <MyAccountCard number={num} /> : null;
   const developer = (num: string) => showDeveloper ? <DeveloperCard recordId={p.recordId} number={num} /> : null;
   // In Me, a developer fills in what only they know (handle, stack, links).
   const myDeveloper = (num: string) => mode === "me" && p.isDeveloper ? <MyDeveloperCard number={num} /> : null;
-  // Everyone gets a shareable public page (§139). The person edits their own; an Admin can open
-  // someone else's from here with Edit (they can't publish it for them).
-  const publicProfile = (num: string) => self ? (
-    <PublicProfileCard number={num} />
-  ) : p.canEditPublicProfile && p.memberId ? (
-    <PublicProfileCard number={num} recordId={p.recordId} personName={displayName} collapsible />
-  ) : null;
   const employment = (num: string) => p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={num} /> : null;
   const timeOff = (num: string) => p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={num} /> : null;
   const notes = (num: string) => showDeveloper ? <DeveloperNotesCard recordId={p.recordId} number={num} /> : null;
@@ -873,8 +863,6 @@ export function StaffProfileView({
     [
       ["overview", overview],
       ["activity", activityCard],
-      ["account", account],
-      ["public", publicProfile],
       ["developer", developer],
       ["my-developer", myDeveloper],
       ["documents", documents],
@@ -895,20 +883,7 @@ export function StaffProfileView({
         </Link>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-4">
-          <Avatar src={p.avatarUrl} name={displayName} size={48} />
-          <div className="min-w-0">
-            <h2 className="truncate text-[22px] font-semibold leading-tight tracking-[-0.01em] text-[var(--text-1)]" title={displayName}>
-              {displayName}
-            </h2>
-            <p className="truncate text-[14px] text-[var(--text-3)]" title={[p.jobTitle, p.department, p.pronouns].filter(Boolean).join(" · ")}>
-              {[p.jobTitle, p.department, p.pronouns].filter(Boolean).join(" · ") || "No job title yet"}
-            </p>
-          </div>
-        </div>
-        {mode === "staff" ? <PersonActions profile={p} basePath={basePath} /> : null}
-      </div>
+      <ProfileBanner profile={p} displayName={displayName} self={self} actions={mode === "staff" ? <PersonActions profile={p} basePath={basePath} /> : undefined} />
 
       {p.lifecycle.archived ? (
         <p className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-[13px] text-[var(--text-2)]">
