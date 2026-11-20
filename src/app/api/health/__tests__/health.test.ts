@@ -16,11 +16,21 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+const cron = vi.hoisted(() => ({ stale: [] as { name: string; silentMinutes: number }[], fail: false }));
+vi.mock("@/server/cron-watchdog", () => ({
+  cronHealth: vi.fn(async () => {
+    if (cron.fail) throw new Error("db down");
+    return { stale: cron.stale, alerted: new Set() };
+  }),
+}));
+
 import { GET } from "../route";
 
 beforeEach(() => {
   db.fail = false;
   db.calls = 0;
+  cron.stale = [];
+  cron.fail = false;
   process.env.COMMIT_SHA = "abc1234def";
 });
 
@@ -45,5 +55,25 @@ describe("GET /api/health", () => {
     const res = await GET(new Request("http://x/api/health?deep=1"));
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ ok: false, database: "unreachable" });
+  });
+
+  it("cron: 200 while every scheduled job is running", async () => {
+    const res = await GET(new Request("http://x/api/health?cron=1"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, cron: "ok", stoppedJobs: [] });
+  });
+
+  it("cron: 503 naming the jobs that stopped", async () => {
+    cron.stale = [{ name: "jobs", silentMinutes: 42 }];
+    const res = await GET(new Request("http://x/api/health?cron=1"));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ ok: false, cron: "stopped", stoppedJobs: [{ name: "jobs", silentMinutes: 42 }] });
+  });
+
+  it("cron: 503 when the check can't be made, never a quiet 200", async () => {
+    cron.fail = true;
+    const res = await GET(new Request("http://x/api/health?cron=1"));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ cron: "unreachable" });
   });
 });

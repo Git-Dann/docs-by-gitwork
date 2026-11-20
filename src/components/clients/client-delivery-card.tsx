@@ -19,6 +19,7 @@ import {
   InboxArrowDownIcon,
   NoSymbolIcon,
   PlayIcon,
+  ArchiveBoxIcon,
   RocketLaunchIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
@@ -27,6 +28,8 @@ import { Skeleton } from "@/components/ui/motion/skeleton";
 import { WeeklyUpdateDialog } from "@/components/clients/weekly-update-dialog";
 import {
   DELIVERY_KIND_LABEL,
+  dueWords,
+  foldQuietWeeks,
   shortDay,
   weekSummary,
   type DeliveryItem,
@@ -50,6 +53,7 @@ const KIND_ICON: Record<DeliveryKind, ComponentType<{ className?: string }>> = {
   incident: ExclamationTriangleIcon,
   document: DocumentTextIcon,
   blocked: NoSymbolIcon,
+  tidy: ArchiveBoxIcon,
 };
 
 /** Colour only where it means something: an outage, a blocker, or a release out of the door. */
@@ -103,9 +107,9 @@ export function ClientDeliveryCard({ number, slug }: { number: string; slug: str
       ) : (
         <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0 border-[var(--border-1)] lg:border-r">
-            {weeks.map((w) => (
-              <WeekBlock key={w.start} week={w} />
-            ))}
+            {foldQuietWeeks(weeks).map((row) =>
+              row.kind === "week" ? <WeekBlock key={row.week.start} week={row.week} /> : <QuietWeeks key={row.weeks[0].start} weeks={row.weeks} />,
+            )}
             {t.weeks.length > FIRST_WEEKS ? (
               <div className="border-t border-[var(--border-1)] px-4 py-2.5">
                 <button type="button" onClick={() => setShowAllWeeks((v) => !v)} className="app-button app-button-hyperlink text-xs">
@@ -125,6 +129,22 @@ export function ClientDeliveryCard({ number, slug }: { number: string; slug: str
 
       {t ? <WeeklyUpdateDialog open={writing} onClose={() => setWriting(false)} slug={slug} clientName={t.clientName} /> : null}
     </section>
+  );
+}
+
+/** A run of quiet weeks as one row; the dates are of the oldest and newest week in it. */
+function QuietWeeks({ weeks }: { weeks: DeliveryWeek[] }) {
+  const newest = new Date(`${weeks[0].start}T00:00:00Z`);
+  const oldest = new Date(`${weeks[weeks.length - 1].start}T00:00:00Z`);
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-[var(--border-1)] px-4 py-3 last:border-b-0" data-delivery-week>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={MONO}>
+        {weeks.length} quiet weeks
+      </span>
+      <span className="text-xs text-[var(--text-4)]">
+        Weeks of {shortDay(oldest)} to {shortDay(newest)}: nothing finished, released or raised
+      </span>
+    </div>
   );
 }
 
@@ -241,7 +261,7 @@ function NowPanel({ state, slug }: { state: DeliveryState; slug: string }) {
             <Link href={`/app/portal/${slug}/tasks?task=${o.id}`} className="text-[var(--text-1)] hover:text-[var(--brand-700)]">
               {o.title}
             </Link>
-            {o.people.length ? <span className="ml-1.5 text-xs text-[var(--text-3)]">{o.people.join(", ")}</span> : null}
+            <TaskMeta people={o.people} dueDate={o.dueDate} />
           </li>
         ))}
       </NowList>
@@ -252,7 +272,7 @@ function NowPanel({ state, slug }: { state: DeliveryState; slug: string }) {
             <Link href={`/app/portal/${slug}/tasks?task=${o.id}`} className="text-[var(--text-1)] hover:text-[var(--brand-700)]">
               {o.title}
             </Link>
-            {o.dueDate ? <span className="ml-1.5 text-xs text-[var(--text-3)]">due {shortDay(new Date(o.dueDate))}</span> : null}
+            <TaskMeta people={o.people} dueDate={o.dueDate} />
           </li>
         ))}
       </NowList>
@@ -261,6 +281,19 @@ function NowPanel({ state, slug }: { state: DeliveryState; slug: string }) {
         Open the board
       </Link>
     </aside>
+  );
+}
+
+/** Who's on it and when it's due; a late task says so in red, because that's the line to act on. */
+function TaskMeta({ people, dueDate }: { people: string[]; dueDate: string | null }) {
+  const due = dueWords(dueDate, new Date());
+  if (!people.length && !due) return null;
+  return (
+    <span className="ml-1.5 text-xs text-[var(--text-3)]">
+      {people.join(", ")}
+      {people.length && due ? " · " : ""}
+      {due ? <span className={cn("whitespace-nowrap", due.late && "font-medium text-red-700")}>{due.text}</span> : null}
+    </span>
   );
 }
 

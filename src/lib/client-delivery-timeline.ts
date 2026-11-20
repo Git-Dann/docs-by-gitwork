@@ -17,7 +17,8 @@ export type DeliveryKind =
   | "meeting"
   | "incident"
   | "document"
-  | "blocked";
+  | "blocked"
+  | "tidy";
 
 export const DELIVERY_KIND_LABEL: Record<DeliveryKind, string> = {
   done: "Done",
@@ -28,6 +29,7 @@ export const DELIVERY_KIND_LABEL: Record<DeliveryKind, string> = {
   incident: "Outage",
   document: "Document",
   blocked: "Blocked",
+  tidy: "Tidy-up",
 };
 
 export interface DeliveryItem {
@@ -132,6 +134,7 @@ const KIND_ORDER: Record<DeliveryKind, number> = {
   blocked: 5,
   request: 6,
   started: 7,
+  tidy: 8,
 };
 
 function valid(at: string | null | undefined): at is string {
@@ -187,6 +190,7 @@ export function weekSummary(counts: Partial<Record<DeliveryKind, number>>): stri
   add("request", "request", "requests");
   add("document", "document", "documents");
   add("blocked", "blocker", "blockers");
+  add("tidy", "board tidy-up", "board tidy-ups");
   return parts.length ? parts.join(" · ") : "Nothing recorded";
 }
 
@@ -217,4 +221,98 @@ export function outageLength(startedAt: string, resolvedAt: string | null): stri
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+/** At least this many tasks closed in the same instant before a batch can be a tidy-up. */
+export const TIDY_MIN_BATCH = 3;
+/** …and every one of them created at least this long before it was closed. */
+export const TIDY_MIN_AGE_DAYS = 14;
+
+export interface ClosedTask {
+  id: string;
+  completedAt: string;
+  startedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * Which finished tasks were closed in a board tidy-up rather than worked on that week.
+ *
+ * Seen on Campfire, 3 Nov 2026: nine tasks created in June were marked done in the same second,
+ * with nobody assigned. Counted as "done", they made one quiet week read as the busiest of the
+ * quarter, and the weekly update would have told the client all of ChatEngine finished that week.
+ *
+ * A batch counts only when ALL of these hold for every task in it, so real work closed together
+ * (a developer ticking off four things they did that afternoon) stays as work:
+ * - at least TIDY_MIN_BATCH tasks share the exact same completedAt (a bulk status change);
+ * - none was ever started before it was closed (startedAt missing, or equal to completedAt);
+ * - each was created at least TIDY_MIN_AGE_DAYS before it was closed.
+ *
+ * Returns the batches, each a list of task ids, oldest first.
+ */
+export function findTidyUps(tasks: readonly ClosedTask[]): string[][] {
+  const byInstant = new Map<string, ClosedTask[]>();
+  for (const t of tasks) {
+    if (!valid(t.completedAt)) continue;
+    const key = String(Date.parse(t.completedAt));
+    const list = byInstant.get(key) ?? [];
+    list.push(t);
+    byInstant.set(key, list);
+  }
+  const out: Array<{ at: number; ids: string[] }> = [];
+  for (const [key, list] of byInstant) {
+    if (list.length < TIDY_MIN_BATCH) continue;
+    const at = Number(key);
+    const untouched = list.every((t) => {
+      const started = t.startedAt && valid(t.startedAt) ? Date.parse(t.startedAt) : null;
+      const created = valid(t.createdAt) ? Date.parse(t.createdAt) : at;
+      return (started === null || started >= at) && at - created >= TIDY_MIN_AGE_DAYS * DAY;
+    });
+    if (untouched) out.push({ at, ids: list.map((t) => t.id).sort() });
+  }
+  return out.sort((a, b) => a.at - b.at).map((b) => b.ids);
+}
+
+/**
+ * A due date in plain words for the "now" lists: "due 24 Nov", "due today", "1 day late",
+ * "3 days late". Compared by calendar day (UTC, like the board), never by hour, so a task due
+ * today is not late at 9am. `late` lets the card colour it.
+ */
+export function dueWords(dueDate: string | null, now: Date): { text: string; late: boolean } | null {
+  if (!dueDate || !valid(dueDate)) return null;
+  const due = new Date(dueDate);
+  const dueDay = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const days = Math.round((today - dueDay) / DAY);
+  if (days > 0) return { text: `${days} ${days === 1 ? "day" : "days"} late`, late: true };
+  if (days === 0) return { text: "due today", late: false };
+  return { text: `due ${shortDay(due)}`, late: false };
+}
+
+export type WeekRow = { kind: "week"; week: DeliveryWeek } | { kind: "quiet"; weeks: DeliveryWeek[] };
+
+/**
+ * Weeks as rows, with two or more quiet weeks in a row folded into one ("4 quiet weeks, 28 Sep
+ * to 19 Oct"): five identical "A quiet week" rows say nothing five lines can't say once. A
+ * single quiet week keeps its own row, and the current week always does, so "nothing yet this
+ * week" is never hidden inside a run.
+ */
+export function foldQuietWeeks(weeks: readonly DeliveryWeek[]): WeekRow[] {
+  const rows: WeekRow[] = [];
+  let run: DeliveryWeek[] = [];
+  const flush = () => {
+    if (run.length >= 2) rows.push({ kind: "quiet", weeks: run });
+    else for (const w of run) rows.push({ kind: "week", week: w });
+    run = [];
+  };
+  weeks.forEach((w, i) => {
+    if (w.items.length === 0 && i > 0) {
+      run.push(w);
+    } else {
+      flush();
+      rows.push({ kind: "week", week: w });
+    }
+  });
+  flush();
+  return rows;
 }

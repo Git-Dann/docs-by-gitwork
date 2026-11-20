@@ -11,3 +11,18 @@ export async function register(): Promise<void> {
     await import("./instrumentation-node");
   }
 }
+
+/**
+ * Every server error (route handlers, pages, server actions) goes to the ops Slack webhook when
+ * one is set (src/server/error-alerts.ts). Same shape as `register`, for the same reason.
+ */
+export async function onRequestError(
+  err: unknown,
+  request: { method?: string; path?: string },
+  context: { routePath?: string; routeType?: string },
+): Promise<void> {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { reportRequestError } = await import("./server/error-alerts");
+    await reportRequestError(err, request, context);
+  }
+}

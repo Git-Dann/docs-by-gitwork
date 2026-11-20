@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { UnauthorizedError } from "@/server/auth/effective-user";
+import { cronNameFromPath } from "@/lib/cron-watch";
+import { markSystem } from "@/server/system-markers";
 
 /**
  * Constant-time string compare. timingSafeEqual requires equal-length buffers and
@@ -32,4 +34,8 @@ export function assertCron(request: Request): void {
   if (!timingSafeEqualStr(header, `Bearer ${secret}`)) {
     throw new UnauthorizedError();
   }
+  // Record that the scheduler called this job, for the watchdog that notices a job has
+  // stopped (src/server/cron-watchdog.ts, CLAUDE.md §144). Not awaited, never throws.
+  const name = cronNameFromPath(new URL(request.url).pathname);
+  if (name) void markSystem(`cron:${name}`);
 }

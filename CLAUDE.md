@@ -11234,6 +11234,15 @@ where things stand now. Rules `src/lib/client-delivery-timeline.ts` (pure, teste
 - **Now panel:** waiting on the client (unanswered blockers, releases waiting for approval), the
   next release with progress, in progress, up next.
 - ⚠️ **Internal only.** It names developers, so it is never part of a client-facing DTO.
+- **Checked against Campfire's real board (Nov 2026), three fixes:**
+  - **A board tidy-up is not work.** Nine tasks created in June were closed in the same second on
+    3 Nov with nobody on them, and read as "9 done" (and would have gone into the weekly email).
+    `findTidyUps` marks a batch only when 3+ tasks share the exact `completedAt`, none was started
+    before it was closed, and all were created 14+ days earlier; it shows as one "Tidy-up" line and
+    isn't counted as done. A developer closing four real tasks at once stays as work.
+  - **A late task says so.** In progress and Up next show `dueWords` ("3 days late" in red,
+    "due today", "due 24 Nov"), by calendar day, never by hour.
+  - **Two or more quiet weeks in a row fold into one line** (`foldQuietWeeks`); this week never folds.
 
 ### 142.2 Weekly update (the Friday email)
 
@@ -11299,4 +11308,42 @@ Four fixes from the November infrastructure audit (the audit itself stays out of
   container on that deploy: a few seconds of Postgres restart.
 - Tests: `src/__tests__/deploy-scripts.test.ts` (fake `docker`/`curl`), `src/app/api/health/__tests__`.
 - **Still needs Dan:** off-site backups (a bucket), and error alerts (a Sentry DSN or Slack webhook).
+
+## 144. Recent Changes (November 2026) — The platform tells us when it needs a look
+
+Round two of the infrastructure audit. Each alert goes to Gitwork's admins in Foundry
+(`system.ops_alert`, in-app + push) and, once `SLACK_OPS_WEBHOOK_URL` is set (a GitHub secret,
+synced by `deploy.yml`), to that Slack channel (`src/server/ops-alert.ts`). Markers live in
+`RateLimitHit` rows under `system:<name>` (`src/server/system-markers.ts`), so no new table.
+
+- **Stopped scheduled jobs.** Every authorised `/api/cron/<name>` call records when it ran
+  (`assertCron`). The `jobs` worker compares that with `CRON_MAX_GAP` (`src/lib/cron-watch.ts`)
+  and alerts once per stopped job, then once when it runs again. A job never seen counts from when
+  the watch began, so the first deploy reports nothing. ⚠️ **A new line in `deploy/crontab` needs a
+  `CRON_MAX_GAP` entry** (`crontab.test.ts` fails otherwise). The `jobs` worker itself is watched
+  from outside: `/api/health?cron=1` answers 503 naming any stopped job, and `foundry-watchdog.yml`
+  now probes that URL.
+- **Disk.** Hourly from the `jobs` worker (`src/server/disk-watch.ts`): alerts at 80% used, clears
+  below 75%, and names the database's size. The db container has `oom_score_adj: -500`, so under
+  memory pressure the kernel kills the app (restarted in seconds) before Postgres. No `mem_limit`:
+  nobody has measured what the database needs.
+- **`run-cron.sh` is in the repo** (`deploy/run-cron.sh`). Each deploy runs the new copy against
+  `jobs` and only installs it at `/opt/apps/foundry/run-cron.sh` when that works. The secret goes
+  to curl on stdin, never argv.
+- **Off-site backups, off until configured** (`src/server/db-backup.ts`, cron `db-backup` daily
+  03:45). `pg_dump -Fc` → `pg_restore --list` → AES-256-GCM → one PUT to its own bucket. Needs
+  `BACKUP_S3_BUCKET/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY` (+ `BACKUP_S3_ENDPOINT` for non-AWS)
+  and `BACKUP_ENCRYPTION_KEY` (`openssl rand -base64 32`; ⚠️ keep a copy outside Foundry, without it
+  no backup can be read). With none set it answers `{ skipped }`; half set is an error and alerts.
+  Restore: `scripts/decrypt-backup.mjs`, then `pg_restore`. Retention is the bucket's lifecycle
+  rule. Refuses over 1 GB (one PUT, buffered); multipart is the next step past that.
+  The runner image now installs `postgresql17-client`.
+- **Server errors to Slack** (`onRequestError` in `src/instrumentation.ts` →
+  `src/server/error-alerts.ts`): only while `SLACK_OPS_WEBHOOK_URL` is set. One post per distinct
+  error an hour, at most 10 an hour, with the route template, method, error type/code, digest and
+  the first line with emails and long numbers removed. Never the real path. `src/app/global-error.tsx`
+  is the page shown when the root layout itself fails.
+- **Next.js 15.5.29** (security release).
+- **The box's compose file** was the old repo file minus one comment; its hash is now in
+  `deploy/compose-history.sha256`, so the next deploy applies §143's port and log fixes.
 
