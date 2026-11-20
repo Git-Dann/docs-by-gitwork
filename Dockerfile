@@ -68,6 +68,9 @@ RUN apk add --no-cache \
 # git: Pulse's code-health measure takes a shallow clone of the repository it is scanning
 # (src/server/code-health/clone.ts). Read-only; nothing in a checkout is ever executed.
 RUN apk add --no-cache git
+# pg_dump/pg_restore for the off-site database backup (src/server/db-backup.ts). Must be at
+# least the server's major version (pgvector/pgvector:pg17), or pg_dump refuses to run.
+RUN apk add --no-cache postgresql17-client
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 ENV NODE_ENV=production

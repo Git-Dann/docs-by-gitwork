@@ -157,6 +157,13 @@ jobs:
           BLOB_S3_ENDPOINT: ${{ secrets.BLOB_S3_ENDPOINT }}
           BLOB_S3_ACCESS_KEY_ID: ${{ secrets.BLOB_S3_ACCESS_KEY_ID }}
           BLOB_S3_SECRET_ACCESS_KEY: ${{ secrets.BLOB_S3_SECRET_ACCESS_KEY }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          SLACK_OPS_WEBHOOK_URL: ${{ secrets.SLACK_OPS_WEBHOOK_URL }}
           APPLE_PASS_TYPE_ID: ${{ secrets.APPLE_PASS_TYPE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_PASS_CERT_P12: ${{ secrets.APPLE_PASS_CERT_P12 }}
@@ -168,7 +175,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           # Passed over the SSH channel, never interpolated into a logged command line.
-          envs: FOUNDRY_RELEASE_B64,DEPLOY_SHA,FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET,BIGWEDGE_API_USERNAME,BIGWEDGE_API_PASSWORD,MONITOR_REMOTE_PROBE_URL,MONITOR_PROBE_SECRET,PERPLEXITY_API_KEY,ANTHROPIC_API_KEY,AUTH_GOOGLE_BUSINESS_ID,AUTH_GOOGLE_BUSINESS_SECRET,BLOB_STORAGE_DRIVER,BLOB_S3_BUCKET,BLOB_S3_REGION,BLOB_S3_ENDPOINT,BLOB_S3_ACCESS_KEY_ID,BLOB_S3_SECRET_ACCESS_KEY,APPLE_PASS_TYPE_ID,APPLE_TEAM_ID,APPLE_PASS_CERT_P12,APPLE_PASS_CERT_PASSWORD,GOOGLE_WALLET_ISSUER_ID,GOOGLE_WALLET_SERVICE_ACCOUNT
+          envs: FOUNDRY_RELEASE_B64,DEPLOY_SHA,FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET,BIGWEDGE_API_USERNAME,BIGWEDGE_API_PASSWORD,MONITOR_REMOTE_PROBE_URL,MONITOR_PROBE_SECRET,PERPLEXITY_API_KEY,ANTHROPIC_API_KEY,AUTH_GOOGLE_BUSINESS_ID,AUTH_GOOGLE_BUSINESS_SECRET,BLOB_STORAGE_DRIVER,BLOB_S3_BUCKET,BLOB_S3_REGION,BLOB_S3_ENDPOINT,BLOB_S3_ACCESS_KEY_ID,BLOB_S3_SECRET_ACCESS_KEY,BACKUP_S3_BUCKET,BACKUP_S3_REGION,BACKUP_S3_ENDPOINT,BACKUP_S3_ACCESS_KEY_ID,BACKUP_S3_SECRET_ACCESS_KEY,BACKUP_ENCRYPTION_KEY,SLACK_OPS_WEBHOOK_URL,APPLE_PASS_TYPE_ID,APPLE_TEAM_ID,APPLE_PASS_CERT_P12,APPLE_PASS_CERT_PASSWORD,GOOGLE_WALLET_ISSUER_ID,GOOGLE_WALLET_SERVICE_ACCOUNT
           script: |
             cd /opt/apps/foundry
 
@@ -245,6 +252,15 @@ jobs:
             upsert_env BLOB_S3_ENDPOINT "${BLOB_S3_ENDPOINT:-}"
             upsert_env BLOB_S3_ACCESS_KEY_ID "${BLOB_S3_ACCESS_KEY_ID:-}"
             upsert_env BLOB_S3_SECRET_ACCESS_KEY "${BLOB_S3_SECRET_ACCESS_KEY:-}"
+            # Off-site database backups (src/server/db-backup.ts): off until all are set.
+            upsert_env BACKUP_S3_BUCKET "${BACKUP_S3_BUCKET:-}"
+            upsert_env BACKUP_S3_REGION "${BACKUP_S3_REGION:-}"
+            upsert_env BACKUP_S3_ENDPOINT "${BACKUP_S3_ENDPOINT:-}"
+            upsert_env BACKUP_S3_ACCESS_KEY_ID "${BACKUP_S3_ACCESS_KEY_ID:-}"
+            upsert_env BACKUP_S3_SECRET_ACCESS_KEY "${BACKUP_S3_SECRET_ACCESS_KEY:-}"
+            upsert_env BACKUP_ENCRYPTION_KEY "${BACKUP_ENCRYPTION_KEY:-}"
+            # Ops alerts to Slack (src/server/ops-alert.ts): stopped jobs, disk, backups, errors.
+            upsert_env SLACK_OPS_WEBHOOK_URL "${SLACK_OPS_WEBHOOK_URL:-}"
             # Wallet passes for public profiles (CLAUDE.md §139); each wallet stays off until set.
             upsert_env APPLE_PASS_TYPE_ID "${APPLE_PASS_TYPE_ID:-}"
             upsert_env APPLE_TEAM_ID "${APPLE_TEAM_ID:-}"
@@ -326,23 +342,44 @@ jobs:
         run: |
           echo "crontab_b64=$(base64 -w0 deploy/crontab)" >> "$GITHUB_OUTPUT"
           echo "installer_b64=$(base64 -w0 deploy/install-crontab.sh)" >> "$GITHUB_OUTPUT"
+          echo "runner_b64=$(base64 -w0 deploy/run-cron.sh)" >> "$GITHUB_OUTPUT"
 
       - name: Install scheduled jobs on the VPS
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         env:
           FOUNDRY_CRONTAB_B64: ${{ steps.schedule.outputs.crontab_b64 }}
           FOUNDRY_CRON_INSTALLER_B64: ${{ steps.schedule.outputs.installer_b64 }}
+          FOUNDRY_CRON_RUNNER_B64: ${{ steps.schedule.outputs.runner_b64 }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: FOUNDRY_CRONTAB_B64,FOUNDRY_CRON_INSTALLER_B64
+          envs: FOUNDRY_CRONTAB_B64,FOUNDRY_CRON_INSTALLER_B64,FOUNDRY_CRON_RUNNER_B64
           script: |
             set -e
             WORK="$(mktemp -d)"
             trap 'rm -rf "$WORK"' EXIT
             printf '%s' "$FOUNDRY_CRONTAB_B64" | base64 -d > "$WORK/crontab"
             printf '%s' "$FOUNDRY_CRON_INSTALLER_B64" | base64 -d > "$WORK/install-crontab.sh"
+            printf '%s' "$FOUNDRY_CRON_RUNNER_B64" | base64 -d > "$WORK/run-cron.sh"
+            # run-cron.sh lives in the repo (deploy/run-cron.sh). Run the new copy once against
+            # `jobs` (idempotent, every minute anyway) and only replace the box's copy when it
+            # works, so a broken script can never stop every scheduled job at once.
+            RUNNER=/opt/apps/foundry/run-cron.sh
+            if bash "$WORK/run-cron.sh" jobs >> /tmp/foundry-cron.log 2>&1; then
+              if [ -f "$RUNNER" ] && cmp -s "$WORK/run-cron.sh" "$RUNNER"; then
+                echo "run-cron.sh: unchanged"
+              else
+                if [ -f "$RUNNER" ]; then cp -p "$RUNNER" "$RUNNER.before-deploy" || true; fi
+                if install -m 0755 "$WORK/run-cron.sh" "$RUNNER"; then
+                  echo "run-cron.sh: installed from the repo (old copy kept as run-cron.sh.before-deploy)"
+                else
+                  echo "::warning::Could not write $RUNNER (owned by another user?). The box's old copy keeps running the jobs."
+                fi
+              fi
+            else
+              echo "::warning::The repo's run-cron.sh could not call /api/cron/jobs; kept the box's copy. See /tmp/foundry-cron.log."
+            fi
             # Keep a copy of what was there, in case a managed change needs undoing by hand.
             crontab -l > "$HOME/crontab.before-deploy" 2>/dev/null || true
             bash "$WORK/install-crontab.sh" "$WORK/crontab"

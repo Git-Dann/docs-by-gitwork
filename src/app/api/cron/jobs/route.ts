@@ -11,6 +11,8 @@ import { sendHrDigests } from "@/server/hr/digest";
 import { startDueAnswerRuns } from "@/server/ai-answers";
 import { syncDueCommitments } from "@/server/commitments";
 import { startDueRechecks } from "@/server/provenance/recheck";
+import { checkCronWatchdog } from "@/server/cron-watchdog";
+import { checkDiskAndDatabase } from "@/server/disk-watch";
 
 export const dynamic = "force-dynamic";
 // No serverless cap on the VPS, but keep runs bounded so host cron ticks stay short.
@@ -110,8 +112,23 @@ export async function GET(request: NextRequest) {
       return null;
     });
 
+    // ── Scheduled-job watchdog ── (a job in deploy/crontab that stopped being called; the
+    // worker itself is watched from outside, via /api/health?cron=1)
+    const cronWatch = await checkCronWatchdog().catch((err) => {
+      console.error("[jobs] cron watchdog failed", err);
+      return null;
+    });
+
+    // ── Disk + database size ── (hourly; alerts once when the disk passes 80%)
+    const disk = await checkDiskAndDatabase().catch((err) => {
+      console.error("[jobs] disk check failed", err);
+      return null;
+    });
+
     return apiOk({
       reconciled,
+      cronWatch,
+      disk,
       ...drain,
       staleMonitors: monitors.stale,
       monitorExpiries: expiries,

@@ -55,12 +55,7 @@ export class BlobStorageConfigError extends Error {
 
 type Env = Record<string, string | undefined>;
 
-const S3_VARS = [
-  "BLOB_S3_BUCKET",
-  "BLOB_S3_REGION",
-  "BLOB_S3_ACCESS_KEY_ID",
-  "BLOB_S3_SECRET_ACCESS_KEY",
-] as const;
+const S3_SUFFIXES = ["BUCKET", "REGION", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY"] as const;
 
 function clean(v: string | undefined): string | null {
   const t = v?.trim();
@@ -79,34 +74,39 @@ export function resolveBlobDriver(env: Env = process.env): BlobDriver {
 /**
  * The bucket settings, or null when NONE of the S3 variables is set. A partial set
  * is a misconfiguration and throws, naming every missing variable.
+ *
+ * `prefix` names the set: `BLOB_S3_` for uploads (the default), `BACKUP_S3_` for the
+ * database backups, which go to a bucket of their own (src/server/db-backup.ts).
  */
-export function resolveS3Config(env: Env = process.env): S3Config | null {
-  const present = S3_VARS.filter((k) => clean(env[k]));
-  if (present.length === 0 && !clean(env.BLOB_S3_ENDPOINT)) return null;
-  const missing = S3_VARS.filter((k) => !clean(env[k]));
+export function resolveS3Config(env: Env = process.env, prefix = "BLOB_S3_"): S3Config | null {
+  const vars = S3_SUFFIXES.map((k) => `${prefix}${k}`);
+  const endpointVar = `${prefix}ENDPOINT`;
+  const present = vars.filter((k) => clean(env[k]));
+  if (present.length === 0 && !clean(env[endpointVar])) return null;
+  const missing = vars.filter((k) => !clean(env[k]));
   if (missing.length > 0) {
     throw new BlobStorageConfigError(
       `Object storage is partly configured: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not set.`,
     );
   }
-  const endpoint = clean(env.BLOB_S3_ENDPOINT);
+  const endpoint = clean(env[endpointVar]);
   if (endpoint) {
     let url: URL;
     try {
       url = new URL(endpoint);
     } catch {
-      throw new BlobStorageConfigError(`BLOB_S3_ENDPOINT "${endpoint}" is not a URL.`);
+      throw new BlobStorageConfigError(`${endpointVar} "${endpoint}" is not a URL.`);
     }
     if (url.protocol !== "https:" && url.protocol !== "http:") {
-      throw new BlobStorageConfigError(`BLOB_S3_ENDPOINT must be http(s), got "${url.protocol}".`);
+      throw new BlobStorageConfigError(`${endpointVar} must be http(s), got "${url.protocol}".`);
     }
   }
   return {
-    bucket: clean(env.BLOB_S3_BUCKET)!,
-    region: clean(env.BLOB_S3_REGION)!,
+    bucket: clean(env[`${prefix}BUCKET`])!,
+    region: clean(env[`${prefix}REGION`])!,
     endpoint: endpoint ? endpoint.replace(/\/+$/, "") : null,
-    accessKeyId: clean(env.BLOB_S3_ACCESS_KEY_ID)!,
-    secretAccessKey: clean(env.BLOB_S3_SECRET_ACCESS_KEY)!,
+    accessKeyId: clean(env[`${prefix}ACCESS_KEY_ID`])!,
+    secretAccessKey: clean(env[`${prefix}SECRET_ACCESS_KEY`])!,
   };
 }
 
@@ -183,7 +183,7 @@ export function signS3Request(input: SignInput): { authorization: string; signat
   };
 }
 
-function amzDateOf(d: Date): string {
+export function amzDateOf(d: Date): string {
   return d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 }
 
@@ -281,7 +281,7 @@ function writeStore(): BlobStore | null {
   const cfg = resolveS3Config();
   if (!cfg) {
     throw new BlobStorageConfigError(
-      `BLOB_STORAGE_DRIVER is "s3" but ${S3_VARS.join(", ")} are not set. Set them, or set the driver back to "postgres".`,
+      `BLOB_STORAGE_DRIVER is "s3" but ${S3_SUFFIXES.map((k) => `BLOB_S3_${k}`).join(", ")} are not set. Set them, or set the driver back to "postgres".`,
     );
   }
   return createS3BlobStore(cfg);

@@ -14,6 +14,7 @@ const ROOT = process.cwd();
 const HEALTH = join(ROOT, "deploy/health-check.sh");
 const ROLLBACK = join(ROOT, "deploy/rollback.sh");
 const SYNC = join(ROOT, "deploy/sync-compose.sh");
+const RUN_CRON = join(ROOT, "deploy/run-cron.sh");
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 
 let dir: string;
@@ -161,6 +162,46 @@ describe("sync-compose.sh", () => {
     expect(r.status).toBe(1);
     expect(readFileSync(live(), "utf8")).toBe(OLD);
     expect(existsSync(`${live()}.next`)).toBe(false);
+  });
+});
+
+describe("run-cron.sh", () => {
+  // A fake curl that records its arguments and its stdin (where the header must go) and answers
+  // with the status code in $CODE.
+  function cronEnv(envFile: string, code = "200") {
+    const bin = join(dir, "bin");
+    spawnSync("mkdir", ["-p", bin]);
+    writeFileSync(
+      join(bin, "curl"),
+      `#!/usr/bin/env bash\necho "$@" > "${dir}/argv"\ncat > "${dir}/stdin"\nprintf '{"ok":true}\\n%s' "${code}"\n`,
+    );
+    chmodSync(join(bin, "curl"), 0o755);
+    return { PATH: `${bin}:${process.env.PATH}`, FOUNDRY_ENV_FILE: envFile };
+  }
+
+  it("calls the job with the secret from .env, never on the command line", () => {
+    const env = join(dir, ".env");
+    writeFileSync(env, 'OTHER=1\nCRON_SECRET="topsecret"\n');
+    const r = run(RUN_CRON, ["jobs"], cronEnv(env));
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("jobs HTTP 200");
+    const argv = readFileSync(join(dir, "argv"), "utf8");
+    expect(argv).toContain("http://127.0.0.1:3000/api/cron/jobs");
+    expect(argv).not.toContain("topsecret");
+    expect(readFileSync(join(dir, "stdin"), "utf8")).toContain('header = "Authorization: Bearer topsecret"');
+  });
+
+  it("exits non-zero when the job answers an error, so the deploy keeps the old copy", () => {
+    const env = join(dir, ".env");
+    writeFileSync(env, "CRON_SECRET=x\n");
+    expect(run(RUN_CRON, ["jobs"], cronEnv(env, "401")).status).toBe(1);
+  });
+
+  it("refuses a missing secret and a job name that isn't one", () => {
+    const env = join(dir, ".env");
+    writeFileSync(env, "OTHER=1\n");
+    expect(run(RUN_CRON, ["jobs"], cronEnv(env)).status).toBe(3);
+    expect(run(RUN_CRON, ["../../etc"], cronEnv(env)).status).toBe(2);
   });
 });
 

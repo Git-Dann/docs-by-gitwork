@@ -58,6 +58,10 @@ image that was running is put back and the run fails. To undo a release that pas
 Actions → **VPS ops** → task `rollback` (`previous`, or a full commit sha). Then revert or fix the
 commit, because the next push to `main` deploys over the rollback.
 
+**A new scheduled job needs two lines.** Add it to `deploy/crontab` and give it a longest allowed
+gap in `CRON_MAX_GAP` (`src/lib/cron-watch.ts`); a test fails without both. Gitwork's admins are
+told when a job stops, and the box's `run-cron.sh` now comes from `deploy/run-cron.sh`.
+
 **Secrets go in GitHub, not on the box.** The deploy syncs a managed allow-list of Actions secrets
 into the VPS `.env` on every run, so adding or rotating one needs no SSH — set it in repo →
 Settings → Secrets and variables → Actions, then re-run the deploy (it accepts
