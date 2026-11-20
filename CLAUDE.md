@@ -11017,3 +11017,17 @@ sub-pages are its settings, Suppliers is HR-only, Archived lives under People, a
   `GET`/`PATCH /api/staff/[id]/public-profile`; anyone else gets a 404.
 - ⚠️ **Publishing stays the person's own call.** An Admin can edit and hide a page but not switch
   it on (`applySave`'s `mayPublish`), so nobody's page goes public without them.
+- **Every public profile has its own share image** (`src/app/u/[slug]/opengraph-image.tsx`,
+  layout in `src/lib/og/profile-share-card.tsx`): the person's card colour, photo (PNG, cut on
+  their focus by `src/server/profile-photo.ts`, because Satori can't draw WebP), name, headline
+  and page address. No photo → initials. Slack and LinkedIn keep an unfurl they've already made,
+  so a link pasted before this shipped may show the old preview for a while.
+- **A wrong GitHub handle can be removed from Staff** (the Overview's Developer switch: "Wrong
+  GitHub account? Remove the handle" → `removeGithubHandle` on `PATCH /api/staff/[id]`). A handle
+  lists someone as a developer whatever the switch says, so without this a handle naming the
+  wrong person (Hassaan's `@hassaan`, a stranger in Waterloo) could only be fixed in the database.
+- **…and the person can do it themselves**, which is the normal route. Backstage → Me → Your
+  developer details: "Not your account? Remove it" (`removeGithubHandle`, keeps them a developer)
+  and "Not a developer? Take yourself off the Developers list" (`notDeveloper`, clears the handle
+  too, after a confirm). A blank handle field still never removes one; only these two do. Getting
+  back on the list is an admin's call or an invite.

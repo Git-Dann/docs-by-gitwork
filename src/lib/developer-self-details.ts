@@ -14,6 +14,10 @@ export interface DeveloperSelfDetails {
   timezone?: string | null;
   linkedinUrl?: string | null;
   portfolioUrl?: string | null;
+  /** "That isn't my GitHub account": take the handle off, and they stay a developer. */
+  removeGithubHandle?: boolean;
+  /** "I'm not a developer": off the Developers list, and any handle with it (a handle lists them). */
+  notDeveloper?: boolean;
 }
 
 /** What someone sees of their own developer details. */
@@ -70,8 +74,10 @@ export function normaliseDeveloperSelfDetails(
     }
     out.githubHandle = handle;
   }
-  // A blank handle is "leave it as it is": removing it would quietly take someone off the
-  // Developers list, which is the team's call, not a side effect of a form.
+  // A blank handle is "leave it as it is", so a cleared field never removes one by accident.
+  // Removing one is its own, explicit choice: removeGithubHandle.
+  if (input.removeGithubHandle === true) out.removeGithubHandle = true;
+  if (input.notDeveloper === true) out.notDeveloper = true;
 
   for (const [key, max, label] of [
     ["primaryStack", 60, "Main stack"],

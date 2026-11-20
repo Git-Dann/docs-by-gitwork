@@ -115,6 +115,25 @@ describe("updateOwnDeveloperDetails", () => {
     db.updateError = { code: "P2002" };
     await expect(updateOwnDeveloperDetails("w1", "m1", { githubHandle: "taken" })).rejects.toMatchObject({ status: 409 });
   });
+  it("removes a handle that isn't theirs and keeps them a developer", async () => {
+    await updateOwnDeveloperDetails("w1", "m1", { removeGithubHandle: true });
+    expect(db.update?.data).toMatchObject({ githubHandle: null, isDeveloper: true });
+  });
+
+  it("a new handle in the same save wins over removing it", async () => {
+    await updateOwnDeveloperDetails("w1", "m1", { removeGithubHandle: true, githubHandle: "real-me" });
+    expect(db.update?.data).toMatchObject({ githubHandle: "real-me" });
+  });
+
+  it("takes them off the Developers list, handle and all", async () => {
+    await updateOwnDeveloperDetails("w1", "m1", { notDeveloper: true, githubHandle: "ignored" });
+    expect(db.update?.data).toMatchObject({ isDeveloper: false, githubHandle: null });
+  });
+
+  it("only ever touches their own record", async () => {
+    await updateOwnDeveloperDetails("w1", "m1", { notDeveloper: true });
+    expect(db.update?.where).toEqual({ id: "r1" });
+  });
 });
 
 describe("applyInviteDeveloperFlag", () => {

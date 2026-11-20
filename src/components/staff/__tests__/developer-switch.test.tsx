@@ -76,6 +76,21 @@ describe("Developer switch on Staff details", () => {
     expect(developerBox().disabled).toBe(true);
     expect(document.body.textContent).toContain("because they have a GitHub handle");
   });
+
+  it("can remove a GitHub handle that's someone else's, then be switched off", async () => {
+    await render(<DetailsDialog inline person={person({ isDeveloper: true, hasGithubHandle: true })} people={[]} onClose={() => {}} />);
+    await click(button("Wrong GitHub account? Remove the handle"));
+    expect(developerBox().disabled).toBe(false);
+    expect(developerBox().checked).toBe(false);
+    await click(button("Save"));
+    expect(calls.update).toEqual([{ recordId: "r1", update: expect.objectContaining({ isDeveloper: false, removeGithubHandle: true }) }]);
+  });
+
+  it("never sends removeGithubHandle unless asked", async () => {
+    await render(<DetailsDialog inline person={person({ isDeveloper: true, hasGithubHandle: true })} people={[]} onClose={() => {}} />);
+    await click(button("Save"));
+    expect((calls.update[0] as { update: object }).update).not.toHaveProperty("removeGithubHandle");
+  });
 });
 
 describe("MyDeveloperCard (Backstage → Me)", () => {
@@ -112,5 +127,32 @@ describe("MyDeveloperCard (Backstage → Me)", () => {
     await render(<MyDeveloperCard number="02" />);
     expect(document.body.textContent).toContain("@abdullah-f");
     expect(document.querySelector("form")).toBeNull();
+  });
+
+  it("lets them remove a GitHub account that isn't theirs, and says so before saving", async () => {
+    calls.own = own({ githubHandle: "hassaan", primaryStack: "Frontend" });
+    await render(<MyDeveloperCard number="02" />);
+    await click(button("Edit"));
+    await click(button("Not your account? Remove it"));
+    expect(document.body.textContent).toContain("will be removed when you save");
+    await click(button("Save"));
+    expect(calls.saveOwn[0]).toMatchObject({ removeGithubHandle: true, githubHandle: null });
+  });
+
+  it("never asks to remove the handle when they just leave the field as it was", async () => {
+    calls.own = own({ githubHandle: "abdullah-f", primaryStack: "Flutter" });
+    await render(<MyDeveloperCard number="02" />);
+    await click(button("Edit"));
+    await click(button("Save"));
+    expect(calls.saveOwn[0]).not.toHaveProperty("removeGithubHandle");
+  });
+
+  it("lets them take themselves off the Developers list, after a confirm", async () => {
+    calls.own = own({ githubHandle: "hassaan", primaryStack: "Frontend" });
+    await render(<MyDeveloperCard number="02" />);
+    await click(button("Not a developer? Take yourself off the Developers list"));
+    expect(calls.saveOwn).toEqual([]);
+    await click(button("Take me off"));
+    expect(calls.saveOwn).toEqual([{ notDeveloper: true }]);
   });
 });

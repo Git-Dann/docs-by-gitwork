@@ -20,6 +20,8 @@ const schema = z
     timezone: z.string().max(200).nullable().optional(),
     linkedinUrl: z.string().max(500).nullable().optional(),
     portfolioUrl: z.string().max(500).nullable().optional(),
+    removeGithubHandle: z.literal(true).optional(),
+    notDeveloper: z.literal(true).optional(),
   })
   .strict();
 

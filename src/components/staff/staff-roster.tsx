@@ -78,6 +78,9 @@ export function DetailsDialog({
   const [startDate, setStartDate] = useState(person.startDate ?? "");
   const [managerRecordId, setManagerRecordId] = useState(person.managerRecordId ?? "");
   const [isDeveloper, setIsDeveloper] = useState(person.isDeveloper);
+  // A handle that names someone else is removed on save; until then it still lists them.
+  const [removeHandle, setRemoveHandle] = useState(false);
+  const hasHandle = person.hasGithubHandle && !removeHandle;
   const [error, setError] = useState<string | null>(null);
   const create = useCreateStaffRecord();
   const update = useUpdateStaffDetails();
@@ -97,6 +100,7 @@ export function DetailsDialog({
       startDate: startDate || null,
       managerRecordId: managerRecordId || null,
       isDeveloper,
+      ...(removeHandle ? { removeGithubHandle: true as const } : {}),
     };
     try {
       if (person.recordId) await update.mutateAsync({ recordId: person.recordId, update: details });
@@ -177,9 +181,18 @@ export function DetailsDialog({
             </select>
           </label>
           <DeveloperSwitch
-            checked={isDeveloper || person.hasGithubHandle}
-            locked={person.hasGithubHandle}
+            checked={isDeveloper || hasHandle}
+            locked={hasHandle}
             onChange={setIsDeveloper}
+            onRemoveHandle={
+              hasHandle && person.recordId
+                ? () => {
+                    setRemoveHandle(true);
+                    setIsDeveloper(false);
+                  }
+                : undefined
+            }
+            handleRemoved={removeHandle}
             className="sm:col-span-2"
           />
         </div>
@@ -217,11 +230,16 @@ function DeveloperSwitch({
   checked,
   locked = false,
   onChange,
+  onRemoveHandle,
+  handleRemoved = false,
   className,
 }: {
   checked: boolean;
   locked?: boolean;
   onChange: (v: boolean) => void;
+  /** Offered while a GitHub handle locks the switch: the handle may be someone else's. */
+  onRemoveHandle?: () => void;
+  handleRemoved?: boolean;
   className?: string;
 }) {
   return (
@@ -240,6 +258,18 @@ function DeveloperSwitch({
             ? "Listed under Code → Developers because they have a GitHub handle."
             : "List them under Code → Developers. This is what they do, not what they can open in Foundry."}
         </span>
+        {locked && onRemoveHandle ? (
+          <button
+            type="button"
+            onClick={onRemoveHandle}
+            className="mt-1 text-[12px] font-medium text-[var(--brand-700)] hover:underline"
+          >
+            Wrong GitHub account? Remove the handle
+          </button>
+        ) : null}
+        {handleRemoved ? (
+          <span className="mt-1 block text-[12px] text-[var(--warning-500)]">The GitHub handle will be removed when you save.</span>
+        ) : null}
       </span>
     </label>
   );
