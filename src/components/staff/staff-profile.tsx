@@ -13,7 +13,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ArrowLeftIcon, EyeIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { EMPLOYMENT_TYPE_LABEL, GITWORK_EMPLOYMENT_TYPES, isEmploymentType, type StaffPerson } from "@/lib/staff";
@@ -28,6 +28,7 @@ import {
   type StaffProfile,
 } from "@/lib/hr";
 import { Avatar } from "@/components/ui/avatar";
+import { BalancedColumns } from "@/components/ui/balanced-columns";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { DetailsDialog } from "@/components/staff/staff-roster";
 import { DocumentsCard } from "@/components/staff/staff-documents";
@@ -789,17 +790,15 @@ export function StaffProfileView({
   const type = isEmploymentType(p.employmentType) ? EMPLOYMENT_TYPE_LABEL[p.employmentType] : null;
   const rosterPerson: StaffPerson | undefined = roster.data?.people.find((x) => x.recordId === p.recordId);
 
-  // Numbered in reading order. Two independent columns (who they are | what's private about
-  // them), so a short card never stretches to match a tall one beside it.
-  let n = 0;
-  const next = () => String(++n).padStart(2, "0");
+  // Cards are numbered in the order they're listed below, after the ones this viewer can't see
+  // are dropped, so the numbers always run 01, 02, 03 with no holes.
   const dev = activity.data?.developer ?? null;
   // One page per developer: their Code side (and notes) sits here, on Staff. Not in Me, where
   // a developer reads their own HR record; the Code side is the team's view of them.
   const showDeveloper = mode === "staff" && p.isDeveloper;
-  const overview = (
+  const overview = (num: string) => (
     <WidgetCard
-      number={next()}
+      number={num}
       name="Overview"
       status={p.role ? ROLE_LABEL[p.role] ?? p.role : "No login"}
       statusTone={p.role ? "info" : "muted"}
@@ -850,25 +849,42 @@ export function StaffProfileView({
   // Your own profile is the one place you manage yourself (Me and your page on Staff are the
   // same view): your account (photo, name, password) and your public page sit here too.
   const self = mode === "me" || p.relation === "self";
-  const account = self ? <MyAccountCard number={next()} /> : null;
-  const developer = showDeveloper ? <DeveloperCard recordId={p.recordId} number={next()} /> : null;
+  const account = (num: string) => self ? <MyAccountCard number={num} /> : null;
+  const developer = (num: string) => showDeveloper ? <DeveloperCard recordId={p.recordId} number={num} /> : null;
   // In Me, a developer fills in what only they know (handle, stack, links).
-  const myDeveloper = mode === "me" && p.isDeveloper ? <MyDeveloperCard number={next()} /> : null;
+  const myDeveloper = (num: string) => mode === "me" && p.isDeveloper ? <MyDeveloperCard number={num} /> : null;
   // Everyone gets a shareable public page (§139). The person edits their own; an Admin can open
   // someone else's from here with Edit (they can't publish it for them).
-  const publicProfile = self ? (
-    <PublicProfileCard number={next()} />
+  const publicProfile = (num: string) => self ? (
+    <PublicProfileCard number={num} />
   ) : p.canEditPublicProfile && p.memberId ? (
-    <PublicProfileCard number={next()} recordId={p.recordId} personName={displayName} collapsible />
+    <PublicProfileCard number={num} recordId={p.recordId} personName={displayName} collapsible />
   ) : null;
-  const employment = p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={next()} /> : null;
-  const timeOff = p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={next()} /> : null;
-  const notes = showDeveloper ? <DeveloperNotesCard recordId={p.recordId} number={next()} /> : null;
-  const activityCard = <ActivityCard activity={activity.data} hasLogin={p.lifecycle.hasLogin} number={next()} />;
+  const employment = (num: string) => p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={num} /> : null;
+  const timeOff = (num: string) => p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={num} /> : null;
+  const notes = (num: string) => showDeveloper ? <DeveloperNotesCard recordId={p.recordId} number={num} /> : null;
+  const activityCard = (num: string) => <ActivityCard activity={activity.data} hasLogin={p.lifecycle.hasLogin} number={num} />;
   // Documents are personal: the person, their manager (only what's shared with them) and HR.
-  const documents = p.access.employment ? <DocumentsCard recordId={p.recordId} number={next()} /> : null;
-  const personal = p.access.sensitive ? <PersonalCard profile={p} number={next()} /> : null;
-  const accessLog = p.access.accessLog ? <AccessLogCard recordId={p.recordId} number={next()} /> : null;
+  const documents = (num: string) => p.access.employment ? <DocumentsCard recordId={p.recordId} number={num} /> : null;
+  const personal = (num: string) => p.access.sensitive ? <PersonalCard profile={p} number={num} /> : null;
+  const accessLog = (num: string) => p.access.accessLog ? <AccessLogCard recordId={p.recordId} number={num} /> : null;
+
+  const cards = (
+    [
+      ["overview", overview],
+      ["activity", activityCard],
+      ["account", account],
+      ["public", publicProfile],
+      ["developer", developer],
+      ["my-developer", myDeveloper],
+      ["documents", documents],
+      ["employment", employment],
+      ["personal", personal],
+      ["time-off", timeOff],
+      ["notes", notes],
+      ["access-log", accessLog],
+    ] as const
+  ).filter(([, render]) => render("00") !== null) as unknown as [string, (num: string) => React.ReactNode][];
 
   return (
     <div className="space-y-5">
@@ -905,26 +921,13 @@ export function StaffProfileView({
         </p>
       ) : null}
 
-      {/* Two independent columns: the person and their work on the left, what they've done
-          and what's private on the right. Reading order matches the numbering. */}
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
-        <div className="min-w-0 space-y-5">
-          {overview}
-          {account}
-          {developer}
-          {myDeveloper}
-          {publicProfile}
-          {employment}
-          {timeOff}
-          {notes}
-        </div>
-        <div className="min-w-0 space-y-5">
-          {activityCard}
-          {documents}
-          {personal}
-          {accessLog}
-        </div>
-      </div>
+      {/* Each card goes in whichever column is shorter, so both columns end level for every
+          viewer, whichever cards they can see. Listed in reading order. */}
+      <BalancedColumns>
+        {cards.map(([key, render], i) => (
+          <Fragment key={key}>{render(String(i + 1).padStart(2, "0"))}</Fragment>
+        ))}
+      </BalancedColumns>
     </div>
   );
 }
