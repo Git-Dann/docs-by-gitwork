@@ -1,7 +1,9 @@
 "use client";
 
 /**
- * Backstage → Me: your public profile (CLAUDE.md §139). Choose a handle, fill in the profile,
+ * A person's public profile (CLAUDE.md §139), on their Staff page and in Backstage → Me. With
+ * `recordId` it is someone else's, opened by an Admin: they can edit it and hide it, but only the
+ * person can publish it. Choose a handle, fill in the profile,
  * switch the page on, copy the link. A completeness meter names what's still missing, because
  * that's the point: a profile people want to fill in. Rules are in src/lib/public-profile.ts.
  */
@@ -9,8 +11,9 @@ import { useEffect, useState } from "react";
 import { ArrowTopRightOnSquareIcon, LinkIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { ProfileCardDesigner } from "@/components/staff/profile-card-designer";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
+import { HeaderAction } from "@/components/staff/profile-parts";
 import { useToast } from "@/components/ui/toast";
-import { useMyPublicProfile, useSaveMyPublicProfile } from "@/hooks/use-staff";
+import { usePublicProfile, useSavePublicProfile } from "@/hooks/use-staff";
 import { ACHIEVEMENT_KINDS, EXTRAS_LIMITS, PROFILE_LIMITS, slugProblem, type ProfileAchievement, type ProfileFeatured, type ProfileHighlight, type ProfileLink, type ProfileTestimonial } from "@/lib/public-profile";
 import type { MyPublicProfile } from "@/server/public-profile";
 
@@ -35,9 +38,24 @@ const toDraft = (p: MyPublicProfile): Draft => ({
   extras: p.extras,
 });
 
-export function PublicProfileCard({ number }: { number: string }) {
-  const query = useMyPublicProfile();
-  const save = useSaveMyPublicProfile();
+export function PublicProfileCard({
+  number,
+  recordId = null,
+  personName,
+  collapsible = false,
+}: {
+  number: string;
+  recordId?: string | null;
+  personName?: string;
+  /** Start folded with an Edit button: how an Admin meets someone else's page on Staff. */
+  collapsible?: boolean;
+}) {
+  const query = usePublicProfile(recordId);
+  const save = useSavePublicProfile(recordId);
+  const [open, setOpen] = useState(!collapsible);
+  // Editing someone else's page: say "their", and leave publishing to them.
+  const theirs = Boolean(recordId);
+  const first = (personName ?? "").trim().split(/\s+/)[0] || "they";
   const toast = useToast();
   const p = query.data ?? null;
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -68,7 +86,7 @@ export function PublicProfileCard({ number }: { number: string }) {
         ...extra,
       });
       setDraft(toDraft(saved));
-      toast.success(extra.enabled === true ? "Your profile is live" : extra.enabled === false ? "Your profile is hidden" : "Profile saved");
+      toast.success(extra.enabled === true ? "Your profile is live" : extra.enabled === false ? (theirs ? `${first}'s page is hidden` : "Your profile is hidden") : "Profile saved");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save. Try again.");
     }
@@ -76,8 +94,20 @@ export function PublicProfileCard({ number }: { number: string }) {
 
   const status = p.enabled ? "Live" : "Off";
   return (
-    <WidgetCard number={number} name="PUBLIC PROFILE" status={status} statusTone={p.enabled ? "success" : "info"}>
-      <div className="space-y-5 p-5">
+    <WidgetCard
+      number={number}
+      name="Public profile"
+      status={status}
+      statusTone={p.enabled ? "success" : "info"}
+      action={
+        collapsible ? (
+          <HeaderAction onClick={() => setOpen((o) => !o)} label={open ? "Close the editor" : "Edit public profile"}>
+            {open ? "Done" : "Edit"}
+          </HeaderAction>
+        ) : undefined
+      }
+    >
+      <div className="space-y-5">
         {/* How complete it is, and what would finish it. */}
         <div>
           <div className="flex items-baseline justify-between gap-3">
@@ -96,9 +126,11 @@ export function PublicProfileCard({ number }: { number: string }) {
           ) : null}
         </div>
 
+        {open ? (
+          <>
         <div>
           <label className={label} htmlFor="pp-slug">
-            Your page address
+            {theirs ? "Page address" : "Your page address"}
           </label>
           <div className="mt-1 flex items-stretch overflow-hidden rounded-[6px] border border-[var(--border-2)] focus-within:border-[var(--brand-500)]">
             <span className="flex items-center bg-[var(--surface-1)] px-2.5 text-[13px] text-[var(--text-4)]">/u/</span>
@@ -155,7 +187,7 @@ export function PublicProfileCard({ number }: { number: string }) {
           <div className="sm:col-span-2">
             <label className={label} htmlFor="pp-booking">Booking link</label>
             <input id="pp-booking" className={input} placeholder="Cal.com, Calendly or a Google booking page" value={draft.bookingUrl} onChange={(e) => set("bookingUrl", e.target.value)} />
-            <p className="mt-1 text-[12px] text-[var(--text-4)]">Shows a Book a call button on your page.</p>
+            <p className="mt-1 text-[12px] text-[var(--text-4)]">Shows a Book a call button on {theirs ? "the" : "your"} page.</p>
           </div>
           <div className="sm:col-span-2">
             <label className={label} htmlFor="pp-portfolio">Portfolio or website</label>
@@ -283,22 +315,33 @@ export function PublicProfileCard({ number }: { number: string }) {
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-1)] pt-4">
           <p className="text-[12px] text-[var(--text-4)]">
-            {p.enabled ? "Anyone with the link can see your page." : "Only you can see this until you publish it."} Rates, clients and HR details never appear on it.
+            {theirs
+              ? p.enabled
+                ? "Anyone with the link can see this page."
+                : `Off. Only ${first} can publish it.`
+              : p.enabled
+                ? "Anyone with the link can see your page."
+                : "Only you can see this until you publish it."}{" "}
+            Rates, clients and HR details never appear on it.
           </p>
           <div className="flex items-center gap-2">
             <button type="button" className="app-button app-button-secondary app-button-sm" disabled={save.isPending || Boolean(slugError)} onClick={() => void persist()}>
               Save
             </button>
-            <button
-              type="button"
-              className={`app-button app-button-sm ${p.enabled ? "app-button-secondary" : "app-button-primary"}`}
-              disabled={save.isPending || Boolean(slugError)}
-              onClick={() => void persist({ enabled: !p.enabled })}
-            >
-              {p.enabled ? "Hide my page" : "Publish my page"}
-            </button>
+            {theirs && !p.enabled ? null : (
+              <button
+                type="button"
+                className={`app-button app-button-sm ${p.enabled ? "app-button-secondary" : "app-button-primary"}`}
+                disabled={save.isPending || Boolean(slugError)}
+                onClick={() => void persist({ enabled: !p.enabled })}
+              >
+                {p.enabled ? (theirs ? "Hide page" : "Hide my page") : "Publish my page"}
+              </button>
+            )}
           </div>
         </div>
+          </>
+        ) : null}
       </div>
     </WidgetCard>
   );

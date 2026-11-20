@@ -74,27 +74,31 @@ export function useUpdateOwnDeveloperDetails() {
   });
 }
 
-const PUBLIC_PROFILE_KEY = ["staff", "me", "public-profile"] as const;
+/** null = your own page; a record id = someone else's, for an Admin editing it from Staff. */
+const publicProfileKey = (recordId: string | null) => ["staff", "public-profile", recordId ?? "me"] as const;
+const publicProfileUrl = (recordId: string | null) =>
+  recordId ? `/api/staff/${encodeURIComponent(recordId)}/public-profile` : "/api/staff/me/public-profile";
 
-/** Your own public profile settings (CLAUDE.md §139). */
-export function useMyPublicProfile() {
+/** A public profile's settings (CLAUDE.md §139): your own, or someone's you may edit. */
+export function usePublicProfile(recordId: string | null = null) {
   return useQuery({
-    queryKey: PUBLIC_PROFILE_KEY,
-    queryFn: () => apiFetch<MyPublicProfile>("/api/staff/me/public-profile"),
+    queryKey: publicProfileKey(recordId),
+    queryFn: () => apiFetch<MyPublicProfile>(publicProfileUrl(recordId)),
   });
 }
 
-export function useSaveMyPublicProfile() {
+export function useSavePublicProfile(recordId: string | null = null) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: MyPublicProfileInput) =>
-      apiFetch<MyPublicProfile>("/api/staff/me/public-profile", {
+      apiFetch<MyPublicProfile>(publicProfileUrl(recordId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       }),
     // Only this key: a broad ["staff"] invalidation would re-fetch the logged personal-details
     // read (§94), and nothing else shows these fields.
-    onSuccess: (saved) => qc.setQueryData(PUBLIC_PROFILE_KEY, saved),
+    onSuccess: (saved) => qc.setQueryData(publicProfileKey(recordId), saved),
   });
 }
+

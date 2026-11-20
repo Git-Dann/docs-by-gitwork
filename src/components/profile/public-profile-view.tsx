@@ -401,7 +401,7 @@ function PhoneProfile({ p, isOwner, pageUrl, share, person, wallet }: ViewProps)
 
 // ── Desktop: LinkedIn-shaped ────────────────────────────────────────────────────────────────
 
-function DesktopProfile({ p, isOwner, pageUrl, share, person, wallet }: ViewProps) {
+function DesktopProfile({ p, isOwner, pageUrl, share, wallet }: ViewProps) {
   const banner = p.card ? cardColour(p.card.colour) : null;
   const facts = [p.company, p.location, p.yearsExperience ? `${p.yearsExperience}+ years' experience` : null].filter(Boolean) as string[];
   let step = 1;
@@ -470,12 +470,8 @@ function DesktopProfile({ p, isOwner, pageUrl, share, person, wallet }: ViewProp
       </div>
 
       <aside className="sticky top-6 space-y-4">
-        {p.card ? (
-          <div className="motion-rise" style={rise(1)}>
-            <ProfileBusinessCard card={p.card} person={person} url={pageUrl} />
-            <p className="mt-2 text-center text-[11px] text-[var(--text-4)]">Click the card to turn it over</p>
-          </div>
-        ) : null}
+        {/* No business card here: the banner already carries the card's colour and pattern, and
+            the page itself is the full profile. The card is the phone layout's (and Wallet's). */}
         <Card title="Share" step={2}>
           <ProfileSharePanel data={share} pageUrl={pageUrl} wallet={wallet} />
         </Card>
