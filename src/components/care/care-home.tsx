@@ -18,7 +18,6 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { BigFigure, SplitBar } from "@/components/dashboard/tile-parts";
 import { Button } from "@/components/ui/button";
 import { Skeleton, SkeletonRows } from "@/components/ui/motion/skeleton";
-import { cardBasis, cardsPerRow } from "@/lib/client-portal-layout";
 
 /**
  * Care home — which client is being let down right now, and what to do about it first.
@@ -40,11 +39,13 @@ import { cardBasis, cardsPerRow } from "@/lib/client-portal-layout";
  *
  * ── The shape now ────────────────────────────────────────────────────────────────────────────
  *   01 // THE DESK          hero: the one figure, who is worst off, and the first thing to do
- *   02 // NEEDS YOU FIRST   the next people to answer, across every client — one click each
- *   03 // CLIENTS           who is being let down — cards up to four, dense rows beyond
+ *   02 // CLIENTS           who is being let down — a compact rail, worst first
+ *   03 // NEEDS YOU FIRST   the next people to answer, across every client — one click each
  *   (foot)                  ingest-only clients, unnumbered: not part of this queue
  *
- * 02 and 03 sit side by side from `lg` and fill the remaining height between them.
+ * 02 and 03 sit side by side from `lg`. The LIST is what fills the remaining height, because a
+ * list that has ended and left some space below reads as a list that has ended — whereas a card
+ * stretched to fill reads as broken. See the ⚠️ on the band.
  *
  * It still renders no `<h1>Care</h1>` — AppShell owns that — and still costs one workspace-wide
  * roll-up rather than ~10 indexed COUNTs per client.
@@ -68,13 +69,6 @@ const BAR = {
   replied: "var(--success-500)",
   unassigned: "var(--brand-500)",
 } as const;
-
-/**
- * Past this many clients the cards become a wall and the dense row is the better read. Below it,
- * cards grow into the height the panel has — which is what stops a two-client workspace drawing
- * 120px of content above 900px of nothing.
- */
-const CARD_LIMIT = 4;
 
 type Totals = {
   awaiting: number;
@@ -138,100 +132,19 @@ function SyncButton({ client, className }: { client: SupportClient; className?: 
 }
 
 /**
- * One client as a card, for a workspace with a handful of them. The grid is `flex-wrap` +
- * `flex-1` + `cardBasis(cardsPerRow(n))` so two clients each take half the width and a short last
- * row stretches rather than leaving a hole (§129.1).
+ * One client, in the rail: how many are waiting, who they are, how long the worst has waited,
+ * and whether anything is urgent.
+ *
+ * ⚠️ It used to carry three mono figures (Unassigned / Replied / Open) behind `sm:flex`, which
+ * was right when the row spanned the page and wrong the moment it moved into a 340px rail — a
+ * breakpoint asks about the VIEWPORT, and the rail's width does not depend on it. At 1440 they
+ * rendered inside the rail, took ~200px of it, and crushed the client's NAME out of existence
+ * entirely. Those figures are context, not a call to action; the rail shows what is waiting and
+ * the client's own Care has the rest.
+ *
+ * A card variant of this existed too, and is gone: in a 340px rail a card was ~280px of chrome
+ * for four facts, and when the band stretched it each card grew a ~100px hole in its middle.
  */
-function ClientCard({
-  client,
-  summary,
-  loading,
-  basis,
-  onOpen,
-}: {
-  client: SupportClient;
-  summary?: ClientQueueSummary;
-  loading: boolean;
-  basis: string;
-  onOpen: () => void;
-}) {
-  const awaiting = summary?.awaiting ?? 0;
-  const oldest = summary?.oldestAwaitingAt ?? null;
-  const stale = oldest ? isLongWait(oldest) : false;
-  const urgent = summary?.urgent ?? 0;
-
-  return (
-    <li className="group relative flex min-w-[min(100%,260px)] flex-1" style={{ flexBasis: basis }}>
-      <button
-        type="button"
-        onClick={onOpen}
-        data-care-client-open
-        className={cn(
-          // A coloured side stroke squares its own corners — a stroke bending round a radius is
-          // what DESIGN.md rules out, and `straight-side-stroke.test.ts` enforces it.
-          "flex w-full flex-col rounded-[10px] rounded-l-none border border-l-[3px] border-[var(--border-2)] bg-[var(--surface-0)] p-4 text-left transition hover:bg-[var(--surface-1)]",
-          urgent > 0
-            ? "border-l-[var(--danger-500)]"
-            : stale
-              ? "border-l-[var(--warning-500)]"
-              : awaiting > 0
-                ? "border-l-[var(--brand-500)]"
-                : "border-l-[var(--success-500)]",
-        )}
-      >
-        <span className="flex min-w-0 items-start justify-between gap-2">
-          <span className="min-w-0 truncate text-[14px] font-semibold text-[var(--text-1)]" title={client.name}>
-            {client.name}
-          </span>
-          {urgent > 0 && (
-            <span className="shrink-0 rounded-[4px] border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
-              {urgent} urgent
-            </span>
-          )}
-        </span>
-
-        <span
-          className={cn(
-            "mt-2 block font-[family-name:var(--font-display)] text-[32px] leading-none",
-            awaiting > 0 ? "text-[var(--warning-500)]" : "text-[var(--text-4)]",
-          )}
-        >
-          {loading ? "·" : awaiting}
-        </span>
-        <span className="widget-data-label mt-1 block">
-          {loading ? "Loading…" : awaiting > 0 ? "Awaiting reply" : "All replied"}
-        </span>
-
-        {oldest && (
-          <span className={cn("widget-data-label mt-1.5 block", stale && STALE_TEXT)}>
-            Longest wait {formatAge(oldest)}
-          </span>
-        )}
-
-        {/* Proportion, not three more numerals. The key under the bar carries the figures, and
-            `mt-auto` pins it to the foot so every card's bar lines up however tall the row is. */}
-        <span className="mt-auto block pt-3">
-          <SplitBar
-            parts={[
-              { label: "awaiting", n: summary?.awaiting ?? 0, colour: BAR.awaiting },
-              { label: "replied", n: summary?.replied ?? 0, colour: BAR.replied },
-              { label: "unassigned", n: summary?.unassigned ?? 0, colour: BAR.unassigned },
-            ]}
-          />
-        </span>
-      </button>
-
-      {/* Outside the button: nesting one interactive element inside another is invalid markup, and
-          the sync icon was unreachable by keyboard when it sat inside. */}
-      <SyncButton
-        client={client}
-        className="absolute right-2 top-2 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-      />
-    </li>
-  );
-}
-
-/** One client as a dense row, for a workspace past `CARD_LIMIT` where cards would be a wall. */
 function ClientRow({
   client,
   summary,
@@ -251,17 +164,26 @@ function ClientRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-4 border-b border-l-2 border-[var(--border-3)] transition last:border-b-0 hover:bg-[var(--surface-1)]",
+        "group flex items-center border-b border-l-2 border-[var(--border-3)] transition last:border-b-0 hover:bg-[var(--surface-1)]",
         // The one structural signal: a client with someone waiting too long is marked down the
         // left edge, so triage order is legible before you read a single number.
-        stale ? "border-l-[var(--warning-500)]" : "border-l-transparent",
+        urgent > 0
+          ? "border-l-[var(--danger-500)]"
+          : stale
+            ? "border-l-[var(--warning-500)]"
+            : "border-l-transparent",
       )}
     >
-      <button type="button" onClick={onOpen} data-care-client-open className="flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left">
-        <span className="w-12 shrink-0 text-right">
+      <button
+        type="button"
+        onClick={onOpen}
+        data-care-client-open
+        className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="w-9 shrink-0 text-right">
           <span
             className={cn(
-              "block font-[family-name:var(--font-display)] text-[28px] leading-none",
+              "block font-[family-name:var(--font-display)] text-[26px] leading-none",
               awaiting > 0 ? "text-[var(--warning-500)]" : "text-[var(--text-4)]",
             )}
           >
@@ -270,15 +192,15 @@ function ClientRow({
         </span>
 
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-semibold text-[var(--text-1)]">{client.name}</span>
-          <span className="widget-data-label mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="block truncate text-[14px] font-semibold text-[var(--text-1)]" title={client.name}>
+            {client.name}
+          </span>
+          <span className="widget-data-label mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
             <span>{loading ? "Loading…" : awaiting > 0 ? "Awaiting reply" : "All replied"}</span>
             {oldest && (
               <>
                 <span aria-hidden className="text-[var(--text-4)]">·</span>
-                <span className={cn(stale && STALE_TEXT)}>
-                  Longest wait {formatAge(oldest)}
-                </span>
+                <span className={cn(stale && STALE_TEXT)}>{formatAge(oldest)}</span>
               </>
             )}
             {urgent > 0 && (
@@ -289,23 +211,11 @@ function ClientRow({
             )}
           </span>
         </span>
-
-        {/* Context, not a call to action — mono and quiet so the headline figure stays the signal. */}
-        <span className="hidden shrink-0 items-center gap-6 sm:flex">
-          {[
-            { label: "Unassigned", value: summary?.unassigned },
-            { label: "Replied", value: summary?.replied },
-            { label: "Open", value: summary?.open },
-          ].map((s) => (
-            <span key={s.label} className="block text-right">
-              <span className="block font-mono text-[13px] text-[var(--text-2)]">{s.value ?? "—"}</span>
-              <span className="widget-data-label block">{s.label}</span>
-            </span>
-          ))}
-        </span>
       </button>
 
-      <SyncButton client={client} className="mr-3 opacity-0 focus-visible:opacity-100 group-hover:opacity-100" />
+      {/* Outside the button: nesting one interactive element inside another is invalid markup,
+          and the sync icon was unreachable by keyboard when it sat inside. */}
+      <SyncButton client={client} className="mr-2 opacity-0 focus-visible:opacity-100 group-hover:opacity-100" />
     </div>
   );
 }
@@ -314,9 +224,10 @@ function ClientRow({
  * The next people to answer, across every client, worst first.
  *
  * This is what makes a two-client workspace read as a desk rather than a directory, and it is
- * what fills the height the old page left empty. §42.10 put the same list on the cockpit's empty
- * pane, where it could only be seen by someone who had already picked a client and then opened
- * nothing — so almost nobody saw it.
+ * what fills the height the old page left empty — a list that has ended and left some space
+ * below reads as a list that has ended, whereas a card stretched to fill reads as broken. §42.10
+ * put the same list on the cockpit's empty pane, where it could only be seen by someone who had
+ * already picked a client and then opened nothing, so almost nobody saw it.
  *
  * Each row opens that conversation directly. Opening its client instead would land you on a
  * queue sorted newest-first (§42.15), i.e. anywhere but the row you just clicked.
@@ -404,8 +315,6 @@ export function CareHome({
   const ordered = [...clients].sort(byWorst(summaries));
   const totals = sumTotals(clients, summaries);
   const clientsWaiting = clients.filter((c) => (summaries[c.id]?.awaiting ?? 0) > 0).length;
-  const asCards = ordered.length > 0 && ordered.length <= CARD_LIMIT;
-  const basis = cardBasis(cardsPerRow(Math.min(ordered.length, CARD_LIMIT)), 12);
   const worst = totals.worstClient;
   const oldest = oldestQ.data?.items ?? [];
   const byId = new Map(clients.map((c) => [c.id, c]));
@@ -533,41 +442,25 @@ export function CareHome({
             390). Without it, a flex item's automatic minimum size is its content, so the band
             grows into spare room and never collapses; past that the page scrolls. */}
         <div className="flex flex-1 flex-col gap-4 lg:flex-row">
-          <div className="flex flex-col lg:h-full lg:w-[360px] lg:shrink-0">
+          {/* The LIST is what fills, and the CARDS keep their natural height.
+              ⚠️ This is the second shape, and the first one was wrong in a way worth recording.
+              With the client cards in the wide column and the list in a 360px rail, the pairing
+              idiom stretched each card to the row's height and `mt-auto` pinned its bar to the
+              bottom — so every card had ~100px of hole in its middle. A card with a hole in it
+              reads as broken; a list that has ended and left some space below reads as a list
+              that has ended. So the list takes the wide column and absorbs the slack, and the
+              rail then matches the list's height and scrolls inside, so both columns end level
+              and there is no page canvas showing under the shorter one. */}
+          <div className="flex flex-col gap-4 lg:w-[340px] lg:shrink-0">
             <CarePanel
               number="02"
-              title="Needs you first"
-              right={oldest.length ? `${oldest.length} SHOWN` : undefined}
-              className="motion-rise flex h-full flex-col"
+              title="Clients"
+              right={clients.length ? String(clients.length) : undefined}
+              className="motion-rise flex flex-col lg:h-full"
               bodyClassName="min-h-0 flex-1 overflow-y-auto"
               flush
             >
-              <NeedsYouFirst
-                items={oldest}
-                loading={oldestQ.isLoading}
-                onOpen={(it) => {
-                  const c = byId.get(it.clientId);
-                  if (c) onSelectClient(c, it.id);
-                }}
-              />
-            </CarePanel>
-          </div>
-
-          <CarePanel
-            number="03"
-            title="Clients"
-            right={clients.length ? String(clients.length) : undefined}
-            className="motion-rise flex min-w-0 flex-1 flex-col lg:h-0 lg:min-h-full"
-            bodyClassName={asCards ? "flex min-h-0 flex-1 flex-col overflow-y-auto p-3" : "min-h-0 flex-1 overflow-y-auto"}
-            flush={!asCards}
-          >
-          {loading && (
-            <div className="flex flex-wrap gap-3 p-1">
-              {[0, 1].map((i) => (
-                <Skeleton key={i} className="h-[180px] min-w-[min(100%,260px)] flex-1 rounded-[10px]" />
-              ))}
-            </div>
-          )}
+          {loading && <SkeletonRows count={2} className="p-4" />}
 
           {!loading && clients.length === 0 && (
             <CareEmpty
@@ -580,22 +473,7 @@ export function CareHome({
             />
           )}
 
-          {!loading && asCards && (
-            <ul className="flex flex-1 flex-wrap content-stretch gap-3" data-care-client-grid>
-              {ordered.map((c) => (
-                <ClientCard
-                  key={c.id}
-                  client={c}
-                  summary={summaries[c.id]}
-                  loading={summariesQ.isLoading}
-                  basis={basis}
-                  onOpen={() => onSelectClient(c)}
-                />
-              ))}
-            </ul>
-          )}
-
-          {!loading && !asCards &&
+          {!loading &&
             ordered.map((c) => (
               <ClientRow
                 key={c.id}
@@ -603,8 +481,27 @@ export function CareHome({
                 summary={summaries[c.id]}
                 loading={summariesQ.isLoading}
                 onOpen={() => onSelectClient(c)}
-                />
-              ))}
+              />
+            ))}
+          </CarePanel>
+          </div>
+
+          <CarePanel
+            number="03"
+            title="Needs you first"
+            right={oldest.length ? String(oldest.length) : undefined}
+            className="motion-rise flex min-w-0 flex-1 flex-col"
+            bodyClassName="min-h-0 flex-1 overflow-y-auto"
+            flush
+          >
+            <NeedsYouFirst
+              items={oldest}
+              loading={oldestQ.isLoading}
+              onOpen={(it) => {
+                const c = byId.get(it.clientId);
+                if (c) onSelectClient(c, it.id);
+              }}
+            />
           </CarePanel>
         </div>
 

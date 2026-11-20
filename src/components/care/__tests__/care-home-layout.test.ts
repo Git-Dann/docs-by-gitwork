@@ -48,29 +48,50 @@ describe("Care home fills the page", () => {
     expect(band.slice(0, 2000)).not.toMatch(/className="[^"]*flex-1[^"]*min-h-0[^"]*"\s*>\s*<CarePanel/);
   });
 
-  it("the pairing idiom is the right way round", () => {
+  it("the LIST is what fills, and the rail keeps its own content", () => {
     /*
-     * The LEADER is "Needs you first", not "Clients" — the opposite of the obvious reading. The
-     * leader must be the panel whose height is PREDICTABLE: a fixed handful of rows. "Clients" is
-     * two cards today and twenty next year, so if it led, a two-client workspace would collapse
-     * the row and we would be back to the void. As the follower its intrinsic height contributes
-     * nothing (`lg:h-0`) and it then fills (`lg:min-h-full`).
+     * Which element absorbs the slack is the whole design, and the first attempt got it wrong.
+     *
+     * With the client cards in the wide column and the list in the rail, the pairing idiom
+     * stretched each card to the row's height and `mt-auto` pinned its bar to the bottom — so
+     * every card had ~100px of hole in its middle. A card with a hole reads as broken; a list
+     * that has ended and left some space below reads as a list that has ended. So the list takes
+     * the wide column (`flex-1` + a scrolling body) and the rail is a fixed 340px.
+     *
+     * The rail is NOT `self-start`: it takes the row's height and scrolls inside, so both columns
+     * end level (measured: 0px apart at 1440, 1280×620 and 1024) rather than leaving page canvas
+     * showing under the shorter one.
      */
-    expect(SRC).toMatch(/lg:h-full lg:w-\[360px\] lg:shrink-0/);
-    expect(SRC).toContain("lg:h-0 lg:min-h-full");
-    const leader = SRC.indexOf('title="Needs you first"');
-    const follower = SRC.indexOf('title="Clients"');
-    expect(leader).toBeGreaterThan(0);
-    expect(follower).toBeGreaterThan(leader);
-    // `lg:h-0 lg:min-h-full` belongs to the follower, never the leader.
-    expect(SRC.slice(leader, follower)).not.toContain("lg:h-0");
+    expect(SRC).toMatch(/lg:w-\[340px\] lg:shrink-0/);
+    expect(SRC, "the rail must not be self-start — it would leave canvas below it").not.toContain("lg:self-start");
+    const rail = SRC.indexOf('title="Clients"');
+    const list = SRC.indexOf('title="Needs you first"');
+    expect(rail).toBeGreaterThan(0);
+    expect(list).toBeGreaterThan(rail);
+    // `flex-1` belongs to the list column, never to the rail.
+    expect(SRC.slice(rail, list)).not.toMatch(/className="motion-rise flex[^"]*flex-1/);
+    expect(SRC.slice(list)).toMatch(/className="motion-rise flex min-w-0 flex-1 flex-col"/);
+  });
+
+  it("the rail row carries no viewport-breakpointed columns", () => {
+    /*
+     * ⚠️ The row used to carry three mono figures behind `sm:flex`, which was right when it
+     * spanned the page and wrong the moment it moved into a 340px rail — a breakpoint asks about
+     * the VIEWPORT, and the rail's width does not depend on it. At 1440 they rendered inside the
+     * rail, took ~200px of it, and crushed the client's NAME out of existence entirely.
+     */
+    const row = SRC.slice(SRC.indexOf("function ClientRow"), SRC.indexOf("function NeedsYouFirst"));
+    expect(row).not.toMatch(/sm:flex|md:flex|lg:flex|xl:flex/);
+    expect(row, "the client's name is the one thing the rail must always show").toContain("{client.name}");
   });
 
   it("a coloured side stroke squares its own corners", () => {
     // DESIGN.md rules out a stroke bending round a radius; `straight-side-stroke.test.ts`
     // enforces it repo-wide, and this says it at the one place Care introduces one.
-    const card = SRC.slice(SRC.indexOf("function ClientCard"), SRC.indexOf("function ClientRow"));
-    expect(card).toMatch(/rounded-\[10px\] rounded-l-none border border-l-\[3px\]/);
+    // The rail row and the list row both use a 2px left edge on a square corner (the rows are
+    // inside a card, so there is no radius to bend round) — the `border-l-2` form.
+    expect(SRC).toMatch(/border-b border-l-2 border-\[var\(--border-3\)\]/);
+    expect(SRC, "a card with a coloured stroke must square that side").not.toMatch(/border-l-\[3px\](?![^"]*rounded-l-none)/);
   });
 
   it("small stale text does not use --warning-500", () => {
