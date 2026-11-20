@@ -32,9 +32,16 @@ describe("no class claims a font family it does not set", () => {
     }
 
     const offenders = hits.filter((line) => {
-      const [, , ...rest] = line.split(":");
+      const [file, , ...rest] = line.split(":");
       const code = rest.join(":").trimStart();
-      // The documentation of the trap is allowed to quote it.
+      /*
+       * ⚠️ This file names the pattern it forbids, in its own test name and its own failure
+       * message, so it matches itself — which it duly did the moment it was committed, because
+       * `git grep` only searches TRACKED files and it had been untracked when first run. Same
+       * licence as `care-panel.tsx:55`, which documents the trap in prose: the places that
+       * explain the bug are allowed to quote it, and nowhere else is.
+       */
+      if (file === "src/__tests__/tailwind-font-family.test.ts") return false;
       return !code.startsWith("*") && !code.startsWith("//") && !code.startsWith("/*");
     });
 

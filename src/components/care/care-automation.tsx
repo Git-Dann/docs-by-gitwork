@@ -11,6 +11,8 @@ import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
 import Link from "next/link";
 import { CareModal, formatShort } from "./care-shared";
+import { CarePanel } from "./care-panel";
+import { careSectionNumbers } from "@/lib/care-sections";
 import { SourceIcon } from "./care-constants";
 
 // ─── add / edit rule modal ────────────────────────────────────────────────────
@@ -278,26 +280,18 @@ function AgentsView({ clientId, firstNumber = 1 }: { clientId: string; firstNumb
     orchestrator: "bg-[var(--mist)] text-[var(--brand-700)]",
   };
 
-  // Numbers run on from whatever precedes this view, and skip the sections that aren't shown,
-  // so the NN // sequence never has a hole.
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const syncNo = firstNumber + 1;
-  const activityNo = firstNumber + (connections.length > 0 ? 2 : 1);
+  /*
+   * Numbers run on from whatever precedes this view and skip the panes that are not shown, so the
+   * sequence never has a hole. This was already correct, computed inline; it now comes from the
+   * one helper every Care screen uses (`careSectionNumbers`) rather than a fourth local idiom.
+   */
+  const num = careSectionNumbers([true, connections.length > 0, agentLogs.length > 0], firstNumber);
 
   return (
     <div className="space-y-6">
       {/* agent cards */}
-      <section>
-        <div className="app-card mb-4 overflow-hidden p-0">
-          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-              {pad(firstNumber)} {"//"} AGENT PIPELINE
-            </span>
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
-              LIVE
-            </span>
-          </div>
-          <div className="grid gap-4 p-4 sm:grid-cols-3">
+      <CarePanel number={num[0]} title="Agent pipeline" right="LIVE" bodyClassName="grid gap-4 sm:grid-cols-3">
+        <>
           {AGENT_CARDS.map((agent) => {
             const enabled = toggles[agent.key];
             return (
@@ -353,23 +347,12 @@ function AgentsView({ clientId, firstNumber = 1 }: { clientId: string; firstNumb
               </div>
             );
           })}
-          </div>
-        </div>
-      </section>
+        </>
+      </CarePanel>
 
       {/* manual sync */}
       {connections.length > 0 && (
-        <section>
-          <div className="app-card overflow-hidden p-0">
-            {/* widget header */}
-            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-                {pad(syncNo)} {"//"} MANUAL SYNC
-              </span>
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-[var(--text-4)]">
-                {connections.length}
-              </span>
-            </div>
+        <CarePanel number={num[1]} title="Manual sync" right={String(connections.length)} flush>
             {connections.map((conn, idx) => {
               const pending = syncConn.isPending && syncConn.variables === conn.id;
               const sr = syncResults[conn.id];
@@ -443,27 +426,17 @@ function AgentsView({ clientId, firstNumber = 1 }: { clientId: string; firstNumb
                 </div>
               );
             })}
-          </div>
-        </section>
+        </CarePanel>
       )}
 
       {/* agent activity feed */}
-      <section>
-        {agentLogs.length === 0 ? (
-          <p className="py-6 text-center text-sm text-[var(--text-4)]">
-            No agent activity yet — run a sync to get started.
-          </p>
-        ) : (
-          <div className="app-card overflow-hidden p-0">
-            {/* widget header */}
-            <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-              <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-                {pad(activityNo)} {"//"} AGENT ACTIVITY
-              </span>
-              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-emerald-600">
-                LIVE
-              </span>
-            </div>
+      {agentLogs.length === 0 ? (
+        /* A bare grey line on the canvas, not a pane — so it takes no number and leaves no hole. */
+        <p className="py-6 text-center text-sm text-[var(--text-4)]">
+          No agent activity yet — run a sync to get started.
+        </p>
+      ) : (
+        <CarePanel number={num[2]} title="Agent activity" right="LIVE" flush>
             {agentLogs.map((log: AuditLog, idx: number) => {
               const agentName = log.actor.replace("agent:", "");
               const badgeCls = AGENT_BADGE[agentName] ?? "bg-[var(--surface-1)] text-[var(--text-3)]";
@@ -512,9 +485,8 @@ function AgentsView({ clientId, firstNumber = 1 }: { clientId: string; firstNumb
                 </div>
               );
             })}
-          </div>
-        )}
-      </section>
+        </CarePanel>
+      )}
 
       {editingAgent && (
         <EditAgentModal
@@ -553,14 +525,12 @@ export function PortalLinkCard({ clientId, number }: { clientId: string; number:
   const portalClients = portalClientsData?.clients ?? [];
 
   return (
-    <section className="widget-card">
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">{String(number).padStart(2, "0")}</span>{" // PORTAL LINK"}
-        </span>
-        {thisClient?.workspaceClientId && <span className="widget-header__status">LINKED</span>}
-      </div>
-      <div className="widget-body">
+    <CarePanel
+      number={String(number).padStart(2, "0")}
+      title="Portal link"
+      right={thisClient?.workspaceClientId ? "LINKED" : undefined}
+    >
+      <div>
         <p className="mb-3 text-sm text-[var(--text-3)]">
           Link this Care account to a client record in Portal. This surfaces a Care badge on the Portal client card and lets both views stay in sync.
         </p>
@@ -591,7 +561,7 @@ export function PortalLinkCard({ clientId, number }: { clientId: string; number:
           ) : null}
         </div>
       </div>
-    </section>
+    </CarePanel>
   );
 }
 
@@ -614,12 +584,15 @@ export function CareAutomationView({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-6">
-      <section className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">01</span>{" // WORKFLOW RULES"}
-          </span>
-          {canManageSupport ? (
+      {/* ⚠️ The right slot is asymmetric on purpose: a real "Add rule" button for someone who may
+          set Care up, and the plain count for everyone else. `CarePanel` wraps `right` in
+          `widget-header__status`, so the button carries its own styling and sits inside it. */}
+      <CarePanel
+        number="01"
+        title="Workflow rules"
+        flush
+        right={
+          canManageSupport ? (
             <button
               type="button"
               onClick={() => setShowAddRule(true)}
@@ -629,9 +602,10 @@ export function CareAutomationView({ clientId }: { clientId: string }) {
               Add rule
             </button>
           ) : (
-            <span className="widget-header__status">{rules.length} RULES</span>
-          )}
-        </div>
+            `${rules.length} RULES`
+          )
+        }
+      >
         {rulesLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
         {!rulesLoading && rules.length === 0 && (
           <div className="flex items-center justify-between gap-3 px-5 py-4">
@@ -692,7 +666,7 @@ export function CareAutomationView({ clientId }: { clientId: string }) {
             </div>
           </div>
         ))}
-      </section>
+      </CarePanel>
 
       <AgentsView clientId={clientId} firstNumber={2} />
 

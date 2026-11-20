@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowDownIcon,
   ArrowPathIcon,
@@ -45,11 +46,29 @@ import {
 import { hasCourseRequests } from "@/lib/wiki-sections";
 import { ingestOnlyReason, isSupportDesk } from "@/lib/care-mode";
 import { CareEmpty } from "./care-panel";
+import { LoadingState } from "@/components/ui/motion/loading-state";
 import { ConversationDetail } from "./conversation-detail";
-import { ConnectorsView } from "./care-connectors";
+import { CONNECTOR_SECTION_COUNT } from "./care-connectors";
+import { careSectionCount, careSectionNumbers } from "@/lib/care-sections";
 import { HealthBadge } from "./care-shared";
-import { ReportsView } from "./care-reports";
-import { CareAutomationView, PortalLinkCard } from "./care-automation";
+
+/*
+ * The three section views load when their section is opened, not with the cockpit.
+ *
+ * They are mutually exclusive at runtime — all three sit behind the section nav, and the landing
+ * surface is the conversation list — yet every one of them shipped on every cockpit load.
+ * `care-connectors.tsx` alone is ~2,200 lines including two ~795-line modals. Same treatment the
+ * wiki sections got in §140; `CONNECTOR_SECTION_COUNT` above is a plain const, so importing it
+ * statically pulls in nothing.
+ */
+function SectionLoading() {
+  return <LoadingState label="Loading…" />;
+}
+
+const ConnectorsView = dynamic(() => import("./care-connectors").then((m) => m.ConnectorsView), { loading: SectionLoading });
+const ReportsView = dynamic(() => import("./care-reports").then((m) => m.ReportsView), { loading: SectionLoading });
+const CareAutomationView = dynamic(() => import("./care-automation").then((m) => m.CareAutomationView), { loading: SectionLoading });
+const PortalLinkCard = dynamic(() => import("./care-automation").then((m) => m.PortalLinkCard), { loading: SectionLoading });
 import { CARE_SECTION_LABEL, careSectionsFor, type CareSection } from "@/lib/care-links";
 import { ClearBacklogModal } from "./care-clear-backlog";
 
@@ -306,6 +325,19 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
   const showCourseMode = canManageSupport && (hasCourseRequests(client.workspaceClientSlug) || courseOnly);
   // Ingest-only is a general Care setting, so the panel is offered to anyone who may set Care up.
   const showMode = canManageSupport;
+
+  /*
+   * ⚠️ One sequence for the whole screen, from one helper.
+   *
+   * The Portal link used to compute its own number as
+   * `(showMode ? 1 : 0) + (showCourseMode ? 1 : 0) + 2` — arithmetic resting on the assumption
+   * that `ConnectorsView` contributed exactly ONE number. It contributed none (its only numbered
+   * block was switched off right here by `showAgentLogs={false}`), so this screen skipped a
+   * number on every client: `01`, `02`, then connectors, then `04`.
+   */
+  const num = careSectionNumbers([showMode, showCourseMode]);
+  const connectorsFirst = careSectionCount([showMode, showCourseMode]) + 1;
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
       <div className="mx-auto max-w-3xl space-y-4">
@@ -315,7 +347,7 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
               on the MODE panel reads as "dismiss this panel" rather than "leave settings". */}
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">01</span>{" // MODE"}
+              <span className="widget-header__label--number">{num[0]}</span>{" // MODE"}
             </span>
             <span className="widget-header__status">
               {courseOnly ? "COURSE REQUESTS ONLY" : ingestOnly ? "INGEST ONLY" : "SUPPORT DESK"}
@@ -338,7 +370,7 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">{showMode ? "02" : "01"}</span>{" // COURSE REQUESTS"}
+              <span className="widget-header__label--number">{num[1]}</span>{" // COURSE REQUESTS"}
             </span>
             <span className="widget-header__status">{courseOnly ? "ON" : "OFF"}</span>
           </div>
@@ -354,10 +386,10 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
           </div>
         </section>
         )}
-        <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
+        <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} firstNumber={connectorsFirst} />
         {/* The Portal link lived in the legacy dashboard's Settings panel; it is per-client setup,
-            so it sits here with the channels. Numbered after the connectors' own panels. */}
-        <PortalLinkCard clientId={client.id} number={(showMode ? 1 : 0) + (showCourseMode ? 1 : 0) + 2} />
+            so it sits here with the channels, carrying the sequence on after them. */}
+        <PortalLinkCard clientId={client.id} number={connectorsFirst + CONNECTOR_SECTION_COUNT} />
       </div>
     </div>
   );
