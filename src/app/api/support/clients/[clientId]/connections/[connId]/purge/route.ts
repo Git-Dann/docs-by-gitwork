@@ -1,3 +1,8 @@
+/*
+ * No in-app caller, and destructive: it deletes a connection's conversations. Kept as an API
+ * surface (see the note on `conversations/[convId]/assign`), not offered anywhere in Care — the
+ * reversible control an operator wants is "Clear the backlog", which closes rather than deletes.
+ */
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";

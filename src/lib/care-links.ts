@@ -8,12 +8,11 @@
  */
 
 /** The sections of one client's Care. `conversations` is the queue (index + record). */
-export const CARE_SECTIONS = ["conversations", "tickets", "reports", "automation", "settings"] as const;
+export const CARE_SECTIONS = ["conversations", "reports", "automation", "settings"] as const;
 export type CareSection = (typeof CARE_SECTIONS)[number];
 
 export const CARE_SECTION_LABEL: Record<CareSection, string> = {
   conversations: "Conversations",
-  tickets: "Tickets",
   reports: "Reports",
   automation: "Automation",
   settings: "Channels & settings",
@@ -26,7 +25,7 @@ export function isCareSection(value: string | null | undefined): value is CareSe
 /**
  * The sections an ingest-only client has.
  *
- * Their mail is harvested, never answered, so there is no queue, no ticket, no monthly report and
+ * Their mail is harvested, never answered, so there is no queue, no monthly report and
  * no workflow rule to look at — only the connector that keeps the mail flowing. Offering the other
  * four would be offering four empty screens and inviting someone to triage a queue that is not
  * theirs to triage.
@@ -55,11 +54,15 @@ export function careReportHref(reportId: string): string {
  * `?panel=connectors|settings` (the panel wins over the tab — that is how the old page behaved).
  * Its "settings" panel held the AI agents, workflow rules and the Portal link; the rules and
  * agents are Care's Automation section now, so `panel=settings` goes there.
+ *
+ * ⚠️ `tab=tickets` is deliberately NOT listed: the Tickets tab was retired in Nov 2026 (the
+ * cockpit never wrote a ticket, and the Kanban was a view of rows nothing created). It falls
+ * through to null like any unknown tab, so an old Slack link lands on Conversations rather than
+ * a section that no longer exists.
  */
 export function legacySupportSection(params: { tab?: string | null; panel?: string | null }): CareSection | null {
   if (params.panel === "connectors") return "settings";
   if (params.panel === "settings") return "automation";
-  if (params.tab === "tickets") return "tickets";
   if (params.tab === "reports") return "reports";
   if (params.tab === "inbox") return "conversations";
   return null;

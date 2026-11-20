@@ -10,7 +10,8 @@ import { useCreateWorkflowRule, useDeleteWorkflowRule, useSeedDefaultRules, useS
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
 import Link from "next/link";
-import { CareModal, SourceIcon, formatShort } from "./care-shared";
+import { CareModal, formatShort } from "./care-shared";
+import { SourceIcon } from "./care-constants";
 
 // ─── add / edit rule modal ────────────────────────────────────────────────────
 

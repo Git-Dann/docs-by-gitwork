@@ -16,7 +16,7 @@ describe("careHref", () => {
   it("names the client, and the section unless it is the default", () => {
     expect(careHref({ clientId: "c1" })).toBe("/app/care?client=c1");
     expect(careHref({ clientId: "c1", section: "conversations" })).toBe("/app/care?client=c1");
-    expect(careHref({ clientId: "c1", section: "tickets" })).toBe("/app/care?client=c1&section=tickets");
+    expect(careHref({ clientId: "c1", section: "reports" })).toBe("/app/care?client=c1&section=reports");
   });
   it("encodes report ids", () => {
     expect(careReportHref("a/b")).toBe("/app/care/reports/a%2Fb");
@@ -24,6 +24,8 @@ describe("careHref", () => {
   it("only accepts real sections", () => {
     expect(isCareSection("automation")).toBe(true);
     expect(isCareSection("inbox")).toBe(false);
+    // Retired Nov 2026. It must not resolve, or a stale link would open a section that is gone.
+    expect(isCareSection("tickets")).toBe(false);
     expect(isCareSection(null)).toBe(false);
   });
 });
@@ -31,7 +33,9 @@ describe("careHref", () => {
 describe("legacy /app/support links land on the matching Care place", () => {
   it.each([
     [{ tab: "inbox" }, "conversations"],
-    [{ tab: "tickets" }, "tickets"],
+    // Tickets was retired, so its tab falls through like any unknown one and lands on
+    // Conversations rather than on a section that no longer exists.
+    [{ tab: "tickets" }, null],
     [{ tab: "reports" }, "reports"],
     [{ panel: "connectors" }, "settings"],
     [{ panel: "settings" }, "automation"],
@@ -53,6 +57,10 @@ describe("legacy /app/support links land on the matching Care place", () => {
     );
     expect(legacySupportRedirect({ client: "c1", panel: "connectors" })).toBe("/app/care?client=c1&section=settings");
     expect(legacySupportRedirect({ client: "c1", tab: "inbox" })).toBe("/app/care?client=c1");
+  });
+
+  it("an old tickets link lands on the client's conversations, not a dead section", () => {
+    expect(legacySupportRedirect({ client: "c1", tab: "tickets" })).toBe("/app/care?client=c1");
   });
 
   it("keeps repeated parameters", () => {

@@ -8,8 +8,8 @@ import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/motion/spinner";
 import type { AnalyticsReportMetric, SupportClient, SupportReport, SupportReportPayload } from "@/types/support";
-import { useCreateSupportReport, useDeleteSupportReport, useGenerateReportNarrative, useGenerateSupportReportDoc, useSupportConnections, useSupportReports, useTicketPerformance, useUpdateSupportReport } from "@/hooks/use-support";
-import { getTicketStats } from "@/lib/api";
+import { useCreateSupportReport, useDeleteSupportReport, useGenerateReportNarrative, useGenerateSupportReportDoc, useSupportConnections, useSupportReports, useCarePerformance, useUpdateSupportReport } from "@/hooks/use-support";
+import { getCareStats } from "@/lib/api";
 import { usePermissions } from "@/hooks/use-permissions";
 import { PerformanceStrip } from "./care-performance-strip";
 import Link from "next/link";
@@ -156,7 +156,7 @@ function ReportBuilder({
   }
 
   const generateNarrative = useGenerateReportNarrative(clientId);
-  const { data: reportPerf } = useTicketPerformance(clientId, p.periodStart, p.periodEnd);
+  const { data: reportPerf } = useCarePerformance(clientId, p.periodStart, p.periodEnd);
   const [narrativeMsg, setNarrativeMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   async function handleWriteNarrative() {
@@ -263,7 +263,7 @@ function ReportBuilder({
     try {
       const month = p.periodStart.slice(0, 7);
       const [statsRes, analyticsRes] = await Promise.allSettled([
-        getTicketStats(clientId, p.periodStart, p.periodEnd),
+        getCareStats(clientId, p.periodStart, p.periodEnd),
         analyticsConn
           ? fetch(`/api/support/clients/${clientId}/analytics?month=${month}`).then((r) => r.json() as Promise<{ data?: { metrics?: AnalyticsReportMetric[] }; error?: string }>)
           : Promise.resolve(null),

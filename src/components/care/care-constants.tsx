@@ -18,10 +18,19 @@ import type {
 } from "@/types/support";
 import type { ConversationListParams } from "@/lib/api";
 
+/**
+ * The one Care source icon.
+ *
+ * ⚠️ `imap` used to be missing here and fell through to the default bolt — so every Fellas row,
+ * whose mailbox is connected over IMAP, showed a lightning bolt where it meant an envelope. The
+ * bug survived because a SECOND `SourceIcon` lived in `care-shared.tsx` that DID handle `imap`,
+ * so whichever screen you looked at decided whether the icon was right. There is one now.
+ */
 export function SourceIcon({ source, className }: { source: SupportSource; className?: string }) {
   const cls = cn("h-4 w-4", className);
   switch (source) {
     case "gmail":
+    case "imap":
       return <EnvelopeIcon className={cls} />;
     case "reddit":
     case "instagram":
@@ -63,13 +72,6 @@ export const STATUS_LABEL: Record<ConversationStatus, string> = {
   ignored: "Ignored",
 };
 
-export const STATUS_TONE: Record<ConversationStatus, string> = {
-  new: "bg-[var(--brand-50)] text-[var(--brand-700)] border border-[var(--brand-200)]",
-  open: "bg-amber-50 text-amber-700 border border-amber-200",
-  snoozed: "bg-[var(--surface-2)] text-[var(--text-3)] border border-[var(--border-2)]",
-  closed: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  ignored: "bg-[var(--surface-1)] text-[var(--text-4)] border border-[var(--border-2)]",
-};
 
 export const PRIORITY_LABEL: Record<ConversationPriority, string> = {
   urgent: "Urgent",
@@ -78,27 +80,8 @@ export const PRIORITY_LABEL: Record<ConversationPriority, string> = {
   low: "Low",
 };
 
-export const PRIORITY_TONE: Record<ConversationPriority, string> = {
-  urgent: "bg-red-50 text-red-700 border border-red-200",
-  high: "bg-amber-50 text-amber-700 border border-amber-200",
-  // normal vs low were both flat grey and read as identical — give normal a slate tint + border
-  // so the four priorities land as a visible scale.
-  normal: "bg-[var(--surface-1)] text-[var(--text-3)] border border-[var(--border-2)]",
-  low: "bg-[var(--surface-1)] text-[var(--text-4)] border border-[var(--border-2)]",
-};
 
-export const PRIORITY_DOT: Record<ConversationPriority, string> = {
-  urgent: "bg-red-500",
-  high: "bg-amber-500",
-  normal: "bg-[var(--text-4)]",
-  low: "bg-[var(--border-1)]",
-};
 
-export const SENTIMENT_DOT: Record<Conversation["sentiment"], string> = {
-  positive: "bg-emerald-500",
-  neutral: "bg-[var(--text-4)]",
-  negative: "bg-red-500",
-};
 
 // ─── Reply state ──────────────────────────────────────────────────────────────
 // Derived server-side (src/server/support-reply-state.ts) — the UI only presents it.

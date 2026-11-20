@@ -26,7 +26,6 @@ export const NOTIFICATION_EVENTS = [
   "study.report_ready",
   // Care
   "care.ticket_created",
-  "care.ticket_escalated",
   // Docs
   "docs.viewed_by_client",
   "docs.signed",
@@ -92,7 +91,6 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   "pulse.monitor_drift": ["inApp", "push", "email"],
   "study.report_ready": ["inApp", "email"],
   "care.ticket_created": ["inApp", "push"],
-  "care.ticket_escalated": ["inApp", "push", "email"],
   "docs.viewed_by_client": ["inApp"],
   "docs.signed": ["inApp", "email"],
   "docs.accepted": ["inApp", "push"],

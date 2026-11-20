@@ -31,7 +31,6 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   "pulse.monitor_drift": { icon: SignalIcon, label: "Pulse" },
   "study.report_ready": { icon: BeakerIcon, label: "Study" },
   "care.ticket_created": { icon: LifebuoyIcon, label: "Care" },
-  "care.ticket_escalated": { icon: ExclamationTriangleIcon, label: "Care" },
   "docs.viewed_by_client": { icon: EyeIcon, label: "Docs" },
   "docs.signed": { icon: DocumentCheckIcon, label: "Docs" },
   "docs.accepted": { icon: CheckBadgeIcon, label: "Docs" },

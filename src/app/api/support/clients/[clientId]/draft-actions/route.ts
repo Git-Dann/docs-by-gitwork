@@ -1,3 +1,8 @@
+/*
+ * No in-app caller. `DraftSupportAction` rows are written by `generateDraftReply`
+ * (`care-agents/draft-agent.ts`), which nothing calls yet — the live "AI draft" button
+ * reimplements drafting inline. Kept as an API surface until that is wired up.
+ */
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { listDraftActions, createDraftAction } from "@/server/support";

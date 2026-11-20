@@ -17,12 +17,10 @@ import type {
   ConversationViewCounts,
   ClientQueueSummary,
   OldestAwaitingItem,
-  DraftAction,
   Message,
   SupportClient,
   SupportReport,
   SupportReportPayload,
-  Ticket,
   WorkflowRule,
 } from "@/types/support";
 import type {
@@ -2071,17 +2069,6 @@ export async function triageConversation(
   });
 }
 
-export async function assignConversation(
-  clientId: string,
-  convId: string,
-  assigneeId: string | null,
-): Promise<{ conversation: Conversation }> {
-  return apiFetch(`/api/support/clients/${clientId}/conversations/${convId}/assign`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ assigneeId }),
-  });
-}
 
 export async function snoozeConversation(
   clientId: string,
@@ -2198,43 +2185,18 @@ export async function sendSupportMessage(
   });
 }
 
-export async function listSupportTickets(clientId: string): Promise<{ tickets: Ticket[]; nextCursor: string | null }> {
-  return apiFetch(`/api/support/clients/${clientId}/tickets`);
-}
 
-export async function updateSupportTicket(
-  clientId: string,
-  ticketId: string,
-  data: Partial<Ticket>,
-): Promise<{ ticket: Ticket }> {
-  return apiFetch(`/api/support/clients/${clientId}/tickets/${ticketId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-}
 
-export async function deleteSupportTicket(
-  clientId: string,
-  ticketId: string,
-): Promise<{ ok: boolean }> {
-  return apiFetch(`/api/support/clients/${clientId}/tickets/${ticketId}`, {
-    method: "DELETE",
-  });
-}
 
-export async function batchUpdateSupportTickets(
-  clientId: string,
-  ticketIds: string[],
-  data: Partial<{ status: string; priority: string; assignedTo: string }>,
-): Promise<{ updated: number }> {
-  return apiFetch(`/api/support/clients/${clientId}/tickets/batch`, {
-    method: "PATCH",
-    body: JSON.stringify({ ticketIds, data }),
-  });
-}
 
-export async function getTicketStats(
+/**
+ * The period's conversation mix — how many, by issue type and priority.
+ *
+ * ⚠️ Named for tickets until Nov 2026, and it never read one: `getTicketStatsForPeriod`
+ * counts `SupportConversation` rows. The `tickets/stats` route it used to call was a
+ * byte-identical copy of `conversations/stats`, which is the one that survives.
+ */
+export async function getCareStats(
   clientId: string,
   start: string,
   end: string,
@@ -2250,7 +2212,7 @@ export async function getTicketStats(
   prioMedium: number;
   prioLow: number;
 } }> {
-  return apiFetch(`/api/support/clients/${clientId}/tickets/stats?start=${start}&end=${end}`);
+  return apiFetch(`/api/support/clients/${clientId}/conversations/stats?start=${start}&end=${end}`);
 }
 
 export async function getClientHealthScore(
@@ -2259,12 +2221,13 @@ export async function getClientHealthScore(
   return apiFetch(`/api/support/clients/${clientId}/health`);
 }
 
-export async function getTicketPerformance(
+/** First-response time, resolution rate, SLA and CSAT over a period — all from conversations. */
+export async function getCarePerformance(
   clientId: string,
   start: string,
   end: string,
 ): Promise<{ metrics: import("@/types/support").SupportPerformanceMetrics }> {
-  return apiFetch(`/api/support/clients/${clientId}/tickets/performance?start=${start}&end=${end}`);
+  return apiFetch(`/api/support/clients/${clientId}/conversations/performance?start=${start}&end=${end}`);
 }
 
 export async function listSupportConnections(
@@ -2316,14 +2279,6 @@ export async function deleteSupportConnection(
   });
 }
 
-export async function purgeConnectionConversations(
-  clientId: string,
-  connId: string,
-): Promise<{ deleted: number }> {
-  return apiFetch(`/api/support/clients/${clientId}/connections/${connId}/purge`, {
-    method: "DELETE",
-  });
-}
 
 export async function syncSupportConnection(
   clientId: string,
@@ -2345,23 +2300,7 @@ export async function generateAiDraft(
   });
 }
 
-export async function listSupportDraftActions(
-  clientId: string,
-): Promise<{ draftActions: DraftAction[] }> {
-  return apiFetch(`/api/support/clients/${clientId}/draft-actions`);
-}
 
-export async function updateSupportDraftAction(
-  clientId: string,
-  draftId: string,
-  data: Partial<DraftAction>,
-): Promise<{ draftAction: DraftAction }> {
-  return apiFetch(`/api/support/clients/${clientId}/draft-actions/${draftId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-}
 
 export async function listSupportWorkflowRules(
   clientId: string,

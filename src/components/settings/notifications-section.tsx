@@ -54,11 +54,6 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         label: "New ticket",
         description: "A new support ticket landed in your queue.",
       },
-      {
-        id: "care.ticket_escalated",
-        label: "Ticket escalated",
-        description: "A workflow rule or manual escalation flagged a ticket.",
-      },
     ],
   },
   {

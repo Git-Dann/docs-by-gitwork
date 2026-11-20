@@ -3426,9 +3426,17 @@ enum ConversationPriority {
 }
 
 // NOTE: SupportTicketStatus/SupportTicketPriority/DraftAction* enums below are
-// retained for the now-dormant SupportTicket/DraftSupportAction tables. The Care
-// cockpit no longer writes them, but they MUST stay (dropping an enum value would
-// make `prisma db push` skip the whole sync — see CLAUDE.md PR #189).
+// retained for the dormant SupportTicket/DraftSupportAction tables.
+//
+// Nothing in Care writes either. The Tickets tab was retired in Nov 2026 — it was a view of
+// rows the cockpit never created, and the two metric routes under `tickets/` read conversations
+// — so the tables keep whatever an integration POSTed and nothing else. The write routes under
+// `/api/support/clients/[clientId]/tickets` are still live for exactly that reason.
+//
+// They MUST stay: dropping a table or an enum value is a potentially data-losing change, and
+// the guarded `prisma db push` then skips the WHOLE sync, additive parts included — so one
+// deletion here would silently stop every later migration reaching production
+// (CLAUDE.md §2, PR #189).
 enum SupportTicketStatus {
   OPEN
   IN_PROGRESS

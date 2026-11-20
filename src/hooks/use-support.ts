@@ -10,13 +10,10 @@ import {
   createSupportWorkflowRule,
   updateSupportWorkflowRule,
   deleteSupportConnection,
-  purgeConnectionConversations,
   deleteSupportReport,
-  deleteSupportTicket,
   deleteSupportWorkflowRule,
   generateAiDraft,
   generateSupportReportDoc,
-  getSupportClient,
   getSupportReport,
   listSupportAuditLogs,
   listSupportClients,
@@ -27,12 +24,10 @@ import {
   closeConversationsOlderThan,
   getClientQueueSummaries,
   getOldestAwaiting,
-  listSupportDraftActions,
   listSupportMembers,
   listSupportMessages,
   listSupportReports,
-  listSupportTickets,
-  getTicketPerformance,
+  getCarePerformance,
   getClientHealthScore,
   listSupportWorkflowRules,
   seedSupportDefaultRules,
@@ -41,10 +36,7 @@ import {
   updateSupportClient,
   updateSupportConnection,
   updateSupportConversation,
-  updateSupportDraftAction,
   updateSupportReport,
-  updateSupportTicket,
-  batchUpdateSupportTickets,
   searchConversationsSemantic,
   generateReportNarrative,
   triageConversation,
@@ -58,7 +50,7 @@ import {
   type ConversationListParams,
 } from "@/lib/api";
 import type { SupportReport, SupportReportPayload } from "@/types/support";
-import type { SupportClient, Conversation, DraftAction, Ticket, WorkflowRule, Connection } from "@/types/support";
+import type { SupportClient, Conversation, WorkflowRule, Connection } from "@/types/support";
 
 type ConversationsCache = { conversations: Conversation[]; nextCursor: string | null };
 
@@ -72,14 +64,6 @@ export function useSupportClients() {
   });
 }
 
-export function useSupportClient(clientId: string | null) {
-  return useQuery({
-    queryKey: ["support", "client", clientId],
-    queryFn: () => getSupportClient(clientId as string),
-    enabled: Boolean(clientId),
-    staleTime: 1000 * 30,
-  });
-}
 
 export function useCreateSupportClient() {
   const qc = useQueryClient();
@@ -104,14 +88,6 @@ export function useUpdateSupportClient(clientId: string) {
 
 // ─── Conversations ────────────────────────────────────────────────────────────
 
-export function useSupportConversations(clientId: string | null, params?: ConversationListParams) {
-  return useQuery({
-    queryKey: ["support", "conversations", clientId, params ?? null],
-    queryFn: () => listSupportConversations(clientId as string, params),
-    enabled: Boolean(clientId),
-    staleTime: 1000 * 15,
-  });
-}
 
 /**
  * The cockpit's conversation list — one page (50) at a time, with "Load more".
@@ -218,16 +194,6 @@ export function useSemanticSearch(clientId: string | null) {
   });
 }
 
-export function useUpdateConversation(clientId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ convId, data }: { convId: string; data: Partial<Conversation> }) =>
-      updateSupportConversation(clientId as string, convId, data),
-    onSuccess: () => {
-      invalidateConversationQueries(qc, clientId);
-    },
-  });
-}
 
 // ─── Triage (the conversation is the unit of triage; optimistic for Front-like feel) ──
 //
@@ -494,17 +460,6 @@ export function useSendMessage(clientId: string | null, convId: string | null) {
   });
 }
 
-// ─── Tickets ──────────────────────────────────────────────────────────────────
-
-export function useSupportTickets(clientId: string | null) {
-  return useQuery({
-    queryKey: ["support", "tickets", clientId],
-    queryFn: () => listSupportTickets(clientId as string),
-    enabled: Boolean(clientId),
-    staleTime: 1000 * 15,
-  });
-}
-
 export function useClientHealth(clientId: string | null) {
   return useQuery({
     queryKey: ["support", "client-health", clientId],
@@ -514,55 +469,26 @@ export function useClientHealth(clientId: string | null) {
   });
 }
 
-export function useTicketPerformance(
+/**
+ * First-response time, resolution rate, SLA and CSAT over a period.
+ *
+ * ⚠️ Called `useTicketPerformance` until Nov 2026, which was never true:
+ * `getPerformanceMetricsForPeriod` touches `SupportTicket` nowhere. That misleading name is
+ * why the dead-route sweep nearly deleted the strip along with the Tickets tab.
+ */
+export function useCarePerformance(
   clientId: string | null,
   start: string,
   end: string,
 ) {
   return useQuery({
-    queryKey: ["support", "ticket-performance", clientId, start, end],
-    queryFn: () => getTicketPerformance(clientId as string, start, end),
+    queryKey: ["support", "care-performance", clientId, start, end],
+    queryFn: () => getCarePerformance(clientId as string, start, end),
     enabled: Boolean(clientId && start && end),
     staleTime: 1000 * 60,
   });
 }
 
-export function useUpdateTicket(clientId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ticketId, data }: { ticketId: string; data: Partial<Ticket> }) =>
-      updateSupportTicket(clientId as string, ticketId, data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "tickets", clientId] });
-    },
-  });
-}
-
-export function useDeleteTicket(clientId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (ticketId: string) => deleteSupportTicket(clientId as string, ticketId),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "tickets", clientId] });
-    },
-  });
-}
-
-export function useBatchUpdateTickets(clientId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      ticketIds,
-      data,
-    }: {
-      ticketIds: string[];
-      data: Partial<{ status: string; priority: string; assignedTo: string }>;
-    }) => batchUpdateSupportTickets(clientId as string, ticketIds, data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "tickets", clientId] });
-    },
-  });
-}
 
 // ─── Connections ──────────────────────────────────────────────────────────────
 
@@ -628,15 +554,6 @@ export function useGenerateReportNarrative(clientId: string | null) {
   });
 }
 
-export function usePurgeConversations(clientId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (connId: string) => purgeConnectionConversations(clientId as string, connId),
-    onSuccess: () => {
-      invalidateConversationQueries(qc, clientId);
-    },
-  });
-}
 
 export function useSyncConnection(clientId: string | null) {
   const qc = useQueryClient();
@@ -654,25 +571,7 @@ export function useSyncConnection(clientId: string | null) {
 
 // ─── Draft Actions ────────────────────────────────────────────────────────────
 
-export function useSupportDraftActions(clientId: string | null) {
-  return useQuery({
-    queryKey: ["support", "drafts", clientId],
-    queryFn: () => listSupportDraftActions(clientId as string),
-    enabled: Boolean(clientId),
-    staleTime: 1000 * 15,
-  });
-}
 
-export function useUpdateDraftAction(clientId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ draftId, data }: { draftId: string; data: Partial<DraftAction> }) =>
-      updateSupportDraftAction(clientId as string, draftId, data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["support", "drafts", clientId] });
-    },
-  });
-}
 
 // ─── Workflow Rules ───────────────────────────────────────────────────────────
 

@@ -10,7 +10,8 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { useCreateSupportConnection, useDeleteConnection, useSupportAuditLogs, useSupportConnections, useSyncConnection, useUpdateConnection } from "@/hooks/use-support";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Skeleton } from "@/components/ui/motion/skeleton";
-import { ANALYTICS_ADAPTERS, CareModal, IMAP_PRESETS, LIVE_SOURCES, SOURCE_LABEL, SOURCE_TAGLINE, SourceIcon, formatShort } from "./care-shared";
+import { ANALYTICS_ADAPTERS, CareModal, IMAP_PRESETS, LIVE_SOURCES, SOURCE_TAGLINE, formatShort } from "./care-shared";
+import { SOURCE_LABEL, SourceIcon } from "./care-constants";
 
 // ─── add connector modal ──────────────────────────────────────────────────────
 

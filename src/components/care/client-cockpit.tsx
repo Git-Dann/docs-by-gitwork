@@ -48,7 +48,6 @@ import { CareEmpty } from "./care-panel";
 import { ConversationDetail } from "./conversation-detail";
 import { ConnectorsView } from "./care-connectors";
 import { HealthBadge } from "./care-shared";
-import { TicketsTableView } from "./care-tickets";
 import { ReportsView } from "./care-reports";
 import { CareAutomationView, PortalLinkCard } from "./care-automation";
 import { CARE_SECTION_LABEL, careSectionsFor, type CareSection } from "@/lib/care-links";
@@ -434,7 +433,7 @@ export function ClientCockpit({
   const [sortOverride, setSortOverride] = useState<SortKey | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   // Which part of this client's Care is showing. Everything the legacy /app/support dashboard
-  // owned (tickets, monthly reports, rules + agents, channels) is a section here now.
+  // owned (monthly reports, rules + agents, channels) is a section here now.
   // An ingest-only client has one section: the connector that keeps its mail flowing. Anything
   // that asks for another — a stale deep link, a remembered tab — lands on Settings rather than
   // on an empty queue.
@@ -765,11 +764,10 @@ export function ClientCockpit({
 
       {mode === "settings" ? (
         <CareSettingsPanel client={client} />
-      ) : mode === "tickets" || mode === "reports" || mode === "automation" ? (
+      ) : mode === "reports" || mode === "automation" ? (
         // pb-20 clears the fixed 48px "On Your Desk" dock, as the legacy dashboard did.
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-20 pt-5 sm:px-6">
           <div className="mx-auto max-w-6xl">
-            {mode === "tickets" && <TicketsTableView clientId={client.id} />}
             {mode === "reports" && <ReportsView client={client} />}
             {mode === "automation" && <CareAutomationView clientId={client.id} />}
           </div>
