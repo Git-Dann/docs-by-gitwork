@@ -842,18 +842,16 @@ export function WikiDashboard({
         );
       }
       case "course-requests": {
-        const reqs = wiki.courseRequests;
-        const open = reqs.filter((r) => r.status === "NEW").length;
+        const counts = wiki.courseRequestCounts;
         return (
           <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-            <Metric value={String(open)} label="New" />
-            <Metric value={String(reqs.length)} label="Total" />
+            <Metric value={String(counts.NEW)} label="New" />
+            <Metric value={String(counts.total)} label="Total" />
           </div>
         );
       }
       case "golf-data": {
-        const reqs = wiki.courseRequests;
-        const added = reqs.filter((r) => r.status === "ADDED").length;
+        const added = wiki.courseRequestCounts.ADDED;
         return (
           <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <Metric value={String(added)} label="Live courses" />

@@ -101,6 +101,9 @@ export interface ChangelogEntryRecord {
   approvedByName: string | null;
 }
 
+export { countCourseRequests, type CourseRequestCounts } from "@/lib/course-request-counts";
+import { countCourseRequests, type CourseRequestCounts } from "@/lib/course-request-counts";
+
 export interface CourseRequestRecord {
   id: string;
   courseName: string;
@@ -382,6 +385,10 @@ export interface WikiDTO {
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   courseRequests: CourseRequestRecord[];
+  /** How many course requests are in each status. Always filled, including when the list is
+   *  left out (`getWikiBySlug(..., { courseRequests: false })`): Wedge has 5,000+ requests,
+   *  which made every wiki page a 2 MB download, so the app loads the list on its own. */
+  courseRequestCounts: CourseRequestCounts;
   /** The scheduled Big Wedge course-request feed's state (src/server/wedge-course-feed.ts).
    *  Null when it has never run — and ALWAYS null on a public read: it is our plumbing,
    *  not the client's business, and its errors name our own configuration. */
@@ -1277,6 +1284,7 @@ async function buildDTO(
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeCourseRequest),
+    courseRequestCounts: countCourseRequests(wiki.courseRequests ?? []),
     courseFeed: parseFeedStatus(wiki.courseFeedStatus),
     dashboardLayout: readDefaultLayout(wiki.dashboardLayout),
     intakeItems: (wiki.intakeItems ?? [])
@@ -1416,7 +1424,25 @@ const PAGE_TYPE_TO_SECTION: Partial<Record<WikiPageType, string>> = {
  * Fetch or auto-create the wiki for a client (by clientId, not slug).
  * Authenticated — no token check.
  */
-export async function getOrCreateWiki(clientId: string): Promise<WikiDTO> {
+export async function getOrCreateWiki(clientId: string, opts: { courseRequests?: boolean } = {}): Promise<WikiDTO> {
+  if (opts.courseRequests === false) {
+    const lite = await prisma.clientWiki.findUnique({
+      where: { clientId },
+      include: { ...WIKI_INCLUDE, courseRequests: false },
+    });
+    if (lite) {
+      const [dto, grouped] = await Promise.all([
+        buildDTO(lite, { includeUsers: true }),
+        prisma.clientCourseRequest.groupBy({ by: ["status"], where: { wikiId: lite.id }, _count: { _all: true } }),
+      ]);
+      const counts = countCourseRequests([]);
+      for (const g of grouped) {
+        if (g.status in counts) counts[g.status as Exclude<keyof CourseRequestCounts, "total">] = g._count._all;
+        counts.total += g._count._all;
+      }
+      return { ...dto, courseRequestCounts: counts };
+    }
+  }
   const existing = await prisma.clientWiki.findUnique({
     where: { clientId },
     include: WIKI_INCLUDE,
@@ -1434,13 +1460,23 @@ export async function getOrCreateWiki(clientId: string): Promise<WikiDTO> {
 export async function getWikiBySlug(
   slug: string,
   workspaceId: string,
+  opts: { courseRequests?: boolean } = {},
 ): Promise<WikiDTO | null> {
   const client = await prisma.workspaceClient.findUnique({
     where: { workspaceId_slug: { workspaceId, slug } },
     select: { id: true },
   });
   if (!client) return null;
-  return getOrCreateWiki(client.id);
+  return getOrCreateWiki(client.id, opts);
+}
+
+/** Every course request on a client's wiki, newest first: the Course Requests section's list. */
+export async function listAllCourseRequests(clientId: string): Promise<CourseRequestRecord[]> {
+  const rows = await prisma.clientCourseRequest.findMany({
+    where: { wiki: { clientId } },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(serializeCourseRequest);
 }
 
 /** Upsert a wiki page (one per type per wiki). Auto-creates the wiki if absent. */
@@ -1749,6 +1785,26 @@ export async function updateCourseRequest(
     },
   });
   return serializeCourseRequest(req);
+}
+
+/**
+ * Set many requests' status in one write ("Copy & mark sent" on a whole batch). Scoped to the
+ * client's own wiki: ids from another client are ignored. Returns how many changed.
+ */
+export async function setCourseRequestsStatus(clientId: string, ids: string[], status: CourseRequestStatus): Promise<number> {
+  if (!ids.length) return 0;
+  const res = await prisma.clientCourseRequest.updateMany({
+    where: { id: { in: ids }, wiki: { clientId } },
+    data: { status, ...(status === "SENT" ? { sentAt: new Date() } : {}) },
+  });
+  return res.count;
+}
+
+/** Delete many requests in one write, scoped to the client's own wiki. */
+export async function deleteCourseRequests(clientId: string, ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const res = await prisma.clientCourseRequest.deleteMany({ where: { id: { in: ids }, wiki: { clientId } } });
+  return res.count;
 }
 
 /** Delete a course request (by id). */

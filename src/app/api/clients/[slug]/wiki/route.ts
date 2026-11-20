@@ -15,7 +15,9 @@ export async function GET(
   try {
     const { slug } = await params;
     const workspaceId = await workspaceIdForRequest(req);
-    const wiki = await getWikiBySlug(slug, workspaceId);
+    // `?courseRequests=0`: the app loads that list on its own (it's 5,000+ rows for Wedge).
+    const courseRequests = req.nextUrl.searchParams.get("courseRequests") !== "0";
+    const wiki = await getWikiBySlug(slug, workspaceId, { courseRequests });
     if (!wiki) return apiError("Client not found", 404);
     // Which replies the caller may edit/delete — an API-key caller (null) gets none.
     const viewer = internalCommentViewer(await getEffectiveUserOrNull(req));
