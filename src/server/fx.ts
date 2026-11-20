@@ -47,3 +47,28 @@ async function fetchRate(base: string, quote: string): Promise<FxRate | null> {
     return null;
   }
 }
+
+/**
+ * Every rate into `base`, for the Money page: 1 unit of each currency = rates[code] units of
+ * base. Same source and cache as above. A failed read returns no rates, never a guess: the page
+ * then leaves other currencies out of totals and says how much.
+ */
+export async function loadFxRates(base = "GBP"): Promise<import("@/lib/money").FxRates> {
+  try {
+    const res = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(base)}`, {
+      next: { revalidate: TWELVE_HOURS, tags: [`fx:${base}-all`] },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = (await res.json()) as { date?: string; rates?: Record<string, number> };
+    // Frankfurter gives 1 base = r units of X; we want 1 X = 1/r base.
+    const rates: Record<string, number> = {};
+    for (const [code, r] of Object.entries(body.rates ?? {})) {
+      if (typeof r === "number" && r > 0) rates[code] = 1 / r;
+    }
+    return { base, rates, asOf: typeof body.date === "string" ? body.date : null };
+  } catch (err) {
+    console.error("[fx] rates could not be read", err);
+    return { base, rates: {}, asOf: null };
+  }
+}

@@ -1784,7 +1784,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments · Money** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -11105,3 +11105,52 @@ finding, which is deliberate for `/app`.
   require a signed-in client user of the wiki or this client's own team, a link for the whole
   wiki or for Course Requests, and a rate limit (`src/server/wiki-course-request-access.ts`).
   `PATCH`/`DELETE /api/wiki/[token]/course-requests` change many in one write.
+
+## 141. Recent Changes (November 2026) — Needs you, and Money
+
+The first slice of "go deep, not wide" (Dan, Nov 2026). Rules for this programme: **no new Prisma
+models**, simplicity first, money for Dan, Harry and (maybe) Siân only.
+
+### 141.1 Needs you (HQ card 01)
+
+One ranked list of what every watcher found, so nobody visits five pages to learn what's on fire.
+Rules in `src/lib/needs-you.ts` (pure, tested), reader `src/server/needs-you.ts`, route
+`GET /api/hq/needs-you`, card `src/components/dashboard/needs-you-card.tsx`.
+
+- **Sources, each gated and scoped exactly like its own page:** Monitors (`monitors`; production down
+  = critical), Foreman's latest risks (Admin+; blind spots left out), Care (`support`; a customer
+  waiting 24h+, red at 72h), new client Requests (`clients`, scoped to the caller's clients), stalled
+  Docs (sent and read with no decision, or never opened, after 5 days) and Pulse projects needing a
+  look. Docs and Pulse only for people who see every client, because those lists aren't scoped.
+  Workspace modules are respected.
+- **Read independently** (`Promise.allSettled`): a failed source is named ("Couldn't check Care"),
+  never turned into "nothing to do". All clear names what was checked.
+- **Suggested, never acted on:** every row links to where it's dealt with.
+- **Hide until tomorrow** per browser (`foundry.needsyou.hidden.v1`, with Undo). A hidden row comes
+  back early when its fingerprint changes (it got worse). ⚠️ A critical row can't be hidden.
+- Refreshes every 2 minutes. Desk numbering shifts by one (Needs you is 01).
+
+### 141.2 Money (`/app/money`)
+
+Revenue under contract, still to bill, won in 12 months, pipeline, revenue by month (12 back, 6
+forward), per client, and deals. Rules `src/lib/money.ts` (pure, tested), reader
+`src/server/money.ts`, route `GET /api/money`, page `src/components/money/money-workspace.tsx`.
+
+- ⚠️ **Gate:** Super Admins and `clients.viewFinancials` only, checked on the page (live membership,
+  404 otherwise) and the route (403). `/app/money` is in `UNGATED_APP_PREFIXES` because Siân holds
+  the permission without Portal; it belongs to the `clients` workspace module. Linked from the HQ
+  context strip (· MONEY) for those people only.
+- **Model, with no new data:** an accepted (or DocuSeal-signed) document with cost lines is a
+  revenue schedule. Role lines (`rate-card:` / `proposal-role:` / `custom-role:`, the cost table's
+  rate × months) earn their monthly rate for `quantity` months from the month won; other lines are
+  one-offs that month; a `RECURRING` line runs on (counted 12 months in totals). After discount,
+  without VAT. ⚠️ Keep `ROLE_LINE_PREFIXES` in step with `cost-breakdown-table.tsx`.
+- **It is what the documents commit to, not invoices.** The page says so. A proposal and an SOW for
+  the same job are both counted if both were accepted.
+- **FX:** `loadFxRates` in `src/server/fx.ts` (ECB via Frankfurter, 12h fetch cache). No rate means
+  the amount is left out of totals and listed, never guessed.
+- **"Team at rate card"** is the developers on a client at rate-card rates (`computeClientFinancials`).
+  It is NOT called margin: whether the rate card is cost or price is Dan's call (open).
+- "Copy as an update" puts a few plain lines on the clipboard for an investor update.
+- Demos: `/demo/hq` (Needs you) and `/demo/money`, both through the real rules
+  (`src/lib/demo/demo-money.ts`).

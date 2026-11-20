@@ -5768,3 +5768,15 @@ export async function updateCommitmentSettings(
     body: JSON.stringify(input),
   });
 }
+
+// ── HQ: Needs you ───────────────────────────────────────────────────────────
+
+export async function getNeedsYou(): Promise<import("@/lib/needs-you").NeedsYouDTO> {
+  return apiFetch("/api/hq/needs-you");
+}
+
+// ── Money (Super Admins + clients.viewFinancials) ──────────────────────────
+
+export async function getMoney(): Promise<import("@/lib/money").MoneySummary> {
+  return apiFetch("/api/money");
+}

@@ -71,6 +71,7 @@ import type { WikiComparison } from "@/types/wiki-comparisons";
 import { resolveDemoDrive } from "@/lib/demo/demo-drive";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
+import { demoMoney, demoNeedsYou } from "@/lib/demo/demo-money";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
@@ -5089,6 +5090,9 @@ export function resolveDemoApi(
   }
   // The Monitors page (/demo/monitors): the same board, and every client openable.
   if (pathname === "/api/monitors") return { ...demoMonitorBoard(), openableClientIds: null };
+  // HQ's "Needs you" and the Money page, through the real rules (src/lib/demo/demo-money.ts).
+  if (pathname === "/api/hq/needs-you") return demoNeedsYou();
+  if (pathname === "/api/money") return demoMoney();
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors$/.test(pathname) && init?.method === "POST") {
     return demoAddMonitor(pathname, init.body);
   }

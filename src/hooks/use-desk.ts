@@ -26,6 +26,7 @@ import {
   postBroadcast,
   dismissBroadcast,
   getDeskAttention,
+  getNeedsYou,
   getPurgeCandidates,
   approvePurge,
 } from "@/lib/api";
@@ -187,5 +188,16 @@ export function useDismissBroadcast() {
   return useMutation({
     mutationFn: () => dismissBroadcast(),
     onSuccess: () => qc.invalidateQueries({ queryKey: BROADCAST_KEY }),
+  });
+}
+
+/** HQ's "Needs you" list. Refreshes every 2 minutes so an outage shows up while HQ is open. */
+export function useNeedsYou(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["hq", "needs-you"] as const,
+    queryFn: getNeedsYou,
+    enabled: opts.enabled ?? true,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
   });
 }
