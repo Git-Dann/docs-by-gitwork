@@ -233,7 +233,7 @@ export function ProposalSectionPreview({
           // is a table-of-contents idiom, not a section header: it indented every heading away
           // from the text column below it, so nothing on the page shared a left edge.
           <>
-            <p className="font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase leading-none tracking-[0.16em] text-[var(--doc-accent)]">
+            <p className="font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.16em] text-[var(--doc-accent)]">
               {number}
               <span aria-hidden="true"> · </span>
               {section.title}

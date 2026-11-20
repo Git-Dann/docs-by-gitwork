@@ -46,7 +46,7 @@ export function Th({
   return (
     <th
       style={{ textAlign: align, width }}
-      className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 font-[var(--font-mono),'JetBrains_Mono',monospace] text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]"
+      className="border-b border-[var(--border-3)] bg-[var(--surface-canvas)] px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]"
     >
       {children}
     </th>
