@@ -44,7 +44,7 @@ export function MoneyWorkspace() {
     return (
       <section className="widget-card p-6 text-sm text-[var(--text-2)]">
         Money couldn&apos;t be loaded just now.{" "}
-        <button type="button" className="font-medium text-[var(--brand-700)] hover:underline" onClick={() => void q.refetch()}>
+        <button type="button" className="app-button app-button-hyperlink" onClick={() => void q.refetch()}>
           Try again
         </button>
       </section>
@@ -56,10 +56,10 @@ export function MoneyWorkspace() {
 export function MoneyView({ m }: { m: MoneySummary }) {
   return (
     <div className="space-y-4">
-      <Headline m={m} />
-      <RevenueChart m={m} index={1} />
-      <ClientsTable m={m} index={2} />
-      <Deals m={m} index={3} />
+      <Headline m={m} index={1} />
+      <RevenueChart m={m} index={2} />
+      <ClientsTable m={m} index={3} />
+      <Deals m={m} index={4} />
       <HowWorkedOut m={m} />
     </div>
   );
@@ -72,44 +72,43 @@ function Money({ value, base, compact = true }: { value: number; base: string; c
   return <>{formatMoney(shown, base, { compact })}</>;
 }
 
-function Headline({ m }: { m: MoneySummary }) {
+function Headline({ m, index }: { m: MoneySummary; index: number }) {
   const change = m.monthChange;
   return (
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-money-headline>
-      <Figure
-        label="This month"
-        value={<Money value={m.thisMonth} base={m.base} />}
-        note={
-          change == null ? (
-            "Under signed documents"
-          ) : (
-            <span className={cn("inline-flex items-center gap-1", change >= 0 ? "text-[var(--success-500)]" : "text-[var(--danger-500)]")}>
-              {change >= 0 ? <ArrowTrendingUpIcon className="h-3.5 w-3.5" /> : <ArrowTrendingDownIcon className="h-3.5 w-3.5" />}
-              {`${change >= 0 ? "+" : ""}${Math.round(change * 100)}% on last month`}
-            </span>
-          )
-        }
-        accent
-      />
-      <Figure label="Still to bill" value={<Money value={m.toCome} base={m.base} />} note="Signed work after this month" />
-      <Figure
-        label="Won, last 12 months"
-        value={<Money value={m.wonLast12} base={m.base} />}
-        note={`${m.dealsLast12} ${m.dealsLast12 === 1 ? "deal" : "deals"}`}
-      />
-      <Figure
-        label="Pipeline"
-        value={<Money value={m.pipeline} base={m.base} />}
-        note={`${m.pipelineDeals} sent, waiting on a decision`}
-      />
-    </div>
+    <section className="widget-card" aria-label="At a glance" data-money-headline>
+      <TileHeader index={index} label="At a glance" />
+      <div className="grid grid-cols-2 xl:grid-cols-4">
+        <Figure
+          label="This month"
+          value={<Money value={m.thisMonth} base={m.base} />}
+          note={
+            change == null ? (
+              "Under signed documents"
+            ) : (
+              <span className={cn("inline-flex items-center gap-1", change >= 0 ? "text-[var(--success-500)]" : "text-[var(--danger-500)]")}>
+                {change >= 0 ? <ArrowTrendingUpIcon aria-hidden className="h-3.5 w-3.5" /> : <ArrowTrendingDownIcon aria-hidden className="h-3.5 w-3.5" />}
+                {`${change >= 0 ? "+" : ""}${Math.round(change * 100)}% on last month`}
+              </span>
+            )
+          }
+        />
+        <Figure label="Still to bill" value={<Money value={m.toCome} base={m.base} />} note="Signed work after this month" />
+        <Figure
+          label="Won, last 12 months"
+          value={<Money value={m.wonLast12} base={m.base} />}
+          note={`${m.dealsLast12} ${m.dealsLast12 === 1 ? "deal" : "deals"}`}
+        />
+        <Figure label="Pipeline" value={<Money value={m.pipeline} base={m.base} />} note={`${m.pipelineDeals} sent, waiting on a decision`} />
+      </div>
+    </section>
   );
 }
 
-function Figure({ label, value, note, accent }: { label: string; value: React.ReactNode; note: React.ReactNode; accent?: boolean }) {
+/** One figure in the At a glance card: hairlines between cells, never a card per figure. */
+function Figure({ label, value, note }: { label: string; value: React.ReactNode; note: React.ReactNode }) {
   return (
-    <div className={cn("widget-card motion-rise flex min-w-0 flex-col justify-between gap-2 p-3 sm:gap-3 sm:p-4", accent && "ring-1 ring-[var(--brand-200)]")}>
-      <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-4)]" style={MONO}>
+    <div className="flex min-w-0 flex-col gap-2 border-[var(--border-1)] p-4 [&:nth-child(odd)]:border-r max-xl:[&:nth-child(-n+2)]:border-b xl:[&:not(:last-child)]:border-r sm:gap-3">
+      <span className="widget-data-label text-[var(--text-4)]" style={MONO}>
         {label}
       </span>
       <span className="text-[26px] leading-none tracking-tight text-[var(--text-1)] tabular-nums sm:text-[34px]" style={SERIF}>
@@ -370,9 +369,9 @@ function Deals({ m, index }: { m: MoneySummary; index: number }) {
         <button
           type="button"
           onClick={() => setRecording(true)}
-          className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--brand-600)] px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-[var(--brand-700)]"
+          className="app-button app-button-primary app-button-xs shrink-0"
         >
-          <PlusIcon className="h-3.5 w-3.5" />
+          <PlusIcon aria-hidden className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Record a deal</span>
           <span className="sm:hidden">Deal</span>
         </button>
@@ -470,7 +469,7 @@ function HowWorkedOut({ m }: { m: MoneySummary }) {
       <button
         type="button"
         onClick={copy}
-        className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-[6px] border border-[var(--border-1)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:border-[var(--brand-300)] hover:text-[var(--brand-700)]"
+        className="app-button app-button-secondary app-button-xs shrink-0 self-start"
       >
         {copied ? <CheckIcon className="h-3.5 w-3.5 text-[var(--success-500)]" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
         {copied ? "Copied" : "Copy as an update"}

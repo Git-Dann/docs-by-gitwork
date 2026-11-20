@@ -17,11 +17,14 @@ import { Confetti } from "@/components/ui/motion/confetti";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 
-/** Medal colours are fixed on purpose: a medal looks the same in both themes, like a card does. */
-const MEDAL: Record<Tier, { fill: string; ring: string; ink: string }> = {
-  bronze: { fill: "#E8B48A", ring: "#B87333", ink: "#3D2210" },
-  silver: { fill: "#E3E6EA", ring: "#9AA3AE", ink: "#2A2F36" },
-  gold: { fill: "#F5D76E", ring: "#C9A227", ink: "#3A2E05" },
+/**
+ * Tiers deepen through the brand blue, not bronze/silver/gold metals: DESIGN.md allows no hue
+ * outside the blue family and the semantic set. The tier is also written next to the medal.
+ */
+const MEDAL: Record<Tier, string> = {
+  bronze: "border-[var(--brand-300)] bg-[var(--brand-50)] text-[var(--brand-700)]",
+  silver: "border-[var(--brand-500)] bg-[var(--brand-100)] text-[var(--brand-800)]",
+  gold: "border-[var(--brand-700)] bg-[var(--brand-600)] text-white",
 };
 
 export function AchievementsCard({ number }: { number: string }) {
@@ -101,16 +104,13 @@ function Row({ a, celebrate }: { a: AchievementProgress; celebrate: boolean }) {
 }
 
 function Medal({ tier }: { tier: Tier | null }) {
-  const m = tier ? MEDAL[tier] : null;
   return (
     <span
       aria-hidden
-      className={cn("flex h-9 w-9 items-center justify-center rounded-full border-2 text-[11px] font-semibold", !m && "border-dashed")}
-      style={
-        m
-          ? { background: m.fill, borderColor: m.ring, color: m.ink }
-          : { borderColor: "var(--border-2)", color: "var(--text-4)", background: "var(--surface-1)" }
-      }
+      className={cn(
+        "flex h-9 w-9 items-center justify-center rounded-[10px] border-2",
+        tier ? MEDAL[tier] : "border-dashed border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-4)]",
+      )}
     >
       {tier ? <TrophyIcon className="h-4 w-4" /> : <TrophyOutline className="h-4 w-4" />}
     </span>

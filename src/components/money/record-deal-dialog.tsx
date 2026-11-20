@@ -12,6 +12,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { DocumentArrowUpIcon, PlusIcon, TrashIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Spinner } from "@/components/ui/motion/spinner";
 import { cn } from "@/lib/format";
 import { apiFetch } from "@/lib/api";
@@ -193,7 +194,7 @@ export function RecordDealDialog({
             </label>
             <label className={LABEL}>
               Agreed on
-              <input type="date" className="app-input mt-1 w-full text-base sm:text-sm" value={wonOn} max={today()} onChange={(e) => setWonOn(e.target.value)} />
+              <DatePicker className="mt-1 w-full" value={wonOn} max={today()} required onChange={setWonOn} aria-label="Agreed on" />
             </label>
             <label className={LABEL}>
               Currency
@@ -261,7 +262,7 @@ export function RecordDealDialog({
                     onClick={() => setLines((cur) => cur.filter((_, j) => j !== i))}
                     disabled={lines.length === 1}
                     aria-label={`Remove line ${i + 1}`}
-                    className="justify-self-end rounded-[6px] p-1.5 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--danger-500)] disabled:opacity-30"
+                    className="app-button app-button-tertiary app-button-icon-sm justify-self-end"
                   >
                     <TrashIcon className="h-4 w-4" />
                   </button>
@@ -271,9 +272,9 @@ export function RecordDealDialog({
             <button
               type="button"
               onClick={() => setLines((cur) => [...cur, { label: "", kind: "once", amount: 0, months: null }])}
-              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--brand-700)] hover:underline"
+              className="app-button app-button-tertiary app-button-xs mt-2"
             >
-              <PlusIcon className="h-3.5 w-3.5" /> Add a line
+              <PlusIcon aria-hidden className="h-3.5 w-3.5" /> Add a line
             </button>
           </div>
         </div>
@@ -289,14 +290,14 @@ export function RecordDealDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-[7px] border border-[var(--border-2)] px-3.5 py-1.5 text-[13px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            className="app-button app-button-secondary app-button-sm"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={save.isPending || reading}
-            className="rounded-[7px] bg-[var(--brand-600)] px-3.5 py-1.5 text-[13px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-50"
+            className="app-button app-button-primary app-button-sm"
           >
             {save.isPending ? "Saving…" : "Save deal"}
           </button>

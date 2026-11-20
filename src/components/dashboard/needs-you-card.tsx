@@ -202,15 +202,12 @@ function Row({ item, onHide }: { item: NeedsYouItem; onHide: () => void }) {
             onClick={onHide}
             title="Hide until tomorrow"
             aria-label={`Hide “${item.title}” until tomorrow`}
-            className="rounded-[6px] p-1.5 text-[var(--text-4)] opacity-100 transition hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+            className="app-button app-button-tertiary app-button-icon-sm opacity-100 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
           >
             <EyeSlashIcon className="h-4 w-4" />
           </button>
         ) : null}
-        <Link
-          href={item.href}
-          className="inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-xs font-medium text-[var(--brand-700)] transition hover:bg-[var(--brand-50)]"
-        >
+        <Link href={item.href} className="app-button app-button-tertiary app-button-xs text-[var(--brand-700)]">
           {item.action}
           <ArrowRightIcon className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
         </Link>
@@ -259,7 +256,7 @@ function Footer({
     <div className="border-t border-[var(--border-1)] px-4 py-2.5 text-xs text-[var(--text-3)]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         {more > 0 ? (
-          <button type="button" onClick={onMore} className="font-medium text-[var(--brand-700)] hover:underline">
+          <button type="button" onClick={onMore} className="app-button app-button-hyperlink">
             Show {more} more
           </button>
         ) : null}
@@ -280,7 +277,7 @@ function Footer({
               {i.clientName ? ` · ${i.clientName}` : ""}
             </Link>
           ))}
-          <button type="button" onClick={onUnhideAll} className="mt-1 font-medium text-[var(--brand-700)] hover:underline">
+          <button type="button" onClick={onUnhideAll} className="app-button app-button-hyperlink mt-1">
             Bring them all back
           </button>
         </div>

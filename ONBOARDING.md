@@ -197,8 +197,8 @@ npm run audit:clipping -- --self-test
 
   **The sidebar is not the full list of surfaces.** It holds the products (Foundry HQ ·
   Pulse · Staff · Docs · Portal · Care · Monitors · Backstage) plus Handbook, and everything else has an
-  entry point instead — Studio and the labs in **Settings → Labs**, Analytics and Starters as
-  mono links in the **HQ context strip**, Settings and view-as in the **profile flyout**. Adding
+  entry point instead — Studio and the labs in **Settings → Labs**, Analytics, Starters and Money
+  as mono links in the **HQ context strip** (Money only for Super Admins and `clients.viewFinancials`), Settings and view-as in the **profile flyout**. Adding
   a surface? CLAUDE.md §4a decides where it goes; a new sidebar item is almost never the answer.
 
 **Schema changes:** the deploy runs `prisma db push` *without* `--accept-data-loss`, and Prisma's
