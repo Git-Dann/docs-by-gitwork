@@ -145,6 +145,8 @@ export interface WonDoc {
   /** When it was accepted or signed. ISO. */
   wonAt: string;
   terms: DocTerms;
+  /** Recorded by hand or from a file rather than written in Docs. */
+  recorded?: boolean;
 }
 
 export interface PipelineDoc {
@@ -210,7 +212,7 @@ export interface MoneySummary {
   months: MonthBar[];
   clients: ClientMoneyRow[];
   pipelineDocs: Array<{ id: string; title: string; clientName: string | null; sharedAt: string | null; viewed: boolean; total: number | null; currency: string }>;
-  recentWins: Array<{ id: string; title: string; clientName: string | null; wonAt: string; total: number | null; currency: string }>;
+  recentWins: Array<{ id: string; title: string; clientName: string | null; wonAt: string; total: number | null; currency: string; recorded: boolean }>;
   /** Amounts left out of totals because their currency had no rate, per currency. */
   unconverted: Record<string, number>;
   unpricedDevs: number;
@@ -287,7 +289,7 @@ export function summariseMoney(input: {
 
     const inLastYear = wonMonth >= yearAgo;
     if (inLastYear) {
-      recentWins.push({ id: d.id, title: d.title, clientName: d.clientId ? clientName.get(d.clientId) ?? null : null, wonAt: d.wonAt, total: totalBase, currency: cur });
+      recentWins.push({ id: d.id, title: d.title, clientName: d.clientId ? clientName.get(d.clientId) ?? null : null, wonAt: d.wonAt, total: totalBase, currency: cur, recorded: Boolean(d.recorded) });
       if (totalBase != null) {
         wonLast12 += totalBase;
         dealsLast12 += 1;

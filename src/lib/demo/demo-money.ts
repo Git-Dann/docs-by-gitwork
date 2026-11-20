@@ -15,6 +15,7 @@ import {
   type NeedsYouDTO,
 } from "@/lib/needs-you";
 import { docTerms, summariseMoney, type DocLine, type MoneySummary } from "@/lib/money";
+import { parseDealDraft, type DealDraft } from "@/lib/money-deals";
 
 const hoursAgo = (now: Date, h: number) => new Date(now.getTime() - h * 3_600_000).toISOString();
 
@@ -87,4 +88,24 @@ export function demoMoney(now: Date = new Date()): MoneySummary {
     won,
     pipeline,
   });
+}
+
+/** What reading a sample order form returns, through the real clean-up rules. */
+export function demoDealDraft(): DealDraft & { clientId: string | null } {
+  const text = "Order form, Harbour Health. Signed 12 November 2026. Senior developer £6,200 per month for 6 months. Discovery £4,500.";
+  const draft = parseDealDraft(
+    {
+      title: "Harbour Health build",
+      clientName: "Harbour Health",
+      currency: "GBP",
+      wonOn: "2026-11-12",
+      lines: [
+        { label: "Senior developer", kind: "monthly", amount: 6200, months: 6 },
+        { label: "Discovery", kind: "once", amount: 4500 },
+        { label: "Project management", kind: "monthly", amount: 1200, months: 6 },
+      ],
+    },
+    text,
+  );
+  return { ...draft, clientId: null };
 }

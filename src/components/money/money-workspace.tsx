@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowTrendingDownIcon, ArrowTrendingUpIcon, ClipboardDocumentIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { ArrowTrendingDownIcon, ArrowTrendingUpIcon, ClipboardDocumentIcon, CheckIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { getMoney } from "@/lib/api";
 import { useCountUp } from "@/components/ui/motion/use-count-up";
@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/motion/skeleton";
 import { Segmented } from "@/components/ui/segmented";
 import { TileHeader } from "@/components/dashboard/tile-header";
 import { formatMoney, monthLabel, type MoneySummary } from "@/lib/money";
+import { RecordDealDialog } from "@/components/money/record-deal-dialog";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 const SERIF = { fontFamily: "var(--font-display)" } as const;
@@ -241,7 +242,7 @@ function ClientsTable({ m, index }: { m: MoneySummary; index: number }) {
 
       {rows.length === 0 ? (
         <p className="px-4 py-6 text-sm text-[var(--text-3)]">
-          No accepted documents with costs yet. Revenue appears here once a proposal with a costing block is accepted or signed.
+          Nothing under contract yet. Revenue appears here once a proposal with costs is accepted or signed, or when you record a deal.
         </p>
       ) : (
         <>
@@ -350,6 +351,7 @@ function RetainerBar({ used, allowance }: { used: number; allowance: number }) {
 
 function Deals({ m, index }: { m: MoneySummary; index: number }) {
   const [view, setView] = useState<"won" | "pipeline">("won");
+  const [recording, setRecording] = useState(false);
   const won = m.recentWins;
   const pipe = m.pipelineDocs;
   const fmt = (total: number | null, currency: string) => (total == null ? `${currency} (no rate)` : formatMoney(total, m.base));
@@ -365,7 +367,17 @@ function Deals({ m, index }: { m: MoneySummary; index: number }) {
             { value: "pipeline", label: "Pipeline", count: pipe.length },
           ]}
         />
+        <button
+          type="button"
+          onClick={() => setRecording(true)}
+          className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--brand-600)] px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-[var(--brand-700)]"
+        >
+          <PlusIcon className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Record a deal</span>
+          <span className="sm:hidden">Deal</span>
+        </button>
       </TileHeader>
+      <RecordDealDialog open={recording} onClose={() => setRecording(false)} clients={m.clients.map((c) => ({ id: c.id, name: c.name }))} />
       <ul className="divide-y divide-[var(--border-1)]">
         {view === "won"
           ? won.map((d) => (
@@ -374,7 +386,7 @@ function Deals({ m, index }: { m: MoneySummary; index: number }) {
                 href={`/app/docs/${d.id}`}
                 title={d.title}
                 client={d.clientName}
-                meta={`Won ${new Date(d.wonAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
+                meta={`${d.recorded ? "Recorded" : "Won"} ${new Date(d.wonAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
                 amount={fmt(d.total, d.currency)}
               />
             ))
@@ -390,7 +402,9 @@ function Deals({ m, index }: { m: MoneySummary; index: number }) {
             ))}
         {(view === "won" ? won : pipe).length === 0 ? (
           <li className="px-4 py-6 text-sm text-[var(--text-3)]">
-            {view === "won" ? "Nothing won in the last 12 months yet." : "Nothing sent and waiting on a decision."}
+            {view === "won"
+              ? "Nothing won in the last 12 months yet. Record a deal to add one that wasn't written in Docs."
+              : "Nothing sent and waiting on a decision."}
           </li>
         ) : null}
       </ul>
@@ -439,6 +453,7 @@ function HowWorkedOut({ m }: { m: MoneySummary }) {
           <li>Each accepted or signed document with a costing block is a schedule: a role at a monthly rate earns that rate each month for its months, starting the month it was accepted. Any other line is earned once, that month.</li>
           <li>Values are after the document&apos;s discount and without VAT. This is what the documents commit to, not invoices.</li>
           <li>A proposal and a statement of work for the same job are both counted if both were accepted.</li>
+          <li>A deal recorded by hand or from a file is saved as an accepted document labelled “Recorded deal”. Archive it in Docs to take it out.</li>
           <li>
             Other currencies are converted to {m.base} at the European Central Bank&apos;s rate
             {m.fxAsOf ? ` of ${new Date(m.fxAsOf).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : ""}.

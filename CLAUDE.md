@@ -11154,3 +11154,20 @@ forward), per client, and deals. Rules `src/lib/money.ts` (pure, tested), reader
 - "Copy as an update" puts a few plain lines on the clipboard for an investor update.
 - Demos: `/demo/hq` (Needs you) and `/demo/money`, both through the real rules
   (`src/lib/demo/demo-money.ts`).
+
+### 141.3 Record a deal (prices that didn't come from Docs)
+
+Money → Deals → **Record a deal** (`src/components/money/record-deal-dialog.tsx`, rules
+`src/lib/money-deals.ts`, server `src/server/money-deals.ts`). Drop a PDF/Word/text file and the
+workspace AI proposes the figures (`POST /api/money/read-file`, needs `ai.generate`, saves nothing),
+or type them. **Save** (`POST /api/money/deals`) creates an ACCEPTED `PROPOSAL` document labelled
+"Recorded deal" with `metadata.recordedDeal` and cost lines written so `docTerms` reads them back as
+the same schedule. No new model.
+
+- ⚠️ **Every amount read from a file is checked against the file's text** (`amountInText`); one that
+  isn't written there is outlined amber and named in a note. The reader is told never to invent,
+  add up or guess a date. A person confirms before anything is saved.
+- **The file is not kept**, only the confirmed figures (and its file name).
+- Client matching is by name among the workspace's clients, never guessing between two.
+- **To take a deal out, archive its document in Docs:** Money skips archived documents.
+- Money viewers only (`clients.viewFinancials` or Super Admin), on both routes.

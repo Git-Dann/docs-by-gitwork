@@ -38,6 +38,7 @@ export async function loadMoney(workspaceId: string, now: Date = new Date()): Pr
     sharedAt: true,
     firstViewedAt: true,
     updatedAt: true,
+    metadata: true,
     costLineItems: { select: LINE_SELECT },
     sections: { where: { key: "costing" }, select: { data: true }, take: 1 },
     signatureRequests: { where: { status: "COMPLETED" }, select: { completedAt: true }, orderBy: { completedAt: "asc" }, take: 1 },
@@ -52,6 +53,9 @@ export async function loadMoney(workspaceId: string, now: Date = new Date()): Pr
     prisma.document.findMany({
       where: {
         workspaceId,
+        // An archived document is withdrawn: it's how a recorded deal is taken out.
+        archivedAt: null,
+        status: { not: "ARCHIVED" },
         costLineItems: { some: {} },
         OR: [
           { acceptedAt: { gte: twoYearsAgo } },
@@ -64,6 +68,7 @@ export async function loadMoney(workspaceId: string, now: Date = new Date()): Pr
       where: {
         workspaceId,
         status: "SENT",
+        archivedAt: null,
         acceptedAt: null,
         declinedAt: null,
         costLineItems: { some: {} },
@@ -97,6 +102,7 @@ export async function loadMoney(workspaceId: string, now: Date = new Date()): Pr
       clientId: d.clientId,
       wonAt: (d.acceptedAt ?? d.signatureRequests[0]?.completedAt ?? d.updatedAt).toISOString(),
       terms: docTerms(lines(d.costLineItems as RawLine[]), costingOf(d.sections)),
+      recorded: Boolean(d.metadata && typeof d.metadata === "object" && "recordedDeal" in d.metadata),
     })),
     pipeline: pipelineRaw.map((d) => ({
       id: d.id,
