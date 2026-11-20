@@ -11,37 +11,30 @@
  */
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { ArrowTopRightOnSquareIcon, CameraIcon, EllipsisHorizontalIcon, LinkIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
-import { Avatar } from "@/components/ui/avatar";
+import { ArrowTopRightOnSquareIcon, LinkIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { menuItem, menuPanel } from "@/components/ui/menu-styles";
-import { Pattern } from "@/components/profile/profile-card";
+import { BannerTile, ProfileBannerShell, type BannerMenuItem } from "@/components/profile/profile-banner-shell";
 import { AccountEditors, useOwnsPassword } from "@/components/account-settings-panel";
 import { PublicProfileEditor, pageUrl, toDraft } from "@/components/staff/public-profile-card";
 import { usePublicProfile, useSavePublicProfile } from "@/hooks/use-staff";
-import { cardColour } from "@/lib/profile-card";
 import type { StaffProfile } from "@/lib/hr";
-
-/** The page's own look when a person hasn't designed a card: the same as the public page's. */
-const DEFAULT_BAND = {
-  background: "radial-gradient(120% 160% at 0% 0%, var(--brand-500) 0%, transparent 60%), linear-gradient(135deg, var(--brand-700), #312E81)",
-  color: "#fff",
-};
 
 export function ProfileBanner({
   profile: p,
   displayName,
   self,
   actions,
+  extraMenu = [],
 }: {
   profile: StaffProfile;
   displayName: string;
   /** Your own profile: you can change your photo (and name and password, for a password sign-in). */
   self: boolean;
-  /** Archive, restore, merge and delete, when the viewer may. */
+  /** Restore, when the viewer may. */
   actions?: ReactNode;
+  /** Archive, "Same person as…" and Delete: rare, so they live in the ⋯ menu. */
+  extraMenu?: BannerMenuItem[];
 }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -59,7 +52,6 @@ export function ProfileBanner({
   const [account, setAccount] = useState(false);
   const [confirmHide, setConfirmHide] = useState(false);
 
-  const band = pp?.card ? cardColour(pp.card.colour) : null;
   const subtitle = [p.jobTitle, p.department, p.pronouns].filter(Boolean).join(" · ");
   const slug = pp ? pp.slug || pp.suggestedSlug : "";
   const url = pp ? pageUrl(slug) : "";
@@ -76,52 +68,26 @@ export function ProfileBanner({
     }
   }
 
-  const menu: { label: string; onClick: () => void; danger?: boolean }[] = [];
+  const menu: BannerMenuItem[] = [];
   if (self) menu.push({ label: "Change photo", onClick: () => setPhoto(true) });
   if (self && ownsPassword) menu.push({ label: "Name and password", onClick: () => setAccount(true) });
   if (canHide) menu.push({ label: self ? "Hide my page…" : "Hide page…", onClick: () => setConfirmHide(true), danger: true });
+  menu.push(...extraMenu);
 
   return (
-    <section className="overflow-hidden rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-0)]" data-profile-banner>
-      <div
-        aria-hidden
-        className="relative h-[92px] overflow-hidden sm:h-[112px]"
-        style={band ? { background: band.bg, color: band.fg } : DEFAULT_BAND}
-      >
-        {pp?.card ? <Pattern id={pp.card.pattern} /> : null}
-      </div>
-
-      <div className="px-5 pb-5 sm:px-6">
-        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
-          <div className="flex min-w-0 flex-1 basis-[260px] items-end gap-4">
-            <div className="relative -mt-10 shrink-0 sm:-mt-12">
-              <Avatar src={p.avatarUrl} name={displayName} size={88} className="ring-4 ring-[var(--surface-0)]" />
-              {self ? (
-                <button
-                  type="button"
-                  onClick={() => setPhoto(true)}
-                  aria-label="Change photo"
-                  title="Change photo"
-                  className="absolute -bottom-0.5 -right-0.5 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-2)] shadow-sm hover:text-[var(--brand-700)]"
-                >
-                  <CameraIcon aria-hidden className="h-4 w-4" />
-                </button>
-              ) : null}
-            </div>
-            <div className="min-w-0 pb-1">
-              <h2
-                className="truncate font-display text-[26px] leading-[1.15] tracking-[-0.01em] text-[var(--text-1)] sm:text-[30px]"
-                title={displayName}
-              >
-                {displayName}
-              </h2>
-              <p className="truncate text-[14px] text-[var(--text-3)]" title={subtitle}>
-                {subtitle || "No job title yet"}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-2 pb-1">
+    <>
+      <ProfileBannerShell
+        card={pp?.card ?? null}
+        avatarUrl={p.avatarUrl}
+        name={displayName}
+        subtitle={
+          <p className="truncate" title={subtitle}>
+            {subtitle || "No job title yet"}
+          </p>
+        }
+        onChangePhoto={self ? () => setPhoto(true) : undefined}
+        actions={
+          <>
             {pp ? (
               <button type="button" className="app-button app-button-secondary app-button-sm inline-flex items-center gap-1.5" onClick={() => setEditing(true)}>
                 <PencilSquareIcon aria-hidden className="h-4 w-4" />
@@ -129,36 +95,22 @@ export function ProfileBanner({
               </button>
             ) : null}
             {actions}
-            {menu.length ? (
-              <Menu>
-                <MenuButton className="app-button app-button-secondary app-button-sm px-2" aria-label="More">
-                  <EllipsisHorizontalIcon aria-hidden className="h-4 w-4" />
-                </MenuButton>
-                <MenuItems anchor="bottom end" className={`${menuPanel} w-48`}>
-                  {menu.map((m) => (
-                    <MenuItem key={m.label}>
-                      <button type="button" onClick={m.onClick} className={`${menuItem} ${m.danger ? "text-[var(--danger-500)]" : ""}`}>
-                        {m.label}
-                      </button>
-                    </MenuItem>
-                  ))}
-                </MenuItems>
-              </Menu>
-            ) : null}
-          </div>
-        </div>
-
+          </>
+        }
+        menu={menu}
+      >
         {pp ? (
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="min-w-0 rounded-[10px] border border-[var(--border-1)] p-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="widget-data-label">Public page</span>
-                <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[1px] text-[var(--text-3)]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <BannerTile
+              label="Public page"
+              status={
+                <>
                   <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${pp.enabled ? "bg-[var(--success-500)]" : "bg-[var(--text-4)]"}`} />
                   {pp.enabled ? "Live" : "Off"}
-                </span>
-              </div>
-              <div className="mt-2.5 flex min-w-0 items-center gap-3">
+                </>
+              }
+            >
+              <div className="flex min-w-0 items-center gap-3">
                 <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-[var(--text-1)]" title={url}>
                   /u/{slug}
                 </span>
@@ -181,23 +133,18 @@ export function ProfileBanner({
                 ) : null}
               </div>
               {!pp.enabled && !self ? <p className="mt-1.5 text-[12px] text-[var(--text-4)]">Only {first} can publish it.</p> : null}
-            </div>
-
-            <div className="min-w-0 rounded-[10px] border border-[var(--border-1)] p-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="widget-data-label">Profile</span>
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[1px] text-[var(--text-3)]">{pp.completeness.percent}% complete</span>
-              </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-2,var(--border-1))]">
+            </BannerTile>
+            <BannerTile label="Profile" status={`${pp.completeness.percent}% complete`}>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-2,var(--border-1))]">
                 <div className="h-full rounded-full bg-[var(--brand-600)] transition-[width] duration-500" style={{ width: `${pp.completeness.percent}%` }} />
               </div>
               <p className="mt-2 truncate text-[12px] text-[var(--text-3)]" title={pp.completeness.missing.join(", ")}>
                 {pp.completeness.missing.length ? `Still to add: ${pp.completeness.missing.join(", ")}.` : "Everything is filled in."}
               </p>
-            </div>
+            </BannerTile>
           </div>
         ) : null}
-      </div>
+      </ProfileBannerShell>
 
       {editing && pp ? <PublicProfileEditor profile={pp} recordId={recordId} theirs={!self} first={first} onClose={() => setEditing(false)} /> : null}
 
@@ -231,6 +178,6 @@ export function ProfileBanner({
           </div>
         </div>
       </Modal>
-    </section>
+    </>
   );
 }
