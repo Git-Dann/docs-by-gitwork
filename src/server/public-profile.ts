@@ -8,6 +8,7 @@
  *    details are never selected, so they can't leak through a new field.
  *  - An archived record, or a login whose membership is archived, has no public page.
  */
+import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
@@ -96,7 +97,7 @@ const SELECT = {
   profileBookingUrl: true,
   profileExtras: true,
   workspace: { select: { name: true } },
-  member: { select: { archivedAt: true, userId: true, user: { select: { avatarUrl: true } } } },
+  member: { select: { archivedAt: true, userId: true, user: { select: { avatarUrl: true, avatarPosition: true } } } },
 } as const satisfies Prisma.CandidateSelect;
 
 type Row = Prisma.CandidateGetPayload<{ select: typeof SELECT }>;
@@ -126,7 +127,12 @@ function linksOf(r: Row): ProfileLink[] {
 
 function avatarOf(r: Row, slug: string): string | null {
   // A login's photo is served by the profile's own route, public only while the page is.
-  if (r.member?.userId && r.member.user?.avatarUrl) return `/api/u/${encodeURIComponent(slug)}/avatar`;
+  // `?v=` changes whenever the photo or its crop does: browsers keep the image for 5 minutes, so
+  // a fixed address showed the old photo after someone changed theirs.
+  if (r.member?.userId && r.member.user?.avatarUrl) {
+    const v = createHash("sha1").update(`${r.member.user.avatarUrl}|${r.member.user.avatarPosition ?? ""}`).digest("hex").slice(0, 10);
+    return `/api/u/${encodeURIComponent(slug)}/avatar?v=${v}`;
+  }
   return safeProfileUrl(r.avatarUrl);
 }
 
