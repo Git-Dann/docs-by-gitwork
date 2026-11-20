@@ -134,6 +134,13 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
                   <span>{candidate.primaryStack}</span>
                   {candidate.location ? <span>· {candidate.location}</span> : null}
                   {candidate.timezone ? <span>· {candidate.timezone}</span> : null}
+                  {/* The email sits with the other facts: on its own it was a whole card. */}
+                  {candidate.email ? (
+                    <a href={`mailto:${candidate.email}`} className="inline-flex items-center gap-1 hover:text-[var(--brand-700)] hover:underline">
+                      <EnvelopeIcon className="h-3.5 w-3.5" aria-hidden />
+                      {candidate.email}
+                    </a>
+                  ) : null}
                 </div>
                 <ExternalLinks
                   linkedinUrl={candidate.linkedinUrl}
@@ -260,7 +267,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
           past grey. Allocation % is shown when set so admins can see
           if a dev is split across multiple clients. */}
       <WidgetCard
-        number="02"
+        number="01"
         name="ENGAGEMENTS"
         status={
           candidate.placements.length > 0
@@ -340,24 +347,9 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         )}
       </WidgetCard>
 
-      {/* Contact — email (mailto) link. Surfaces the dev's @gitwork.co.uk
-          (or external) email front-and-centre so admins can reach them
-          without digging through Slack. */}
-      {candidate.email ? (
-        <WidgetCard number="03" name="CONTACT" status="" statusTone="muted">
-          <a
-            href={`mailto:${candidate.email}`}
-            className="inline-flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-2)] transition hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
-          >
-            <EnvelopeIcon className="h-4 w-4" />
-            {candidate.email}
-          </a>
-        </WidgetCard>
-      ) : null}
-
       {/* Notes */}
       <WidgetCard
-        number={candidate.email ? "04" : "03"}
+        number="02"
         name="NOTES"
         status={candidate.notes.length > 0 ? `${candidate.notes.length}` : "EMPTY"}
         statusTone="muted"
