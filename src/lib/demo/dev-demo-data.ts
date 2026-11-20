@@ -4554,6 +4554,8 @@ function resolveDemoBoard(pathname: string, init?: { method?: string; body?: unk
       limit: Number(search?.get("limit") ?? 100),
     });
   }
+  // The wiki carries only the Board's summary now; the section loads its cards here (§140).
+  if (/^\/api\/(clients\/[^/]+\/wiki|wiki\/[^/]+)\/board$/.test(pathname) && method === "GET") return demoBoardSection();
   if (/^\/api\/clients\/[^/]+\/wiki\/board$/.test(pathname) && method === "PATCH") {
     const body = bodyOf(init);
     if (typeof body.enabled === "boolean") demoBoardEnabled = body.enabled;

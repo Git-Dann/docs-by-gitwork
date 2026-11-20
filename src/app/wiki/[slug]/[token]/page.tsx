@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { applyCommentViewer, resolvePublicWiki } from "@/server/wiki";
+import { applyCommentViewer, resolvePublicWiki, resolvePublicWikiMeta } from "@/server/wiki";
 import { backfillCommentAuthors } from "@/server/wiki-intake-comment-backfill";
 import { publicCommentViewer } from "@/server/wiki-comment-viewer";
 import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
@@ -48,9 +48,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string; token: string }>;
 }): Promise<Metadata> {
   const { token } = await params;
-  const resolved = await resolvePublicWiki(token);
+  // Light: the title needs the client's name, not the whole wiki (it was built twice per visit).
+  const resolved = await resolvePublicWikiMeta(token);
   if (!resolved) return { title: "Not found" };
-  const { clientName } = resolved.wiki;
+  const { clientName } = resolved;
   const sectionLabel = resolved.onlySection
     ? SECTION_LABELS[resolved.onlySection] ?? "Wiki"
     : null;
@@ -77,7 +78,8 @@ export default async function PublicWikiPage({
 }) {
   const { slug, token } = await params;
   const { section } = await searchParams;
-  const resolved = await resolvePublicWiki(token);
+  // Course requests and the Board's cards load on their own once the page is open (§140).
+  const resolved = await resolvePublicWiki(token, { courseRequests: false, board: false });
   if (!resolved) notFound();
 
   // The token is the source of truth; canonicalise the readable slug in the URL

@@ -3683,6 +3683,7 @@ export async function setClientDesignSystemGuidelinesEnabled(
 
 // ─── Client Wiki ──────────────────────────────────────────────────────────────
 
+import type { WikiBoardSection } from "@/types/wiki-board";
 import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiIntakeCommentRecord, WikiBlockerRecord, WikiUserSummary } from "@/server/wiki";
 export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiIntakeCommentRecord, WikiBlockerRecord, WikiUserSummary };
 import type { IntakeCategory } from "@/lib/wiki-intake-categories";
@@ -4441,8 +4442,12 @@ export function uploadPublicWikiIntakeItemImage(
 }
 
 export async function getClientWiki(slug: string): Promise<WikiDTO> {
-  // Course requests load on their own (getWikiCourseRequests): Wedge has 5,000+ of them.
-  return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki?courseRequests=0`);
+  // Course requests and the Board's cards load on their own: Wedge has 5,000+ requests.
+  return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki?courseRequests=0&board=0`);
+}
+
+export async function getWikiBoard(slug: string): Promise<WikiBoardSection> {
+  return apiFetch<WikiBoardSection>(`/api/clients/${slug}/wiki/board`);
 }
 
 export async function setWikiCourseRequestsStatus(slug: string, ids: string[], status: string): Promise<{ updated: number }> {

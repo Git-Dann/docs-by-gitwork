@@ -17,7 +17,7 @@ import type { FeedbackKind } from "@/lib/wiki-board";
 import type { DashboardLayout } from "@/lib/wiki-dashboard-layout";
 import { DONE_PAGE_MAX, type DoneLaneKind, type DoneLanePage } from "@/lib/wiki-board-layout";
 import type { TaskPriority, TaskStatus } from "@/types/tasks";
-import type { WikiBoardCard, WikiBoardFeedback, WikiBoardKeyDate } from "@/types/wiki-board";
+import type { WikiBoardCard, WikiBoardFeedback, WikiBoardKeyDate, WikiBoardSection } from "@/types/wiki-board";
 
 export type BoardTarget = { mode: "public"; token: string } | { mode: "internal"; slug: string };
 
@@ -45,6 +45,24 @@ export function boardImageUrl(target: BoardTarget, taskId: string, image: string
     : `/api/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(image)}${q}`;
 }
 
+/**
+ * The Board's cards, loaded on their own: the wiki sends only a summary (CLAUDE.md §140). The
+ * team's key sits under the wiki's, so `useBoardRefresh` (which refreshes the wiki) refreshes
+ * this too. The client's page reads its own link's copy.
+ */
+export function useBoardCards(target: BoardTarget) {
+  return useQuery({
+    queryKey: target.mode === "internal" ? ["client-wiki", target.slug, "board"] : ["public-wiki", target.token, "board"],
+    queryFn: () =>
+      apiFetch<WikiBoardSection>(
+        target.mode === "internal"
+          ? `/api/clients/${encodeURIComponent(target.slug)}/wiki/board`
+          : `/api/wiki/${encodeURIComponent(target.token)}/board`,
+      ),
+    staleTime: 30_000,
+  });
+}
+
 /** Re-read the board after a write: the internal wiki is a query, the public page is server-rendered. */
 export function useBoardRefresh(target: BoardTarget): () => void {
   const queryClient = useQueryClient();
@@ -57,6 +75,7 @@ export function useBoardRefresh(target: BoardTarget): () => void {
       // The team's own board shows the client's sign-off too.
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
     } else {
+      void queryClient.invalidateQueries({ queryKey: ["public-wiki", key] });
       router.refresh();
     }
   }, [mode, key, queryClient, router]);

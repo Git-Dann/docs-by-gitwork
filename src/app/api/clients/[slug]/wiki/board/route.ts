@@ -10,13 +10,24 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { setWikiBoardEnabled, setWikiBoardShowAllTasks } from "@/server/wiki-board";
+import { loadWikiBoard, setWikiBoardEnabled, setWikiBoardShowAllTasks } from "@/server/wiki-board";
+import { requireClientIdForSlug } from "@/server/clients-scope";
 import { resolveInternalSheets } from "@/server/wiki-sheets-access";
 
 const bodySchema = z
   .object({ enabled: z.boolean().optional(), showAllTasks: z.boolean().optional() })
   .strict()
   .refine((b) => b.enabled !== undefined || b.showAllTasks !== undefined, "Nothing to change");
+
+/** The Board's cards for the team's wiki, which loads them on its own (the wiki sends a summary). */
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  try {
+    const { slug } = await params;
+    return apiOk(await loadWikiBoard(await requireClientIdForSlug(slug, req)));
+  } catch (err) {
+    return fromError(err);
+  }
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {

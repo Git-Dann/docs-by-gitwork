@@ -54,6 +54,7 @@ import { loadWikiCosts } from "./wiki-costs";
 import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
 import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
 import { EMPTY_BOARD, forPublicBoard, loadWikiBoard, scopeBoardToSection } from "./wiki-board";
+import { liteBoard } from "@/lib/wiki-board-summary";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { clientVisibleSections } from "@/lib/wiki-client-visibility";
 import { readDefaultLayout, scopeDefaultLayout, STANDUPS_CARD, type DashboardLayout } from "@/lib/wiki-dashboard-layout";
@@ -1424,22 +1425,37 @@ const PAGE_TYPE_TO_SECTION: Partial<Record<WikiPageType, string>> = {
  * Fetch or auto-create the wiki for a client (by clientId, not slug).
  * Authenticated — no token check.
  */
-export async function getOrCreateWiki(clientId: string, opts: { courseRequests?: boolean } = {}): Promise<WikiDTO> {
+export async function getOrCreateWiki(clientId: string, opts: WikiLoadOptions = {}): Promise<WikiDTO> {
+  const dto = await loadWiki(clientId, opts);
+  // The Board's cards load on their own (GET .../wiki/board): send the summary only.
+  return opts.board === false ? { ...dto, board: liteBoard(dto.board) } : dto;
+}
+
+/** Course request counts for a wiki without loading the requests (one groupBy). */
+async function courseRequestCountsFor(wikiId: string): Promise<CourseRequestCounts> {
+  const grouped = await prisma.clientCourseRequest.groupBy({ by: ["status"], where: { wikiId }, _count: { _all: true } });
+  const counts = countCourseRequests([]);
+  for (const g of grouped) {
+    if (g.status in counts) counts[g.status as Exclude<keyof CourseRequestCounts, "total">] = g._count._all;
+    counts.total += g._count._all;
+  }
+  return counts;
+}
+
+/** What a caller can leave out of the wiki: each is loaded on its own by its section (§140). */
+export interface WikiLoadOptions {
+  courseRequests?: boolean;
+  board?: boolean;
+}
+
+async function loadWiki(clientId: string, opts: WikiLoadOptions): Promise<WikiDTO> {
   if (opts.courseRequests === false) {
     const lite = await prisma.clientWiki.findUnique({
       where: { clientId },
       include: { ...WIKI_INCLUDE, courseRequests: false },
     });
     if (lite) {
-      const [dto, grouped] = await Promise.all([
-        buildDTO(lite, { includeUsers: true }),
-        prisma.clientCourseRequest.groupBy({ by: ["status"], where: { wikiId: lite.id }, _count: { _all: true } }),
-      ]);
-      const counts = countCourseRequests([]);
-      for (const g of grouped) {
-        if (g.status in counts) counts[g.status as Exclude<keyof CourseRequestCounts, "total">] = g._count._all;
-        counts.total += g._count._all;
-      }
+      const [dto, counts] = await Promise.all([buildDTO(lite, { includeUsers: true }), courseRequestCountsFor(lite.id)]);
       return { ...dto, courseRequestCounts: counts };
     }
   }
@@ -1460,7 +1476,7 @@ export async function getOrCreateWiki(clientId: string, opts: { courseRequests?:
 export async function getWikiBySlug(
   slug: string,
   workspaceId: string,
-  opts: { courseRequests?: boolean } = {},
+  opts: WikiLoadOptions = {},
 ): Promise<WikiDTO | null> {
   const client = await prisma.workspaceClient.findUnique({
     where: { workspaceId_slug: { workspaceId, slug } },
@@ -3579,18 +3595,26 @@ export async function setWikiDashboardLayout(clientId: string, layout: Dashboard
  */
 export async function resolvePublicWiki(
   token: string,
+  opts: WikiLoadOptions = {},
 ): Promise<{ wiki: WikiDTO; onlySection: string | null } | null> {
+  // The share page leaves out the course requests and the Board's cards, which load on their
+  // own (§140); other callers (the iOS app's token reads) still get everything.
+  const include = opts.courseRequests === false ? { ...WIKI_INCLUDE, courseRequests: false as const } : WIKI_INCLUDE;
+  const finish = async (row: { id: string }, dto: WikiDTO): Promise<WikiDTO> => {
+    const counts = opts.courseRequests === false ? await courseRequestCountsFor(row.id) : dto.courseRequestCounts;
+    return { ...dto, courseRequestCounts: counts, board: opts.board === false ? liteBoard(dto.board) : dto.board };
+  };
   // Whole-wiki share takes precedence.
   const whole = await prisma.clientWiki.findFirst({
     where: { shareToken: token, shareEnabled: true },
-    include: WIKI_INCLUDE,
+    include,
   });
-  if (whole) return { wiki: withPublicAvatars(forPublic(await buildDTO(whole)), token), onlySection: null };
+  if (whole) return { wiki: await finish(whole, withPublicAvatars(forPublic(await buildDTO(whole)), token)), onlySection: null };
 
   // Otherwise look for a per-section token.
   const bySection = await prisma.clientWiki.findFirst({
     where: { pageShareTokens: { has: token } },
-    include: WIKI_INCLUDE,
+    include,
   });
   if (!bySection) return null;
   const map =
@@ -3600,9 +3624,26 @@ export async function resolvePublicWiki(
   const section = Object.keys(map).find((k) => map[k] === token) ?? null;
   if (!section) return null;
   return {
-    wiki: scopeBoardToSection(withPublicAvatars(forPublic(await buildDTO(bySection)), token), section),
+    wiki: await finish(bySection, scopeBoardToSection(withPublicAvatars(forPublic(await buildDTO(bySection)), token), section)),
     onlySection: section,
   };
+}
+
+/** Just enough to title a share page: the client's name and which section the link is for. */
+export async function resolvePublicWikiMeta(token: string): Promise<{ clientName: string; onlySection: string | null } | null> {
+  const whole = await prisma.clientWiki.findFirst({
+    where: { shareToken: token, shareEnabled: true },
+    select: { client: { select: { name: true } } },
+  });
+  if (whole) return { clientName: whole.client.name, onlySection: null };
+  const bySection = await prisma.clientWiki.findFirst({
+    where: { pageShareTokens: { has: token } },
+    select: { pageShares: true, client: { select: { name: true } } },
+  });
+  if (!bySection) return null;
+  const map = bySection.pageShares && typeof bySection.pageShares === "object" ? (bySection.pageShares as Record<string, string>) : {};
+  const section = Object.keys(map).find((k) => map[k] === token) ?? null;
+  return section ? { clientName: bySection.client.name, onlySection: section } : null;
 }
 
 /**

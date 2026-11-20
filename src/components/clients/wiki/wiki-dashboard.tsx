@@ -56,6 +56,7 @@ import { WikiStandupsCard } from "./wiki-standups-card";
 import { WikiDashboardGrid } from "./wiki-dashboard-grid";
 import { STANDUPS_CARD, type DashboardLayout } from "@/lib/wiki-dashboard-layout";
 import { CountUpText } from "@/components/ui/motion/count-up-text";
+import { boardSummaryOf } from "@/lib/wiki-board-summary";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -594,13 +595,11 @@ export function WikiDashboard({
       case "board": {
         // A real case, not the markdown-doc default (§52.1). It leads with what is waiting on
         // the client: cards in review they haven't signed off, then what they've approved.
-        const cards = wiki.board.lanes.flatMap((l) => l.groups.flatMap((g) => g.cards)).filter((c) => c.isCard);
-        if (cards.length === 0) {
+        // From the summary: the wiki doesn't carry the Board's cards (it loads them on its own).
+        const { cards: cardCount, waiting, approved, changes } = boardSummaryOf(wiki.board);
+        if (cardCount === 0) {
           return <p className="text-[13px] text-[var(--text-4)]">No cards yet.</p>;
         }
-        const waiting = cards.filter((c) => c.status === "IN_REVIEW" && !c.signOff).length;
-        const approved = cards.filter((c) => c.signOff === "approved").length;
-        const changes = cards.filter((c) => c.signOff === "changes_requested").length;
         return (
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
@@ -608,7 +607,7 @@ export function WikiDashboard({
               <Metric value={String(approved)} label="Approved" />
             </div>
             {(() => {
-              const line = `${cards.length} card${cards.length === 1 ? "" : "s"}${
+              const line = `${cardCount} card${cardCount === 1 ? "" : "s"}${
                 changes ? ` · ${changes} with changes asked for` : ""
               }`;
               return (

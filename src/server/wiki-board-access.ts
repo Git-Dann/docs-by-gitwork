@@ -63,7 +63,7 @@ export async function teamWriterFor(
 }
 
 /** The wiki a link opens, and the one section it is limited to (null = the whole wiki). */
-async function wikiForToken(token: string) {
+export async function wikiForToken(token: string) {
   const whole = await prisma.clientWiki.findFirst({
     where: { shareToken: token, shareEnabled: true },
     select: WIKI_SELECT,
