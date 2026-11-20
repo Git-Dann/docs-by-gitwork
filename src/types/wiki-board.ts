@@ -135,6 +135,22 @@ export interface WikiBoardSection {
   deleted?: WikiBoardDeletedCard[];
   /** TEAM copy only: how many deleted cards there are in all, when `deleted` holds only the newest. */
   deletedTotal?: number;
+  /**
+   * Set when the wiki sent only the summary (no lanes): the Board page loads its cards on its
+   * own. Read it through `boardSummaryOf`, which also works on a full Board.
+   */
+  summary?: WikiBoardSummary;
+}
+
+/** A Board's figures for the dashboard card and the client-section check (src/lib/wiki-board-summary.ts). */
+export interface WikiBoardSummary {
+  /** Everything on the Board, cards and other tasks, across every column (incl. ones not drawn). */
+  items: number;
+  /** Product cards drawn on the Board. */
+  cards: number;
+  waiting: number;
+  approved: number;
+  changes: number;
 }
 
 /** A dated event on the client's Schedule that isn't a card: a content drop, a launch, an event. */

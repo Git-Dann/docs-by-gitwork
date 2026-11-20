@@ -11058,3 +11058,21 @@ Also: the wiki draws its own frame, so it now has its own `<main>`; the course r
 checkbox has a label; `browsing-topics` left the Permissions-Policy header (Chrome no longer
 recognises it and logged an error on every page). Not changed: the SEO "blocked from indexing"
 finding, which is deliberate for `/app`.
+
+### 140.1 The Board, and the client's share page
+
+- **The Board's cards left the wiki too** (~250 KB on every page). The wiki sends
+  `board` with no lanes and a `summary` (`src/lib/wiki-board-summary.ts`: items, cards, waiting,
+  approved, changes); `?board=0` on the team's wiki, `{ board: false }` for `resolvePublicWiki`.
+  The Board loads its cards through `BoardCards` (`board-cards.tsx`, `useBoardCards`) from
+  `GET /api/clients/[slug]/wiki/board` or `GET /api/wiki/[token]/board` (client's copy, same
+  access as every Board read). ⚠️ Read the summary with `boardSummaryOf`, never `lanes`: the
+  client-section check and the dashboard card both do.
+- **The share page is light as well**: no course requests, the Board summary only, sections load
+  on demand, and the tab title comes from `resolvePublicWikiMeta` (it used to build the whole wiki
+  a second time just for the title).
+- ⚠️ **Security fix:** the share page's course request routes checked only the link token, so
+  anyone holding a Wedge share link could edit or delete requests without signing in. They now
+  require a signed-in client user of the wiki or this client's own team, a link for the whole
+  wiki or for Course Requests, and a rate limit (`src/server/wiki-course-request-access.ts`).
+  `PATCH`/`DELETE /api/wiki/[token]/course-requests` change many in one write.

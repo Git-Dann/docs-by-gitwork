@@ -249,7 +249,8 @@ describe("wiki-client-visibility.ts — each availableSections predicate has its
     // Enabled-and-empty would show the client a board of empty columns, which reads as
     // "nothing is planned".
     expect(available).toContain("wiki.board.enabled");
-    expect(available).toContain("wiki.board.lanes.some((l) => l.total.cards + l.total.other > 0)");
+    // From the summary: the wiki carries the Board's summary, not its cards (§140).
+    expect(available).toContain("boardSummaryOf(wiki.board).items > 0");
   });
 
   it("platforms — enabled AND at least one platform", () => {
@@ -400,6 +401,17 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
 
   /** Older cards in a Done column (§126.5): read-only, the client's copy, behind a read limit. */
   const laneRoutes = ["app/api/wiki/[token]/board/lanes/[laneKey]/route.ts"];
+  /** The Board's cards for the share page, which loads them on its own (§140). */
+  const cardsRoute = ["app/api/wiki/[token]/board/route.ts"];
+
+  it.each(cardsRoute)("%s only reads, gated then rate-limited, and sends the client's copy", (rel) => {
+    const src = read(rel);
+    expect(src).toMatch(/export async function GET/);
+    expect(src).not.toMatch(/export async function (POST|PATCH|PUT|DELETE)/);
+    expect(src.indexOf("resolveBoardWriter(req, token)")).toBeGreaterThan(-1);
+    expect(src.indexOf("resolveBoardWriter(req, token)")).toBeLessThan(src.indexOf("assertBoardReadRate(req)"));
+    expect(src).toContain("forPublicBoard(await loadWikiBoard(");
+  });
 
   it.each(laneRoutes)("%s only reads, gated and rate-limited, and always sends the client's copy", (rel) => {
     const src = read(rel);
@@ -497,7 +509,7 @@ describe("board — the client moves, adds and signs off cards, and how", () => 
   it("every handler under the board's token routes resolves the writer first", () => {
     const dir = join(ROOT, "app/api/wiki/[token]/board");
     const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
-    expect(files.length).toBe(routes.length + readRoutes.length + uploadRoutes.length + laneRoutes.length);
+    expect(files.length).toBe(routes.length + readRoutes.length + uploadRoutes.length + laneRoutes.length + cardsRoute.length);
     for (const f of files) {
       const src = readFileSync(join(dir, f), "utf8");
       const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];

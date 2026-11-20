@@ -105,7 +105,7 @@ const WikiDeliverySection = dynamic(() => import("@/components/clients/wiki/wiki
 const WikiCostsSection = dynamic(() => import("./wiki-costs-section").then((m) => m.WikiCostsSection), { loading: SectionLoading });
 const WikiEstimatesSection = dynamic(() => import("./wiki-estimates-section").then((m) => m.WikiEstimatesSection), { loading: SectionLoading });
 const WikiComparisonsSectionView = dynamic(() => import("./wiki-comparisons-section").then((m) => m.WikiComparisonsSectionView), { loading: SectionLoading });
-const WikiBoardSectionView = dynamic(() => import("./wiki-board-section").then((m) => m.WikiBoardSectionView), { loading: SectionLoading });
+const BoardCards = dynamic(() => import("./board-cards").then((m) => m.BoardCards), { loading: SectionLoading });
 const WikiRoundupSection = dynamic(() => import("./wiki-roundup-section").then((m) => m.WikiRoundupSection), { loading: SectionLoading });
 const WikiSupportSectionView = dynamic(() => import("@/components/clients/wiki/wiki-support-section").then((m) => m.WikiSupportSectionView), { loading: SectionLoading });
 const WikiMetricsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-metrics-section").then((m) => m.WikiMetricsSectionView), { loading: SectionLoading });
@@ -1595,12 +1595,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     }
     if (activeSection === "board") {
       return (
-        <WikiBoardSectionView
-          section={wiki!.board}
-          target={{ mode: "internal", slug }}
-          audience="team"
-          clientName={clientName}
-        />
+        <BoardCards target={{ mode: "internal", slug }} audience="team" clientName={clientName} />
       );
     }
     if (activeSection === "comparisons") {
@@ -2209,3 +2204,4 @@ function InternalCourseRequests({
   }
   return <CourseRequestsSection requests={list.data} {...rest} />;
 }
+

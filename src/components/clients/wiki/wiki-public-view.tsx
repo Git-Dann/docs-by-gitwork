@@ -6,36 +6,43 @@ import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiMobileNav } from "./wiki-mobile-nav";
 import { WikiPageEditor } from "./wiki-page-editor";
 import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-editor";
-import { ChangelogSection } from "./changelog-section";
-import { CourseRequestsSection } from "./course-requests-section";
-import { WikiIntakeSection } from "./wiki-intake-section";
-import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
-import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
-import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
-import { WikiCostsSection } from "./wiki-costs-section";
-import { WikiEstimatesSection } from "./wiki-estimates-section";
 import { isPlannable } from "@/lib/wiki-estimates";
-import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
-import { WikiBoardSectionView } from "./wiki-board-section";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
-import { WikiRoundupSection } from "./wiki-roundup-section";
-import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
-import { WikiMetricsSectionView } from "@/components/clients/wiki/wiki-metrics-section";
-import { WikiMeetingsSectionView } from "@/components/clients/wiki/wiki-meetings-section";
-import { WikiPlatformsSectionView } from "@/components/clients/wiki/wiki-platforms-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
-import { WikiCodeSection } from "./wiki-code-section";
-import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
-import { DesignSystemViewer } from "@/components/clients/design-system/design-system-viewer";
-import { MonitorStatusBoard } from "./monitors-section";
-import { DocumentsList } from "./documents-section";
 import { apiFetch } from "@/lib/api";
 import { clientVisibleSections } from "@/lib/wiki-client-visibility";
 import { isDocPageSection } from "@/lib/wiki-section-groups";
 import { WikiDocTabs } from "./wiki-doc-tabs";
 import { WikiPageHeader } from "./wiki-page-header";
 import { WIKI_PAGE_TITLES } from "@/lib/wiki-page-meta";
+import dynamic from "next/dynamic";
+import { LoadingState } from "@/components/ui/motion/loading-state";
+import { BoardCards } from "./board-cards";
+import { PublicCourseRequests } from "./public-course-requests";
+
+// Each section's code loads when it's opened, as on the team's wiki (CLAUDE.md §140).
+function SectionLoading() {
+  return <LoadingState label="Loading…" />;
+}
+const ChangelogSection = dynamic(() => import("./changelog-section").then((m) => m.ChangelogSection), { loading: SectionLoading });
+const WikiIntakeSection = dynamic(() => import("./wiki-intake-section").then((m) => m.WikiIntakeSection), { loading: SectionLoading });
+const LaunchpadSection = dynamic(() => import("@/components/clients/launchpad/launchpad-section").then((m) => m.LaunchpadSection), { loading: SectionLoading });
+const WikiInsightsSectionView = dynamic(() => import("@/components/clients/insights/insights-section").then((m) => m.WikiInsightsSectionView), { loading: SectionLoading });
+const WikiDeliverySection = dynamic(() => import("@/components/clients/wiki/wiki-delivery-section").then((m) => m.WikiDeliverySection), { loading: SectionLoading });
+const WikiCostsSection = dynamic(() => import("./wiki-costs-section").then((m) => m.WikiCostsSection), { loading: SectionLoading });
+const WikiEstimatesSection = dynamic(() => import("./wiki-estimates-section").then((m) => m.WikiEstimatesSection), { loading: SectionLoading });
+const WikiComparisonsSectionView = dynamic(() => import("./wiki-comparisons-section").then((m) => m.WikiComparisonsSectionView), { loading: SectionLoading });
+const WikiRoundupSection = dynamic(() => import("./wiki-roundup-section").then((m) => m.WikiRoundupSection), { loading: SectionLoading });
+const WikiSupportSectionView = dynamic(() => import("@/components/clients/wiki/wiki-support-section").then((m) => m.WikiSupportSectionView), { loading: SectionLoading });
+const WikiMetricsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-metrics-section").then((m) => m.WikiMetricsSectionView), { loading: SectionLoading });
+const WikiMeetingsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-meetings-section").then((m) => m.WikiMeetingsSectionView), { loading: SectionLoading });
+const WikiPlatformsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-platforms-section").then((m) => m.WikiPlatformsSectionView), { loading: SectionLoading });
+const WikiCodeSection = dynamic(() => import("./wiki-code-section").then((m) => m.WikiCodeSection), { loading: SectionLoading });
+const WikiTimelineSection = dynamic(() => import("./wiki-timeline-section").then((m) => m.WikiTimelineSection), { loading: SectionLoading });
+const DesignSystemViewer = dynamic(() => import("@/components/clients/design-system/design-system-viewer").then((m) => m.DesignSystemViewer), { loading: SectionLoading });
+const MonitorStatusBoard = dynamic(() => import("./monitors-section").then((m) => m.MonitorStatusBoard), { loading: SectionLoading });
+const DocumentsList = dynamic(() => import("./documents-section").then((m) => m.DocumentsList), { loading: SectionLoading });
 
 type WikiPageType =
   | "IA_GUIDE"
@@ -88,7 +95,6 @@ export function WikiPublicView({
   const [activeSection, setActiveSection] = useState<WikiSection>(
     (onlySection as WikiSection) ?? deepLink ?? "dashboard",
   );
-  const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
   const [changelog, setChangelog] = useState(wiki.changelog);
 
   // The client approves a release from here. Only approving: a client never un-approves,
@@ -109,36 +115,6 @@ export function WikiPublicView({
             : e,
         ),
       );
-    },
-    [token],
-  );
-
-  const handleSetStatus = useCallback(
-    async (ids: string[], status: string) => {
-      await Promise.all(
-        ids.map((id) =>
-          apiFetch(`/api/wiki/${token}/course-requests/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status }),
-          }),
-        ),
-      );
-      setCourseRequests((prev) =>
-        prev.map((r) => (ids.includes(r.id) ? { ...r, status } : r)),
-      );
-    },
-    [token],
-  );
-
-  const handleDelete = useCallback(
-    async (ids: string[]) => {
-      await Promise.all(
-        ids.map((id) =>
-          apiFetch(`/api/wiki/${token}/course-requests/${id}`, { method: "DELETE" }),
-        ),
-      );
-      setCourseRequests((prev) => prev.filter((r) => !ids.includes(r.id)));
     },
     [token],
   );
@@ -232,7 +208,7 @@ export function WikiPublicView({
       return <WikiCostsSection slug={wiki.clientSlug} model={wiki.costs} mode="public" />;
     }
     if (activeSection === "board") {
-      return <WikiBoardSectionView section={wiki.board} target={{ mode: "public", token }} audience="client" />;
+      return <BoardCards target={{ mode: "public", token }} audience="client" />;
     }
     if (activeSection === "comparisons") {
       return (
@@ -313,11 +289,7 @@ export function WikiPublicView({
             </span>
           </div>
           <div className="p-6">
-            <CourseRequestsSection
-              requests={courseRequests}
-              onDelete={handleDelete}
-              onSetStatus={handleSetStatus}
-            />
+            <PublicCourseRequests token={token} />
           </div>
         </section>
       );

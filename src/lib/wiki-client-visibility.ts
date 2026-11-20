@@ -10,6 +10,7 @@
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "@/components/clients/wiki/wiki-sidebar";
 import { COURSE_REQUESTS_SLUGS } from "@/lib/wiki-sections";
+import { boardSummaryOf } from "@/lib/wiki-board-summary";
 import { isPlannable } from "@/lib/wiki-estimates";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { clientVisibleMonitors } from "@/lib/monitor-environment";
@@ -79,7 +80,7 @@ export function clientVisibleSections(wiki: WikiDTO): WikiSection[] {
       : []),
     // The Board needs at least one card. Enabled-and-empty would show the client a board of
     // empty columns, which reads as "nothing is planned".
-    ...(wiki.board.enabled && wiki.board.lanes.some((l) => l.total.cards + l.total.other > 0)
+    ...(wiki.board.enabled && boardSummaryOf(wiki.board).items > 0
       ? (["board"] as const)
       : []),
     // RoundUp needs a breakdown to summarise. Enabled-and-empty would land a client on
