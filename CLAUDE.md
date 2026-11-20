@@ -11038,6 +11038,12 @@ sub-pages are its settings, Suppliers is HR-only, Archived lives under People, a
     no card), photo (camera button on your own), name, role, the record's actions, and two tiles:
     **Public page** (Live/Off, link, Copy, View, Publish) and **Profile** (% complete). **Edit my
     page** opens the sectioned, fixed-height editor popup (`PublicProfileEditor`).
+  - **The banner's frame is shared** (`src/components/profile/profile-banner-shell.tsx`:
+    `ProfileBannerShell` + `BannerTile`), used by the Staff profile and the Hiring candidate
+    profile, so the two can't drift. Name and buttons start 12px below the band. Rare actions
+    live in its ⋯ menu, each with its own dialog: on Staff that's Same person as…, Archive… and
+    Delete… (only Restore stays a button, on an archived record); on a candidate, Move to
+    Bench/Off Bench and Delete…. A candidate's Group, Monthly and Current clients are tiles.
   - ⚠️ **Hide is never a button.** It's in the banner's ⋯ menu and asks first ("Keep it live" /
     "Hide page"). The editor's footer only offers Save and publish, never Hide.
   - Your photo, and your name and password for a password sign-in, are reached from the banner

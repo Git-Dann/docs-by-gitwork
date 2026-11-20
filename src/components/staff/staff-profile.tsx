@@ -13,7 +13,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { ArrowLeftIcon, EyeIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { EMPLOYMENT_TYPE_LABEL, GITWORK_EMPLOYMENT_TYPES, isEmploymentType, type StaffPerson } from "@/lib/staff";
@@ -28,6 +28,8 @@ import {
   type StaffProfile,
 } from "@/lib/hr";
 import { BalancedColumns } from "@/components/ui/balanced-columns";
+import { Modal } from "@/components/ui/modal";
+import type { BannerMenuItem } from "@/components/profile/profile-banner-shell";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { DetailsDialog } from "@/components/staff/staff-roster";
 import { DocumentsCard } from "@/components/staff/staff-documents";
@@ -426,7 +428,12 @@ function AccessLogCard({ recordId, number, className }: { recordId: string; numb
  * someone who signs in removes their Foundry access immediately, and delete cannot be
  * undone. Delete only appears when the record has no history (the server decides).
  */
-function PersonActions({ profile, basePath }: { profile: StaffProfile; basePath: string }) {
+/**
+ * The record's actions, for the banner. Restore is a button (an archived record's one job);
+ * Archive, "Same person as…" and Delete are rare and hard to undo, so they sit in the banner's
+ * ⋯ menu and each opens a dialog that says what will happen.
+ */
+function usePersonActions(profile: StaffProfile, basePath: string): { menu: BannerMenuItem[]; buttons: ReactNode; dialogs: ReactNode } {
   const router = useRouter();
   const l = profile.lifecycle;
   const [confirm, setConfirm] = useState<"archive" | "delete" | "merge" | null>(null);
@@ -435,78 +442,88 @@ function PersonActions({ profile, basePath }: { profile: StaffProfile; basePath:
   const remove = useDeleteStaffRecord();
   const busy = setArchived.isPending || remove.isPending;
 
-  if (confirm === "merge") return <MergePanel profile={profile} basePath={basePath} onCancel={() => setConfirm(null)} />;
-
-  const run = async () => {
+  const run = async (what: "archive" | "restore" | "delete") => {
     setError(null);
     try {
-      if (confirm === "delete") {
+      if (what === "delete") {
         await remove.mutateAsync(profile.recordId);
         router.push(basePath);
         return;
       }
-      await setArchived.mutateAsync({ recordId: profile.recordId, memberId: l.hasLogin ? profile.memberId : null, archived: !l.archived });
+      await setArchived.mutateAsync({ recordId: profile.recordId, memberId: l.hasLogin ? profile.memberId : null, archived: what === "archive" });
       setConfirm(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     }
   };
 
-  if (confirm) {
-    const sentence =
-      confirm === "delete"
-        ? `Delete ${profile.name}'s record for good?`
-        : l.hasLogin
-          ? `Archive ${profile.name}? Their Foundry access stops now. You can restore them for 30 days. Their Google account is separate.`
-          : `Archive ${profile.name}? They leave every list and can be restored any time.`;
-    return (
-      <div className="flex max-w-md flex-col items-end gap-2 text-right">
-        <p className="text-[13px] text-[var(--text-2)]">{sentence}</p>
-        {error ? (
-          <p role="alert" className="text-[13px] text-[var(--danger-500)]">
-            {error}
-          </p>
-        ) : null}
-        <div className="flex gap-2">
-          <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setConfirm(null)} disabled={busy}>
-            Cancel
-          </button>
-          <button type="button" className="app-button app-button-danger app-button-sm" onClick={() => void run()} disabled={busy}>
-            {busy ? "Working…" : confirm === "delete" ? "Delete" : "Archive"}
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const menu: BannerMenuItem[] = [];
+  if (l.canMerge && !l.archived) menu.push({ label: "Same person as…", onClick: () => setConfirm("merge") });
+  if (l.canArchive && !l.archived) menu.push({ label: "Archive…", onClick: () => setConfirm("archive"), danger: true });
+  if (l.canDelete) menu.push({ label: "Delete…", onClick: () => setConfirm("delete"), danger: true });
 
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      {l.canArchive && l.archived && l.restorable ? (
-        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => void run()} disabled={busy}>
-          {busy ? "Restoring…" : "Restore"}
-        </button>
-      ) : null}
-      {l.canArchive && !l.archived ? (
-        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setConfirm("archive")}>
-          Archive
-        </button>
-      ) : null}
-      {l.canMerge && !l.archived ? (
-        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setConfirm("merge")}>
-          Same person as…
-        </button>
-      ) : null}
-      {l.canDelete ? (
-        <button type="button" className="app-button app-button-tertiary app-button-sm text-[var(--danger-500)]" onClick={() => setConfirm("delete")}>
-          Delete
-        </button>
-      ) : null}
-      {error ? (
-        <p role="alert" className="basis-full text-right text-[13px] text-[var(--danger-500)]">
+  const buttons =
+    l.canArchive && l.archived && l.restorable ? (
+      <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => void run("restore")} disabled={busy}>
+        {busy ? "Restoring…" : "Restore"}
+      </button>
+    ) : null;
+
+  const sentence =
+    confirm === "delete"
+      ? `Delete ${profile.name}'s record for good? This can't be undone.`
+      : l.hasLogin
+        ? `Archive ${profile.name}? Their Foundry access stops now. You can restore them for 30 days. Their Google account is separate.`
+        : `Archive ${profile.name}? They leave every list and can be restored any time.`;
+
+  const dialogs = (
+    <>
+      <Modal open={confirm === "merge"} onClose={() => setConfirm(null)} title="SAME PERSON AS…" panelClassName="w-full max-w-lg">
+        <div className="p-5">
+          <MergePanel profile={profile} basePath={basePath} onCancel={() => setConfirm(null)} />
+        </div>
+      </Modal>
+      <Modal
+        open={confirm === "archive" || confirm === "delete"}
+        onClose={() => setConfirm(null)}
+        title={confirm === "delete" ? "DELETE RECORD" : "ARCHIVE"}
+        panelClassName="w-full max-w-md"
+      >
+        <div className="space-y-4 p-5">
+          <p className="text-[14px] leading-6 text-[var(--text-2)]">{sentence}</p>
+          {error ? (
+            <p role="alert" className="text-[13px] text-[var(--danger-500)]">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setConfirm(null)} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="app-button app-button-danger app-button-sm" onClick={() => void run(confirm === "delete" ? "delete" : "archive")} disabled={busy}>
+              {busy ? "Working…" : confirm === "delete" ? "Delete" : "Archive"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+      {error && !confirm ? (
+        <p role="alert" className="text-[13px] text-[var(--danger-500)]">
           {error}
         </p>
       ) : null}
-    </div>
+    </>
+  );
+  return { menu, buttons, dialogs };
+}
+
+/** The banner on Staff, with the record's own actions (Me has none: you don't archive yourself). */
+function StaffBanner({ profile, displayName, self, basePath }: { profile: StaffProfile; displayName: string; self: boolean; basePath: string }) {
+  const actions = usePersonActions(profile, basePath);
+  return (
+    <>
+      <ProfileBanner profile={profile} displayName={displayName} self={self} actions={actions.buttons} extraMenu={actions.menu} />
+      {actions.dialogs}
+    </>
   );
 }
 
@@ -537,13 +554,13 @@ function MergePanel({ profile, basePath, onCancel }: { profile: StaffProfile; ba
   };
 
   return (
-    <div className="flex w-full max-w-md flex-col items-stretch gap-2 sm:items-end sm:text-right" data-merge-panel>
+    <div className="flex w-full flex-col items-stretch gap-2" data-merge-panel>
       <label htmlFor="merge-other" className="text-[13px] text-[var(--text-2)]">
         Which record is also {profile.name}?
       </label>
       <select
         id="merge-other"
-        className="app-select app-select-compact w-full sm:w-72"
+        className="app-select app-select-compact w-full"
         value={otherId}
         onChange={(e) => setOtherId(e.target.value)}
         disabled={merge.isPending}
@@ -566,7 +583,7 @@ function MergePanel({ profile, basePath, onCancel }: { profile: StaffProfile; ba
           {error}
         </p>
       ) : null}
-      <div className="flex gap-2 sm:justify-end">
+      <div className="flex justify-end gap-2">
         <button type="button" className="app-button app-button-secondary app-button-sm" onClick={onCancel} disabled={merge.isPending}>
           Cancel
         </button>
@@ -883,7 +900,11 @@ export function StaffProfileView({
         </Link>
       ) : null}
 
-      <ProfileBanner profile={p} displayName={displayName} self={self} actions={mode === "staff" ? <PersonActions profile={p} basePath={basePath} /> : undefined} />
+      {mode === "staff" ? (
+        <StaffBanner profile={p} displayName={displayName} self={self} basePath={basePath} />
+      ) : (
+        <ProfileBanner profile={p} displayName={displayName} self={self} />
+      )}
 
       {p.lifecycle.archived ? (
         <p className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-[13px] text-[var(--text-2)]">
