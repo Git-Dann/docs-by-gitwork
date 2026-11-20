@@ -2,3 +2,4 @@
 530746e3124898d9edefd1c3d4452cca7baf833a7c64216f68e944397d4c3c7c  docker-compose.yml (the box, Aug 2026: the old repo file without its pgvector comment; checked against the deploy diff, Nov 2026)
 83e6c532a737f57cb60c22e33bc1c3b374315ceaf02ea25e9068d0a40d8cb38c  docker-compose.yml (Nov 2026: 127.0.0.1:3000, log rotation)
 a84c7ff8f266c0f5077d7858d544b4f2743afd7021c5889639e33814c67fbd09  docker-compose.yml (Nov 2026: db oom_score_adj -500)
+4ba0eecd12a627477a40519196a173af6f2f2d13bb287f127c08fd2e4817feae  docker-compose.yml (Nov 2026: app mem_limit 6g)

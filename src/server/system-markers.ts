@@ -48,3 +48,35 @@ export async function readSystemMarkers(names: readonly string[]): Promise<Recor
   }
   return out;
 }
+
+/**
+ * A daily number kept beside the markers (the database's size), one row per day. The value is
+ * in the bucket name (`system:series:<name>:<value>`) because a RateLimitHit row holds nothing
+ * else; readings older than `keepDays` are deleted as new ones are written. Never throws.
+ */
+export async function recordDaily(name: string, value: number, at: Date = new Date(), keepDays = 14): Promise<void> {
+  const prefix = `system:series:${name}:`;
+  try {
+    const dayStart = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
+    await prisma.$transaction([
+      // One reading per day: today's replaces any earlier one from today.
+      prisma.rateLimitHit.deleteMany({ where: { bucket: { startsWith: prefix }, createdAt: { gte: dayStart } } }),
+      prisma.rateLimitHit.deleteMany({ where: { bucket: { startsWith: prefix }, createdAt: { lt: new Date(at.getTime() - keepDays * 86_400_000) } } }),
+      prisma.rateLimitHit.create({ data: { bucket: `${prefix}${Math.round(value)}`, createdAt: at } }),
+    ]);
+  } catch (err) {
+    console.warn(`[system-markers] could not record ${name}: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+export async function readDaily(name: string): Promise<Array<{ at: Date; value: number }>> {
+  const prefix = `system:series:${name}:`;
+  const rows = await prisma.rateLimitHit.findMany({
+    where: { bucket: { startsWith: prefix } },
+    select: { bucket: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows
+    .map((r) => ({ at: r.createdAt, value: Number(r.bucket.slice(prefix.length)) }))
+    .filter((r) => Number.isFinite(r.value));
+}

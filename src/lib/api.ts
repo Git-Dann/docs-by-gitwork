@@ -4619,6 +4619,11 @@ export async function getMonitorsPageApi(): Promise<MonitorsPageDTO> {
   return apiFetch("/api/monitors");
 }
 
+/** Foundry's own health for the Platform popup on /app/monitors (platform admins only). */
+export async function getPlatformHealthApi(): Promise<import("@/lib/platform-health").PlatformHealth> {
+  return apiFetch("/api/monitors/platform");
+}
+
 export async function runWikiMonitorApi(slug: string, id: string): Promise<WikiMonitorDTO> {
   return apiFetch<WikiMonitorDTO>(`/api/clients/${slug}/wiki/monitors/${id}/run`, { method: "POST" });
 }

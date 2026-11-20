@@ -34,6 +34,7 @@ import { IncidentCard } from "@/components/clients/wiki/monitor-incidents";
 import { FadeIn } from "@/components/ui/motion/fade-in";
 import { SkeletonCards } from "@/components/ui/motion/skeleton";
 import { AddMonitorDialog, type AddMonitorClient } from "./add-monitor-dialog";
+import { PlatformHealthButton } from "./platform-health";
 import { environmentLabel } from "@/lib/monitor-environment";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -221,7 +222,7 @@ function ClientCard({
   );
 }
 
-export function MonitorsWorkspace() {
+export function MonitorsWorkspace({ demo = false }: { demo?: boolean } = {}) {
   const { data, isLoading, isError, refetch, isFetching } = useMonitorsPage();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -291,6 +292,7 @@ export function MonitorsWorkspace() {
         <section className="widget-card">
           <Header number={num()} label="STATUS">
             <div className="flex min-w-0 items-center gap-3">
+              <PlatformHealthButton demo={demo} />
               {lastCheck ? (
                 <span
                   className="hidden truncate text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)] sm:inline"

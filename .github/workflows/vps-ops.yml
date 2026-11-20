@@ -22,7 +22,7 @@ on:
         type: choice
         default: inspect
         options:
-          - inspect # read-only: crontab, cron log, nginx state. Changes nothing.
+          - inspect # read-only: crontab, cron log, nginx state, memory. Changes nothing.
           - nginx-sync # copy deploy/nginx/foundry.conf up, validate, reload
           - rollback # put an earlier image back (see the `rollback_to` input)
       rollback_to:
@@ -116,6 +116,23 @@ jobs:
               || echo "(unreadable unprivileged, or not set)"
             echo "--- the live foundry vhost:"
             cat /etc/nginx/sites-available/foundry 2>&1 | head -60 || echo "(unreadable unprivileged)"
+
+            echo
+            echo "=============== memory: box and containers ==============="
+            # Read before setting any container memory limit (CLAUDE.md §144): a limit below what
+            # the app really needs kills it on purpose.
+            free -m 2>&1 || true
+            echo "cpus: $(nproc 2>/dev/null)"
+            docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.CPUPerc}}' 2>&1 | head -10 || true
+            echo "--- peak memory since each container started (cgroup v2):"
+            for c in foundry foundry-db; do
+              id=$(docker inspect -f '{{.Id}}' "$c" 2>/dev/null) || continue
+              for f in /sys/fs/cgroup/system.slice/docker-$id.scope/memory.peak /sys/fs/cgroup/docker/$id/memory.peak; do
+                [ -r "$f" ] && { echo "$c peak: $(( $(cat "$f") / 1048576 )) MiB"; break; }
+              done
+            done
+            echo "--- OOM kills recorded by the kernel (needs dmesg access):"
+            dmesg 2>/dev/null | grep -i "out of memory\|oom-kill" | tail -5 || echo "(dmesg not readable)"
 
             echo
             echo "=============== which /api/cron routes exist vs are scheduled ==============="
