@@ -112,6 +112,12 @@ describe("public profile privacy (§139)", () => {
     expect(server.slice(server.indexOf("export async function unpublishProfile"))).toContain("profilePublic: false");
   });
 
+  it("the photo address changes when the photo or its crop does, so browsers don't show an old one", () => {
+    const fn = server.slice(server.indexOf("function avatarOf"));
+    expect(fn).toMatch(/avatar\?v=\$\{v\}/);
+    expect(fn.slice(0, 600)).toMatch(/avatarUrl\}\|\$\{r\.member\.user\.avatarPosition/);
+  });
+
   it("the photo route is public only under /api/u, segment-anchored", () => {
     expect(read("src/middleware.ts")).toMatch(/"\/api\/u",/);
     expect(read("src/app/api/u/[slug]/avatar/route.ts")).toContain("publicAvatarUserId(slug)");
