@@ -11026,3 +11026,8 @@ sub-pages are its settings, Suppliers is HR-only, Archived lives under People, a
   GitHub account? Remove the handle" → `removeGithubHandle` on `PATCH /api/staff/[id]`). A handle
   lists someone as a developer whatever the switch says, so without this a handle naming the
   wrong person (Hassaan's `@hassaan`, a stranger in Waterloo) could only be fixed in the database.
+- **…and the person can do it themselves**, which is the normal route. Backstage → Me → Your
+  developer details: "Not your account? Remove it" (`removeGithubHandle`, keeps them a developer)
+  and "Not a developer? Take yourself off the Developers list" (`notDeveloper`, clears the handle
+  too, after a confirm). A blank handle field still never removes one; only these two do. Getting
+  back on the list is an admin's call or an invite.

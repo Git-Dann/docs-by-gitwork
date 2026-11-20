@@ -455,11 +455,19 @@ export async function updateOwnDeveloperDetails(
     throw Object.assign(new Error("Your profile isn't marked as a developer. Ask an admin to switch it on."), { status: 403 });
   }
   const v = details.value;
+  // Their own say over what they are: "not a developer" takes them off the list, handle and all;
+  // "not my account" removes a handle that names someone else and keeps them on it.
+  const listing = v.notDeveloper
+    ? { isDeveloper: false, githubHandle: null }
+    : v.removeGithubHandle && !v.githubHandle
+      ? { isDeveloper: true, githubHandle: null }
+      : {};
   try {
     const r = await prisma.candidate.update({
       where: { id: current.recordId },
       data: {
-        ...(v.githubHandle ? { githubHandle: v.githubHandle } : {}),
+        ...(v.githubHandle && !v.notDeveloper ? { githubHandle: v.githubHandle } : {}),
+        ...listing,
         // primaryStack is required in the database; blank is stored as "".
         ...(v.primaryStack !== undefined ? { primaryStack: v.primaryStack ?? "" } : {}),
         ...(v.techStacks !== undefined ? { techStacks: v.techStacks } : {}),

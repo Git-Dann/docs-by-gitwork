@@ -49,6 +49,9 @@ export function MyDeveloperCard({ number }: { number: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // "That isn't my GitHub account": removed when they save.
+  const [removeHandle, setRemoveHandle] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     if (d && draft === null) {
@@ -66,6 +69,7 @@ export function MyDeveloperCard({ number }: { number: string }) {
     setError(null);
     try {
       const saved = await save.mutateAsync({
+        ...(removeHandle && !draft.githubHandle.trim() ? { removeGithubHandle: true as const } : {}),
         githubHandle: draft.githubHandle.trim() || null,
         primaryStack: draft.primaryStack,
         techStacks: draft.techStacks.split(","),
@@ -75,6 +79,7 @@ export function MyDeveloperCard({ number }: { number: string }) {
         portfolioUrl: draft.portfolioUrl,
       });
       setDraft(toDraft(saved));
+      setRemoveHandle(false);
       setEditing(false);
       toast.success("Developer details saved", "The team sees them on your card in Code.");
     } catch (e) {
@@ -121,6 +126,23 @@ export function MyDeveloperCard({ number }: { number: string }) {
                 autoComplete="off"
                 spellCheck={false}
               />
+              {d.githubHandle && !removeHandle ? (
+                <button
+                  type="button"
+                  className="mt-1 text-[12px] font-medium text-[var(--brand-700)] hover:underline"
+                  onClick={() => {
+                    setRemoveHandle(true);
+                    setDraft({ ...draft, githubHandle: "" });
+                  }}
+                >
+                  Not your account? Remove it
+                </button>
+              ) : null}
+              {removeHandle && !draft.githubHandle.trim() ? (
+                <span className="mt-1 block text-[12px] font-normal text-[var(--warning-500)]">
+                  Your GitHub username will be removed when you save. Add your own any time.
+                </span>
+              ) : null}
             </label>
             <label className={field}>
               Main stack
@@ -160,6 +182,7 @@ export function MyDeveloperCard({ number }: { number: string }) {
                 disabled={save.isPending}
                 onClick={() => {
                   setDraft(toDraft(d));
+                  setRemoveHandle(false);
                   setError(null);
                   setEditing(false);
                 }}
@@ -203,6 +226,42 @@ export function MyDeveloperCard({ number }: { number: string }) {
               "—"
             )}
           </Field>
+          <div className="border-t border-[var(--border-1)] pt-3 sm:col-span-2">
+            {leaving ? (
+              <div className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--text-2)]">
+                <span>Take yourself off the Developers list? Your GitHub username goes too.</span>
+                <button
+                  type="button"
+                  className="app-button app-button-secondary app-button-sm"
+                  disabled={save.isPending}
+                  onClick={async () => {
+                    setError(null);
+                    try {
+                      await save.mutateAsync({ notDeveloper: true });
+                      toast.success("You're off the Developers list", "Ask an admin if you need to be back on it.");
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Couldn't update that");
+                      setLeaving(false);
+                    }
+                  }}
+                >
+                  {save.isPending ? "Saving…" : "Take me off"}
+                </button>
+                <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setLeaving(false)}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button type="button" className="text-[12px] text-[var(--text-3)] hover:text-[var(--text-1)] hover:underline" onClick={() => setLeaving(true)}>
+                Not a developer? Take yourself off the Developers list
+              </button>
+            )}
+            {error ? (
+              <p role="alert" className="mt-2 text-[12px] text-[var(--danger-500)]">
+                {error}
+              </p>
+            ) : null}
+          </div>
         </dl>
       )}
     </WidgetCard>
