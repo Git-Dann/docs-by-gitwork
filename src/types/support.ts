@@ -43,6 +43,8 @@ export interface SupportClient {
    */
   workspaceClientSlug?: string;
   /** Support paused: ingest quietly, skip triage/rules, auto-import course requests. */
+  /** Not a support desk: ingested, never answered here. See `src/lib/care-mode.ts`. */
+  ingestOnly?: boolean;
   courseRequestOnly?: boolean;
   unreadCount?: number;
 }

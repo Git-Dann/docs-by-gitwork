@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { SupportClient } from "@/types/support";
 import { useSupportClients } from "@/hooks/use-support";
 import { careHref, isCareSection, type CareSection } from "@/lib/care-links";
+import { isSupportDesk } from "@/lib/care-mode";
 import { CareHome } from "./care-home";
 import { ClientCockpit } from "./client-cockpit";
 
@@ -49,7 +50,9 @@ export function CareWorkspace() {
 
   function select(client: SupportClient | null) {
     setActiveClientId(client?.id ?? null);
-    setInitialSection("conversations");
+    // An ingest-only client has no queue to open. Land on its Settings, which is the only thing
+    // anyone goes there for — the connector that keeps its mail flowing.
+    setInitialSection(client && !isSupportDesk(client) ? "settings" : "conversations");
     syncUrl(client?.id ?? null, null);
     if (typeof window !== "undefined") {
       if (client) window.localStorage.setItem(ACTIVE_CLIENT_KEY, client.id);
@@ -58,6 +61,13 @@ export function CareWorkspace() {
   }
 
   const activeClient = clientsQ.data?.clients.find((c) => c.id === activeClientId) ?? null;
+
+  // ⚠️ A remembered client that has since become ingest-only would otherwise reopen a desk with
+  // no queues on it. Fall back to Care home and forget it, rather than restoring a dead end.
+  useEffect(() => {
+    if (!activeClient || isSupportDesk(activeClient)) return;
+    if (initialSection === "conversations") setInitialSection("settings");
+  }, [activeClient, initialSection]);
 
   if (activeClient) {
     return (

@@ -3479,9 +3479,17 @@ model SupportClient {
   supportDaysUsed     Int?                       @default(0)
   reportingRecipient  String?
   reportDueDay        Int?
-  // "Course-requests-only" mode (support paused): sync still ingests the inbox, but
-  // triage/enrichment + workflow rules are skipped, and "New Feedback" emails are
-  // auto-imported into the wiki's Course Requests tracker. Additive → safe db push.
+  // Ingest only: the connectors keep running and conversations keep landing, but this is not a
+  // support desk. It is left out of the client list, every queue total, the HQ tile and the
+  // digest. Wedge is the case it was built for — we ingest course requests from their mailbox
+  // and do not answer their customers — and its 249 conversations were being counted as people
+  // waiting on Gitwork. Additive → safe db push.
+  ingestOnly          Boolean                    @default(false)
+  // "Course-requests-only" mode: a sub-behaviour of ingestOnly, not a mode of its own. Sync
+  // still ingests the inbox, triage/enrichment + workflow rules are skipped, and "New Feedback"
+  // emails are auto-imported into the wiki's Course Requests tracker. Kept as its own flag
+  // rather than renamed: a rename is a drop plus an add, and one potentially data-losing change
+  // makes `prisma db push` skip the WHOLE sync, additive parts included (CLAUDE.md §2).
   courseRequestOnly   Boolean                    @default(false)
   workspaceClientId   String?
   workspaceClient     WorkspaceClient?           @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)

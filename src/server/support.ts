@@ -198,6 +198,7 @@ export function serializeSupportClient(row: {
   reportingRecipient: string | null;
   reportDueDay: number | null;
   workspaceClientId?: string | null;
+  ingestOnly?: boolean | null;
   courseRequestOnly?: boolean | null;
   workspaceClient?: { slug: string } | null;
   _count?: { conversations?: number };
@@ -216,6 +217,7 @@ export function serializeSupportClient(row: {
     // is a different string for the same client ("big-wedge-golf" vs "wedge"), so gating on
     // `slug` above would silently never match.
     workspaceClientSlug: row.workspaceClient?.slug ?? undefined,
+    ingestOnly: row.ingestOnly ?? false,
     courseRequestOnly: row.courseRequestOnly ?? false,
     unreadCount: row._count?.conversations ?? 0,
   };
@@ -485,6 +487,16 @@ async function assertSupportClientInScope(user: EffectiveUser, supportClientId: 
 
 // ─── SupportClient CRUD ───────────────────────────────────────────────────────
 
+/**
+ * Care clients we answer for, as a Prisma filter. The mirror of `isSupportDesk` in
+ * `src/lib/care-mode.ts` — keep the two in step.
+ *
+ * ⚠️ Both flags, not just `ingestOnly`: Wedge is `courseRequestOnly` today and nothing sets the
+ * new flag on it until someone does. Leaving the second clause out would put its 249 course-request
+ * conversations straight back into the awaiting total, which is the whole thing this removes.
+ */
+export const SUPPORT_DESK_CLIENT = { ingestOnly: false, courseRequestOnly: false } as const;
+
 export async function listSupportClients(
   workspaceId: string,
   user?: EffectiveUser,
@@ -607,19 +619,23 @@ export async function getSupportDashboardSummary(
 ): Promise<SupportDashboardSummary> {
   const limit = options?.recentConversationLimit ?? 8;
 
+  // Every figure here is about the support desk, so ingest-only clients are out of all of them
+  // — a client whose mail we only harvest is not a client anyone is failing to answer.
+  const deskClients = { workspaceId, ...SUPPORT_DESK_CLIENT };
+
   const [clientCount, openTicketCount, queues, conversationRows] = await Promise.all([
-    prisma.supportClient.count({ where: { workspaceId } }),
+    prisma.supportClient.count({ where: deskClients }),
     // "Open" now means conversations needing a human (NEW or OPEN) — the conversation
     // is the unit of triage. Field name kept for back-compat with the HQ widget/iOS.
     prisma.supportConversation.count({
-      where: { status: { in: ["NEW", "OPEN"] }, client: { workspaceId } },
+      where: { status: { in: ["NEW", "OPEN"] }, client: deskClients },
     }),
     // Per-client awaiting-reply counts. Already indexed groupBys (§42.6) —
     // the same read the web's Care home and HQ widget use, so the phone and
     // the browser can never report different queues.
     getClientQueueSummaries(workspaceId),
     prisma.supportConversation.findMany({
-      where: { client: { workspaceId } },
+      where: { client: deskClients },
       orderBy: { receivedAt: "desc" },
       take: limit,
       include: {
@@ -637,6 +653,8 @@ export async function getSupportDashboardSummary(
             reportingRecipient: true,
             reportDueDay: true,
             workspaceClientId: true,
+            ingestOnly: true,
+            courseRequestOnly: true,
           },
         },
         tickets: { select: { id: true }, take: 1 },
@@ -700,12 +718,14 @@ export async function updateSupportClient(
     reportingRecipient: string;
     reportDueDay: number;
     workspaceClientId: string | null;
+    ingestOnly: boolean;
     courseRequestOnly: boolean;
   }>,
 ): Promise<SupportClient> {
   const row = await prisma.supportClient.update({
     where: { id: clientId },
     data: {
+      ...(data.ingestOnly !== undefined ? { ingestOnly: data.ingestOnly } : {}),
       ...(data.courseRequestOnly !== undefined ? { courseRequestOnly: data.courseRequestOnly } : {}),
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.slug !== undefined ? { slug: data.slug } : {}),
@@ -1024,8 +1044,17 @@ export async function getConversationViewCounts(
  * version — if the two disagreed, the home page and the cockpit would report different numbers for
  * the same client, which is exactly the class of thing that destroys trust in a dashboard.
  */
+/**
+ * Queue figures per client, for Care home, the HQ tile and the iOS dashboard.
+ *
+ * ⚠️ Ingest-only clients are excluded HERE rather than in each caller, because all four surfaces
+ * read this one function — so the exclusion is one line and they cannot disagree. Opening such a
+ * client's own queue still counts it honestly (`getConversationViewCounts` is deliberately
+ * untouched); what it must not do is tell Gitwork that 249 course-request emails are customers
+ * waiting on a reply.
+ */
 export async function getClientQueueSummaries(workspaceId: string): Promise<Record<string, ClientQueueSummary>> {
-  const scope: Prisma.SupportConversationWhereInput = { client: { workspaceId } };
+  const scope: Prisma.SupportConversationWhereInput = { client: { workspaceId, ...SUPPORT_DESK_CLIENT } };
   const active: Prisma.SupportConversationWhereInput = { ...scope, status: { in: ["NEW", "OPEN"] } };
   const awaiting: Prisma.SupportConversationWhereInput = {
     ...active,

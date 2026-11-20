@@ -7,6 +7,7 @@ import { toSyncContext } from "@/server/support-scraper-config";
 import { enrichConversations } from "@/server/care-agents/enrich";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
+import { careMode } from "@/lib/care-mode";
 
 // Re-exported for the API routes / agents that import these from here.
 export type { SyncContext, SyncResult, FilterReasons };
@@ -204,17 +205,20 @@ export async function runPostSyncHousekeeping({
     console.error("[support-sync] post-sync housekeeping failed", err);
   }
 
-  // Course-requests-only clients (support paused): never triage; instead auto-import the
-  // "New Feedback" course requests into the wiki. Runs on EVERY sync — not only when new mail
-  // arrived — so an already-ingested backlog still gets filed. The import dedupes by source
-  // conversation, so once caught up it is a cheap no-op (nothing new → no AI call).
+  // An ingest-only client is never triaged: their mail is harvested, not answered, so classifying
+  // it and running workflow rules over it would spend tokens on conversations nobody will read.
+  //
+  // ⚠️ The course-request IMPORT is gated on `courseRequestOnly` specifically, not on the mode.
+  // `ingestOnly` is the general form and a client carrying it has no golf-course pipeline to file
+  // anything into — running the importer against one would be looking for "New Feedback" emails
+  // in a wiki section that does not exist.
   const sc = await prisma.supportClient.findUnique({
     where: { id: clientId },
-    select: { courseRequestOnly: true, workspaceClientId: true },
+    select: { ingestOnly: true, courseRequestOnly: true, workspaceClientId: true },
   });
-  if (sc?.courseRequestOnly) {
+  if (sc && careMode(sc) === "ingest_only") {
     const wsClientId = sc.workspaceClientId;
-    if (wsClientId) {
+    if (sc.courseRequestOnly && wsClientId) {
       after(async () => {
         await runCourseFeedbackImport(wsClientId, { onlyCourseRequests: true }).catch(console.error);
       });

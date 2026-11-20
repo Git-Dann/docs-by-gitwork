@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { SUPPORT_DESK_CLIENT } from "@/server/support";
 
 async function postSlack(botToken: string, channel: string, text: string): Promise<void> {
   try {
@@ -30,8 +31,11 @@ export async function postCareDigest(workspaceId: string): Promise<void> {
     const channel = routes["care.digest"];
     if (!botToken || !channel) return;
 
+    // Support-desk clients only: an ingest-only client's mail is harvested, not answered, so
+    // naming it in a digest about who needs a human would be reporting a golf-course importer's
+    // backlog as a support queue.
     const clients = await prisma.supportClient.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...SUPPORT_DESK_CLIENT },
       select: { id: true, name: true },
     });
 

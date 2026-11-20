@@ -2657,6 +2657,14 @@ const demoSupportClients = {
   clients: [
     { id: "sup-northwind", name: "Northwind Studio", slug: "northwind", status: "active", unreadCount: 3, supportDaysPerMonth: 5, supportDaysUsed: 2 },
     { id: "sup-cadenza", name: "Cadenza", slug: "cadenza", status: "active", unreadCount: 1, supportDaysPerMonth: 3, supportDaysUsed: 1 },
+    /*
+     * ⚠️ A third client that is NOT a support desk — Wedge's real shape, which is the reason
+     * ingest-only exists. Its mail is harvested into its wiki and nobody answers its customers.
+     * Without it in the fixture the "Ingest only (1)" foot, the cockpit's single-section nav and
+     * the exclusion from every total cannot be rendered at all, and a demo that cannot express a
+     * state cannot verify it (§42.8, §43.3).
+     */
+    { id: "sup-fairway", name: "Fairway Golf", slug: "fairway", status: "active", unreadCount: 0, courseRequestOnly: true },
   ],
 };
 
@@ -2730,6 +2738,12 @@ const demoConversationsByClient: Record<string, unknown[]> = {
     { id: "cv2", clientId: "sup-northwind", source: "gmail", customerLabel: "priya@northwind.co", subject: "Can we add a dark theme?", preview: "A few users have asked about a dark mode…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "neutral", status: "open", priority: "normal", noteCount: 1, assigneeId: "sup-m1", lastInboundAt: atDays(-1), lastOutboundAt: atDays(0), lastMessageAt: atDays(0), replyState: "replied" },
     { id: "cv3", clientId: "sup-northwind", source: "discord", customerLabel: "@dev_sam", subject: "Webhook docs unclear", preview: "The retry section doesn't say what the backoff is…", receivedAt: atDays(-1), unread: true, tags: ["docs"], sentiment: "neutral", status: "open", priority: "low", noteCount: 0 , lastInboundAt: atDays(-1), lastOutboundAt: undefined, lastMessageAt: atDays(-1), replyState: "awaiting_reply" },
     { id: "cv4", clientId: "sup-northwind", source: "gmail", customerLabel: "ops@northwind.co", subject: "Thanks for the quick fix!", preview: "The download bug is gone — appreciate the fast turnaround.", receivedAt: atDays(-2), unread: false, tags: [], sentiment: "positive", status: "closed", priority: "normal", closedAt: atDays(-2), noteCount: 0 , lastInboundAt: atDays(-3), lastOutboundAt: atDays(-2), lastMessageAt: atDays(-2), replyState: "replied" },
+  ],
+  // Ingest-only: these are course-request emails on their way into the wiki, not support. They
+  // exist so the exclusion is provable — a client with no conversations would pass either way.
+  "sup-fairway": [
+    { id: "cv7", clientId: "sup-fairway", source: "imap", customerLabel: "member@fairway.example", subject: "New Feedback", preview: "Please add Wentworth Club to the course list", receivedAt: atDays(0), unread: true, tags: [], sentiment: "neutral", status: "new", priority: "normal", noteCount: 0, lastInboundAt: atDays(0), lastOutboundAt: undefined, lastMessageAt: atDays(0), replyState: "awaiting_reply" },
+    { id: "cv8", clientId: "sup-fairway", source: "imap", customerLabel: "member2@fairway.example", subject: "New Feedback", preview: "Can you add Brechin Golf Club", receivedAt: atDays(-4), unread: true, tags: [], sentiment: "neutral", status: "new", priority: "normal", noteCount: 0, lastInboundAt: atDays(-4), lastOutboundAt: undefined, lastMessageAt: atDays(-4), replyState: "awaiting_reply" },
   ],
   "sup-cadenza": [
     { id: "cv5", clientId: "sup-cadenza", source: "reddit", customerLabel: "u/cadenza_fan", subject: "Feature idea: shared playlists", preview: "Would be great to share a playlist with friends…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "positive", status: "new", priority: "normal", noteCount: 0 , lastInboundAt: atDays(0), lastOutboundAt: undefined, lastMessageAt: atDays(0), replyState: "awaiting_reply" },
@@ -5334,7 +5348,14 @@ export function resolveDemoApi(
   // Care home's one-request roll-up for every client.
   if (pathname === "/api/support/queue-summaries") {
     const summaries: Record<string, ReturnType<typeof demoQueueCounts>> = {};
-    for (const id of Object.keys(demoConversationsByClient)) summaries[id] = demoQueueCounts(id);
+    // Mirrors getClientQueueSummaries: support-desk clients only, so the demo's totals match the
+    // server's rather than quietly including the ingest-only client.
+    const deskIds = new Set(
+      demoSupportClients.clients.filter((c) => !("courseRequestOnly" in c && c.courseRequestOnly) && !("ingestOnly" in c && c.ingestOnly)).map((c) => c.id),
+    );
+    for (const id of Object.keys(demoConversationsByClient)) {
+      if (deskIds.has(id)) summaries[id] = demoQueueCounts(id);
+    }
     return { summaries };
   }
   {

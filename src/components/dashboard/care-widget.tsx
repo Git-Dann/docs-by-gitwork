@@ -8,6 +8,7 @@ import { formatAge, isLongWait } from "@/components/care/care-constants";
 import type { WidgetSize } from "@/components/app-overview";
 import { SkeletonRows } from "@/components/ui/motion/skeleton";
 import { TileHeader } from "@/components/dashboard/tile-header";
+import { partitionCareClients } from "@/lib/care-mode";
 
 /**
  * Care on HQ: which client is being let down right now.
@@ -41,7 +42,9 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
     );
   }
 
-  const clients = clientsQ.data?.clients ?? [];
+  // Support-desk clients only — an ingest-only client has no queue, and `getClientQueueSummaries`
+  // already leaves it out, so listing it here would draw a permanent zero row.
+  const { desk: clients } = partitionCareClients(clientsQ.data?.clients ?? []);
   const summaries = summariesQ.data?.summaries ?? {};
 
   // Worst first — the same rule as Care home. A tile that lists clients alphabetically makes you do

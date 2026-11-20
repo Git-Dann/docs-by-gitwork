@@ -23,6 +23,20 @@ export function isCareSection(value: string | null | undefined): value is CareSe
   return !!value && (CARE_SECTIONS as readonly string[]).includes(value);
 }
 
+/**
+ * The sections an ingest-only client has.
+ *
+ * Their mail is harvested, never answered, so there is no queue, no ticket, no monthly report and
+ * no workflow rule to look at — only the connector that keeps the mail flowing. Offering the other
+ * four would be offering four empty screens and inviting someone to triage a queue that is not
+ * theirs to triage.
+ */
+export const INGEST_ONLY_SECTIONS = ["settings"] as const satisfies readonly CareSection[];
+
+export function careSectionsFor(client: { ingestOnly?: boolean | null; courseRequestOnly?: boolean | null }): readonly CareSection[] {
+  return client.ingestOnly || client.courseRequestOnly ? INGEST_ONLY_SECTIONS : CARE_SECTIONS;
+}
+
 /** A link into Care: a client and (optionally) one of its sections. */
 export function careHref(opts: { clientId?: string | null; section?: CareSection | null } = {}): string {
   const qs = new URLSearchParams();

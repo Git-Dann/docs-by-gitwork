@@ -7,6 +7,7 @@ import type { ClientQueueSummary, SupportClient } from "@/types/support";
 import { useSupportClients, useClientQueueSummaries, useSyncSupportClient } from "@/hooks/use-support";
 import { formatAge, isLongWait } from "./care-constants";
 import { CareEmpty, CarePanel, CareStat } from "./care-panel";
+import { ingestOnlyReason, partitionCareClients } from "@/lib/care-mode";
 import { AddClientModal } from "./care-add-client";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -135,7 +136,12 @@ export function CareHome({ onSelectClient }: { onSelectClient: (client: SupportC
       Add client
     </button>
   ) : null;
-  const clients = clientsQ.data?.clients ?? [];
+  // The desk is the page. An ingest-only client — one whose mail we harvest and never answer —
+  // is not a client anyone is failing to reply to, so it is out of the list, the totals and the
+  // "N/M waiting" readout, and sits in a quiet line at the foot instead. Wedge was 249 of the
+  // 573 "awaiting a reply", which is how a golf-course importer came to be reported as the
+  // second-worst support backlog Gitwork had.
+  const { desk: clients, ingestOnly } = partitionCareClients(clientsQ.data?.clients ?? []);
   const summaries = summariesQ.data?.summaries ?? {};
 
   // Worst first. A dashboard that lists clients alphabetically makes you do the triage it exists to
@@ -235,6 +241,29 @@ export function CareHome({ onSelectClient }: { onSelectClient: (client: SupportC
               </p>
             </div>
           </CarePanel>
+        )}
+
+        {/* A footnote, not a panel and deliberately unnumbered: these clients are not part of the
+            queue this page is about, and numbering them would put a connector-settings pointer in
+            the same sequence as the work. It exists so nobody wonders where a client went. */}
+        {!loading && ingestOnly.length > 0 && (
+          <div className="border-t border-[var(--border-3)] pt-3">
+            <p className="widget-data-label mb-1.5">Ingest only ({ingestOnly.length})</p>
+            <ul className="space-y-1">
+              {ingestOnly.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectClient(c)}
+                    className="flex w-full items-baseline gap-2 rounded-[6px] px-2 py-1 text-left transition hover:bg-[var(--surface-1)]"
+                  >
+                    <span className="shrink-0 text-[13px] font-medium text-[var(--text-2)]">{c.name}</span>
+                    <span className="min-w-0 text-[12px] text-[var(--text-4)]">{ingestOnlyReason(c)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
       {showAddClient && <AddClientModal onClose={() => setShowAddClient(false)} />}

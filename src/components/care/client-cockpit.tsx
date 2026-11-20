@@ -43,6 +43,7 @@ import {
   waitingSince,
 } from "./care-constants";
 import { hasCourseRequests } from "@/lib/wiki-sections";
+import { ingestOnlyReason, isSupportDesk } from "@/lib/care-mode";
 import { CareEmpty } from "./care-panel";
 import { ConversationDetail } from "./conversation-detail";
 import { ConnectorsView } from "./care-connectors";
@@ -50,7 +51,7 @@ import { HealthBadge } from "./care-shared";
 import { TicketsTableView } from "./care-tickets";
 import { ReportsView } from "./care-reports";
 import { CareAutomationView, PortalLinkCard } from "./care-automation";
-import { CARE_SECTIONS, CARE_SECTION_LABEL, type CareSection } from "@/lib/care-links";
+import { CARE_SECTION_LABEL, careSectionsFor, type CareSection } from "@/lib/care-links";
 
 // One page. Small on purpose: because the views are server-side filters, 50 rows is 50 rows of
 // the thing you asked for, and "Load more" walks the rest.
@@ -241,10 +242,57 @@ function SortHeader({
  * and their schedule (ConnectorsView), and the Portal link. Workflow rules and AI agents are the
  * Automation section.
  */
+/** One switch row in the MODE panel. The toggle markup lived inline and was about to be copied. */
+function ModeSwitch({
+  on,
+  pending,
+  title,
+  body,
+  onToggle,
+  hint,
+}: {
+  on: boolean;
+  pending: boolean;
+  title: string;
+  body: string;
+  onToggle: () => void;
+  hint: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-[var(--text-1)]">{title}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-3)]">{body}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={title}
+        disabled={pending}
+        onClick={onToggle}
+        title={hint}
+        className={cn(
+          "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50",
+          on ? "bg-[var(--brand-600)]" : "bg-[var(--border-1)]",
+        )}
+      >
+        <span
+          className={cn(
+            "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+            on ? "translate-x-[22px]" : "translate-x-0.5",
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
 function CareSettingsPanel({ client }: { client: SupportClient }) {
   const { canManageSupport } = usePermissions();
   const updateClient = useUpdateSupportClient(client.id);
   const courseOnly = client.courseRequestOnly ?? false;
+  const ingestOnly = client.ingestOnly ?? false;
   /*
    * The course-requests mode is Wedge's golf-course pipeline, not a Care feature. Everything behind
    * the toggle is client-specific — Big Wedge's own course API, a `"New Feedback"` subject line, a
@@ -256,10 +304,12 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
    * somehow has it set can always turn it off rather than being stuck with a hidden switch.
    */
   const showCourseMode = canManageSupport && (hasCourseRequests(client.workspaceClientSlug) || courseOnly);
+  // Ingest-only is a general Care setting, so the panel is offered to anyone who may set Care up.
+  const showMode = canManageSupport;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
       <div className="mx-auto max-w-3xl space-y-4">
-        {showCourseMode && (
+        {showMode && (
         <section className="widget-card">
           {/* No close button of its own: the persistent client header owns "back", and an ✕ sitting
               on the MODE panel reads as "dismiss this panel" rather than "leave settings". */}
@@ -267,45 +317,47 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
             <span className="widget-header__label">
               <span className="widget-header__label--number">01</span>{" // MODE"}
             </span>
-            <span className="widget-header__status">{courseOnly ? "COURSE REQUESTS ONLY" : "FULL TRIAGE"}</span>
+            <span className="widget-header__status">
+              {courseOnly ? "COURSE REQUESTS ONLY" : ingestOnly ? "INGEST ONLY" : "SUPPORT DESK"}
+            </span>
+          </div>
+          <div className="widget-body space-y-5">
+            <ModeSwitch
+              on={ingestOnly}
+              pending={updateClient.isPending}
+              title="Ingest only — not a support desk"
+              body="Keep the connectors running so their mail still lands, but leave this client out of Care's queues, totals and the HQ tile. For a client whose inbox we harvest and whose customers we do not answer."
+              hint={ingestOnly ? "Turn off — put this client back on the support desk" : "Turn on — ingest their mail, but do not answer for them"}
+              onToggle={() => updateClient.mutate({ ingestOnly: !ingestOnly })}
+            />
+            {showCourseMode && <div className="border-t border-[var(--border-3)]" />}
+          </div>
+        </section>
+        )}
+        {showCourseMode && (
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">{showMode ? "02" : "01"}</span>{" // COURSE REQUESTS"}
+            </span>
+            <span className="widget-header__status">{courseOnly ? "ON" : "OFF"}</span>
           </div>
           <div className="widget-body">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-[var(--text-1)]">Support paused — course requests only</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-3)]">
-                  Keep pulling the inbox quietly, but skip all triage, tickets and auto-replies. Incoming
-                  “New Feedback” emails are auto-filed into the Course Requests wiki (course requests only —
-                  bugs and general feedback are left untouched in the inbox).
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={courseOnly}
-                disabled={updateClient.isPending}
-                onClick={() => updateClient.mutate({ courseRequestOnly: !courseOnly })}
-                title={courseOnly ? "Turn off — resume normal triage" : "Turn on — pause support, course requests only"}
-                className={cn(
-                  "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50",
-                  courseOnly ? "bg-[var(--brand-600)]" : "bg-[var(--border-1)]",
-                )}
-              >
-                <span
-                  className={cn(
-                    "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-                    courseOnly ? "translate-x-[22px]" : "translate-x-0.5",
-                  )}
-                />
-              </button>
-            </div>
+            <ModeSwitch
+              on={courseOnly}
+              pending={updateClient.isPending}
+              title="File “New Feedback” into the Course Requests wiki"
+              body="Incoming “New Feedback” emails are auto-filed into this client's Course Requests tracker. Course requests only — bugs and general feedback are left untouched in the inbox. This also puts the client in ingest-only mode."
+              hint={courseOnly ? "Turn off — stop filing course requests" : "Turn on — file course requests into the wiki"}
+              onToggle={() => updateClient.mutate({ courseRequestOnly: !courseOnly })}
+            />
           </div>
         </section>
         )}
         <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
         {/* The Portal link lived in the legacy dashboard's Settings panel; it is per-client setup,
             so it sits here with the channels. Numbered after the connectors' own panels. */}
-        <PortalLinkCard clientId={client.id} number={showCourseMode ? 4 : 3} />
+        <PortalLinkCard clientId={client.id} number={(showMode ? 1 : 0) + (showCourseMode ? 1 : 0) + 2} />
       </div>
     </div>
   );
@@ -374,7 +426,13 @@ export function ClientCockpit({
   const listRef = useRef<HTMLDivElement | null>(null);
   // Which part of this client's Care is showing. Everything the legacy /app/support dashboard
   // owned (tickets, monthly reports, rules + agents, channels) is a section here now.
-  const [section, setSectionState] = useState<CareSection>(initialSection);
+  // An ingest-only client has one section: the connector that keeps its mail flowing. Anything
+  // that asks for another — a stale deep link, a remembered tab — lands on Settings rather than
+  // on an empty queue.
+  const sections = careSectionsFor(client);
+  const [section, setSectionState] = useState<CareSection>(
+    sections.includes(initialSection) ? initialSection : sections[0],
+  );
   function setSection(next: CareSection) {
     setSectionState(next);
     setSelectedId(null);
@@ -624,7 +682,12 @@ export function ClientCockpit({
             clipped away entirely. A phone spends one extra line on it; that is the right trade.
           */}
           <div className="widget-data-label mt-0.5">
-            {mode !== "index" && mode !== "record" ? (
+            {/* ⚠️ An ingest-only client must never show a queue readout. Nobody is waiting on us
+                here; saying "0 awaiting" or "All replied" would both be claims about a support
+                relationship this client does not have. */}
+            {!isSupportDesk(client) ? (
+              <span title={ingestOnlyReason(client)}>Ingest only</span>
+            ) : mode !== "index" && mode !== "record" ? (
               CARE_SECTION_LABEL[mode]
             ) : mode === "record" ? (
               "Conversation"
@@ -661,13 +724,13 @@ export function ClientCockpit({
       {/* ── The client's sections. Conversations is the queue; the rest are what the legacy
              /app/support dashboard used to own exclusively. Hidden on a record, where the header's
              back arrow is the way out. ── */}
-      {mode !== "record" && (
+      {mode !== "record" && sections.length > 1 && (
         <div className="shrink-0 overflow-x-auto border-b border-[var(--border-2)] px-3 py-2 sm:px-4">
           <nav
             className="inline-flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
             aria-label="Client sections"
           >
-            {CARE_SECTIONS.map((id) => {
+            {sections.map((id) => {
               const active = section === id;
               return (
                 <button
