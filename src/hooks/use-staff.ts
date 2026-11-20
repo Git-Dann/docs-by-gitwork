@@ -80,10 +80,11 @@ const publicProfileUrl = (recordId: string | null) =>
   recordId ? `/api/staff/${encodeURIComponent(recordId)}/public-profile` : "/api/staff/me/public-profile";
 
 /** A public profile's settings (CLAUDE.md §139): your own, or someone's you may edit. */
-export function usePublicProfile(recordId: string | null = null) {
+export function usePublicProfile(recordId: string | null = null, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: publicProfileKey(recordId),
     queryFn: () => apiFetch<MyPublicProfile>(publicProfileUrl(recordId)),
+    enabled,
   });
 }
 
