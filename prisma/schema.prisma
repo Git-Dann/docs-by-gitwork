@@ -3499,6 +3499,17 @@ model SupportClient {
   // rather than renamed: a rename is a drop plus an add, and one potentially data-losing change
   // makes `prisma db push` skip the WHOLE sync, additive parts included (CLAUDE.md §2).
   courseRequestOnly   Boolean                    @default(false)
+  /**
+   * When this client's "a customer has waited too long" alert was last raised, or null when the
+   * desk is not in alarm. The latch that makes it ONE alert per outage rather than one per run
+   * of the worker — a desk that pages someone every minute gets muted, and a muted alert is
+   * worse than none, because it looks like cover.
+   *
+   * ⚠️ A column rather than a JSON blob only because `SupportClient` has none: the equivalent
+   * latch for a connector rides `AccountConnection.lastSyncStats`, and a feed's rides
+   * `ClientWiki.courseFeedStatus`. Additive and nullable → safe db push (§2).
+   */
+  waitAlertedAt       DateTime?
   workspaceClientId   String?
   workspaceClient     WorkspaceClient?           @relation(fields: [workspaceClientId], references: [id], onDelete: SetNull)
   createdAt           DateTime                   @default(now())

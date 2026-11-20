@@ -230,43 +230,18 @@ export function initialsOf(name: string): string {
     .join("");
 }
 
-/**
+/*
  * A wait longer than this reads as a problem rather than a queue. Not an SLA — Care has no
- * per-client SLA config — just the point at which the chip stops being informational and
- * starts being a flag.
- */
-export const LONG_WAIT_HOURS = 24;
-
-export function isLongWait(iso: string, now: number = Date.now()): boolean {
-  return now - new Date(iso).getTime() >= LONG_WAIT_HOURS * 3600_000;
-}
-
-/**
- * Compact "3h", "2d", "now" age from an ISO timestamp.
+ * per-client SLA config — just the point at which the chip stops being informational and starts
+ * being a flag.
  *
- * Note it returns a bare duration, so a caller writing `{formatAge(x)} ago` produces "now ago" for
- * anything under a minute. Use `formatWhen` when the phrasing has to read as a sentence.
+ * ⚠️ Declared in `src/lib/care-alerts.ts` and re-exported here. The alert that fires on it runs
+ * on the jobs worker, and this file imports Heroicons and JSX, so reaching for the threshold
+ * from there would pull React into a cron path. Re-exporting keeps every existing caller
+ * unchanged and keeps the number in one place — two copies of a threshold is how a screen and
+ * an alert come to disagree about what "too long" means.
  */
-export function formatAge(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60_000) return "now";
-  const mins = Math.floor(ms / 60_000);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d`;
-  return `${Math.floor(days / 30)}mo`;
-}
+export { LONG_WAIT_HOURS, isLongWait } from "@/lib/care-alerts";
 
-/**
- * The same age, phrased for prose: "just now" / "3h ago" / "2d ago".
- *
- * Exists because the detail header said *"answered now ago"* and *"waiting now"* — `formatAge`
- * returns a bare duration and "now" is not one, so every caller that appended "ago" was one
- * sub-minute message away from reading wrong.
- */
-export function formatWhen(iso: string): string {
-  const age = formatAge(iso);
-  return age === "now" ? "just now" : `${age} ago`;
-}
+
+export { formatAge, formatWhen } from "@/lib/care-alerts";

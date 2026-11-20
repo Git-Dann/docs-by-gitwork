@@ -43,6 +43,8 @@ export interface SyncContext {
      */
     health: "CONNECTED" | "NEEDS_SETUP" | "ERROR";
     lastSyncStats: unknown;
+    /** What the operator called this channel — the name an alert about it has to use. */
+    label: string;
     channelTokens: unknown[];
   };
   client: { id: string; name: string; slug: string };

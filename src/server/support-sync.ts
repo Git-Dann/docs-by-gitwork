@@ -8,6 +8,7 @@ import { enrichConversations } from "@/server/care-agents/enrich";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
 import { careMode } from "@/lib/care-mode";
+import { notifyConnectorHealth } from "@/server/care-alerts";
 import {
   nextConnectorHealth,
   readHealthState,
@@ -86,6 +87,22 @@ export async function syncConnection(ctx: SyncContext): Promise<SyncResult> {
     previous: readHealthState(ctx.connection.lastSyncStats),
     errors: result.errors,
   });
+
+  /*
+   * ⚠️ `justFailed` / `justRecovered` were computed here and DISCARDED — the latch was armed and
+   * persisted in `ff19f83` and nothing ever fired on it, so a connector went red on a screen and
+   * told nobody. The transition is the alert: one per outage, by construction.
+   */
+  if (outcome.justFailed || outcome.justRecovered) {
+    notifyConnectorHealth({
+      workspaceId: ctx.workspace.id,
+      clientId: ctx.client.id,
+      clientName: ctx.client.name,
+      label: ctx.connection.label || ctx.connection.source,
+      recovered: outcome.justRecovered,
+      reason: result.errors[0] ?? null,
+    });
+  }
 
   try {
     await prisma.accountConnection.update({

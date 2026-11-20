@@ -1360,6 +1360,8 @@ const SLACK_ROUTE_EVENTS: { id: string; label: string; module: string }[] = [
   { id: "study.report_ready", label: "Study report ready", module: "Study" },
   { id: "care.digest", label: "Care hourly digest", module: "Care" },
   { id: "care.ticket_created", label: "Care ticket created", module: "Care" },
+  { id: "care.waiting_too_long", label: "A customer has waited too long", module: "Care" },
+  { id: "care.connector_failing", label: "A Care channel has stopped delivering", module: "Care" },
   { id: "docs.viewed_by_client", label: "Doc viewed by client", module: "Docs" },
   { id: "docs.signed", label: "Doc signed", module: "Docs" },
 ];

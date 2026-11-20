@@ -7,6 +7,7 @@ import { enqueueJob } from "@/server/jobs/queue";
 import { checkMonitorsWatchdog } from "@/server/wiki-monitors";
 import { checkMonitorExpiries } from "@/server/wiki-monitor-expiry";
 import { refreshRunningMonths } from "@/server/wiki-metrics";
+import { runDueCareWaitAlerts } from "@/server/care-alerts";
 import { sendHrDigests } from "@/server/hr/digest";
 import { startDueAnswerRuns } from "@/server/ai-answers";
 import { syncDueCommitments } from "@/server/commitments";
@@ -84,6 +85,13 @@ export async function GET(request: NextRequest) {
       return null;
     });
 
+    // ── Care: a customer waiting past the threshold ── (latched, so once per outage; the
+    // 24-hour threshold is why this is not on the 10:00 digest cron)
+    const careWaits = await runDueCareWaitAlerts().catch((err) => {
+      console.error("[jobs] Care wait alerts failed", err);
+      return null;
+    });
+
     // ── HR's Monday digest ── (does nothing outside Monday 08:00+ UK, or once sent this week)
     const hrDigest = await sendHrDigests().catch((err) => {
       console.error("[jobs] HR digest failed", err);
@@ -116,6 +124,7 @@ export async function GET(request: NextRequest) {
       staleMonitors: monitors.stale,
       monitorExpiries: expiries,
       metricsRefreshed: metrics?.refreshed.length ?? null,
+      careWaits,
       hrDigest,
       aiAnswers,
       commitments,
