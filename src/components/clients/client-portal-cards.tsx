@@ -76,10 +76,13 @@ export function ClientPulseCard({
   scans,
   pendingReview,
   grow,
+  compact,
   style,
 }: {
   number: string;
   scans: ClientPulseScanSummary[];
+  /** A small card in the bottom row: the latest score only, older scans as a count. */
+  compact?: boolean;
   /** Pulse waits until a client is moved to workflow. */
   pendingReview: boolean;
   /** Last card in its column: take the spare height. */
@@ -117,7 +120,14 @@ export function ClientPulseCard({
       ) : (
         <div className="flex flex-col gap-2 p-4">
           <LatestScore scan={latest} />
-          {older.slice(0, 3).map((scan) => (
+          {compact ? (
+            older.length > 0 ? (
+              <Link href="/app/pulse" className="px-2 text-[11px] text-[var(--text-3)] hover:text-[var(--brand-700)]" style={{ fontFamily: MONO }}>
+                +{older.length} older in Pulse
+              </Link>
+            ) : null
+          ) : null}
+          {(compact ? [] : older.slice(0, 3)).map((scan) => (
             <Link
               key={scan.id}
               href={`/app/pulse/${scan.id}`}
@@ -132,7 +142,7 @@ export function ClientPulseCard({
               <span className="widget-timestamp shrink-0">{formatDate(scan.createdAt)}</span>
             </Link>
           ))}
-          {older.length > 3 ? (
+          {!compact && older.length > 3 ? (
             <Link href="/app/pulse" className="px-2 text-[11px] text-[var(--text-3)] hover:text-[var(--brand-700)]" style={{ fontFamily: MONO }}>
               +{older.length - 3} more in Pulse
             </Link>
@@ -155,11 +165,14 @@ export function ClientStudiesCard({
   clientId,
   studies,
   grow,
+  compact,
   style,
 }: {
   number: string;
   clientId: string;
   studies: ClientStudySummary[];
+  /** A small card in the bottom row: the latest two. */
+  compact?: boolean;
   grow?: boolean;
   style?: CSSProperties;
 }) {
@@ -197,7 +210,7 @@ export function ClientStudiesCard({
         </p>
       ) : (
         <ul className="divide-y divide-[var(--border-3)]">
-          {studies.slice(0, 4).map((study) => {
+          {studies.slice(0, compact ? 2 : 4).map((study) => {
             const t = STUDY_TONE[study.status] ?? { tone: "neutral" as const, label: study.status.toLowerCase().replace(/_/g, " ") };
             return (
               <li key={study.id}>

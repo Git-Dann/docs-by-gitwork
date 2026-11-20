@@ -327,7 +327,7 @@ export function ClientDetail({ slug }: { slug: string }) {
     client.legalCompanyName || client.vatNumber || client.companyNumber || client.invoiceEmail || client.billingAddressLine1,
   );
   const showStudies = !isSuggested;
-  const sideCards = (canViewPulse ? 1 : 0) + (showStudies ? 1 : 0) + (client.notes ? 1 : 0);
+  const bottomCards = (canViewPulse ? 1 : 0) + (showStudies ? 1 : 0) + (client.notes ? 1 : 0) + (lifecycle.length > 0 ? 1 : 0);
   const num = portalSectionNumbers((section) => {
     switch (section) {
       case "statPulse":
@@ -1105,9 +1105,8 @@ export function ClientDetail({ slug }: { slug: string }) {
 
       </div>
 
-      {/* ── DOCUMENTS, then PULSE · STUDIES · NOTES ── Documents runs full width, and the small
-          cards follow full width at their natural height. Pairing them used to stretch an empty
-          Studies card to Documents' height (§129.1: no large gaps, by construction). */}
+      {/* ── DOCUMENTS ── full width. Pulse, Studies, Notes and Lifecycle are a row of small cards
+          at the bottom of the page. */}
       <div className="flex flex-col gap-4">
         {/* 14 // DOCUMENTS */}
         <section className="widget-card motion-rise flex h-full flex-col" style={rise()}>
@@ -1194,38 +1193,6 @@ export function ClientDetail({ slug }: { slug: string }) {
 
 
 
-        {sideCards > 0 ? (
-        <div className="flex min-w-0 flex-col gap-4" data-side-cards>
-          {canViewPulse ? (
-            <ClientPulseCard
-              number={num.pulse}
-              scans={pulseScans}
-              pendingReview={client.status === "PENDING_REVIEW"}
-              style={rise()}
-            />
-          ) : null}
-          {showStudies ? (
-            <ClientStudiesCard number={num.studies} clientId={client.id} studies={studies} style={rise()} />
-          ) : null}
-          {client.notes ? (
-            <section className="widget-card motion-rise flex flex-col" style={rise()}>
-              <div className="widget-header">
-                <span className="widget-header__label">
-                  <span className="widget-header__label--number">{num.notes}</span>
-                  {" // NOTES"}
-                </span>
-                {canManageClients ? (
-                  <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
-                    <PencilIcon className="h-3 w-3" />
-                    Edit
-                  </Button>
-                ) : null}
-              </div>
-              <p className="whitespace-pre-wrap p-5 text-sm leading-6 text-[var(--text-2)]">{client.notes}</p>
-            </section>
-          ) : null}
-        </div>
-        ) : null}
       </div>
 
         <ClientDocActionsModal
@@ -1282,13 +1249,53 @@ export function ClientDetail({ slug }: { slug: string }) {
         )}
 
 
-      {lifecycle.length > 0 ? (
-        <div className="motion-rise" style={rise()}>
-          <ClientLifecycleCard
-            number={num.lifecycle}
-            // Pulse scans only for people who can see Pulse, as everywhere else on the page.
-            source={{ lifecycle, placements: placements ?? [], pulseScans: canViewPulse ? pulseScans : [], studies, platforms, designs, documentLinks, touchpoints }}
-          />
+      {/* ── PULSE · STUDIES · NOTES · LIFECYCLE ── one row of small cards at the bottom (Dan, Nov
+          2026: they don't need full-width priority). The columns fit the cards that are shown, so
+          a missing one never leaves a gap (§129.1); two-up on a tablet, stacked on a phone. */}
+      {bottomCards > 0 ? (
+        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2 xl:grid-cols-[repeat(auto-fit,minmax(240px,1fr))] xl:[&>*:last-child:nth-child(odd)]:col-span-1" data-bottom-cards>
+          {canViewPulse ? (
+            <ClientPulseCard
+              number={num.pulse}
+              scans={pulseScans}
+              pendingReview={client.status === "PENDING_REVIEW"}
+              compact
+              style={rise()}
+            />
+          ) : null}
+          {showStudies ? (
+            <ClientStudiesCard number={num.studies} clientId={client.id} studies={studies} compact style={rise()} />
+          ) : null}
+          {client.notes ? (
+            <section className="widget-card motion-rise flex flex-col" style={rise()}>
+              <div className="widget-header">
+                <span className="widget-header__label">
+                  <span className="widget-header__label--number">{num.notes}</span>
+                  {" // NOTES"}
+                </span>
+                {canManageClients ? (
+                  <Button type="button" variant="secondary" size="xs" onClick={openEdit}>
+                    <PencilIcon className="h-3 w-3" />
+                    Edit
+                  </Button>
+                ) : null}
+              </div>
+              {/* Clamped in the small card; the full note is in the tooltip and in Edit. */}
+              <p className="line-clamp-5 whitespace-pre-wrap p-5 text-sm leading-6 text-[var(--text-2)]" title={client.notes}>
+                {client.notes}
+              </p>
+            </section>
+          ) : null}
+          {lifecycle.length > 0 ? (
+            <div className="motion-rise" style={rise()}>
+              <ClientLifecycleCard
+                number={num.lifecycle}
+                compact
+                // Pulse scans only for people who can see Pulse, as everywhere else on the page.
+                source={{ lifecycle, placements: placements ?? [], pulseScans: canViewPulse ? pulseScans : [], studies, platforms, designs, documentLinks, touchpoints }}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
         </>

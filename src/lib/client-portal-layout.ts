@@ -19,10 +19,11 @@ export const PORTAL_SECTIONS = [
   "meetings",
   "designs",
   "documents",
+  "proof",
+  // The bottom row of small cards, in this order (they don't need full-width priority).
   "pulse",
   "studies",
   "notes",
-  "proof",
   "lifecycle",
 ] as const;
 

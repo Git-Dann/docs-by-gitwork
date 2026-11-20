@@ -90,14 +90,19 @@ function Dot({ e }: { e: { ongoing?: boolean; status: ClientLifecycleEvent["stat
   return <StatusDot tone="brand" />;
 }
 
-export function ClientLifecycleCard({ number, source }: { number: string; source: Source }) {
+/**
+ * `compact`: a small card in the client page's bottom row (Dan, Nov 2026: these don't need the
+ * priority of a full-width card). It shows where the client is now, and the whole timeline is
+ * one click away in View history.
+ */
+export function ClientLifecycleCard({ number, source, compact = false }: { number: string; source: Source; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const { shown, earlier } = timelineMilestones(source.lifecycle, 6);
   const history = useMemo(() => buildClientHistory(source), [source]);
 
   return (
     <>
-      <section className="widget-card">
+      <section className={cn("widget-card", compact && "flex h-full flex-col")}>
         <div className="widget-header">
           <span className="widget-header__label">
             <span className="widget-header__label--number">{number}</span>
@@ -109,7 +114,7 @@ export function ClientLifecycleCard({ number, source }: { number: string; source
             className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:border-[var(--brand-500)] hover:text-[var(--brand-700)]"
           >
             <ClockIcon className="h-3.5 w-3.5" />
-            View history
+            {compact ? "History" : "View history"}
             <span className="text-[var(--text-4)]" style={{ fontFamily: MONO }}>
               {history.length}
             </span>
@@ -117,6 +122,8 @@ export function ClientLifecycleCard({ number, source }: { number: string; source
         </div>
         {shown.length === 0 ? (
           <p className="px-5 py-4 text-sm text-[var(--text-4)]">No milestones yet.</p>
+        ) : compact ? (
+          <CurrentMilestone e={shown[shown.length - 1]!} />
         ) : (
           // Its own scroller: on a phone six steps don't fit, and .widget-card clips (§45.2).
           <div className="overflow-x-auto">
@@ -174,6 +181,29 @@ export function ClientLifecycleCard({ number, source }: { number: string; source
       {/* Outside the section, so nothing on the page can trap the fixed dialog (§108.3). */}
       <ClientHistoryDialog open={open} onClose={() => setOpen(false)} history={history} />
     </>
+  );
+}
+
+/** Where the client is now: the latest milestone, for the compact card. */
+function CurrentMilestone({ e }: { e: (ReturnType<typeof timelineMilestones>["shown"])[number] }) {
+  return (
+    <div className="px-5 py-4">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <KindIcon e={e} />
+        <span className="truncate text-[13px] font-semibold text-[var(--text-1)]" title={e.label}>
+          {e.label}
+        </span>
+      </span>
+      <span className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-[var(--text-3)]" title={e.detail}>
+        {e.detail}
+      </span>
+      <span
+        className={cn("mt-1.5 block text-[10px] uppercase tracking-[0.08em]", e.ongoing ? "text-emerald-700" : e.status === "waiting" ? "text-amber-700" : "text-[var(--text-4)]")}
+        style={{ fontFamily: MONO }}
+      >
+        {e.status === "waiting" && !e.ongoing ? `Waiting · ${formatDate(e.at)}` : whenLabel(e)}
+      </span>
+    </div>
   );
 }
 
