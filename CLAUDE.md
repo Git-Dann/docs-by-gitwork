@@ -25,9 +25,8 @@ class name" and a request to move fast are **not** exemptions — most of the de
 - **Run `npm run verify` before any PR**, and report what it actually printed. CI runs the same
   thing on every PR (§31), and a `pre-push` hook runs it for you on a push to `main`. Never call
   something verified that wasn't run. **Only `main` deploys to production** — straight to the
-  Fasthosts VPS (§23), not Vercel. There is no staging. But **Vercel branch previews DO still
-  build and ARE reachable** (§23's "vestigial" applies to production traffic, not to the preview
-  URL) — see `docs/build-checklist.md` §4 for what one can and cannot verify.
+  Fasthosts VPS (§23), not Vercel. There is no staging and there are no branch previews (Vercel
+  is retired, §2) — see `docs/build-checklist.md` §4 for what can be verified before merging.
 - **Keep [`ONBOARDING.md`](ONBOARDING.md) current — in the same PR as the change.** It's the
   one-page handover new builders actually read, so a stale one actively misleads them. It is **not**
   a summary of this file; it only covers what someone needs in week one. Update it when you change:
@@ -59,8 +58,9 @@ It serves two audiences simultaneously:
 > **Vercel retired (Nov 2026).** `vercel.json` is gone, the middleware no longer treats
 > `*.vercel.app` as a Foundry host, and there are no branch previews. Its builds had started running
 > out of memory, it was wired to the stale Neon database, and nothing served production from it.
-> The Vercel project is to be paused (dashboard → `foundry-by-gitwork` → Settings → Pause), then
-> deleted; Neon is to be backed up once and deleted. Read every Vercel/Neon mention below as
+> The Vercel project was **paused and disconnected from GitHub on 20 Nov 2026**, so no push or PR
+> builds there or gets a Vercel comment; it can be deleted when convenient. Neon is to be backed up
+> once and deleted. Read every Vercel/Neon mention below as
 > history. (`wedge-course-backend.vercel.app` is Big Wedge's own service, not ours: leave it.)
 >
 > **⚠️ INFRASTRUCTURE MIGRATED — July 2026.** Production **no longer runs on Vercel/Neon**. It now
@@ -78,7 +78,7 @@ It serves two audiences simultaneously:
 |---|---|
 | GitHub repo | `Git-Dann/docs-by-gitwork` |
 | Production host | **Fasthosts VPS `194.164.127.222`** — Docker Compose (app + Postgres). See §23 |
-| Production branch | `main` — **auto-deploys to the VPS** via GitHub Actions (`deploy.yml`) on push, ~6 min. (Vercel still builds in parallel — vestigial, §23) |
+| Production branch | `main` — **auto-deploys to the VPS** via GitHub Actions (`deploy.yml`) on push, ~6 min. (Vercel retired Nov 2026) |
 | Merge policy | **Squash-merge only** · merge & rebase-merge disabled · branches auto-delete on merge |
 | Production URL | `foundry.gitwork.co.uk` |
 | Vercel team | `dans-projects-7462374f` |
@@ -104,7 +104,7 @@ Rules of thumb:
   message (`fix:`, `feat:`, `chore:`, `docs:` …). That message is what appears in the Vercel
   deploy feed — make it descriptive.
 - **Features** → branch (`feature/...`), open a PR, let it **squash-merge**. One feature →
-  one clean deploy line. Vercel builds a preview URL for the branch automatically.
+  one clean deploy line.
 - **Syncing a feature branch with `main`** → **rebase** (`git fetch && git rebase origin/main`).
   Do **not** `git merge main` into the branch and push that merge onto `main` — merge commits
   like *"Merge origin/main into feature/x"* land on production as unreadable deploys. (This was
