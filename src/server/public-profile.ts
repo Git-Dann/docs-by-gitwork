@@ -34,6 +34,8 @@ export interface PublicProfile {
   name: string;
   pronouns: string | null;
   headline: string | null;
+  /** Their job title, for the doc card; null when none is set. */
+  position: string | null;
   location: string | null;
   bio: string | null;
   summary: string | null;
@@ -150,6 +152,7 @@ export async function loadPublicProfile(slug: string): Promise<PublicProfile | n
     name: (r.preferredName?.trim() || r.name).trim(),
     pronouns: r.pronouns?.trim() || null,
     headline: r.profileHeadline?.trim() || r.jobTitle?.trim() || null,
+    position: r.jobTitle?.trim() || null,
     location: r.location?.trim() || null,
     bio: r.bio?.trim() || null,
     summary: r.profileSummary?.trim() || null,

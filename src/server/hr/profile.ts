@@ -58,6 +58,8 @@ const PROFILE_SELECT = {
   githubHandle: true,
   isDeveloper: true,
   jobTitle: true,
+  profilePublic: true,
+  profileSlug: true,
   department: true,
   employmentType: true,
   startDate: true,
@@ -203,6 +205,7 @@ export async function getStaffProfile(user: EffectiveUser, recordId: string): Pr
     relation,
     access,
     canEditPublicProfile: canEditPublicPage({ relation, actorRole: user.role, targetRole: record.member?.role ?? null }),
+    publicSlug: record.profilePublic && record.profileSlug && !record.archivedAt && !record.member?.archivedAt ? record.profileSlug : null,
     employment: access.employment
       ? {
           supplierId: record.supplierId,

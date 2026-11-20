@@ -466,6 +466,9 @@ export interface StaffProfile {
   access: ProfileAccess;
   /** Whether this viewer may edit their public page (canEditPublicPage). */
   canEditPublicProfile: boolean;
+  /** Their public page's address while it's live, else null. Anyone who can see the record may
+   *  copy their doc card, because the page is already public. */
+  publicSlug: string | null;
   /** Null when the viewer may not see the employment tier. */
   employment: (EmploymentDetails & { supplierName: string | null }) | null;
   /** Whether a sensitive record exists. The values come from a separate, logged request. */

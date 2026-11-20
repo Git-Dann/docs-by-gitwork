@@ -11,7 +11,8 @@
  */
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowTopRightOnSquareIcon, LinkIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
+import { ArrowTopRightOnSquareIcon, LinkIcon, PencilSquareIcon, RectangleStackIcon } from "@heroicons/react/24/outline";
+import { copyDocCard } from "@/lib/doc-card";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { BannerTile, ProfileBannerShell, type BannerMenuItem } from "@/components/profile/profile-banner-shell";
@@ -68,6 +69,25 @@ export function ProfileBanner({
     }
   }
 
+  // Their page while it's live (yours or theirs as you edit it, else what the record says), so
+  // anyone attributing work to them can paste their doc card into a document.
+  const liveSlug = pp ? (pp.enabled ? slug : null) : p.publicSlug;
+  async function copyCard() {
+    if (!liveSlug) return;
+    const origin = window.location.origin;
+    try {
+      await copyDocCard({
+        name: displayName,
+        position: p.jobTitle?.trim() || null,
+        pageUrl: `${origin}/u/${liveSlug}`,
+        imageUrl: `${origin}/u/${liveSlug}/doc-card`,
+      });
+      toast.success("Doc card copied", "Paste it into a Google Doc.");
+    } catch {
+      toast.error("Couldn't copy the doc card", "Your browser blocked the clipboard. Try again.");
+    }
+  }
+
   const menu: BannerMenuItem[] = [];
   if (self) menu.push({ label: "Change photo", onClick: () => setPhoto(true) });
   if (self && ownsPassword) menu.push({ label: "Name and password", onClick: () => setAccount(true) });
@@ -88,6 +108,12 @@ export function ProfileBanner({
         onChangePhoto={self ? () => setPhoto(true) : undefined}
         actions={
           <>
+            {liveSlug ? (
+              <button type="button" className="app-button app-button-secondary app-button-sm inline-flex items-center gap-1.5" onClick={() => void copyCard()}>
+                <RectangleStackIcon aria-hidden className="h-4 w-4" />
+                Copy doc card
+              </button>
+            ) : null}
             {pp ? (
               <button type="button" className="app-button app-button-secondary app-button-sm inline-flex items-center gap-1.5" onClick={() => setEditing(true)}>
                 <PencilSquareIcon aria-hidden className="h-4 w-4" />
