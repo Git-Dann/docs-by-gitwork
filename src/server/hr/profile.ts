@@ -40,7 +40,7 @@ import { StaffInputError } from "@/server/staff";
 import { isDeveloperRecord } from "@/server/codeclear-archived";
 import { canRestore } from "@/server/auth/member-status";
 import { canManageRole, isAtLeast } from "@/types/auth";
-import { deleteBlockReason, type StaffLifecycle } from "@/lib/hr";
+import { canEditPublicPage, deleteBlockReason, type StaffLifecycle } from "@/lib/hr";
 import { mergePlan, mergedFields } from "@/lib/staff-merge";
 
 const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
@@ -202,6 +202,7 @@ export async function getStaffProfile(user: EffectiveUser, recordId: string): Pr
     isDeveloper: isDeveloperRecord(record),
     relation,
     access,
+    canEditPublicProfile: canEditPublicPage({ relation, actorRole: user.role, targetRole: record.member?.role ?? null }),
     employment: access.employment
       ? {
           supplierId: record.supplierId,

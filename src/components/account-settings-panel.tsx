@@ -9,8 +9,78 @@ import { SettingsCard } from "@/components/settings/settings-card";
 import { AvatarEditModal, type AvatarEditResult } from "@/components/account/avatar-edit-modal";
 import { avatarPosition, initialsFrom, resolveAvatar } from "@/lib/avatar";
 import { isPasswordLoginAllowed, roleLabel } from "@/types/auth";
+import Link from "next/link";
+import { usePermissions } from "@/hooks/use-permissions";
+import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 
+/**
+ * Settings → Profile. Where a business has Staff, a person's photo, name, password and public
+ * page all live on their own profile (Backstage → Me, or their page on Staff), so this points
+ * there instead of being a second place to manage the same things. Guests, and businesses
+ * without Staff, keep the form here.
+ */
 export function AccountSettingsPanel() {
+  const perms = usePermissions();
+  const account = useAccount();
+  const oneProfile = !perms.isPending && !perms.isExternal && perms.hasModule("codeclear") && perms.can("backstage");
+  if (oneProfile) {
+    return (
+      <div className="proposal-form-theme space-y-6">
+        <SettingsCard number="01" title="Profile">
+          <p className="text-sm leading-6 text-[var(--text-3)]">
+            Your photo, name, password and public page are all on your profile now, alongside your details, documents and time off.
+          </p>
+          <Link href="/app/backstage?area=me" className="app-button app-button-primary app-button-sm mt-4 inline-flex">
+            Open my profile
+          </Link>
+        </SettingsCard>
+      </div>
+    );
+  }
+  const ownsOwnName = isPasswordLoginAllowed(account.data?.role, account.data?.workspaceSlug);
+  return (
+    <div className="proposal-form-theme space-y-6">
+      <SettingsCard number="01" title="Profile">
+        <AccountProfileBody />
+      </SettingsCard>
+      {/* Only an account that actually signs in with a password gets this. For a
+          Google account the field is dead weight and inviting them to set one would
+          imply it does something. */}
+      {ownsOwnName ? (
+        <SettingsCard number="02" title="Password">
+          <PasswordBody />
+        </SettingsCard>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Your account on your own Staff profile: photo, name and (for a password sign-in) password.
+ * The same pieces Settings → Profile uses, in the profile's card chrome.
+ */
+export function MyAccountCard({ number }: { number: string }) {
+  const account = useAccount();
+  const ownsPassword = isPasswordLoginAllowed(account.data?.role, account.data?.workspaceSlug);
+  return (
+    <WidgetCard number={number} name="Account">
+      <div className="proposal-form-theme @container space-y-5">
+        <AccountProfileBody compact />
+        {ownsPassword ? (
+          <div className="border-t border-[var(--border-1)] pt-4">
+            <p className="text-[13px] font-medium text-[var(--text-1)]">Password</p>
+            <div className="mt-2">
+              <PasswordBody />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </WidgetCard>
+  );
+}
+
+/** `compact`: the profile card, which sits in half a page: a smaller photo, and the grid follows the card's width. */
+function AccountProfileBody({ compact = false }: { compact?: boolean }) {
   const { data: session } = useSession();
   const accountQuery = useAccount();
   const updateAccount = useUpdateAccount();
@@ -50,19 +120,28 @@ export function AccountSettingsPanel() {
   }
 
   return (
-    <div className="proposal-form-theme space-y-6">
-      <SettingsCard number="01" title="Profile">
+    <>
         <p className="text-sm leading-6 text-[var(--text-3)]">
-          {ownsOwnName
+          {compact
+            ? ownsOwnName
+              ? "Your name and photo are how everyone sees you in Foundry."
+              : "Your photo shows everywhere in Foundry. Your name comes from your Google account."
+            : ownsOwnName
             ? "Your name and picture are how you appear to everyone else in Foundry. Your email is what you sign in with and cannot be changed here."
             : "Sign-in identity is managed by Google Workspace — change your name there and it updates here automatically. The profile image below overrides your Google photo inside Foundry, including the sidebar."}
         </p>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]">
+        <div
+          className={
+            compact
+              ? "mt-4 grid gap-4 @min-[420px]:grid-cols-[120px_minmax(0,1fr)]"
+              : "mt-5 grid gap-5 lg:grid-cols-[200px_minmax(0,1fr)]"
+          }
+        >
           {/* Avatar column */}
           <div className="space-y-2.5">
             <span className="text-sm font-medium text-[var(--text-2)]">Profile image</span>
-            <div className="aspect-square w-full max-w-[200px] overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)]">
+            <div className={`aspect-square w-full ${compact ? "max-w-[120px]" : "max-w-[200px]"} overflow-hidden rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-1)]`}>
               {resolved.isInitials ? (
                 <div className="flex h-full w-full items-center justify-center bg-[var(--surface-brand)] text-4xl font-semibold text-[var(--brand-700)]">
                   {initials}
@@ -124,12 +203,6 @@ export function AccountSettingsPanel() {
             </p>
           </div>
         </div>
-      </SettingsCard>
-
-      {/* Only an account that actually signs in with a password gets this. For a
-          Google account the field is dead weight and inviting them to set one would
-          imply it does something. */}
-      {isPasswordLoginAllowed(profile?.role, profile?.workspaceSlug) ? <PasswordCard /> : null}
 
       <AvatarEditModal
         open={editing}
@@ -141,7 +214,7 @@ export function AccountSettingsPanel() {
         saving={updateAccount.isPending}
         onSave={handleSave}
       />
-    </div>
+    </>
   );
 }
 
@@ -154,7 +227,7 @@ export function AccountSettingsPanel() {
  * whole point of this card is that the first password arrived over Slack or email and
  * should not stay the password.
  */
-function PasswordCard() {
+function PasswordBody() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -192,7 +265,7 @@ function PasswordCard() {
   }
 
   return (
-    <SettingsCard number="02" title="Password">
+    <>
       <p className="text-sm leading-6 text-[var(--text-3)]">
         You sign in with your email and this password. Change it to something only you
         know — whoever set up your account had to send you the first one.
@@ -250,7 +323,7 @@ function PasswordCard() {
           </span>
         ) : null}
       </div>
-    </SettingsCard>
+    </>
   );
 }
 

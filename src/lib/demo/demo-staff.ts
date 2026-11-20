@@ -22,7 +22,10 @@ import {
   type StaffProfile,
   type SupplierInput,
   type SupplierRecord,
+  canEditPublicPage,
 } from "@/lib/hr";
+import { EMPTY_EXTRAS } from "@/lib/public-profile";
+import type { MyPublicProfile } from "@/server/public-profile";
 import {
   STAFF_DOCUMENT_LABEL,
   STAFF_DOCUMENT_TYPES,
@@ -138,7 +141,9 @@ function log(recordId: string, action: HrAccessAction, detail: string | null = n
 const emptyEmployment = (): EmploymentDetails => ({ supplierId: null, endDate: null, probationEndsOn: null, noticePeriodWeeks: null, daysPerWeek: null });
 
 function demoProfile(p: StaffPerson): StaffProfile {
-  const access = profileAccess({ relation: "other", canViewStaff: true, canManageStaff: false, canManageHr: true, canViewSensitive: true });
+  // The demo viewer is Tom (DEMO_ME), so Tom's page is his own.
+  const relation = p.recordId === DEMO_ME ? "self" : "other";
+  const access = profileAccess({ relation, canViewStaff: true, canManageStaff: false, canManageHr: true, canViewSensitive: true });
   const e = employment.get(p.recordId!) ?? emptyEmployment();
   return {
     recordId: p.recordId!,
@@ -157,8 +162,10 @@ function demoProfile(p: StaffPerson): StaffProfile {
     managerName: p.managerName,
     currentClients: p.currentClients,
     isDeveloper: p.isDeveloper,
-    relation: "other",
+    relation,
     access,
+    // The demo viewer is an Admin, so they may edit anyone below them.
+    canEditPublicProfile: canEditPublicPage({ relation, actorRole: "ADMIN", targetRole: p.role }),
     employment: { ...e, supplierName: suppliers.find((s) => s.id === e.supplierId)?.name ?? null },
     hasSensitive: sensitive.has(p.recordId!),
     lifecycle: demoLifecycle(p),
@@ -445,6 +452,9 @@ export function resolveDemoStaff(pathname: string, init?: { method?: string; bod
   if (pathname === "/api/staff/me") return { recordId: DEMO_ME };
   // Their own developer details, through the real rules. Only shown for a developer (Tom isn't).
   if (pathname === "/api/staff/me/developer") return resolveDemoOwnDeveloper(init);
+  // Public page settings: your own (Me), or someone's an Admin opens from Staff.
+  const pp = pathname === "/api/staff/me/public-profile" ? DEMO_ME : pathname.match(/^\/api\/staff\/([^/]+)\/public-profile$/)?.[1];
+  if (pp) return resolveDemoPublicProfile(decodeURIComponent(pp), pp === DEMO_ME || pathname.includes("/me/"), init?.method ?? "GET", body as Record<string, unknown>);
   const hr = resolveDemoHr(pathname, init?.method ?? "GET", body as Record<string, unknown>);
   if (hr !== undefined) return hr;
   if (pathname === "/api/staff" && init?.method === "POST") {
@@ -486,6 +496,40 @@ const candidateEdits = new Map<string, Partial<CodeClearCandidateDetail>>();
 const candidateNotes = new Map<string, CodeClearNoteRecord[]>([
   ["r3", [{ id: "n1", candidateId: "r3", body: "Strong on React Native performance work; pair him with Tom on the Acme release.", createdBy: "Tom Okafor", createdAt: "2026-09-14T10:00:00.000Z" }]],
 ]);
+
+const demoPages = new Map<string, MyPublicProfile>();
+
+/** A public page's settings in the demo, kept in memory. Only the person may switch theirs on. */
+function resolveDemoPublicProfile(recordId: string, self: boolean, method: string, body: Record<string, unknown>): unknown {
+  const person = people.find((x) => x.recordId === recordId);
+  if (!person) return { error: "Not found", __status: 404 };
+  const slug = person.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const current: MyPublicProfile = demoPages.get(recordId) ?? {
+    enabled: false,
+    slug: "",
+    suggestedSlug: slug,
+    headline: person.jobTitle ?? "",
+    bio: "",
+    summary: "",
+    location: "",
+    linkedinUrl: "",
+    portfolioUrl: "",
+    achievements: [],
+    links: [],
+    card: null,
+    bookingUrl: "",
+    extras: EMPTY_EXTRAS,
+    preview: { name: person.name, company: "Northwind", avatarUrl: person.avatarUrl ?? null },
+    completeness: { percent: 20, missing: ["headline", "bio", "photo"] },
+  };
+  if (method !== "PATCH") return current;
+  if (body.enabled === true && !self && !current.enabled) {
+    return { error: "Only they can publish their page. You can edit it, and they switch it on.", __status: 403 };
+  }
+  const next = { ...current, ...(body as Partial<MyPublicProfile>), preview: current.preview, completeness: current.completeness } as MyPublicProfile;
+  demoPages.set(recordId, next);
+  return next;
+}
 
 /** Who Backstage → Me opens as, in the demo. */
 const DEMO_ME = "r2";

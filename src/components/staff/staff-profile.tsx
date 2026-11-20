@@ -34,6 +34,7 @@ import { DocumentsCard } from "@/components/staff/staff-documents";
 import { DeveloperCard, DeveloperNotesCard } from "@/components/staff/developer-card";
 import { MyDeveloperCard } from "@/components/staff/my-developer-card";
 import { PublicProfileCard } from "@/components/staff/public-profile-card";
+import { MyAccountCard } from "@/components/account-settings-panel";
 import { DateWithAttention, Field, HeaderAction, formatDate, label, today } from "@/components/staff/profile-parts";
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -846,11 +847,20 @@ export function StaffProfileView({
       )}
     </WidgetCard>
   );
+  // Your own profile is the one place you manage yourself (Me and your page on Staff are the
+  // same view): your account (photo, name, password) and your public page sit here too.
+  const self = mode === "me" || p.relation === "self";
+  const account = self ? <MyAccountCard number={next()} /> : null;
   const developer = showDeveloper ? <DeveloperCard recordId={p.recordId} number={next()} /> : null;
   // In Me, a developer fills in what only they know (handle, stack, links).
   const myDeveloper = mode === "me" && p.isDeveloper ? <MyDeveloperCard number={next()} /> : null;
-  // Everyone gets a shareable public page, edited only by the person (§139).
-  const publicProfile = mode === "me" ? <PublicProfileCard number={next()} /> : null;
+  // Everyone gets a shareable public page (§139). The person edits their own; an Admin can open
+  // someone else's from here with Edit (they can't publish it for them).
+  const publicProfile = self ? (
+    <PublicProfileCard number={next()} />
+  ) : p.canEditPublicProfile && p.memberId ? (
+    <PublicProfileCard number={next()} recordId={p.recordId} personName={displayName} collapsible />
+  ) : null;
   const employment = p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={next()} /> : null;
   const timeOff = p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={next()} /> : null;
   const notes = showDeveloper ? <DeveloperNotesCard recordId={p.recordId} number={next()} /> : null;
@@ -900,6 +910,7 @@ export function StaffProfileView({
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
         <div className="min-w-0 space-y-5">
           {overview}
+          {account}
           {developer}
           {myDeveloper}
           {publicProfile}

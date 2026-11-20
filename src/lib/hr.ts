@@ -9,6 +9,8 @@
  *   - sensitive: date of birth, address, NI number, ID, right to work, emergency contacts.
  */
 
+import { canManageRole, isAtLeast } from "@/types/auth";
+
 // ── Who may see what ────────────────────────────────────────────────────────────
 
 /** The viewer's relation to the person they're looking at. */
@@ -50,6 +52,17 @@ export function profileAccess(input: {
     editSensitive: self || (input.canManageHr && input.canViewSensitive),
     accessLog: input.canManageHr,
   };
+}
+
+/**
+ * Who may edit someone's public page (CLAUDE.md §139): the person, and an Admin or Super Admin.
+ * An Admin can't edit a page belonging to someone at or above their rank; a Super Admin can edit
+ * anyone's. Publishing stays the person's own call, whoever edits it.
+ */
+export function canEditPublicPage(input: { relation: ProfileRelation; actorRole: string; targetRole: string | null }): boolean {
+  if (input.relation === "self") return true;
+  if (!isAtLeast(input.actorRole, "ADMIN")) return false;
+  return input.targetRole === null || canManageRole(input.actorRole, input.targetRole);
 }
 
 // ── Access log ──────────────────────────────────────────────────────────────────
@@ -451,6 +464,8 @@ export interface StaffProfile {
   isDeveloper: boolean;
   relation: ProfileRelation;
   access: ProfileAccess;
+  /** Whether this viewer may edit their public page (canEditPublicPage). */
+  canEditPublicProfile: boolean;
   /** Null when the viewer may not see the employment tier. */
   employment: (EmploymentDetails & { supplierName: string | null }) | null;
   /** Whether a sensitive record exists. The values come from a separate, logged request. */

@@ -10976,7 +10976,8 @@ in block by block and works in light and dark.
   a row of link tiles ending in Share). From `lg` it is LinkedIn-shaped: a banner in the card's
   colour and pattern, a 152px photo, name, headline, facts and action buttons, then About,
   Experience (an achievement titled "Role, Organisation" is split into the two) and Skills, with
-  a sticky sidebar holding the card, the Share panel and every link written out.
+  a sticky sidebar holding the Share panel and every link written out. The card itself is not on
+  the desktop page (Dan's call): the banner already carries its colour and pattern.
 - **Every profile has a QR code**, card or not: the phone's Share sheet and the desktop Share
   panel (`ProfileSharePanel`) carry the QR, Copy link, Share and Save contact.
 - **Book a call:** `Candidate.profileBookingUrl` (additive, http(s) only), set in the editor.
@@ -11001,3 +11002,18 @@ the developers you have, not hiring, so it is now **Developers → Insights** (`
 `/app/staff/hiring` redirects there. Everything else in Staff earns its place: DevSignal's
 sub-pages are its settings, Suppliers is HR-only, Archived lives under People, and the
 `/app/codeclear/*` redirects keep old links working.
+
+### 139.1 One place to manage yourself, and Admins can edit a page
+
+- **Your own Staff page is the one place you manage yourself.** Backstage → Me and your page on
+  Staff (`relation === "self"`) are the same view, and it now also holds **Account** (photo, name,
+  password for a password sign-in: `MyAccountCard` in `account-settings-panel.tsx`) and your
+  **Public profile**. Settings → Profile points there instead of repeating the form, wherever the
+  business has Staff and the person has Backstage. Guests, and businesses without Staff, keep the
+  form in Settings.
+- **An Admin can edit someone else's public page** from their Staff page: a folded Public profile
+  card with **Edit**. One rule, `canEditPublicPage` (`src/lib/hr.ts`): the person, or an Admin for
+  anyone below their rank, or a Super Admin for anyone (incl. another Super Admin). Served by
+  `GET`/`PATCH /api/staff/[id]/public-profile`; anyone else gets a 404.
+- ⚠️ **Publishing stays the person's own call.** An Admin can edit and hide a page but not switch
+  it on (`applySave`'s `mayPublish`), so nobody's page goes public without them.

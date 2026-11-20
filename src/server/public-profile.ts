@@ -25,6 +25,8 @@ import {
 } from "@/lib/public-profile";
 import { readCard, type ProfileCard } from "@/lib/profile-card";
 import { getOwnStaffRecordId, StaffInputError } from "@/server/staff";
+import { canEditPublicPage } from "@/lib/hr";
+import type { EffectiveUser } from "@/server/auth/effective-user";
 
 export interface PublicProfile {
   slug: string;
@@ -244,7 +246,40 @@ export async function saveMyPublicProfile(
   membershipId: string,
   input: MyPublicProfileInput,
 ): Promise<MyPublicProfile> {
-  const r = await ownRecord(workspaceId, membershipId);
+  return applySave(await ownRecord(workspaceId, membershipId), input, { mayPublish: true });
+}
+
+/**
+ * Someone else's record, for an Admin editing their page from Staff (canEditPublicPage). The
+ * person's own record goes through here too when they open themselves on Staff. 404 for anyone
+ * the viewer may not edit, so the id says nothing.
+ */
+async function editableRecord(user: EffectiveUser, recordId: string): Promise<{ row: Row; self: boolean }> {
+  const r = await prisma.candidate.findFirst({
+    where: { id: recordId, workspaceId: user.workspaceId },
+    select: { ...SELECT, memberId: true, member: { select: { ...SELECT.member.select, role: true } } },
+  });
+  if (!r) throw Object.assign(new Error("Not found"), { status: 404 });
+  const self = Boolean(r.memberId) && r.memberId === user.membershipId;
+  const ok = canEditPublicPage({ relation: self ? "self" : "other", actorRole: user.role, targetRole: r.member?.role ?? null });
+  if (!ok) throw Object.assign(new Error("Not found"), { status: 404 });
+  return { row: r, self };
+}
+
+export async function getPublicProfileForRecord(user: EffectiveUser, recordId: string): Promise<MyPublicProfile> {
+  return toMine((await editableRecord(user, recordId)).row);
+}
+
+/** An Admin can edit someone's page and hide it, but switching it on is only ever the person's own call. */
+export async function savePublicProfileForRecord(user: EffectiveUser, recordId: string, input: MyPublicProfileInput): Promise<MyPublicProfile> {
+  const { row, self } = await editableRecord(user, recordId);
+  return applySave(row, input, { mayPublish: self });
+}
+
+async function applySave(r: Row, input: MyPublicProfileInput, opts: { mayPublish: boolean }): Promise<MyPublicProfile> {
+  if (input.enabled === true && !opts.mayPublish && !r.profilePublic) {
+    throw Object.assign(new Error("Only they can publish their page. You can edit it, and they switch it on."), { status: 403 });
+  }
   const data: Prisma.CandidateUpdateInput = {};
 
   if (input.slug !== undefined) {

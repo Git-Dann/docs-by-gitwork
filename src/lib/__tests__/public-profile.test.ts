@@ -104,8 +104,11 @@ describe("public profile privacy (§139)", () => {
 
   it("switching a page on is only ever the person's own edit", () => {
     expect(read("src/app/api/staff/me/public-profile/route.ts")).toContain("user.membershipId");
-    const unpublish = read("src/app/api/staff/[id]/public-profile/route.ts");
-    expect(unpublish).not.toMatch(/export async function (PATCH|POST|PUT)/);
+    // An Admin can edit someone's page from Staff, but only the person may switch it on.
+    expect(server).toMatch(/applySave\(row, input, \{ mayPublish: self \}\)/);
+    expect(server).toMatch(/input\.enabled === true && !opts\.mayPublish && !r\.profilePublic/);
+    // Who may edit at all is the one rule, checked before anything is read or written.
+    expect(server.slice(server.indexOf("async function editableRecord"))).toMatch(/canEditPublicPage\(/);
     expect(server.slice(server.indexOf("export async function unpublishProfile"))).toContain("profilePublic: false");
   });
 
