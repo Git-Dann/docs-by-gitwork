@@ -5,17 +5,51 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRightIcon,
   BuildingOffice2Icon,
+  ChatBubbleLeftRightIcon,
+  CheckCircleIcon,
   Cog6ToothIcon,
   DocumentTextIcon,
+  InboxArrowDownIcon,
+  LifebuoyIcon,
   MagnifyingGlassIcon,
   MoonIcon,
   SunIcon,
+  UserIcon,
 } from "@heroicons/react/24/outline";
+import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/components/providers/theme-provider";
 import { EasyCommandMenu, type EasyCommandItem } from "@/components/ui/easyui/command-menu";
 import { useClientList, useProposalList } from "@/hooks/use-proposals";
 import { cn } from "@/lib/format";
 import { isCommandMenuShortcut, rankCommands, type CommandItem } from "@/lib/command-menu";
+import { normaliseQuery, type SearchGroup, type SearchHit, type SearchResponse } from "@/lib/global-search";
+import { apiFetch } from "@/lib/api";
+
+const SEARCH_ICON: Record<SearchGroup, React.ComponentType<{ className?: string }>> = {
+  Tasks: CheckCircleIcon,
+  Requests: InboxArrowDownIcon,
+  Meetings: ChatBubbleLeftRightIcon,
+  Care: LifebuoyIcon,
+  People: UserIcon,
+};
+
+const SEARCH_LABEL: Record<SearchGroup, string> = {
+  Tasks: "Task",
+  Requests: "Request",
+  Meetings: "Meeting",
+  Care: "Care",
+  People: "Person",
+};
+
+/** Waits until typing pauses, so each keystroke isn't a request. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setV(value), ms);
+    return () => window.clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
 
 /** A sidebar entry, as the shell already has it: filtered to what this viewer may open. */
 export interface CommandPage {
@@ -63,12 +97,15 @@ export function CommandMenu({
   canSeeClients,
   canSeeDocs,
   mapHref = (href) => href,
+  searchRecords = true,
 }: {
   pages: CommandPage[];
   canSeeClients: boolean;
   canSeeDocs: boolean;
   /** The demo shell maps /app links onto its /demo pages. */
   mapHref?: (href: string) => string;
+  /** Search tasks, requests, meetings, Care and people on the server as you type. */
+  searchRecords?: boolean;
 }) {
   const router = useRouter();
   const { resolved, setMode } = useTheme();
@@ -76,6 +113,21 @@ export function CommandMenu({
   const [everOpened, setEverOpened] = useState(false);
 
   const clients = useClientList(undefined, { enabled: everOpened && canSeeClients });
+  const [query, setQuery] = useState("");
+  const searchQ = normaliseQuery(useDebounced(query, 220));
+  const search = useQuery({
+    queryKey: ["global-search", searchQ],
+    queryFn: () => apiFetch<SearchResponse>(`/api/search?q=${encodeURIComponent(searchQ ?? "")}`),
+    enabled: open && searchRecords && Boolean(searchQ),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
+  });
+  // Only show hits for what's typed now, never a previous query's.
+  const current = normaliseQuery(query) === searchQ;
+  const hits = useMemo<SearchHit[]>(
+    () => (search.data && search.data.query === searchQ && current ? search.data.hits : []),
+    [search.data, searchQ, current],
+  );
   const docs = useProposalList({}, { enabled: everOpened && canSeeDocs });
 
   const show = useCallback(() => {
@@ -146,7 +198,21 @@ export function CommandMenu({
       if (item.group === "Documents") return DocumentTextIcon;
       return resolved === "dark" ? SunIcon : MoonIcon;
     };
-    return commands.map((item) => {
+    const recordItems: EasyCommandItem[] = hits.map((h) => {
+      const Icon = SEARCH_ICON[h.group];
+      return {
+        id: h.id,
+        title: h.title,
+        hint: h.hint,
+        category: SEARCH_LABEL[h.group],
+        icon: <Icon aria-hidden className="h-4 w-4 shrink-0 text-[var(--text-3)]" />,
+        onSelect: () => {
+          setOpen(false);
+          router.push(mapHref(h.href));
+        },
+      };
+    });
+    return [...commands.map((item) => {
       const Icon = iconFor(item);
       return {
         id: item.id,
@@ -159,18 +225,32 @@ export function CommandMenu({
           else if (item.href) router.push(mapHref(item.href));
         },
       };
-    });
-  }, [commands, pages, resolved, setMode, router, mapHref]);
+    }), ...recordItems];
+  }, [commands, hits, pages, resolved, setMode, router, mapHref]);
 
   // Foundry's ranking, not EasyUI's substring filter: grouped, capped, typo-tolerant, and clients
   // and documents only once you type.
   const rank = useCallback(
     (list: EasyCommandItem[], query: string) => {
       const byId = new Map(list.map((i) => [i.id, i]));
-      return rankCommands(commands, query).flatMap((c) => byId.get(c.id) ?? []);
+      const local = rankCommands(commands, query).flatMap((c) => byId.get(c.id) ?? []);
+      // Server hits already matched every word; they follow, in the server's order.
+      const records = query.trim() ? hits.flatMap((h) => byId.get(h.id) ?? []) : [];
+      return [...local, ...records];
     },
-    [commands],
+    [commands, hits],
   );
+
+  const typed = normaliseQuery(query);
+  const note = !searchRecords || !typed
+    ? null
+    : search.isFetching || searchQ !== typed
+      ? "Searching tasks, requests, meetings and people…"
+      : search.isError
+        ? "Couldn't search tasks, requests and meetings just now."
+        : search.data?.failed.length
+          ? `Couldn't search ${search.data.failed.join(", ").toLowerCase()} just now.`
+          : null;
 
   return (
     <EasyCommandMenu
@@ -180,6 +260,8 @@ export function CommandMenu({
       rank={rank}
       placeholder="Search Foundry"
       footerLabel="Foundry"
+      onQueryChange={setQuery}
+      note={note}
     />
   );
 }

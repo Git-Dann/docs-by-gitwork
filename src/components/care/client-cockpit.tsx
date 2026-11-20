@@ -334,11 +334,14 @@ export function ClientCockpit({
   client,
   onBack,
   initialSection = "conversations",
+  initialConversationId = null,
   onSectionChange,
 }: {
   client: SupportClient;
   /** Which part of the client's Care to open on — from a deep link (`?section=`). */
   initialSection?: CareSection;
+  /** A conversation to open on arrival, from a ?conversation= link (search results). */
+  initialConversationId?: string | null;
   onSectionChange?: (section: CareSection) => void;
   // No currentUserId: "Assigned to me" is now a server query (assigneeId=me), resolved from the
   // session server-side, so the client no longer needs to know who it is to filter.
@@ -365,7 +368,7 @@ export function ClientCockpit({
   const semantic = useSemanticSearch(client.id);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialConversationId);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   // Keyboard cursor, independent of which conversation is open.
   const [focusedIndex, setFocusedIndex] = useState(-1);

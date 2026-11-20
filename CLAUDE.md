@@ -11171,8 +11171,10 @@ forward), per client, and deals. Rules `src/lib/money.ts` (pure, tested), reader
   the same job are both counted if both were accepted.
 - **FX:** `loadFxRates` in `src/server/fx.ts` (ECB via Frankfurter, 12h fetch cache). No rate means
   the amount is left out of totals and listed, never guessed.
-- **"Team at rate card"** is the developers on a client at rate-card rates (`computeClientFinancials`).
-  It is NOT called margin: whether the rate card is cost or price is Dan's call (open).
+- **The rate card is cost** (Dan, 20 Nov 2026). **Team cost** is what the developers on a client
+  cost per month at rate-card rates (`computeClientFinancials`), and **margin** is this month's
+  revenue under contract less it, per client and overall (`MoneySummary.margin` / `marginShare`).
+  Developers with no rate are left out and the page says how many.
 - "Copy as an update" puts a few plain lines on the clipboard for an investor update.
 - Demos: `/demo/hq` (Needs you) and `/demo/money`, both through the real rules
   (`src/lib/demo/demo-money.ts`).
@@ -11213,3 +11215,56 @@ confetti moved to `src/components/ui/motion/confetti.tsx` (the Morning Brief use
   (`foundry.achievements.celebrated.v1`), so nobody gets confetti for months-old work.
 - Not built yet: team goals, Care replies (SupportMessage has no author user), showing achievements
   on the public profile (needs the person's opt-in).
+
+## 142. Recent Changes (November 2026) — The client timeline, the weekly update, and ⌘K across records
+
+Built from the "go deep" plan (§141). No new Prisma models.
+
+### 142.1 Timeline (Portal client page)
+
+A `NN // TIMELINE` card under Developers: what happened on the client's work, week by week, and
+where things stand now. Rules `src/lib/client-delivery-timeline.ts` (pure, tested), loader
+`src/server/client-delivery-timeline.ts`, route `GET /api/clients/[slug]/delivery-timeline?weeks=`
+(client access checked), card `src/components/clients/client-delivery-card.tsx`.
+
+- **Sources:** tasks finished, started and blocked (top-level only); changelog releases; client
+  requests; meetings (first sentence of the summary); monitor incidents (with how long they lasted);
+  documents sent and accepted. Each is read on its own; one that fails is named on the card (§35).
+- **Weeks start Monday, UTC**, and an empty week shows as "A quiet week", never dropped.
+- **Now panel:** waiting on the client (unanswered blockers, releases waiting for approval), the
+  next release with progress, in progress, up next.
+- ⚠️ **Internal only.** It names developers, so it is never part of a client-facing DTO.
+
+### 142.2 Weekly update (the Friday email)
+
+**Weekly update** on the Timeline card drafts the email Dan sends clients (modelled on his Campfire
+and Gaia emails), in the house two-column popup: the draft to edit on the left, what it was written
+from on the right. Rules `src/lib/weekly-update.ts`, server `src/server/weekly-update.ts`, route
+`POST /api/clients/[slug]/weekly-update { week: "this"|"last", regenerate? }`.
+
+- **Drafted, never sent.** Copy, or **Open in Gmail** (a compose link with the draft filled in, to
+  the client's primary contact and wiki users).
+- One standard-tier AI call, cached on the week's facts (£0 to reopen), told to use only the facts.
+  A reply that describes finished work in a quiet week is thrown away. Without AI, no permission or
+  a failed call, the **plain draft** is used and the reason is shown.
+- The style rules live in `WEEKLY_UPDATE_SYSTEM`: greet by first name, lead with what got done and
+  what it means for the client, group by workstream, what's next, "What we need from you", no em
+  dashes, "Have a great weekend," on a Friday.
+
+### 142.3 ⌘K searches records
+
+`GET /api/search?q=` (`src/server/global-search.ts`, rules `src/lib/global-search.ts`) searches
+tasks, client requests, meetings, Care conversations and people. Each group only for someone who can
+open it: tasks/requests/meetings need Portal and are limited to the person's clients; Care needs
+`support`; people need Staff; workspace modules respected. Every word must match. A group that fails
+is named in the menu ("Couldn't search care just now"), never shown as no results.
+
+- The vendored EasyUI menu gained `hint`, `onQueryChange` and `note` (recorded in its header).
+- **Care links to one conversation** now: `careHref({ clientId, conversationId })` →
+  `/app/care?client=…&conversation=…` opens it.
+
+### 142.4 Infrastructure audit
+
+Done in November 2026 and shared with Dan privately. ⚠️ **Not committed, on purpose: this repo
+is public**, and an audit lists exactly what an attacker would want. Keep future audits and
+incident write-ups that name a live weakness out of the repo until the weakness is fixed.

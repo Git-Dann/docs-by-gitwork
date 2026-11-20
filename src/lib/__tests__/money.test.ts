@@ -115,9 +115,17 @@ describe("summariseMoney", () => {
   it("puts the client earning most first, with when its contract runs to", () => {
     expect(m.clients[0].id).toBe("a");
     expect(m.clients[0].contractedTo).toBe("2027-02");
-    expect(m.clients[0].teamAtRateCard).toBe(2400);
+    expect(m.clients[0].teamCost).toBe(2400);
+    expect(m.clients[0].margin).toBe(m.clients[0].thisMonth - 2400);
     expect(m.clients[0].retainer).toEqual({ used: 2, allowance: 4 });
     expect(m.unpricedDevs).toBe(1);
+  });
+
+  it("takes every client's team cost off this month for the margin", () => {
+    const cost = m.clients.reduce((sum, c) => sum + (c.teamCost ?? 0), 0);
+    expect(m.teamCost).toBe(cost);
+    expect(m.margin).toBe(Math.round((m.thisMonth - cost) * 100) / 100);
+    expect(m.marginShare).toBeCloseTo((m.margin ?? 0) / m.thisMonth);
   });
 
   it("values the pipeline", () => {
