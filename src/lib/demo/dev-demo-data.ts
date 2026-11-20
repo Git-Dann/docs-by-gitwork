@@ -5091,6 +5091,7 @@ export function resolveDemoApi(
   }
   // The Monitors page (/demo/monitors): the same board, and every client openable.
   if (pathname === "/api/monitors") return { ...demoMonitorBoard(), openableClientIds: null };
+  if (pathname === "/api/monitors/platform") return demoPlatformHealth();
   // HQ's "Needs you" and the Money page, through the real rules (src/lib/demo/demo-money.ts).
   if (pathname === "/api/hq/needs-you") return demoNeedsYou();
   if (pathname === "/api/money") return demoMoney();
@@ -5585,3 +5586,24 @@ const demoPulseEmbedConfig = {
   turnstileSiteKey: null,
   turnstileConfigured: true,
 };
+
+/** The Platform popup on /demo/monitors: a healthy server with backups and Slack not yet set up,
+ *  which is the real state until those secrets exist. */
+function demoPlatformHealth(): import("@/lib/platform-health").PlatformHealth {
+  const now = Date.now();
+  const ago = (min: number) => new Date(now - min * 60_000).toISOString();
+  const jobs: Array<[string, number, number]> = [
+    ["jobs", 1, 10], ["wiki-monitors", 1, 10], ["wedge-keepwarm", 3, 30], ["pulse-reconcile", 9, 60],
+    ["pulse-run-monitors", 40, 180], ["wedge-course-feed", 45, 180], ["crm-sync", 70, 4320],
+    ["docs-gdrive-backup", 1260, 1560], ["support-sync", 600, 1560], ["foreman", 840, 1560], ["curator", 6000, 11520],
+  ];
+  return {
+    readAt: new Date(now).toISOString(),
+    jobs: jobs.map(([name, last, gap]) => ({ name, lastRun: ago(last), maxGapMinutes: gap, stale: false })),
+    disk: { usedShare: 0.41, freeBytes: 118e9, totalBytes: 200e9 },
+    database: { bytes: 2.4e9, weekAgoBytes: 2.3e9, growthShare: 0.043 },
+    memory: { usedBytes: 705e6, limitBytes: 6 * 2 ** 30, peakBytes: 1.1e9, hostBytes: 24e9 },
+    backups: { state: "off", reason: null, lastOk: null },
+    alerts: { slack: false },
+  };
+}

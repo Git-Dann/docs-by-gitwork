@@ -11349,6 +11349,13 @@ synced by `deploy.yml`), to that Slack channel (`src/server/ops-alert.ts`). Mark
   error an hour, at most 10 an hour, with the route template, method, error type/code, digest and
   the first line with emails and long numbers removed. Never the real path. `src/app/global-error.tsx`
   is the page shown when the root layout itself fails.
+- **Platform popup on Monitors** (`src/components/monitors/platform-health.tsx`): a small
+  "Platform" button with a coloured dot in the STATUS header opens the house two-column popup:
+  scheduled jobs, disk, database size and growth, the app's memory (from its cgroup), backups and
+  Slack alerts. Rules in `src/lib/platform-health.ts`: a part that couldn't be read is "Couldn't
+  read", never fine. ⚠️ **Platform admins only** (`GET /api/monitors/platform`,
+  `requirePlatformAdmin`): it describes the server every business runs on. The popup is
+  portalled to `<body>` because the button sits inside the page's FadeIn (§108.3).
 - **Next.js 15.5.29** (security release).
 - **The box's compose file** was the old repo file minus one comment; its hash is now in
   `deploy/compose-history.sha256`, so the next deploy applies §143's port and log fixes.

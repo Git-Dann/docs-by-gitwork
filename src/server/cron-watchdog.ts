@@ -12,6 +12,7 @@
  */
 
 import { CRON_MAX_GAP, cronAlertChanges, silentFor, staleJobs, type StaleJob } from "@/lib/cron-watch";
+import type { JobStatus } from "@/lib/platform-health";
 import { clearSystem, markSystem, readSystemMarkers } from "@/server/system-markers";
 import { sendOpsAlert } from "@/server/ops-alert";
 
@@ -21,7 +22,7 @@ const cronKey = (name: string) => `cron:${name}`;
 const alertKey = (name: string) => `cron-alert:${name}`;
 
 /** The stopped jobs right now. Starts the watch clock on its first ever call. */
-export async function cronHealth(now: Date = new Date()): Promise<{ stale: StaleJob[]; alerted: Set<string> }> {
+export async function cronHealth(now: Date = new Date()): Promise<{ stale: StaleJob[]; alerted: Set<string>; jobs: JobStatus[] }> {
   const markers = await readSystemMarkers([WATCH_SINCE, ...JOBS.map(cronKey), ...JOBS.map(alertKey)]);
   let since = markers[WATCH_SINCE];
   if (!since) {
@@ -30,7 +31,15 @@ export async function cronHealth(now: Date = new Date()): Promise<{ stale: Stale
   }
   const lastRuns = Object.fromEntries(JOBS.map((n) => [n, markers[cronKey(n)]]));
   const alerted = new Set(JOBS.filter((n) => markers[alertKey(n)]));
-  return { stale: staleJobs(lastRuns, now, since), alerted };
+  const stale = staleJobs(lastRuns, now, since);
+  const staleNames = new Set(stale.map((s) => s.name));
+  const jobs: JobStatus[] = JOBS.map((name) => ({
+    name,
+    lastRun: lastRuns[name]?.toISOString() ?? null,
+    maxGapMinutes: Math.round(CRON_MAX_GAP[name] / 60_000),
+    stale: staleNames.has(name),
+  }));
+  return { stale, alerted, jobs };
 }
 
 export async function checkCronWatchdog(now: Date = new Date()): Promise<{ stale: number; alerted: number; recovered: number }> {
