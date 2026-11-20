@@ -4441,7 +4441,28 @@ export function uploadPublicWikiIntakeItemImage(
 }
 
 export async function getClientWiki(slug: string): Promise<WikiDTO> {
-  return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki`);
+  // Course requests load on their own (getWikiCourseRequests): Wedge has 5,000+ of them.
+  return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki?courseRequests=0`);
+}
+
+export async function setWikiCourseRequestsStatus(slug: string, ids: string[], status: string): Promise<{ updated: number }> {
+  return apiFetch(`/api/clients/${slug}/wiki/course-requests`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, status }),
+  });
+}
+
+export async function deleteWikiCourseRequests(slug: string, ids: string[]): Promise<{ deleted: number }> {
+  return apiFetch(`/api/clients/${slug}/wiki/course-requests`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function getWikiCourseRequests(slug: string): Promise<CourseRequestRecord[]> {
+  return apiFetch<CourseRequestRecord[]>(`/api/clients/${slug}/wiki/course-requests`);
 }
 
 export async function upsertWikiPage(

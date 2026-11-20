@@ -11031,3 +11031,30 @@ sub-pages are its settings, Suppliers is HR-only, Archived lives under People, a
   and "Not a developer? Take yourself off the Developers list" (`notDeveloper`, clears the handle
   too, after a confirm). A blank handle field still never removes one; only these two do. Getting
   back on the list is an admin's call or an invite.
+
+## 140. Recent Changes (November 2026) — The wiki got fast: course requests load on their own
+
+Lighthouse on Wedge's wiki: Performance 60, 1,070 ms blocking time, 861 KB of unused JavaScript.
+Three causes, all fixed:
+
+- **Every wiki page downloaded all 5,217 course requests** (2.25 MB, 1.8 MB of it the list, ~0.6 s
+  on the server), whatever section was open. The app now asks for the wiki with
+  `?courseRequests=0`, which sends `courseRequestCounts` instead (one `groupBy`), and the section
+  loads its list from `GET /api/clients/[slug]/wiki/course-requests`. The list's cache key is
+  `["client-wiki", slug, "course-requests"]`, under the wiki's, so every existing wiki refresh
+  (edits, import, the Big Wedge sync) refreshes it too. ⚠️ A caller that doesn't pass
+  `?courseRequests=0` (the iOS app, the public share page) still gets the full list.
+- **Batch status and delete were one request per row**, each refetching the whole wiki: marking
+  1,000 requests sent was 1,000 saves and reloads. Now `PATCH`/`DELETE
+  /api/clients/[slug]/wiki/course-requests` ({ ids, status }) do one scoped `updateMany`/
+  `deleteMany` (another client's ids are ignored).
+- **The section drew every row twice** (table + phone cards). It draws `PAGE_SIZE` (100) at a time
+  with "Show more"; select-all still means the whole view, and the batch bar says how many.
+- **Every section's code shipped with the wiki.** Sections and dialogs in `wiki-workspace.tsx` are
+  `next/dynamic` now, so only the open section's code loads. The dashboard stays static (it's the
+  landing page).
+
+Also: the wiki draws its own frame, so it now has its own `<main>`; the course request row
+checkbox has a label; `browsing-topics` left the Permissions-Policy header (Chrome no longer
+recognises it and logged an error on every page). Not changed: the SEO "blocked from indexing"
+finding, which is deliberate for `/app`.

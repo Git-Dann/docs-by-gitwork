@@ -151,7 +151,7 @@ const nextConfig: NextConfig = {
       { key: "X-Frame-Options", value: "SAMEORIGIN" },
       { key: "Content-Security-Policy", value: "frame-ancestors 'self';" },
       // Drop features the web app doesn't use (native iOS handles device capture).
-      { key: "Permissions-Policy", value: "geolocation=(), microphone=(), browsing-topics=()" },
+      { key: "Permissions-Policy", value: "geolocation=(), microphone=()" },
       // Cross-origin isolation. COOP severs the opener relationship so a malicious
       // opener can't reach into our window — `same-origin-allow-popups` rather than
       // plain `same-origin` because Google sign-in runs in a popup and needs to talk

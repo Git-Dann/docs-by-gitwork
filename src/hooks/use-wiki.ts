@@ -31,6 +31,9 @@ import {
   addWikiCourseRequest,
   updateWikiCourseRequestApi,
   deleteWikiCourseRequest,
+  getWikiCourseRequests,
+  setWikiCourseRequestsStatus,
+  deleteWikiCourseRequests,
   listWikiCourseFeedback,
   importWikiCourseFeedback,
   getWikiCourseIngest,
@@ -364,6 +367,21 @@ export function useUpdateWikiPlatforms(slug: string) {
 
 // ─── Course requests (Wedge wiki) ───────────────────────────────────────────
 
+/**
+ * The list loads on its own, not inside the wiki (it's 5,000+ rows for Wedge). Its key sits
+ * under the wiki's, so anything that refreshes the wiki (an edit, the import, the Big Wedge
+ * sync) refreshes the list too, and only while the section is open.
+ */
+export function useWikiCourseRequests(slug: string, enabled = true) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "course-requests"],
+    queryFn: () => getWikiCourseRequests(slug),
+    enabled: enabled && !!slug,
+    staleTime: 30_000,
+  });
+}
+
+
 export function useAddCourseRequest(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -373,6 +391,27 @@ export function useAddCourseRequest(slug: string) {
       notes?: string | null;
       status?: string;
     }) => addWikiCourseRequest(slug, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+/** One write for a whole batch, then one refresh (it used to be a save and a reload per row). */
+export function useSetCourseRequestsStatus(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, status }: { ids: string[]; status: string }) => setWikiCourseRequestsStatus(slug, ids, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+export function useDeleteCourseRequests(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => deleteWikiCourseRequests(slug, ids),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },

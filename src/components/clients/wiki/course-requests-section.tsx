@@ -28,6 +28,9 @@ import { describeFeedHealth, type CourseFeedStatus } from "@/lib/wedge-course-fe
 const MONO =
   "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
+/** Rows drawn at once; "Show more" adds another page. */
+export const PAGE_SIZE = 100;
+
 const STATUSES = ["NEW", "SENT", "ADDED", "REJECTED"] as const;
 type Status = (typeof STATUSES)[number];
 const ACTIVE_STATUSES = ["NEW", "SENT", "REJECTED"] as const;
@@ -184,6 +187,16 @@ export function CourseRequestsSection({
   const [busy, setBusy] = useState(false);
   const [showAdded, setShowAdded] = useState(false);
   const [search, setSearch] = useState("");
+  // Wedge has 1,000+ new requests. Drawing them all at once (twice: the table and the phone
+  // cards are both in the page) froze the tab for over a second, so rows come a page at a time.
+  // Selecting all still means everything in the view, and the batch bar says how many.
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const viewKey = `${filter}|${search}`;
+  const [shownFor, setShownFor] = useState(viewKey);
+  if (shownFor !== viewKey) {
+    setShownFor(viewKey);
+    setLimit(PAGE_SIZE);
+  }
 
   // "All active" = still needs attention (New/Rejected). Sent is done-for-now —
   // stays fully reachable via its own tab, just not bundled into the default view.
@@ -218,6 +231,9 @@ export function CourseRequestsSection({
       : filter === "UNNAMED"
         ? unnamedRequests
         : nonAddedRequests.filter((r) => r.status === filter);
+
+  const shown = filtered.length > limit ? filtered.slice(0, limit) : filtered;
+  const hidden = filtered.length - shown.length;
 
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((r) => selected.has(r.id));
@@ -564,7 +580,7 @@ export function CourseRequestsSection({
               {!readOnly && <span />}
             </div>
             <div className="divide-y divide-[rgba(0,0,0,0.05)] overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
-              {filtered.map((r) => {
+              {shown.map((r) => {
                 const status = (
                   STATUSES.includes(r.status as Status) ? r.status : "NEW"
                 ) as Status;
@@ -589,6 +605,7 @@ export function CourseRequestsSection({
                         checked={isSelected}
                         onChange={() => toggle(r.id)}
                         onClick={(e) => e.stopPropagation()}
+                        aria-label={`Select ${r.courseName || "untitled course"}`}
                         className="h-3.5 w-3.5 rounded-[3px] border-[var(--border-2)] accent-[var(--brand-700)]"
                       />
                     )}
@@ -667,7 +684,7 @@ export function CourseRequestsSection({
           className="divide-y divide-[rgba(0,0,0,0.05)] overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white sm:hidden"
           data-course-cards
         >
-          {filtered.map((r) => {
+          {shown.map((r) => {
             const status = (
               STATUSES.includes(r.status as Status) ? r.status : "NEW"
             ) as Status;
@@ -732,6 +749,17 @@ export function CourseRequestsSection({
             );
           })}
         </ul>
+        {hidden > 0 ? (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              className="app-button app-button-secondary app-button-sm"
+              onClick={() => setLimit((n) => n + PAGE_SIZE)}
+            >
+              Show {Math.min(PAGE_SIZE, hidden)} more · {hidden} not shown
+            </button>
+          </div>
+        ) : null}
         </>
       )}
 

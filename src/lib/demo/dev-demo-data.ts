@@ -13,6 +13,7 @@
  * is safe and never causes SSR/CSR drift.
  */
 
+import { countCourseRequests } from "@/lib/course-request-counts";
 import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
 import { boardLanes, laneKeyFor, parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
 import { cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
@@ -1060,6 +1061,8 @@ const demoComparisons: WikiComparison[] = [
 ];
 
 const demoWiki: WikiDTO = {
+  // Counted from the list when the wiki is served (it changes as the demo edits it).
+  courseRequestCounts: { NEW: 0, SENT: 0, ADDED: 0, REJECTED: 0, total: 0 },
   id: "wiki-northwind",
   clientId: WIKI_CLIENT.id,
   clientName: WIKI_CLIENT.name,
@@ -5243,6 +5246,20 @@ export function resolveDemoApi(
     }
   }
   // Client wiki — GET /api/clients/{slug}/wiki (exact; sub-paths are mutations → benign).
+  if (/^\/api\/clients\/[^/]+\/wiki\/course-requests$/.test(pathname)) {
+    const body = (typeof init?.body === "string" ? JSON.parse(init.body) : {}) as { ids?: string[]; status?: string };
+    const ids = new Set(body.ids ?? []);
+    const method = init?.method ?? "GET";
+    if (method === "PATCH" && body.status) {
+      for (const r of demoWiki.courseRequests) if (ids.has(r.id)) r.status = body.status as typeof r.status;
+      return { updated: ids.size };
+    }
+    if (method === "DELETE") {
+      demoWiki.courseRequests = demoWiki.courseRequests.filter((r) => !ids.has(r.id));
+      return { deleted: ids.size };
+    }
+    if (method === "GET") return demoWiki.courseRequests;
+  }
   if (/^\/api\/clients\/[^/]+\/wiki$/.test(pathname)) {
     return {
       ...demoWiki,
@@ -5251,6 +5268,7 @@ export function resolveDemoApi(
       // otherwise compare the cache against the very object that changed and see no change.
       comparisons: JSON.parse(JSON.stringify(demoWiki.comparisons)) as WikiDTO["comparisons"],
       board: demoBoardSection(),
+      courseRequestCounts: countCourseRequests(demoWiki.courseRequests),
     };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).

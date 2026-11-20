@@ -1,7 +1,9 @@
 "use client";
 
 import { Modal } from "@/components/ui/modal";
-import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ComponentType, type SVGProps } from "react";
+import { LoadingState } from "@/components/ui/motion/loading-state";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
@@ -36,43 +38,17 @@ import { WikiDocTabs } from "./wiki-doc-tabs";
 import { WikiMobileNav } from "./wiki-mobile-nav";
 import { clientVisibleSections } from "@/lib/wiki-client-visibility";
 import { isDocPageSection } from "@/lib/wiki-section-groups";
-import { ChangelogSection } from "./changelog-section";
-import { ChangelogEntryForm } from "./changelog-entry-form";
-import { CourseRequestsSection } from "./course-requests-section";
-import { GolfDataConsoleView } from "./golf-data-console";
-import { WikiIntakeSection } from "./wiki-intake-section";
-import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
-import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
-import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
-import { WikiCostsSection } from "./wiki-costs-section";
-import { WikiEstimatesSection } from "./wiki-estimates-section";
-import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
 import { useSetWikiBoardEnabled, useSetWikiDashboardDefault } from "@/hooks/use-wiki-board";
 import { usePermissions } from "@/hooks/use-permissions";
-import { WikiBoardSectionView } from "./wiki-board-section";
-import { WikiRoundupSection } from "./wiki-roundup-section";
-import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
-import { WikiMetricsSectionView } from "@/components/clients/wiki/wiki-metrics-section";
-import { WikiMeetingsSectionView } from "@/components/clients/wiki/wiki-meetings-section";
-import { WikiPlatformsSectionView } from "@/components/clients/wiki/wiki-platforms-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
-import { WikiCodeSection } from "./wiki-code-section";
-import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
-import { CourseFeedbackImportModal } from "./course-feedback-import-modal";
-import { CourseApiIntakeModal } from "./course-api-intake-modal";
-import { WikiTimelineSection } from "./wiki-timeline-section";
+import type { CourseRequestPayload } from "./course-request-form";
 import { WikiDashboard } from "./wiki-dashboard";
-import { MonitorsManager } from "./monitors-section";
-import { AgencyMonitorBoard } from "./monitor-board";
 import { isAgencyClient } from "@/lib/agency-client";
-import { DocumentsManager } from "./documents-section";
-import { WikiAccessSettings } from "./wiki-access-settings";
 import {
   ApiDocsPageEditor,
   normalizeApiDocsContent,
   type ApiDocsContent,
 } from "./api-docs-page-editor";
-import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DashboardEditButton } from "@/components/clients/wiki/dashboard-edit";
 import {
@@ -87,6 +63,9 @@ import {
   useAddCourseRequest,
   useUpdateCourseRequest,
   useDeleteCourseRequest,
+  useDeleteCourseRequests,
+  useSetCourseRequestsStatus,
+  useWikiCourseRequests,
   useSyncBigWedgeStatus,
   useSetWikiMonitorsEnabled,
   useSetWikiDocumentsEnabled,
@@ -110,6 +89,39 @@ import { useAccount } from "@/hooks/use-account";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
 import type { CourseRequestRecord } from "@/lib/api";
+
+// Each section's code loads when that section is opened, not with the wiki: the page used to
+// ship every section (≈860 KB of JavaScript it never ran) before showing the dashboard.
+function SectionLoading() {
+  return <LoadingState label="Loading…" />;
+}
+const ChangelogSection = dynamic(() => import("./changelog-section").then((m) => m.ChangelogSection), { loading: SectionLoading });
+const CourseRequestsSection = dynamic(() => import("./course-requests-section").then((m) => m.CourseRequestsSection), { loading: SectionLoading });
+const GolfDataConsoleView = dynamic(() => import("./golf-data-console").then((m) => m.GolfDataConsoleView), { loading: SectionLoading });
+const WikiIntakeSection = dynamic(() => import("./wiki-intake-section").then((m) => m.WikiIntakeSection), { loading: SectionLoading });
+const LaunchpadSection = dynamic(() => import("@/components/clients/launchpad/launchpad-section").then((m) => m.LaunchpadSection), { loading: SectionLoading });
+const WikiInsightsSectionView = dynamic(() => import("@/components/clients/insights/insights-section").then((m) => m.WikiInsightsSectionView), { loading: SectionLoading });
+const WikiDeliverySection = dynamic(() => import("@/components/clients/wiki/wiki-delivery-section").then((m) => m.WikiDeliverySection), { loading: SectionLoading });
+const WikiCostsSection = dynamic(() => import("./wiki-costs-section").then((m) => m.WikiCostsSection), { loading: SectionLoading });
+const WikiEstimatesSection = dynamic(() => import("./wiki-estimates-section").then((m) => m.WikiEstimatesSection), { loading: SectionLoading });
+const WikiComparisonsSectionView = dynamic(() => import("./wiki-comparisons-section").then((m) => m.WikiComparisonsSectionView), { loading: SectionLoading });
+const WikiBoardSectionView = dynamic(() => import("./wiki-board-section").then((m) => m.WikiBoardSectionView), { loading: SectionLoading });
+const WikiRoundupSection = dynamic(() => import("./wiki-roundup-section").then((m) => m.WikiRoundupSection), { loading: SectionLoading });
+const WikiSupportSectionView = dynamic(() => import("@/components/clients/wiki/wiki-support-section").then((m) => m.WikiSupportSectionView), { loading: SectionLoading });
+const WikiMetricsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-metrics-section").then((m) => m.WikiMetricsSectionView), { loading: SectionLoading });
+const WikiMeetingsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-meetings-section").then((m) => m.WikiMeetingsSectionView), { loading: SectionLoading });
+const WikiPlatformsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-platforms-section").then((m) => m.WikiPlatformsSectionView), { loading: SectionLoading });
+const WikiCodeSection = dynamic(() => import("./wiki-code-section").then((m) => m.WikiCodeSection), { loading: SectionLoading });
+const WikiTimelineSection = dynamic(() => import("./wiki-timeline-section").then((m) => m.WikiTimelineSection), { loading: SectionLoading });
+const MonitorsManager = dynamic(() => import("./monitors-section").then((m) => m.MonitorsManager), { loading: SectionLoading });
+const AgencyMonitorBoard = dynamic(() => import("./monitor-board").then((m) => m.AgencyMonitorBoard), { loading: SectionLoading });
+const DocumentsManager = dynamic(() => import("./documents-section").then((m) => m.DocumentsManager), { loading: SectionLoading });
+const WikiAccessSettings = dynamic(() => import("./wiki-access-settings").then((m) => m.WikiAccessSettings), { loading: SectionLoading });
+const DesignSystemWorkspace = dynamic(() => import("@/components/clients/design-system/design-system-workspace").then((m) => m.DesignSystemWorkspace), { loading: SectionLoading });
+const ChangelogEntryForm = dynamic(() => import("./changelog-entry-form").then((m) => m.ChangelogEntryForm), { ssr: false });
+const CourseRequestForm = dynamic(() => import("./course-request-form").then((m) => m.CourseRequestForm), { ssr: false });
+const CourseFeedbackImportModal = dynamic(() => import("./course-feedback-import-modal").then((m) => m.CourseFeedbackImportModal), { ssr: false });
+const CourseApiIntakeModal = dynamic(() => import("./course-api-intake-modal").then((m) => m.CourseApiIntakeModal), { ssr: false });
 
 type WikiPageType =
   | "IA_GUIDE"
@@ -972,6 +984,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const addCourse = useAddCourseRequest(slug);
   const updateCourse = useUpdateCourseRequest(slug);
   const deleteCourse = useDeleteCourseRequest(slug);
+  const deleteCourses = useDeleteCourseRequests(slug);
+  const setCoursesStatus = useSetCourseRequestsStatus(slug);
 
   if (isPending) {
     return (
@@ -1460,10 +1474,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     }
   }
   async function handleDeleteCourses(ids: string[]) {
-    await Promise.all(ids.map((id) => deleteCourse.mutateAsync(id)));
+    if (ids.length === 1) await deleteCourse.mutateAsync(ids[0]!);
+    else await deleteCourses.mutateAsync(ids);
   }
   async function handleSetCourseStatus(ids: string[], status: string) {
-    await Promise.all(ids.map((id) => updateCourse.mutateAsync({ id, data: { status } })));
+    await setCoursesStatus.mutateAsync({ ids, status });
   }
 
   function renderContent() {
@@ -1856,8 +1871,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               </span>
             </div>
             <div className="p-6">
-              <CourseRequestsSection
-                requests={wiki!.courseRequests}
+              <InternalCourseRequests
+                slug={slug}
                 onAdd={openAddCourse}
                 onEdit={openEditCourse}
                 onDelete={handleDeleteCourses}
@@ -2081,7 +2096,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         </div>
 
         {/* Main content — pt-6 matches DesignSystemWorkspace's own pt-6 so action bars align */}
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-6">
+        {/* <main>: the wiki draws its own frame (not AppShell), so it names its own main region. */}
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto px-4 pt-4 pb-8 md:px-8 md:pt-6">
           {/* Every page but the dashboard (it has its own hero) opens on the same header. */}
           {activeSection !== "dashboard" ? <WikiPageHeader section={activeSection} /> : null}
           {/* Each page's content rises in once its header has (motion-rise only transforms while it
@@ -2089,7 +2105,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           <div key={activeSection} className="wiki-motion motion-rise" style={{ animationDelay: "60ms" }}>
             {renderContent()}
           </div>
-        </div>
+        </main>
       </div>
 
       {/* Changelog entry form modal */}
@@ -2175,4 +2191,21 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       )}
     </div>
   );
+}
+
+/** The Course Requests section on the team's wiki: loads its list on its own (5,000+ rows for Wedge). */
+function InternalCourseRequests({
+  slug,
+  ...rest
+}: { slug: string } & Omit<ComponentProps<typeof CourseRequestsSection>, "requests">) {
+  const list = useWikiCourseRequests(slug);
+  if (list.isPending) return <LoadingState label="Loading course requests" />;
+  if (list.isError) {
+    return (
+      <p role="alert" className="text-[13px] text-[var(--danger-500)]">
+        {list.error instanceof Error ? list.error.message : "Couldn't load the course requests"}
+      </p>
+    );
+  }
+  return <CourseRequestsSection requests={list.data} {...rest} />;
 }
