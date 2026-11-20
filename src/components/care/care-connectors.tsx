@@ -6,6 +6,7 @@ import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/motion/spinner";
 import type { AuditLog, Connection, SupportSource } from "@/types/support";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useCreateSupportConnection, useDeleteConnection, useSupportAuditLogs, useSupportConnections, useSyncConnection, useUpdateConnection } from "@/hooks/use-support";
 import { usePermissions } from "@/hooks/use-permissions";
 import { Skeleton } from "@/components/ui/motion/skeleton";
@@ -58,6 +59,39 @@ function buildFilterConfig(source: SupportSource, f: FilterState) {
     ...(max > 0 ? { maxItems: max } : {}),
     ...(source === "discord" ? { ignoreBots: f.ignoreBots } : {}),
   };
+}
+
+/**
+ * "Only read mail from" — the connector's ingest floor.
+ *
+ * Its own control rather than one of the scraperConfig filters, because it is a column: it is
+ * cross-adapter policy that the sync core and this panel both read without decrypting anything.
+ * Blank means "read whatever the mailbox still holds", which is every connector that predates it.
+ *
+ * New connectors default it to today. Connecting a mailbox used to pull whatever the adapter's
+ * rolling lookback reached — 30 days by default — which is why Fellas' Care queue was 324
+ * conversations deep on the day it was connected and has never been cleared.
+ */
+function IngestFromField({
+  value,
+  onChange,
+  isNew,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  isNew: boolean;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="app-field-label">Only read mail from</span>
+      <DatePicker value={value} onChange={onChange} className="w-full" />
+      <span className="block text-[11px] leading-snug text-[var(--text-4)]">
+        {isNew
+          ? "Defaults to today, so a new client starts with a clear desk. Clear it to read whatever the mailbox still holds."
+          : "Mail older than this is never read, however far back a re-sync reaches. Clear it to read whatever the mailbox still holds."}
+      </span>
+    </label>
+  );
 }
 
 function ConnectorFilterFields({
@@ -152,6 +186,8 @@ function AddConnectorModal({
 }) {
   const [source, setSource] = useState<SupportSource>("gmail");
   const [label, setLabel] = useState("");
+  // Today by default: a new client starts with a clear desk rather than a month of history.
+  const [ingestFrom, setIngestFrom] = useState(() => new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
 
   // Gmail fields
@@ -394,6 +430,7 @@ function AddConnectorModal({
         authMode: sourceAuthMode(source),
         health: initialHealth(),
         scraperConfig: buildScraperConfig(),
+        ingestFrom: ingestFrom || null,
       },
       {
         onSuccess: () => onClose(),
@@ -900,6 +937,10 @@ Content-Type: application/json
               <ConnectorFilterFields source={source} filters={filters} setFilters={setFilters} />
             )}
 
+            {LIVE_SOURCES.includes(source) && source !== "analytics" && source !== "webhook" && (
+              <IngestFromField value={ingestFrom} onChange={setIngestFrom} isNew />
+            )}
+
             <div className="mt-auto space-y-3">
               {error && (
                 <p className="rounded-[10px] bg-[var(--danger-50)] px-3 py-2.5 text-sm text-[var(--danger-500)]">
@@ -943,6 +984,7 @@ function EditConnectorModal({
 }) {
   const [label, setLabel] = useState(conn.label);
   const [health, setHealth] = useState<Connection["health"]>(conn.health);
+  const [ingestFrom, setIngestFrom] = useState(conn.ingestFrom ? conn.ingestFrom.slice(0, 10) : "");
   const [error, setError] = useState<string | null>(null);
   const updateConn = useUpdateConnection(clientId);
 
@@ -1211,7 +1253,15 @@ function EditConnectorModal({
     e.preventDefault();
     setError(null);
     updateConn.mutate(
-      { connId: conn.id, data: { label: label.trim(), health, scraperConfig: buildScraperConfig() } },
+      {
+        connId: conn.id,
+        data: {
+          label: label.trim(),
+          health,
+          scraperConfig: buildScraperConfig(),
+          ingestFrom: ingestFrom || null,
+        },
+      },
       {
         onSuccess: () => onClose(),
         onError: (err) => setError(err instanceof Error ? err.message : "Failed to update connector"),
@@ -1672,6 +1722,10 @@ function EditConnectorModal({
         {/* Shared filters — ingestion sources only (analytics + webhook have none) */}
         {LIVE_SOURCES.includes(conn.source) && conn.source !== "analytics" && conn.source !== "webhook" && (
           <ConnectorFilterFields source={conn.source} filters={filters} setFilters={setFilters} />
+        )}
+
+        {LIVE_SOURCES.includes(conn.source) && conn.source !== "analytics" && conn.source !== "webhook" && (
+          <IngestFromField value={ingestFrom} onChange={setIngestFrom} isNew={false} />
         )}
 
         <label className="block space-y-1.5">

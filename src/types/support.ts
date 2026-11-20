@@ -69,6 +69,8 @@ export interface Connection {
   connectedEmail?: string;
   /** ISO timestamp of the last sync run (from the server). */
   lastSyncedAt?: string;
+  /** Never read mail from before this (ISO date). Undefined = whatever the mailbox still holds. */
+  ingestFrom?: string;
   /** Compact summary of the last sync run, for the Sync Health card. */
   lastSyncStats?: {
     fetched?: number | null;

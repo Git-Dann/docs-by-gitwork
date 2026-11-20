@@ -53,7 +53,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
   // that arrived just before the last sync completed. Upsert by externalId prevents duplicates.
   const afterSeconds = lastSyncedAt
     ? Math.floor((lastSyncedAt.getTime() - 10 * 60 * 1000) / 1000)
-    : lookbackSeconds(config.lookbackDays, 30);
+    : lookbackSeconds(config.lookbackDays, 30, ctx.connection.ingestFrom);
 
   // Include keywords flag/tag only; exclude keywords go into the API query for efficiency.
   const include = normalizeKeywords(config.keywords);

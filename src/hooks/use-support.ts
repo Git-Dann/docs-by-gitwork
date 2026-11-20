@@ -24,6 +24,7 @@ import {
   listSupportConversations,
   getSupportConversationCounts,
   getSupportConversation,
+  closeConversationsOlderThan,
   getClientQueueSummaries,
   getOldestAwaiting,
   listSupportDraftActions,
@@ -187,6 +188,26 @@ export function useOldestAwaiting(limit = 6, enabled = true) {
     queryFn: () => getOldestAwaiting(limit),
     staleTime: 1000 * 15,
     enabled,
+  });
+}
+
+/**
+ * Clear a client's backlog. Invalidates everything the board is drawn from — the list, the view
+ * counts and the workspace roll-up — because closing 300 rows changes every one of them.
+ */
+export function useCloseConversationsOlderThan(clientId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { before?: string; presetDays?: number; dryRun?: boolean; undoBatchId?: string }) =>
+      closeConversationsOlderThan(clientId as string, body),
+    onSuccess: (_res, vars) => {
+      if (vars.dryRun) return;
+      void qc.invalidateQueries({ queryKey: ["support", "conversations", clientId] });
+      void qc.invalidateQueries({ queryKey: ["support", "counts", clientId] });
+      void qc.invalidateQueries({ queryKey: ["support", "queue-summaries"] });
+      void qc.invalidateQueries({ queryKey: ["support", "oldest-awaiting"] });
+      void qc.invalidateQueries({ queryKey: ["support", "clients"] });
+    },
   });
 }
 
@@ -568,8 +589,15 @@ export function useCreateSupportConnection(clientId: string | null) {
 export function useUpdateConnection(clientId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ connId, data }: { connId: string; data: Partial<Connection> }) =>
-      updateSupportConnection(clientId as string, connId, data),
+    mutationFn: ({
+      connId,
+      data,
+    }: {
+      connId: string;
+      // `ingestFrom: null` clears the connector's ingest floor, which the DTO's
+      // `string | undefined` cannot express.
+      data: Partial<Omit<Connection, "ingestFrom">> & { ingestFrom?: string | null };
+    }) => updateSupportConnection(clientId as string, connId, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["support", "connections", clientId] });
     },

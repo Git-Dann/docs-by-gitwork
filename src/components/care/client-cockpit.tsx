@@ -52,6 +52,7 @@ import { TicketsTableView } from "./care-tickets";
 import { ReportsView } from "./care-reports";
 import { CareAutomationView, PortalLinkCard } from "./care-automation";
 import { CARE_SECTION_LABEL, careSectionsFor, type CareSection } from "@/lib/care-links";
+import { ClearBacklogModal } from "./care-clear-backlog";
 
 // One page. Small on purpose: because the views are server-side filters, 50 rows is 50 rows of
 // the thing you asked for, and "Load more" walks the rest.
@@ -410,7 +411,8 @@ export function ClientCockpit({
   const markRead = useMarkConversationRead(client.id);
   const closeWithUndo = useCloseConversationWithUndo(client.id);
   const snooze = useSnoozeConversation(client.id);
-  const { canUseSupport } = usePermissions();
+  const { canUseSupport, canManageSupport } = usePermissions();
+  const [showClearBacklog, setShowClearBacklog] = useState(false);
 
   const [activeView, setActiveView] = useState(DEFAULT_VIEW_ID);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
@@ -940,6 +942,22 @@ export function ClientCockpit({
                   <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze · <Kbd>X</Kbd> select
                 </p>
               )}
+              {/* Here, not buried in Settings, because this is where you are standing when you
+                  decide a board is too old to work through. Setup-level: it changes the whole
+                  client's board in one press, even though it is reversible. */}
+              {canManageSupport && (
+                <button
+                  type="button"
+                  onClick={() => setShowClearBacklog(true)}
+                  className={cn(
+                    "shrink-0 rounded-[6px] border border-[var(--border-2)] px-2 py-1 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+                    !(canUseSupport && conversations.length > 0) && "ml-auto",
+                  )}
+                  title="Close everything older than a date"
+                >
+                  Clear backlog…
+                </button>
+              )}
             </div>
           )}
 
@@ -1080,6 +1098,14 @@ export function ClientCockpit({
           </div>
           )}
         </>
+      )}
+
+      {showClearBacklog && (
+        <ClearBacklogModal
+          clientId={client.id}
+          clientName={client.name}
+          onClose={() => setShowClearBacklog(false)}
+        />
       )}
     </div>
   );

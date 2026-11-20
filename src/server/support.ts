@@ -24,6 +24,7 @@ import type {
   SupportReportPayload,
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
+import { resetBatchMarker } from "@/lib/care-reset";
 import { dispatchNotification } from "@/server/notifications";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
@@ -250,6 +251,7 @@ export function serializeConnection(row: {
   nextStep: string | null;
   scraperConfig: unknown;
   lastSyncedAt?: Date | null;
+  ingestFrom?: Date | null;
   lastSyncStats?: unknown;
   channelTokens?: Array<{ tokenData: unknown }>;
 }): Connection {
@@ -279,6 +281,7 @@ export function serializeConnection(row: {
         ) as Connection["scraperConfig"])
       : undefined,
     lastSyncedAt: row.lastSyncedAt ? row.lastSyncedAt.toISOString() : undefined,
+    ingestFrom: row.ingestFrom ? row.ingestFrom.toISOString() : undefined,
     lastSyncStats: (row.lastSyncStats as Connection["lastSyncStats"]) ?? undefined,
   };
 }
@@ -1310,6 +1313,100 @@ export async function reopenConversation(
   return setConversationTriage(convId, { status: "open" }, actor);
 }
 
+/**
+ * How many conversations a cutoff would close. Written, so the dialog can state the number
+ * before anything happens rather than after.
+ */
+export async function countConversationsOlderThan(clientId: string, before: Date): Promise<number> {
+  return prisma.supportConversation.count({ where: resetWhere(clientId, before) });
+}
+
+/**
+ * The rows one reset touches. Extracted so the preview and the write cannot select different
+ * things — a dry run that disagrees with the run is worse than no dry run.
+ *
+ * ⚠️ `lastMessageAt`, never `receivedAt`. `receivedAt` is stamped once at creation and never
+ * updated (§42.1 defect 4), so an old thread that got a reply yesterday would be closed by it.
+ * And a NULL `lastMessageAt` is deliberately NOT matched: it means the activity backfill has not
+ * reached that row yet, which is "we do not know how old this is", not "it is old" (§35).
+ *
+ * SNOOZED is never touched. A snooze is a decision someone made with a wake date on it; closing
+ * it would strand the thread between two states. Already-closed rows are left alone too, so a
+ * second run over a drained client is a no-op rather than a re-stamp.
+ */
+function resetWhere(clientId: string, before: Date): Prisma.SupportConversationWhereInput {
+  return {
+    clientId,
+    status: { in: ["NEW", "OPEN"] },
+    lastMessageAt: { not: null, lt: before },
+  };
+}
+
+/**
+ * Close everything on this client whose last message predates `before`.
+ *
+ * Nothing is deleted: the rows keep their thread, messages, notes and audit trail, and simply
+ * leave every open queue. A customer who writes again lands back in the queue on the next sync.
+ *
+ * ⚠️ It deliberately does NOT stamp `firstTriagedAt`, which `batchUpdateConversations` does and
+ * is right to for a human bulk-close. These rows were never triaged. Stamping them would tell
+ * `getPerformanceMetricsForPeriod` that we first responded to an August thread in November, and
+ * quietly poison the first-response figure in every report that has already been sent.
+ *
+ * Returns the count and the batch id, so the caller can offer a real undo and so "nothing
+ * happened" stays distinguishable from "there was nothing to close" (§53.3).
+ */
+export async function closeConversationsOlderThan(
+  clientId: string,
+  before: Date,
+  actor?: string,
+): Promise<{ closed: number; batchId: string }> {
+  const log = await createAuditLog(clientId, {
+    actor: actor ?? "user",
+    action: "conversations_bulk_closed",
+    metadata: { before: before.toISOString() },
+  });
+  const marker = resetBatchMarker(log.id);
+
+  const result = await prisma.supportConversation.updateMany({
+    where: resetWhere(clientId, before),
+    data: { status: "CLOSED", closedAt: new Date(), unread: false, closedReason: marker },
+  });
+
+  await createAuditLog(clientId, {
+    actor: actor ?? "user",
+    action: "conversations_bulk_closed_done",
+    target: log.id,
+    metadata: { before: before.toISOString(), closed: result.count },
+  });
+
+  return { closed: result.count, batchId: log.id };
+}
+
+/**
+ * Put one reset back, and only that one.
+ *
+ * Scoped to the batch marker rather than to a date, so a second reset run — or a conversation a
+ * person closed by hand in between — is never reopened by undoing the first.
+ */
+export async function undoConversationReset(
+  clientId: string,
+  batchId: string,
+  actor?: string,
+): Promise<{ reopened: number }> {
+  const result = await prisma.supportConversation.updateMany({
+    where: { clientId, closedReason: resetBatchMarker(batchId), status: "CLOSED" },
+    data: { status: "OPEN", closedAt: null, closedReason: null },
+  });
+  await createAuditLog(clientId, {
+    actor: actor ?? "user",
+    action: "conversations_bulk_close_undone",
+    target: batchId,
+    metadata: { reopened: result.count },
+  });
+  return { reopened: result.count };
+}
+
 export async function batchUpdateConversations(
   clientId: string,
   convIds: string[],
@@ -2113,6 +2210,13 @@ export async function createConnection(
     secretRef?: string;
     nextStep?: string;
     scraperConfig?: Connection["scraperConfig"];
+    /**
+     * Never read mail from before this. Defaults to NOW, which is the half of Dan's ask about
+     * future clients: connecting a mailbox used to pull whatever the adapter's rolling lookback
+     * reached — 30 days by default — so Fellas' queue was 324 deep on the day it was connected.
+     * Pass null explicitly to read whatever the mailbox still holds.
+     */
+    ingestFrom?: Date | string | null;
   },
 ): Promise<Connection> {
   const row = await prisma.accountConnection.create({
@@ -2124,6 +2228,8 @@ export async function createConnection(
       health: data.health ? toDbHealth(data.health) : "NEEDS_SETUP",
       secretRef: data.secretRef ?? null,
       nextStep: data.nextStep ?? null,
+      ingestFrom:
+        data.ingestFrom === null ? null : data.ingestFrom ? new Date(data.ingestFrom) : new Date(),
       scraperConfig: data.scraperConfig
         ? (encryptScraperConfig(data.scraperConfig as Record<string, unknown>) as object)
         : undefined,
@@ -2141,6 +2247,8 @@ export async function updateConnection(
     secretRef: string;
     nextStep: string;
     scraperConfig: Connection["scraperConfig"];
+    /** ISO date, or null to read whatever the mailbox still holds. */
+    ingestFrom: string | null;
   }>,
 ): Promise<Connection> {
   // scraperConfig updates MERGE into the existing (decrypted) config rather than replace it.
@@ -2168,6 +2276,9 @@ export async function updateConnection(
       ...(data.secretRef !== undefined ? { secretRef: data.secretRef } : {}),
       ...(data.nextStep !== undefined ? { nextStep: data.nextStep } : {}),
       ...(scraperConfigUpdate !== undefined ? { scraperConfig: scraperConfigUpdate } : {}),
+      ...(data.ingestFrom !== undefined
+        ? { ingestFrom: data.ingestFrom ? new Date(data.ingestFrom) : null }
+        : {}),
     },
   });
   return serializeConnection(row);

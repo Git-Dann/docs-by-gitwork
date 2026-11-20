@@ -45,6 +45,7 @@ const MANAGE: Record<string, string[]> = {
   "clients/[clientId]/connections/[connId]/sync/route.ts": ["POST"],
   "clients/[clientId]/connections/[connId]/purge/route.ts": ["DELETE"],
   "clients/[clientId]/connections/test-imap/route.ts": ["POST"],
+  "clients/[clientId]/conversations/close-older/route.ts": ["POST"],
   "clients/[clientId]/conversations/route.ts": ["POST"],
   "clients/[clientId]/discord/channels/route.ts": ["POST"],
   "clients/[clientId]/draft-actions/route.ts": ["POST"],

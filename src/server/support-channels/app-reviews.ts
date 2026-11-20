@@ -188,7 +188,7 @@ export const appReviewsAdapter: ChannelAdapter = {
 
     const afterUtc = ctx.connection.lastSyncedAt
       ? Math.floor((ctx.connection.lastSyncedAt.getTime() - 5 * 60 * 1000) / 1000)
-      : lookbackSeconds(config?.lookbackDays, 90);
+      : lookbackSeconds(config?.lookbackDays, 90, ctx.connection.ingestFrom);
 
     if (store === "app_store") {
       const country = config?.country?.trim() || "us";

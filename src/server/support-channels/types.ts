@@ -30,6 +30,8 @@ export interface SyncContext {
     scraperConfig: unknown;
     syncCursor: string | null;
     lastSyncedAt: Date | null;
+    /** Never read mail from before this. See `ingest-window.ts`. Null = whatever the mailbox holds. */
+    ingestFrom: Date | null;
     channelTokens: unknown[];
   };
   client: { id: string; name: string; slug: string };

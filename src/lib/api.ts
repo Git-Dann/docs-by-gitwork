@@ -2025,6 +2025,20 @@ export async function getSupportConversationCounts(
  * Queue figures for every client at once, keyed by client id — one request for the whole Care home
  * list instead of one per row.
  */
+/**
+ * Clear a backlog. `dryRun` counts without writing; `undoBatchId` puts one run back.
+ */
+export async function closeConversationsOlderThan(
+  clientId: string,
+  body: { before?: string; presetDays?: number; dryRun?: boolean; undoBatchId?: string },
+): Promise<{ count?: number; closed?: number; reopened?: number; batchId?: string; cutoff?: string }> {
+  return apiFetch(`/api/support/clients/${clientId}/conversations/close-older`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function getClientQueueSummaries(): Promise<{
   summaries: Record<string, ClientQueueSummary>;
 }> {
@@ -2269,6 +2283,8 @@ export async function createSupportConnection(
     secretRef?: string;
     nextStep?: string;
     scraperConfig?: Connection["scraperConfig"];
+    /** ISO date, or null to read whatever the mailbox still holds. Omit to default to today. */
+    ingestFrom?: string | null;
   },
 ): Promise<{ connection: Connection }> {
   return apiFetch(`/api/support/clients/${clientId}/connections`, {
@@ -2281,7 +2297,8 @@ export async function createSupportConnection(
 export async function updateSupportConnection(
   clientId: string,
   connId: string,
-  data: Partial<Connection>,
+  // `ingestFrom: null` clears the floor, so the field is widened past the DTO's `string | undefined`.
+  data: Partial<Omit<Connection, "ingestFrom">> & { ingestFrom?: string | null },
 ): Promise<{ connection: Connection }> {
   return apiFetch(`/api/support/clients/${clientId}/connections/${connId}`, {
     method: "PATCH",

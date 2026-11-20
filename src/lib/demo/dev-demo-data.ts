@@ -2738,6 +2738,10 @@ const demoConversationsByClient: Record<string, unknown[]> = {
     { id: "cv2", clientId: "sup-northwind", source: "gmail", customerLabel: "priya@northwind.co", subject: "Can we add a dark theme?", preview: "A few users have asked about a dark mode…", receivedAt: atDays(0), unread: true, tags: ["feature-request"], sentiment: "neutral", status: "open", priority: "normal", noteCount: 1, assigneeId: "sup-m1", lastInboundAt: atDays(-1), lastOutboundAt: atDays(0), lastMessageAt: atDays(0), replyState: "replied" },
     { id: "cv3", clientId: "sup-northwind", source: "discord", customerLabel: "@dev_sam", subject: "Webhook docs unclear", preview: "The retry section doesn't say what the backoff is…", receivedAt: atDays(-1), unread: true, tags: ["docs"], sentiment: "neutral", status: "open", priority: "low", noteCount: 0 , lastInboundAt: atDays(-1), lastOutboundAt: undefined, lastMessageAt: atDays(-1), replyState: "awaiting_reply" },
     { id: "cv4", clientId: "sup-northwind", source: "gmail", customerLabel: "ops@northwind.co", subject: "Thanks for the quick fix!", preview: "The download bug is gone — appreciate the fast turnaround.", receivedAt: atDays(-2), unread: false, tags: [], sentiment: "positive", status: "closed", priority: "normal", closedAt: atDays(-2), noteCount: 0 , lastInboundAt: atDays(-3), lastOutboundAt: atDays(-2), lastMessageAt: atDays(-2), replyState: "replied" },
+    // An old, never-answered thread, so "Clear the backlog" has something to count and
+    // "Needs you first" has a wait worth leading with. A demo whose every row is from this week
+    // cannot express the state this work exists to clear.
+    { id: "cv0", clientId: "sup-northwind", source: "imap", customerLabel: "jo@northwind.co", subject: "Invoice for March still unpaid?", preview: "We sent this over a while back and haven't heard anything…", receivedAt: atDays(-47), unread: true, tags: [], sentiment: "neutral", status: "new", priority: "normal", noteCount: 0, lastInboundAt: atDays(-47), lastOutboundAt: undefined, lastMessageAt: atDays(-47), replyState: "awaiting_reply" },
   ],
   // Ingest-only: these are course-request emails on their way into the wiki, not support. They
   // exist so the exclusion is provable — a client with no conversations would pass either way.
@@ -5349,6 +5353,25 @@ export function resolveDemoApi(
   // Care home's "Needs you first": the longest-waiting conversations across the DESK, worst
   // first. Derived from the same fixtures the queue summaries use, and scoped the same way, so
   // the panel and the totals above it cannot tell different stories.
+  // Clear the backlog: the dry run counts, the run reports, the undo reports. In memory, so the
+  // dialog can be driven end to end — a demo that cannot express a state cannot verify it.
+  const closeOlder = pathname.match(/^\/api\/support\/clients\/([^/]+)\/conversations\/close-older$/);
+  if (closeOlder) {
+    const rows = (demoConversationsByClient[closeOlder[1]] ?? []) as Array<{
+      status?: string; lastMessageAt?: string; receivedAt?: string;
+    }>;
+    const body = (init?.body ? JSON.parse(String(init.body)) : {}) as {
+      before?: string; dryRun?: boolean; undoBatchId?: string;
+    };
+    if (body.undoBatchId) return { reopened: 3 };
+    const cut = body.before ? Date.parse(body.before) : Date.now();
+    const n = rows.filter((r) => {
+      const at = r.lastMessageAt ?? r.receivedAt;
+      return (r.status === "new" || r.status === "open") && at !== undefined && Date.parse(at) < cut;
+    }).length;
+    return body.dryRun ? { count: n, cutoff: body.before } : { closed: n, batchId: "demo-batch", cutoff: body.before };
+  }
+
   if (pathname === "/api/support/oldest-awaiting") {
     const deskIds = new Set(
       demoSupportClients.clients

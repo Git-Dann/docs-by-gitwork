@@ -3533,6 +3533,17 @@ model AccountConnection {
   scraperConfig Json?
   nextStep      String?
   lastSyncedAt  DateTime?
+  /**
+   * Never read mail from before this date. A floor, not a window: the adapters already have a
+   * rolling `lookbackDays`, and the window start is the LATER of the two, so a sync that has not
+   * run for a fortnight still catches everything since it last ran instead of silently skipping a
+   * week. Null means "read whatever the mailbox still holds", which is every existing connector.
+   *
+   * ⚠️ A real column rather than a `scraperConfig` key, because `scraperConfig` is encrypted at
+   * rest: this is cross-adapter policy that `runChannelSync` and the Connectors panel have to be
+   * able to read without decrypting anything. Additive and nullable → safe db push.
+   */
+  ingestFrom    DateTime?
   lastSyncStats Json?
   syncCursor    String?
   createdAt     DateTime           @default(now())
@@ -3593,6 +3604,13 @@ model SupportConversation {
   snoozeUntil     DateTime?
   firstTriagedAt  DateTime? // first transition out of NEW (replaces ticket.firstReplyAt for metrics)
   closedAt        DateTime? // set on CLOSED/IGNORED (replaces ticket.resolvedAt)
+  /**
+   * Why this was closed, when it was not a person closing it one at a time. "reset:<auditLogId>"
+   * marks one run of "close everything before a date", so that run — and only that run — can be
+   * undone, and so a bulk close stays distinguishable from a human one in the audit trail for
+   * ever. Additive and nullable → safe db push.
+   */
+  closedReason    String?
   // ── reply tracking ──
   // FACTS ONLY. The reply state ("awaiting reply" / "replied") is DERIVED from these by
   // deriveReplyState() in src/server/support-reply-state.ts and is never stored — so a reply
