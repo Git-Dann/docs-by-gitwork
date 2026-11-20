@@ -77,8 +77,20 @@ describe("Care is one UI", () => {
 
 describe("permission gates are unchanged by the move", () => {
   it("Add client is only offered to whoever may manage Care (the route asserts the same)", () => {
+    /*
+     * Asserted on the GATE rather than on the control's shape. It used to pin
+     * `const addClientButton = canManageSupport ?` — a 10px mono text link in the Clients panel's
+     * header that REPLACED the client count — so the redesign that made it a real button in the
+     * hero failed a test about permissions for a reason that had nothing to do with permissions.
+     * What matters is that every "Add client" affordance sits behind `canManageSupport`.
+     */
     const home = stripComments(read("src/components/care/care-home.tsx"));
-    expect(home).toMatch(/const addClientButton = canManageSupport \?/);
+    const mentions = [...home.matchAll(/Add client/g)];
+    expect(mentions.length, "Care home should offer Add client").toBeGreaterThan(0);
+    for (const m of mentions) {
+      const before = home.slice(Math.max(0, m.index! - 400), m.index!);
+      expect(before, "every Add client control must be behind canManageSupport").toContain("canManageSupport");
+    }
     expect(stripComments(read("src/app/api/support/clients/route.ts"))).toMatch(/assertCan\(user, canManageSupport/);
   });
 

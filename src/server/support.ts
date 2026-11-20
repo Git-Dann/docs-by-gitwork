@@ -13,6 +13,7 @@ import type {
   ConversationNote,
   ConversationViewCounts,
   ClientQueueSummary,
+  OldestAwaitingItem,
   ReplyState,
   Message,
   Ticket,
@@ -805,6 +806,54 @@ export async function oldestUnansweredInboundAt(clientId: string): Promise<Date 
     _min: { lastInboundAt: true },
   });
   return row._min.lastInboundAt ?? null;
+}
+
+/**
+ * The longest-waiting conversations across every support-desk client, worst first.
+ *
+ * Care home could tell you WHICH client was being let down and then left you to go and find the
+ * conversation yourself. This is the thing a desk is actually for: the next five people to
+ * answer, one click each, before you have picked a client at all. §42.10 put the same list on
+ * the cockpit's empty pane, where it was only ever seen by someone who had already chosen a
+ * client and then not opened anything.
+ *
+ * One indexed query, ordered on `lastInboundAt` — the customer's last message, which is what
+ * "waiting" means. `id` breaks ties so paging is stable and two runs agree.
+ */
+export async function listOldestAwaiting(
+  workspaceId: string,
+  limit = 6,
+): Promise<OldestAwaitingItem[]> {
+  const rows = await prisma.supportConversation.findMany({
+    where: {
+      client: { workspaceId, ...SUPPORT_DESK_CLIENT },
+      status: { in: ["NEW", "OPEN"] },
+      AND: [replyStateWhere("awaiting_reply")],
+    },
+    orderBy: [{ lastInboundAt: "asc" }, { id: "asc" }],
+    take: Math.min(Math.max(limit, 1), 20),
+    select: {
+      id: true,
+      clientId: true,
+      subject: true,
+      customerLabel: true,
+      source: true,
+      priority: true,
+      lastInboundAt: true,
+      client: { select: { name: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    clientId: r.clientId,
+    clientName: r.client.name,
+    subject: r.subject,
+    customerLabel: r.customerLabel,
+    source: r.source.toLowerCase() as SupportSource,
+    priority: r.priority.toLowerCase() as ConversationPriority,
+    // Never null in practice — `awaiting_reply` requires an inbound message — but typed honestly.
+    waitingSince: r.lastInboundAt?.toISOString() ?? null,
+  }));
 }
 
 export async function listConversations(

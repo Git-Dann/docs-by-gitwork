@@ -16,6 +16,7 @@ import type {
   Conversation,
   ConversationViewCounts,
   ClientQueueSummary,
+  OldestAwaitingItem,
   DraftAction,
   Message,
   SupportClient,
@@ -2028,6 +2029,11 @@ export async function getClientQueueSummaries(): Promise<{
   summaries: Record<string, ClientQueueSummary>;
 }> {
   return apiFetch("/api/support/queue-summaries");
+}
+
+/** The longest-waiting conversations across every support-desk client, worst first. */
+export async function getOldestAwaiting(limit = 6): Promise<{ items: OldestAwaitingItem[] }> {
+  return apiFetch(`/api/support/oldest-awaiting?limit=${limit}`);
 }
 
 // ── Conversation triage (monitor + route; never reply in-app) ──

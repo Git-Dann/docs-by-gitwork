@@ -23,6 +23,8 @@ export function CareWorkspace() {
   const clientsQ = useSupportClients();
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
   const [initialSection, setInitialSection] = useState<CareSection>("conversations");
+  /** Set when Care home's "Needs you first" opened a specific conversation. */
+  const [initialConversationId, setInitialConversationId] = useState<string | null>(null);
 
   // Read once on mount. window.location rather than useSearchParams, which would force a
   // Suspense boundary onto the page for a value only needed at start-up.
@@ -48,8 +50,9 @@ export function CareWorkspace() {
     window.history.replaceState(window.history.state, "", careHref({ clientId, section }));
   }
 
-  function select(client: SupportClient | null) {
+  function select(client: SupportClient | null, conversationId?: string) {
     setActiveClientId(client?.id ?? null);
+    setInitialConversationId(conversationId ?? null);
     // An ingest-only client has no queue to open. Land on its Settings, which is the only thing
     // anyone goes there for — the connector that keeps its mail flowing.
     setInitialSection(client && !isSupportDesk(client) ? "settings" : "conversations");
@@ -75,6 +78,7 @@ export function CareWorkspace() {
         key={activeClient.id}
         client={activeClient}
         initialSection={initialSection}
+        initialConversationId={initialConversationId}
         onSectionChange={(section) => syncUrl(activeClient.id, section)}
         onBack={() => select(null)}
       />

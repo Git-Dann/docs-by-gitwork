@@ -386,11 +386,18 @@ export function ClientCockpit({
   client,
   onBack,
   initialSection = "conversations",
+  initialConversationId = null,
   onSectionChange,
 }: {
   client: SupportClient;
   /** Which part of the client's Care to open on — from a deep link (`?section=`). */
   initialSection?: CareSection;
+  /**
+   * Open straight on this conversation. Care home's "Needs you first" passes it, because landing
+   * on the client's queue instead would put you on a list sorted newest-first (§42.15) — i.e.
+   * anywhere but the row you just clicked.
+   */
+  initialConversationId?: string | null;
   onSectionChange?: (section: CareSection) => void;
   // No currentUserId: "Assigned to me" is now a server query (assigneeId=me), resolved from the
   // session server-side, so the client no longer needs to know who it is to filter.
@@ -417,7 +424,7 @@ export function ClientCockpit({
   const semantic = useSemanticSearch(client.id);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialConversationId);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   // Keyboard cursor, independent of which conversation is open.
   const [focusedIndex, setFocusedIndex] = useState(-1);

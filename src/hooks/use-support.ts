@@ -25,6 +25,7 @@ import {
   getSupportConversationCounts,
   getSupportConversation,
   getClientQueueSummaries,
+  getOldestAwaiting,
   listSupportDraftActions,
   listSupportMembers,
   listSupportMessages,
@@ -171,6 +172,19 @@ export function useClientQueueSummaries(enabled = true) {
   return useQuery({
     queryKey: ["support", "queue-summaries"],
     queryFn: getClientQueueSummaries,
+    staleTime: 1000 * 15,
+    enabled,
+  });
+}
+
+/**
+ * Care home's "Needs you first". Its own key rather than a slice of the client list, so the Desk
+ * can be refreshed without re-reading every client, and vice versa.
+ */
+export function useOldestAwaiting(limit = 6, enabled = true) {
+  return useQuery({
+    queryKey: ["support", "oldest-awaiting", limit],
+    queryFn: () => getOldestAwaiting(limit),
     staleTime: 1000 * 15,
     enabled,
   });

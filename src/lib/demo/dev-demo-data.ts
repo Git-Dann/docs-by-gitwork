@@ -5346,6 +5346,44 @@ export function resolveDemoApi(
     if (counts) return { counts: demoQueueCounts(counts[1]) };
   }
   // Care home's one-request roll-up for every client.
+  // Care home's "Needs you first": the longest-waiting conversations across the DESK, worst
+  // first. Derived from the same fixtures the queue summaries use, and scoped the same way, so
+  // the panel and the totals above it cannot tell different stories.
+  if (pathname === "/api/support/oldest-awaiting") {
+    const deskIds = new Set(
+      demoSupportClients.clients
+        .filter((c) => !("courseRequestOnly" in c && c.courseRequestOnly) && !("ingestOnly" in c && c.ingestOnly))
+        .map((c) => c.id),
+    );
+    const names = new Map(demoSupportClients.clients.map((c) => [c.id, c.name]));
+    const limit = Number(search?.get("limit") ?? 6) || 6;
+    // The fixture map is `Record<string, unknown[]>`, so name the handful of fields read here.
+    type DemoAwaiting = {
+      id: string; subject: string; customerLabel: string; source: string;
+      priority?: string; status?: string; replyState?: string;
+      lastInboundAt?: string; receivedAt?: string;
+    };
+    const items = (Object.entries(demoConversationsByClient) as Array<[string, DemoAwaiting[]]>)
+      .filter(([clientId]) => deskIds.has(clientId))
+      .flatMap(([clientId, rows]) =>
+        rows
+          .filter((r) => r.replyState === "awaiting_reply" && (r.status === "new" || r.status === "open"))
+          .map((r) => ({
+            id: r.id,
+            clientId,
+            clientName: names.get(clientId) ?? clientId,
+            subject: r.subject,
+            customerLabel: r.customerLabel,
+            source: r.source,
+            priority: r.priority ?? "normal",
+            waitingSince: r.lastInboundAt ?? r.receivedAt,
+          })),
+      )
+      .sort((a, b) => String(a.waitingSince).localeCompare(String(b.waitingSince)))
+      .slice(0, limit);
+    return { items };
+  }
+
   if (pathname === "/api/support/queue-summaries") {
     const summaries: Record<string, ReturnType<typeof demoQueueCounts>> = {};
     // Mirrors getClientQueueSummaries: support-desk clients only, so the demo's totals match the

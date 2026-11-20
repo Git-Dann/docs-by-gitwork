@@ -198,6 +198,22 @@ export interface Conversation {
  * True per-view totals, counted in SQL over the whole client rather than derived from whatever
  * page happened to be loaded. Keys mirror the SAVED_VIEWS ids.
  */
+/**
+ * One row of Care home's "Needs you first" — the longest-waiting conversations across every
+ * support-desk client. Deliberately narrow: enough to decide whether to open it, nothing more.
+ */
+export interface OldestAwaitingItem {
+  id: string;
+  clientId: string;
+  clientName: string;
+  subject: string;
+  customerLabel: string;
+  source: SupportSource;
+  priority: ConversationPriority;
+  /** When the customer last wrote. Null only if a row somehow has no inbound stamp. */
+  waitingSince: string | null;
+}
+
 export interface ConversationViewCounts {
   awaiting: number;
   replied: number;
