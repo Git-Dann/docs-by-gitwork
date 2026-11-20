@@ -11268,3 +11268,35 @@ is named in the menu ("Couldn't search care just now"), never shown as no result
 Done in November 2026 and shared with Dan privately. ⚠️ **Not committed, on purpose: this repo
 is public**, and an audit lists exactly what an attacker would want. Keep future audits and
 incident write-ups that name a live weakness out of the repo until the weakness is fixed.
+
+## 143. Recent Changes (November 2026) — Deploys check themselves, and can be undone
+
+Four fixes from the November infrastructure audit (the audit itself stays out of the repo, §142.4).
+
+- **Health check after every deploy, with automatic rollback.** Before pulling, `deploy.yml` tags
+  the running image `:previous`. After the restart, `deploy/health-check.sh` polls
+  `http://127.0.0.1:3000/api/health?deep=1` for up to 120s and needs the deployed commit in the
+  answer. Not healthy → `:previous` is put back, recreated and checked, and the run fails.
+  `docker image prune -f` runs only after a healthy release, so `:previous` always survives.
+- **`/api/health?deep=1`** runs `SELECT 1` and answers 503 when Postgres can't be reached; the plain
+  form still never touches the database. (The watchdog still calls the plain form.)
+- **One-click rollback:** Actions → VPS ops → task `rollback`, `rollback_to` = `previous` or a full
+  40-character sha (GHCR keeps every `:<sha>` image). `deploy/rollback.sh` puts the running image
+  back if the target isn't healthy. It shares the `deploy-production` concurrency group, so it can't
+  race a deploy. ⚠️ It doesn't touch the database (schema changes are additive), and the next push
+  to `main` deploys over it. The scripts are also copied to `/opt/apps/foundry/deploy/` on every
+  deploy, so `bash deploy/rollback.sh previous` works over SSH too.
+- **The app port is localhost only** (`127.0.0.1:3000:3000`). On every interface, anyone could
+  skip nginx and TLS and send their own `X-Real-IP`, which every IP rate limit trusts; Docker
+  publishes past ufw. Staging's 3001 and 5433 are bound the same way.
+- **Logs are capped:** `json-file` with `max-size 50m` × 5 on both containers, and
+  `/tmp/foundry-cron.log` is trimmed to its newest 10 MB once it passes 50 MB, on every deploy.
+- **The box's `docker-compose.yml` now follows the repo** (`deploy/sync-compose.sh`, run before the
+  pull). It is replaced only when its sha256 is in `deploy/compose-history.sha256`; a hand-edited
+  box file is left alone with a warning and a diff, and the old file is kept as
+  `docker-compose.yml.before-deploy`. ⚠️ **Changing `docker-compose.yml`? Append its new sha256 to
+  `deploy/compose-history.sha256`** (a test fails otherwise). A logging change recreates the db
+  container on that deploy: a few seconds of Postgres restart.
+- Tests: `src/__tests__/deploy-scripts.test.ts` (fake `docker`/`curl`), `src/app/api/health/__tests__`.
+- **Still needs Dan:** off-site backups (a bucket), and error alerts (a Sentry DSN or Slack webhook).
+

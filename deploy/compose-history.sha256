@@ -1,0 +1,2 @@
+11eedc8a72241b5c3e802f05481af55d49e7bf43ec0925fc0008e6d55332374e  docker-compose.yml (before Nov 2026: ports on every interface, no log limits)
+83e6c532a737f57cb60c22e33bc1c3b374315ceaf02ea25e9068d0a40d8cb38c  docker-compose.yml (Nov 2026: 127.0.0.1:3000, log rotation)

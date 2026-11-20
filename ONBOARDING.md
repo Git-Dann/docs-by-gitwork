@@ -52,6 +52,12 @@ auto-deploys to the Fasthosts VPS in about 6 minutes. There is **no staging envi
 are no branch preview URLs** (Vercel built some until it was retired in Nov 2026). Check a branch
 locally: the dev server and the `/demo/**` pages.
 
+**A deploy is only green once the new release is healthy.** After the restart it must answer
+`/api/health?deep=1` with its own commit and a reachable database within two minutes; if not, the
+image that was running is put back and the run fails. To undo a release that passed but is wrong:
+Actions → **VPS ops** → task `rollback` (`previous`, or a full commit sha). Then revert or fix the
+commit, because the next push to `main` deploys over the rollback.
+
 **Secrets go in GitHub, not on the box.** The deploy syncs a managed allow-list of Actions secrets
 into the VPS `.env` on every run, so adding or rotating one needs no SSH — set it in repo →
 Settings → Secrets and variables → Actions, then re-run the deploy (it accepts
