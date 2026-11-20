@@ -11234,6 +11234,15 @@ where things stand now. Rules `src/lib/client-delivery-timeline.ts` (pure, teste
 - **Now panel:** waiting on the client (unanswered blockers, releases waiting for approval), the
   next release with progress, in progress, up next.
 - ⚠️ **Internal only.** It names developers, so it is never part of a client-facing DTO.
+- **Checked against Campfire's real board (Nov 2026), three fixes:**
+  - **A board tidy-up is not work.** Nine tasks created in June were closed in the same second on
+    3 Nov with nobody on them, and read as "9 done" (and would have gone into the weekly email).
+    `findTidyUps` marks a batch only when 3+ tasks share the exact `completedAt`, none was started
+    before it was closed, and all were created 14+ days earlier; it shows as one "Tidy-up" line and
+    isn't counted as done. A developer closing four real tasks at once stays as work.
+  - **A late task says so.** In progress and Up next show `dueWords` ("3 days late" in red,
+    "due today", "due 24 Nov"), by calendar day, never by hour.
+  - **Two or more quiet weeks in a row fold into one line** (`foldQuietWeeks`); this week never folds.
 
 ### 142.2 Weekly update (the Friday email)
 

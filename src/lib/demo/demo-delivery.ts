@@ -25,6 +25,7 @@ export function demoDeliveryTimeline(slug: string, now: Date = new Date()): Load
     { id: "started:1", kind: "started", at: daysAgo(now, 1, 15), title: "Monthly usage report for club managers", detail: null, href: task("t4"), people: ["Abdullah"], group: "Reports" },
     { id: "done:4", kind: "done", at: daysAgo(now, 8), title: "Move hosting to the client's own cloud account", detail: null, href: task("t5"), people: ["Syed"], group: "Platform" },
     { id: "done:5", kind: "done", at: daysAgo(now, 9), title: "Automatic releases for the web app", detail: null, href: task("t6"), people: ["Syed"], group: "Platform" },
+    { id: "tidy:old", kind: "tidy", at: daysAgo(now, 9, 11), title: "7 older tasks marked done together", detail: "Platform. Closed in one go and never started on the board, so not counted as work done this week.", href: null, people: [], group: null },
     { id: "document:1", kind: "document", at: daysAgo(now, 10), title: "Reports: statement of work", detail: "Accepted", href: null, people: [], group: null },
     { id: "done:6", kind: "done", at: daysAgo(now, 16), title: "New sign-up screens", detail: null, href: task("t7"), people: ["Umer"], group: "Onboarding" },
   ];
@@ -39,7 +40,7 @@ export function demoDeliveryTimeline(slug: string, now: Date = new Date()): Load
     state: {
       inProgress: [
         { id: "t4", title: "Monthly usage report for club managers", group: "Reports", people: ["Abdullah"], dueDate: null },
-        { id: "t8", title: "Waiting list when a class is full", group: "v2.5", people: ["Umer"], dueDate: null },
+        { id: "t8", title: "Waiting list when a class is full", group: "v2.5", people: ["Umer"], dueDate: daysAgo(now, 2) },
       ],
       upNext: [
         { id: "t9", title: "Export reports as CSV", group: "Reports", people: [], dueDate: daysAgo(now, -9) },

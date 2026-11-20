@@ -10,6 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   firstNames,
+  findTidyUps,
   firstSentence,
   groupByWeek,
   outageLength,
@@ -47,6 +48,7 @@ const TASK_SELECT = {
   blockedReason: true,
   blockedResponse: true,
   updatedAt: true,
+  createdAt: true,
   assignees: { select: { name: true } },
   assignee: { select: { name: true } },
   release: { select: { version: true, name: true } },
@@ -164,8 +166,32 @@ export async function loadDeliveryTimeline(
 
   const items: DeliveryItem[] = [];
 
+  // A board tidy-up (many old, never-started tasks closed in one go) is one line, not "N done".
+  const tidyBatches = findTidyUps(
+    done.flatMap((t) =>
+      t.completedAt
+        ? [{ id: t.id, completedAt: t.completedAt.toISOString(), startedAt: t.startedAt?.toISOString() ?? null, createdAt: t.createdAt.toISOString() }]
+        : [],
+    ),
+  );
+  const tidied = new Set(tidyBatches.flat());
+  for (const ids of tidyBatches) {
+    const batch = done.filter((t) => ids.includes(t.id));
+    const groups = [...new Set(batch.map(group).filter((g): g is string => Boolean(g)))];
+    items.push({
+      id: `tidy:${ids[0]}`,
+      kind: "tidy",
+      at: batch[0].completedAt!.toISOString(),
+      title: `${batch.length} older tasks marked done together`,
+      detail: `${groups.length ? `${groups.join(", ")}. ` : ""}Closed in one go and never started on the board, so not counted as work done this week.`,
+      href: `/app/portal/${slug}/tasks`,
+      people: [],
+      group: null,
+    });
+  }
+
   for (const t of done) {
-    if (!t.completedAt) continue;
+    if (!t.completedAt || tidied.has(t.id)) continue;
     items.push({ id: `done:${t.id}`, kind: "done", at: t.completedAt.toISOString(), title: t.title, detail: null, href: taskHref(t.id), people: people(t), group: group(t) });
   }
   for (const t of started) {
