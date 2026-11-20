@@ -24,7 +24,12 @@ describe("no class claims a font family it does not set", () => {
     // `git grep -n` so the test reports the exact offending lines, and sees only tracked files.
     let hits: string[] = [];
     try {
-      hits = execFileSync("git", ["grep", "-n", "font-\\[var(--font"], { encoding: "utf8" })
+      /*
+       * ⚠️ Source only. The rule is about a CLASS NAME, which exists in .ts/.tsx and nowhere
+       * else — and CLAUDE.md and `docs/` legitimately discuss the trap in prose, so sweeping
+       * Markdown made the guard fail the moment §42.16 described the bug it guards against.
+       */
+      hits = execFileSync("git", ["grep", "-n", "font-\\[var(--font", "--", "*.ts", "*.tsx"], { encoding: "utf8" })
         .split("\n")
         .filter(Boolean);
     } catch {
