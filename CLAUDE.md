@@ -11045,6 +11045,9 @@ sub-pages are its settings, Suppliers is HR-only, Archived lives under People, a
     ResizeObserver AND MutationObserver: a background tab draws no frames, so ResizeObserver alone
     left cards on top of each other there. Numbers are given after unseen cards are dropped, so
     they run 01, 02, 03. Measured on the demo: columns end within 75px, no overlaps.
+  - The Hiring candidate profile (external candidates) got the same pass: the email sits in the
+    header with the other facts instead of a card of its own, and the cards number from 01.
+    The public `/u/` page needed nothing: its side column is sticky, so it never shows a gap.
 
 ## 140. Recent Changes (November 2026) — The wiki got fast: course requests load on their own
 
