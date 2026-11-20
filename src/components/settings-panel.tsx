@@ -2664,7 +2664,7 @@ const API_GROUPS: ApiGroup[] = [
       { method: "GET", path: "/api/support/clients/:clientId/reports", label: "List monthly reports" },
       { method: "POST", path: "/api/support/clients/:clientId/reports", label: "Generate monthly report" },
       { method: "GET", path: "/api/support/dashboard", label: "Care overview (cross-client)" },
-      { method: "GET", path: "/api/support/discord/channels", label: "Discord channel picker" },
+      { method: "POST", path: "/api/support/clients/:clientId/discord/channels", label: "Discord channel picker" },
     ],
   },
   {

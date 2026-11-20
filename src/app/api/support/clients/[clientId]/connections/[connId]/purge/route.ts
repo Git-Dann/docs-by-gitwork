@@ -11,7 +11,7 @@ export async function DELETE(
 ) {
   try {
     const { clientId, connId } = await params;
-    await requireSupportClient(req, clientId);
+    await requireSupportClient(req, clientId, "manage");
     await requireSupportRow("connection", connId, clientId);
 
     const conn = await prisma.accountConnection.findFirst({

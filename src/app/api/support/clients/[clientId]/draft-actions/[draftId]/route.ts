@@ -14,7 +14,7 @@ export async function PATCH(
 ) {
   try {
     const { clientId, draftId } = await params;
-    const workspaceId = await requireSupportClient(request, clientId);
+    const workspaceId = await requireSupportClient(request, clientId, "manage");
     await requireSupportRow("draftAction", draftId, clientId);
     const body = await request.json();
 

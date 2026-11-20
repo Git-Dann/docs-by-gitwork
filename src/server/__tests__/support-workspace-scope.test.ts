@@ -52,6 +52,7 @@ vi.mock("@/server/auth/effective-user", () => ({
   requireAuthedUser: vi.fn(async () => db.caller),
   assertCan: vi.fn(),
   canManageSupport: vi.fn(() => true),
+  canUseSupport: vi.fn(() => true),
 }));
 
 vi.mock("@/server/support", () => ({

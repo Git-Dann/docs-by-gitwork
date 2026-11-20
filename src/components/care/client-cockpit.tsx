@@ -351,7 +351,7 @@ export function ClientCockpit({
   const markRead = useMarkConversationRead(client.id);
   const closeWithUndo = useCloseConversationWithUndo(client.id);
   const snooze = useSnoozeConversation(client.id);
-  const { canManageSupport } = usePermissions();
+  const { canUseSupport } = usePermissions();
 
   const [activeView, setActiveView] = useState(DEFAULT_VIEW_ID);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
@@ -472,12 +472,17 @@ export function ClientCockpit({
   // always had. Guarded on `conv.unread` so re-opening an already-read thread doesn't fire a
   // pointless write; the mutation is optimistic, so the row de-bolds on this click.
   //
-  // Also guarded on canManageSupport because the PATCH route asserts it: without the guard a
-  // read-only Care viewer would take a 403 on every open and watch the row re-bold as the
-  // optimistic patch rolled back.
+  // Also guarded on canUseSupport because the PATCH route asserts it: without the guard a
+  // viewer with no Care grant at all would take a 403 on every open and watch the row re-bold as
+  // the optimistic patch rolled back.
+  //
+  // ⚠️ This used to read `canManageSupport`, whose label is "Connect channels and edit workflow
+  // rules" — so a DEVELOPER, who holds the permission labelled "Open Care and answer
+  // conversations", could never mark anything read and their rows stayed bold for ever. Triage,
+  // including this, is now on `support` where the labels always said it was.
   function openConversation(conv: Conversation) {
     setSelectedId(conv.id);
-    if (conv.unread && canManageSupport) markRead.mutate(conv.id);
+    if (conv.unread && canUseSupport) markRead.mutate(conv.id);
   }
 
   /**
@@ -522,12 +527,12 @@ export function ClientCockpit({
         }
         case "x": {
           const conv = conversations[focusedIndex];
-          if (conv && canManageSupport) { e.preventDefault(); toggleSelect(conv.id); }
+          if (conv && canUseSupport) { e.preventDefault(); toggleSelect(conv.id); }
           return;
         }
         case "e": {
           const conv = conversations[focusedIndex];
-          if (conv && canManageSupport) {
+          if (conv && canUseSupport) {
             e.preventDefault();
             closeWithUndo(conv);
             // Hold position rather than following the row out of the view it just left, so a
@@ -538,7 +543,7 @@ export function ClientCockpit({
         }
         case "s": {
           const conv = conversations[focusedIndex];
-          if (conv && canManageSupport) {
+          if (conv && canUseSupport) {
             e.preventDefault();
             snooze.mutate({ convId: conv.id, until: new Date(Date.now() + 24 * 3600_000).toISOString() });
             setFocusedIndex((i) => Math.min(i, conversations.length - 2));
@@ -584,7 +589,7 @@ export function ClientCockpit({
 
   const allLoadedSelected = conversations.length > 0 && conversations.every((c) => selection.has(c.id));
   // Column count, so the empty/loading row can span the table without leaving a ragged cell.
-  const columnCount = 4 + (canManageSupport ? 1 : 0) + (showRowState ? 1 : 0) + 1;
+  const columnCount = 4 + (canUseSupport ? 1 : 0) + (showRowState ? 1 : 0) + 1;
 
   return (
     // w-full + min-w-0: <main> is a row-flex container, so without an explicit fill the cockpit
@@ -860,7 +865,7 @@ export function ClientCockpit({
               {/* Keyboard triage is the whole point of the redesign, and an invisible shortcut is a
                   shortcut nobody uses — so it is stated once, quietly, where the eye lands before
                   the first row. */}
-              {canManageSupport && conversations.length > 0 && (
+              {canUseSupport && conversations.length > 0 && (
                 <p className="ml-auto hidden shrink-0 font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)] lg:block">
                   <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze · <Kbd>X</Kbd> select
                 </p>
@@ -908,7 +913,7 @@ export function ClientCockpit({
             <table className="app-table app-table--dense">
               <thead className="sticky top-0 z-10">
                 <tr>
-                  {canManageSupport && (
+                  {canUseSupport && (
                     <th scope="col" className="w-8">
                       <input
                         type="checkbox"
@@ -975,7 +980,7 @@ export function ClientCockpit({
                     conv={c}
                     focused={i === focusedIndex}
                     selected={selection.has(c.id)}
-                    selectable={canManageSupport}
+                    selectable={canUseSupport}
                     showState={showRowState}
                     onOpen={() => openConversation(c)}
                     onToggleSelect={() => toggleSelect(c.id)}

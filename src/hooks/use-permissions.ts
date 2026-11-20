@@ -66,7 +66,8 @@ export function usePermissions() {
     // client, insurer or acquirer relies on.
     canViewProvenance: can("provenance"),
     canIssueCountermark: can("provenance.issue"),
-    canViewSupport: can("support"),
+    /** Open Care, read, reply and triage. See `canUseSupport` in effective-user.ts. */
+    canUseSupport: can("support"),
     canViewMonitors: can("monitors"),
     canManageSupport: can("support.manage"),
     // Study is an optional tool under Pulse, gated by the admin-only `study` feature perm

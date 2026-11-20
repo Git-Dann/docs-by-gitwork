@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assignConversation } from "@/server/support";
 import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
@@ -12,7 +12,6 @@ export async function POST(
 ) {
   try {
     const user = await getEffectiveUserOrNull(request);
-    assertCan(user, canManageSupport, "assign Care conversations");
     const { clientId, convId } = await params;
     await requireSupportClient(request, clientId);
     await requireSupportRow("conversation", convId, clientId);

@@ -14,13 +14,56 @@ const ROOT = join(__dirname, "..");
 const CLIENT_ROOT = join(ROOT, "clients", "[clientId]");
 
 /**
- * Routes that hold no workspace data. `webhook/[token]` resolves its connection by the token in
- * the URL; `discord/channels` lists a Discord guild with the bot token the caller supplies.
+ * `webhook/[token]` resolves its connection by the token in the URL: the token IS the credential,
+ * which is the whole posture of a push endpoint.
+ *
+ * ⚠️ This list used to also hold `discord/channels`, with a note saying what the route does
+ * ("lists a Discord guild with the bot token the caller supplies") rather than why that made it
+ * safe — and it was not safe: it had no permission check, no workspace scope and no client in its
+ * path, so any authenticated account in any workspace could have Foundry call Discord with a
+ * guild id and a bot token of their choosing. An exemption must say why the route is safe
+ * WITHOUT the gate, not describe its job. The route now lives under `clients/[clientId]/`.
  */
-const EXEMPT = new Set(["webhook/[token]/route.ts", "discord/channels/route.ts"]);
+const EXEMPT = new Set(["webhook/[token]/route.ts"]);
+
+/**
+ * Care has two grants and both are checked in one place, `requireSupportClient` /
+ * `requireSupportWorkspace`, whose `need` argument says which. `"use"` (the default) is open,
+ * read, reply and triage; `"manage"` is setup — connectors, rules, clients, reports, the
+ * destructive ones.
+ *
+ * ⚠️ `/api/support/**` is NOT covered by the module gate, which only reads `/app` paths, so these
+ * asserts are the whole enforcement. An audit found ELEVEN handlers with none at all, including a
+ * connector purge, a full history re-pull, an outbound IMAP login with caller-supplied
+ * credentials, and `POST …/messages` — which sends real mail to a client's customer, in the
+ * client's name, from the client's mailbox. Hence the table below rather than trust.
+ */
+const MANAGE: Record<string, string[]> = {
+  "clients/[clientId]/route.ts": ["PATCH", "DELETE"],
+  "clients/[clientId]/connections/route.ts": ["POST"],
+  "clients/[clientId]/connections/[connId]/route.ts": ["PATCH", "DELETE"],
+  "clients/[clientId]/connections/[connId]/sync/route.ts": ["POST"],
+  "clients/[clientId]/connections/[connId]/purge/route.ts": ["DELETE"],
+  "clients/[clientId]/connections/test-imap/route.ts": ["POST"],
+  "clients/[clientId]/conversations/route.ts": ["POST"],
+  "clients/[clientId]/discord/channels/route.ts": ["POST"],
+  "clients/[clientId]/draft-actions/route.ts": ["POST"],
+  "clients/[clientId]/draft-actions/[draftId]/route.ts": ["PATCH"],
+  "clients/[clientId]/reports/route.ts": ["POST"],
+  "clients/[clientId]/reports/[reportId]/route.ts": ["PATCH", "DELETE"],
+  "clients/[clientId]/reports/generate-doc/route.ts": ["POST"],
+  "clients/[clientId]/seed-rules/route.ts": ["POST"],
+  "clients/[clientId]/sync/route.ts": ["POST"],
+  "clients/[clientId]/tickets/route.ts": ["POST"],
+  "clients/[clientId]/tickets/[ticketId]/route.ts": ["PATCH", "DELETE"],
+  "clients/[clientId]/tickets/batch/route.ts": ["PATCH"],
+  "clients/[clientId]/workflow-rules/route.ts": ["POST"],
+  "clients/[clientId]/workflow-rules/[ruleId]/route.ts": ["PATCH", "DELETE"],
+};
 
 /** Any of these, inside a handler outside `[clientId]`, means it reads the caller's workspace. */
 const WORKSPACE_SCOPED_BY = [
+  "requireSupportWorkspace(",
   "workspaceIdForRequest(",
   "requestWorkspaceId(",
   "user.workspaceId",
@@ -92,6 +135,26 @@ describe("Care routes are scoped to the caller's workspace", () => {
       }
     }
     expect(unscoped).toEqual([]);
+  });
+
+  it("setup and destructive handlers need the manage grant", () => {
+    const wrong: string[] = [];
+    for (const file of clientFiles) {
+      const rel = relative(ROOT, file);
+      const needsManage = new Set(MANAGE[rel] ?? []);
+      for (const { method, body } of handlers(file)) {
+        const asksManage = body.includes('requireSupportClient(request, clientId, "manage")')
+          || body.includes('requireSupportClient(req, clientId, "manage")');
+        if (needsManage.has(method) && !asksManage) wrong.push(`${method} ${rel} should ask for "manage"`);
+        if (!needsManage.has(method) && asksManage) wrong.push(`${method} ${rel} asks for "manage" but is not in MANAGE`);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it("the table names routes that exist (a renamed file must not silently drop its gate)", () => {
+    const present = new Set(clientFiles.map((f) => relative(ROOT, f)));
+    expect(Object.keys(MANAGE).filter((k) => !present.has(k))).toEqual([]);
   });
 
   it("no Care route looks anything up in Gitwork's workspace", () => {

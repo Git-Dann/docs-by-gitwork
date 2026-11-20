@@ -11,7 +11,7 @@ export async function PATCH(
 ) {
   try {
     const { clientId, reportId } = await params;
-    await requireSupportClient(request, clientId);
+    await requireSupportClient(request, clientId, "manage");
     await requireSupportRow("report", reportId, clientId);
     const body = await request.json();
     const report = await updateReport(reportId, body);
@@ -27,7 +27,7 @@ export async function DELETE(
 ) {
   try {
     const { clientId, reportId } = await params;
-    await requireSupportClient(request, clientId);
+    await requireSupportClient(request, clientId, "manage");
     await requireSupportRow("report", reportId, clientId);
     await deleteReport(reportId);
     return apiOk({ ok: true });

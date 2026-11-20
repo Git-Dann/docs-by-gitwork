@@ -25,7 +25,7 @@ export async function POST(
 ) {
   try {
     const { clientId } = await params;
-    await requireSupportClient(request, clientId);
+    await requireSupportClient(request, clientId, "manage");
     const body = await request.json();
     const draftAction = await createDraftAction(clientId, body);
     return apiOk({ draftAction }, { status: 201 });

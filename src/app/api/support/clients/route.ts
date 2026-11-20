@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManageSupport, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
+import { assertCan, canManageSupport, canUseSupport, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { listSupportClients, createSupportClient, seedDefaultWorkflowRules } from "@/server/support";
 import { supportClientCreateSchema } from "@/server/validators";
 import { requestWorkspaceId } from "@/server/workspaces/scope";
@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuthedUser(request);
+    assertCan(user, canUseSupport, "open Care");
     const clients = await listSupportClients(user.workspaceId, user);
     return apiOk({ clients });
   } catch (error) {

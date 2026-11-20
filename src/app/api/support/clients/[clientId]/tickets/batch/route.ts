@@ -12,7 +12,7 @@ export async function PATCH(
 ) {
   try {
     const { clientId } = await params;
-    await requireSupportClient(request, clientId);
+    await requireSupportClient(request, clientId, "manage");
     const body = (await request.json()) as {
       ticketIds: string[];
       data: { status?: string; priority?: string; assignedTo?: string };

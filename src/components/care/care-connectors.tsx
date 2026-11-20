@@ -217,7 +217,7 @@ function AddConnectorModal({
     setAvailableChannels([]);
     setSelectedChannelIds(new Set());
     try {
-      const res = await fetch("/api/support/discord/channels", {
+      const res = await fetch(`/api/support/clients/${clientId}/discord/channels`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ guildId, botToken }),
@@ -1024,7 +1024,7 @@ function EditConnectorModal({
     setChannelFetchError(null);
     setAvailableChannels([]);
     try {
-      const res = await fetch("/api/support/discord/channels", {
+      const res = await fetch(`/api/support/clients/${clientId}/discord/channels`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ guildId, botToken }),
