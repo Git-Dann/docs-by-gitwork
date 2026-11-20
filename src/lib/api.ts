@@ -5780,3 +5780,9 @@ export async function getNeedsYou(): Promise<import("@/lib/needs-you").NeedsYouD
 export async function getMoney(): Promise<import("@/lib/money").MoneySummary> {
   return apiFetch("/api/money");
 }
+
+// ── Achievements (your own only) ───────────────────────────────────────────
+
+export async function getMyAchievements(): Promise<{ achievements: import("@/lib/achievements").AchievementProgress[] }> {
+  return apiFetch("/api/me/achievements");
+}

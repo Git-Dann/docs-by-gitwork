@@ -38,6 +38,7 @@ import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 import { FadeIn } from "@/components/ui/motion/fade-in";
 import { HqTodayBand } from "@/components/dashboard/hq-today-band";
 import { NeedsYouCard } from "@/components/dashboard/needs-you-card";
+import { AchievementCelebrator } from "@/components/achievements/celebrate";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -366,7 +367,12 @@ export function AppOverview() {
   }
 
   if (isDeveloper) {
-    return <DevOverview />;
+    return (
+      <>
+        {previewPerms === null ? <AchievementCelebrator /> : null}
+        <DevOverview />
+      </>
+    );
   }
 
 
@@ -414,6 +420,8 @@ export function AppOverview() {
       </div>
 
       {isEffectiveAdmin ? <GettingStartedCard /> : null}
+      {/* A new achievement tier is announced wherever you land; no UI of its own. */}
+      {previewPerms === null ? <AchievementCelebrator /> : null}
 
       {/* What needs me now: a few figures, each a link to where it's dealt with. Every
           tile reads a query a card below already makes, and only shows to someone who

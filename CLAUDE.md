@@ -11171,3 +11171,23 @@ the same schedule. No new model.
 - Client matching is by name among the workspace's clients, never guessing between two.
 - **To take a deal out, archive its document in Docs:** Money skips archived documents.
 - Money viewers only (`clients.viewFinancials` or Super Admin), on both routes.
+
+### 141.4 Achievements (gamification that rewards keeping Foundry true)
+
+Your own Staff page (Backstage → Me) has an **Achievements** card; HQ announces a newly reached
+tier with a toast. Rules `src/lib/achievements.ts` (pure, tested), reader
+`src/server/achievements.ts`, route `GET /api/me/achievements` (your own only, no route for anyone
+else's), card `src/components/achievements/achievements-card.tsx`, toast `celebrate.tsx`. The
+confetti moved to `src/components/ui/motion/confetti.tsx` (the Morning Brief uses it too).
+
+- ⚠️ **The design rule: reward what keeps Foundry true, never activity.** §67 measured 583 of ~720
+  done tasks being created and closed the same day, so "tasks done" is NOT an achievement and must
+  not become one. v1 is standup streak (leave and bank holidays never break it; today only counts
+  once posted), **on the plan** (planned tasks that existed before the day they were finished),
+  **on time**, and **deals won**. Each has bronze/silver/gold.
+- **Earned, never stored:** all derived from DailyUpdate, LeaveRequest, Task and Document rows.
+- **Personal, not ranked:** no leaderboard. Never shown to anyone but the person.
+- A browser that sees someone's achievements for the first time only remembers them
+  (`foundry.achievements.celebrated.v1`), so nobody gets confetti for months-old work.
+- Not built yet: team goals, Care replies (SupportMessage has no author user), showing achievements
+  on the public profile (needs the person's opt-in).

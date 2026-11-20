@@ -16,6 +16,7 @@ import {
 } from "@/lib/needs-you";
 import { docTerms, summariseMoney, type DocLine, type MoneySummary } from "@/lib/money";
 import { parseDealDraft, type DealDraft } from "@/lib/money-deals";
+import { ACHIEVEMENTS, progressFor, type AchievementProgress } from "@/lib/achievements";
 
 const hoursAgo = (now: Date, h: number) => new Date(now.getTime() - h * 3_600_000).toISOString();
 
@@ -108,4 +109,17 @@ export function demoDealDraft(): DealDraft & { clientId: string | null } {
     text,
   );
   return { ...draft, clientId: null };
+}
+
+/** A developer a few weeks in: a streak going, silver on the plan, nearly bronze on time. */
+export function demoAchievements(): { achievements: AchievementProgress[] } {
+  const by = (id: string) => ACHIEVEMENTS.find((d) => d.id === id)!;
+  return {
+    achievements: [
+      progressFor(by("standup-streak"), 23, 14),
+      progressFor(by("on-the-plan"), 57),
+      progressFor(by("on-time"), 8),
+      progressFor(by("deals-won"), 2),
+    ],
+  };
 }
