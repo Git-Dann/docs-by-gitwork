@@ -22,6 +22,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    # Rotate container logs. Without this the json-file driver keeps every line until the
+    # container is recreated, on the same disk as the database (infra audit, Nov 2026).
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   app:
     image: ghcr.io/git-dann/docs-by-gitwork:latest
@@ -31,9 +38,20 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      # Localhost only. nginx proxies 127.0.0.1:3000 and run-cron.sh calls it from the box.
+      # Published on every interface ("3000:3000"), anyone could skip nginx and TLS and send
+      # their own X-Real-IP, which every IP rate limit trusts. Docker publishes ports past
+      # ufw, so the host firewall would not have stopped it.
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env
+    # Rotate container logs. Without this the json-file driver keeps every line until the
+    # container is recreated, on the same disk as the database (infra audit, Nov 2026).
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
 volumes:
   postgres_data:
