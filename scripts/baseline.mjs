@@ -139,7 +139,18 @@ function CONTENT() {
   return {
     title: document.title,
     headings: texts('h1, h2'),
-    widgets: texts('.widget-header'),
+    // `.widget-header` is the card chrome; `.widget-header__label` is the mono `NN // NAME`
+    // text inside it. A page's own top bar carries the label WITHOUT the chrome — the wiki's
+    // has since #863 — and the gate silently stopped watching it, which is drift of exactly
+    // the kind this file exists to catch. Orphan labels are collected too; one across the
+    // thirteen demo pages, so this adds coverage and nothing else.
+    widgets: [
+      ...texts('.widget-header'),
+      ...[...document.querySelectorAll('.widget-header__label')]
+        .filter((e) => visible(e) && !e.closest('.widget-header'))
+        .map((e) => e.textContent || '')
+        .filter((t) => t.trim()),
+    ],
     bodyChars: (document.body?.innerText || '').trim().length,
     overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     links: [...document.querySelectorAll('a[href^="/demo"], a[href^="/app/"]')].map((a) => a.getAttribute('href')),

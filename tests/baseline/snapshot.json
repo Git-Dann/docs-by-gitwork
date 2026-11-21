@@ -100,7 +100,7 @@
     "/demo/dev": {
       "viewports": {
         "390": {
-          "clipping": 2,
+          "clipping": 0,
           "content": [
             "# // MY CLIENTSPortal",
             "# // MY DAY~, ~ #",
@@ -118,7 +118,7 @@
           ]
         },
         "1440": {
-          "clipping": 3,
+          "clipping": 0,
           "content": [
             "# // MY CLIENTSPortal",
             "# // MY DAY~, ~ #",
@@ -132,41 +132,43 @@
     "/demo/portal": {
       "viewports": {
         "390": {
-          "clipping": 9,
+          "clipping": 0,
           "content": [
             "# // CLIENT RECORDCare",
             "# // CONTACT",
             "# // DESIGNS",
-            "# // DEVELOPERS# active",
+            "# // DEVELOPERS# active · # past",
             "# // DEVS",
             "# // DOCS",
             "# // DOCUMENTSLinked #Drive",
-            "# // LIFECYCLE",
+            "# // LIFECYCLEHistory#",
             "# // MEETING NOTESGrab noteScribe",
             "# // NOTES",
             "# // PLATFORMS",
             "# // SLACK ACTIVITYnorthwind-internal",
-            "# // STUDIES",
+            "# // STUDIES#",
+            "# // TIMELINEWeekly update",
             "Foundry — Client portal demo · Foundry",
             "Northwind Studio"
           ]
         },
         "768": {
-          "clipping": 3,
+          "clipping": 0,
           "content": [
             "# // CLIENT RECORDCare",
             "# // CONTACT",
             "# // DESIGNS",
-            "# // DEVELOPERS# active",
+            "# // DEVELOPERS# active · # past",
             "# // DEVS",
             "# // DOCS",
             "# // DOCUMENTSLinked #Drive",
-            "# // LIFECYCLE",
+            "# // LIFECYCLEHistory#",
             "# // MEETING NOTESGrab noteScribe",
             "# // NOTES",
             "# // PLATFORMS",
             "# // SLACK ACTIVITYnorthwind-internal",
-            "# // STUDIES",
+            "# // STUDIES#",
+            "# // TIMELINEWeekly update",
             "Foundry — Client portal demo · Foundry",
             "Northwind Studio"
           ]
@@ -177,16 +179,17 @@
             "# // CLIENT RECORDCare",
             "# // CONTACT",
             "# // DESIGNS",
-            "# // DEVELOPERS# active",
+            "# // DEVELOPERS# active · # past",
             "# // DEVS",
             "# // DOCS",
             "# // DOCUMENTSLinked #Drive",
-            "# // LIFECYCLE",
+            "# // LIFECYCLEHistory#",
             "# // MEETING NOTESGrab noteScribe",
             "# // NOTES",
             "# // PLATFORMS",
             "# // SLACK ACTIVITYnorthwind-internal",
-            "# // STUDIES",
+            "# // STUDIES#",
+            "# // TIMELINEWeekly update",
             "Foundry — Client portal demo · Foundry",
             "Northwind Studio",
             "Portal"
@@ -197,7 +200,7 @@
     "/demo/tasks": {
       "viewports": {
         "390": {
-          "clipping": 2,
+          "clipping": 0,
           "content": [
             "Foundry — Tasks demo · Foundry"
           ]
@@ -278,7 +281,7 @@
     "/demo/backstage": {
       "viewports": {
         "390": {
-          "clipping": 2,
+          "clipping": 1,
           "content": [
             "# // TEAM CALENDARHolidaysShow holidays forUnited KingdomGBCalendarsOverlay Google CalendarsNo connected calendars yet. ",
             "Foundry — Backstage demo · Foundry",
@@ -309,28 +312,28 @@
         "390": {
           "clipping": 0,
           "content": [
+            "# // DAILY UPDATES# TODAY",
+            "# // WIKI",
             "Foundry — Client wiki demo · Foundry",
-            "Northwind Studio.",
-            "Northwind Studio/# // WIKIEdit",
-            "i // DAILY UPDATES# TODAY"
+            "Northwind Studio."
           ]
         },
         "768": {
           "clipping": 0,
           "content": [
+            "# // DAILY UPDATES# TODAY",
+            "# // WIKI",
             "Foundry — Client wiki demo · Foundry",
-            "Northwind Studio.",
-            "Northwind Studio/# // WIKIEdit",
-            "i // DAILY UPDATES# TODAY"
+            "Northwind Studio."
           ]
         },
         "1440": {
           "clipping": 0,
           "content": [
+            "# // DAILY UPDATES# TODAY",
+            "# // WIKI",
             "Foundry — Client wiki demo · Foundry",
-            "Northwind Studio.",
-            "Northwind Studio/# // WIKIEdit",
-            "i // DAILY UPDATES# TODAY"
+            "Northwind Studio."
           ]
         }
       }
@@ -924,7 +927,7 @@
     "/demo/docs/d1": {
       "viewports": {
         "390": {
-          "clipping": 5,
+          "clipping": 0,
           "content": [
             "# // DOCUMENTHAND-# · v#.# · ACCEPTEDSAVED JUST NOW",
             "# // OUTLINE# BLOCKS",
@@ -959,7 +962,7 @@
     "/demo/docs/d2": {
       "viewports": {
         "390": {
-          "clipping": 13,
+          "clipping": 0,
           "content": [
             "# // DOCUMENTREP-# · v#.# · SENTSAVED JUST NOW",
             "# // OUTLINE# BLOCKS",
@@ -991,7 +994,7 @@
     "/demo/docs/d3": {
       "viewports": {
         "390": {
-          "clipping": 6,
+          "clipping": 0,
           "content": [
             "# // DOCUMENTBRF-# · v#.# · DRAFTSAVED JUST NOW",
             "# // OUTLINE# BLOCKS",
@@ -1365,23 +1368,29 @@
         "390": {
           "clipping": 0,
           "content": [
+            "#//For HRNext # daysDocument settings",
             "#//People# on the team",
-            "Foundry — Staff demo · Foundry"
+            "Foundry — Staff demo · Foundry",
+            "Staff, for HR"
           ]
         },
         "768": {
           "clipping": 0,
           "content": [
+            "#//For HRNext # daysDocument settings",
             "#//People# on the team",
-            "Foundry — Staff demo · Foundry"
+            "Foundry — Staff demo · Foundry",
+            "Staff, for HR"
           ]
         },
         "1440": {
           "clipping": 0,
           "content": [
+            "#//For HRNext # daysDocument settings",
             "#//People# on the team",
             "Foundry — Staff demo · Foundry",
-            "Staff"
+            "Staff",
+            "Staff, for HR"
           ]
         }
       }
@@ -1389,7 +1398,7 @@
     "/demo/docs/d4": {
       "viewports": {
         "390": {
-          "clipping": 13,
+          "clipping": 0,
           "content": [
             "# // DOCUMENTREP-# · v#.# · APPROVEDSAVED JUST NOW",
             "# // OUTLINE# BLOCKS",
@@ -1421,7 +1430,7 @@
     "/demo/docs/d5": {
       "viewports": {
         "390": {
-          "clipping": 7,
+          "clipping": 0,
           "content": [
             "# // DOCUMENTHAND-# · v#.# · PRODUCT + TECH SIGN OFFSAVED JUST NOW",
             "# // OUTLINE# BLOCKS",
@@ -1453,7 +1462,7 @@
     "/demo/docs/d6": {
       "viewports": {
         "390": {
-          "clipping": 2,
+          "clipping": 0,
           "content": [
             "# // DOCUMENTv#.# · DRAFTSAVED JUST NOW",
             "# // OUTLINE# BLOCKS",
@@ -1653,6 +1662,628 @@
             "CHANGES SINCE LAST SCAN# → # (+#)",
             "Foundry — Pulse report demo · Foundry",
             "northwind.co"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/ai-search": {
+      "viewports": {
+        "390": {
+          "clipping": 19,
+          "content": [
+            "# // AI assistantsData to # ~ · synced #m ago",
+            "# // At a glancevs the period before",
+            "# // Buyer questionsasked #d ago",
+            "# // Google searchesData to # ~ · synced #m ago",
+            "# // Pages AI sends people toData to # ~ · synced #m ago",
+            "# // Setup",
+            "Foundry — Pulse AI search demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // AI assistantsData to # ~ · synced #m ago",
+            "# // At a glancevs the period before",
+            "# // Buyer questionsasked #d ago",
+            "# // Google searchesData to # ~ · synced #m ago",
+            "# // Pages AI sends people toData to # ~ · synced #m ago",
+            "# // Setup",
+            "Foundry — Pulse AI search demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // AI assistantsData to # ~ · synced #m ago",
+            "# // At a glancevs the period before",
+            "# // Buyer questionsasked #d ago",
+            "# // Google searchesData to # ~ · synced #m ago",
+            "# // Pages AI sends people toData to # ~ · synced #m ago",
+            "# // Setup",
+            "AI search",
+            "Foundry — Pulse AI search demo · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/scan-northwind-prev": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry",
+            "northwind.co"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/scan-northwind-first": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry",
+            "northwind.co"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r1": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewSuper Admin",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Priya Shah"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewSuper Admin",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Priya Shah"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewSuper Admin",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Priya Shah",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r2": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // Achievements# of # earned",
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entry",
+            "#//OverviewAdmin",
+            "#//Personal detailsOnly you and HREdit",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Tom Okafor"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // Achievements# of # earned",
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entry",
+            "#//OverviewAdmin",
+            "#//Personal detailsOnly you and HREdit",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Tom Okafor"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // Achievements# of # earned",
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entry",
+            "#//OverviewAdmin",
+            "#//Personal detailsOnly you and HREdit",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Staff",
+            "Tom Okafor"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r12": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewStaff",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Lena Novak"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewStaff",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Lena Novak"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewStaff",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Lena Novak",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r3": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//Notes#",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Ali Hassan",
+            "Foundry — Staff profile demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//Notes#",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Ali Hassan",
+            "Foundry — Staff profile demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//Notes#",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Ali Hassan",
+            "Foundry — Staff profile demo · Foundry",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r11": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Femi Bello",
+            "Foundry — Staff profile demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Femi Bello",
+            "Foundry — Staff profile demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Femi Bello",
+            "Foundry — Staff profile demo · Foundry",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r10": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Mei Tan"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Mei Tan"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Mei Tan",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r9": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Owen Hart"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Owen Hart"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Owen Hart",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r8": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Sana Malik"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Sana Malik"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity# tasks in # weeks",
+            "#//Developer",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//NotesEmpty",
+            "#//OverviewDeveloper",
+            "#//Personal detailsShow",
+            "#//Time offNext # days",
+            "Foundry — Staff profile demo · Foundry",
+            "Sana Malik",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r5": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewNo login",
+            "#//Personal detailsShow",
+            "Carlos Mendes",
+            "Foundry — Staff profile demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewNo login",
+            "#//Personal detailsShow",
+            "Carlos Mendes",
+            "Foundry — Staff profile demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewNo login",
+            "#//Personal detailsShow",
+            "Carlos Mendes",
+            "Foundry — Staff profile demo · Foundry",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/r6": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Activity",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewNo login",
+            "#//Personal detailsShow",
+            "Foundry — Staff profile demo · Foundry",
+            "Jo Reed"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Activity",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewNo login",
+            "#//Personal detailsShow",
+            "Foundry — Staff profile demo · Foundry",
+            "Jo Reed"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Activity",
+            "#//Documents# of # requiredAdd",
+            "#//EmploymentEdit",
+            "#//HR access log# entries",
+            "#//OverviewNo login",
+            "#//Personal detailsShow",
+            "Foundry — Staff profile demo · Foundry",
+            "Jo Reed",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/staff/suppliers": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Suppliers# activeAdd",
+            "Foundry — Suppliers demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Suppliers# activeAdd",
+            "Foundry — Suppliers demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Suppliers# activeAdd",
+            "Foundry — Suppliers demo · Foundry",
+            "Staff"
           ]
         }
       }
