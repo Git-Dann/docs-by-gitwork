@@ -52,7 +52,33 @@ import type {
   TaskReleaseRef,
 } from "@/types/tasks";
 import type { GanttBlock, GanttMilestone } from "@/components/tasks/gantt-chart";
-import type { ClientDetailRecord } from "@/types/client";
+import type { ClientDetailRecord, ClientListItem } from "@/types/client";
+import type { Connection, SupportClient, SupportMemberLite } from "@/types/support";
+import type { AccountProfile } from "@/hooks/use-account";
+import type { DeskActionItemDTO, DeskHolidays, DeskSlackResult } from "@/types/desk";
+import type { ClientSlackActivity } from "@/hooks/use-proposals";
+import type { PulsePortfolioEntry, PulseScanListItem } from "@/types/pulse";
+import type { PulseStatsResponse } from "@/server/pulse";
+import type { DesignSystemDTO, DesignTokens } from "@/types/design-tokens";
+import type { StaffingAlertsResponse } from "@/types/backstage";
+import type {
+  DevSignalAnalyticsDTO,
+  DevSignalAssessmentDTO,
+  DevSignalPipelineConfigDTO,
+  DevSignalStageResultDTO,
+  PublicVetSession,
+} from "@/types/devsignal";
+import type { DevSignalScoreBreakdown } from "@/server/devsignal/scoring";
+import type { Session } from "next-auth";
+import type { CodeClearCandidateDetail } from "@/types/codeclear";
+import type {
+  CalendarEvent,
+  ClientMeetingsResponse,
+  GmailMessage,
+  ProposalListResponse,
+  PulseEmbedConfig,
+} from "@/lib/api";
+import type { PulseLeadPreview } from "@/server/pulse-lite/leads-admin";
 import type { WikiDTO } from "@/server/wiki";
 import { GITWORK } from "@/lib/gitwork";
 import { DEFAULT_INTAKE_CATEGORIES } from "@/lib/wiki-intake-categories";
@@ -85,7 +111,7 @@ const DEV = { id: "demo-dev", name: "Alex Rivera", avatarUrl: null };
 const DEV_EMAIL = "alex@gitwork.co.uk";
 
 /** Static session for the demo's nested SessionProvider (fixed expiry — no Date). */
-export const demoSession = {
+export const demoSession: Session = {
   user: {
     id: DEV.id,
     name: DEV.name,
@@ -437,21 +463,23 @@ const demoAttention: TaskAttentionDTO = {
 
 // ─── Account ─────────────────────────────────────────────────────────────────────
 
-const demoAccount = {
+const demoAccount: { account: AccountProfile } = {
   account: {
     id: DEV.id,
     email: DEV_EMAIL,
     name: DEV.name,
     avatarUrl: "",
+    avatarPosition: "",
     role: "DEVELOPER",
     permissions: demoSession.user.permissions,
     showDevRates: false,
+    docsBackupEnabled: false,
   },
 };
 
 // ─── Calendar (today) ────────────────────────────────────────────────────────────
 
-const demoCalendar = {
+const demoCalendar: { connected: boolean; events: CalendarEvent[] } = {
   connected: true,
   events: [
     {
@@ -486,20 +514,20 @@ const demoCalendar = {
 
 // ─── Gmail ───────────────────────────────────────────────────────────────────────
 
-const demoGmail = {
+const demoGmail: { connected: boolean; messages: GmailMessage[] } = {
   connected: true,
   messages: [
-    { id: "m1", subject: "Re: webhook signature mismatch", from: "Priya Shah <priya@northwind.co>", snippet: "Thanks — the retry flow looks right. One question on…", date: atDays(0), unread: true },
-    { id: "m2", subject: "Design tokens v3 — handoff", from: "Marco Bianchi <marco@gitwork.co.uk>", snippet: "Pushed the updated tokens, ready when you are.", date: atDays(0), unread: true },
-    { id: "m3", subject: "Lunch before the design review?", from: "Sam Okafor <sam@gitwork.co.uk>", snippet: "Fancy grabbing something at 12:30?", date: atDays(0), unread: true },
-    { id: "m4", subject: "[Fairway Nine] Staging deploy succeeded", from: "GitHub Actions <ci@github.com>", snippet: "Deployment to staging completed in 4m 12s.", date: atDays(-1), unread: false },
-    { id: "m5", subject: "Your weekly Gitwork digest", from: "Foundry <no-reply@gitwork.co.uk>", snippet: "12 tasks moved, 3 shipped, 2 meetings summarised.", date: atDays(-1), unread: false },
+    { id: "m1", threadId: "m1", subject: "Re: webhook signature mismatch", from: "Priya Shah <priya@northwind.co>", snippet: "Thanks — the retry flow looks right. One question on…", date: atDays(0), unread: true },
+    { id: "m2", threadId: "m2", subject: "Design tokens v3 — handoff", from: "Marco Bianchi <marco@gitwork.co.uk>", snippet: "Pushed the updated tokens, ready when you are.", date: atDays(0), unread: true },
+    { id: "m3", threadId: "m3", subject: "Lunch before the design review?", from: "Sam Okafor <sam@gitwork.co.uk>", snippet: "Fancy grabbing something at 12:30?", date: atDays(0), unread: true },
+    { id: "m4", threadId: "m4", subject: "[Fairway Nine] Staging deploy succeeded", from: "GitHub Actions <ci@github.com>", snippet: "Deployment to staging completed in 4m 12s.", date: atDays(-1), unread: false },
+    { id: "m5", threadId: "m5", subject: "Your weekly Gitwork digest", from: "Foundry <no-reply@gitwork.co.uk>", snippet: "12 tasks moved, 3 shipped, 2 meetings summarised.", date: atDays(-1), unread: false },
   ],
 };
 
 // ─── Desk: Scribe action items ──────────────────────────────────────────────────
 
-const demoActionItems = {
+const demoActionItems: { items: DeskActionItemDTO[] } = {
   items: [
     { id: "ai1", title: "Send Priya the updated webhook flow diagram", text: "Send Priya the updated webhook flow diagram after standup.", meetingId: "mtg1", meetingTitle: "Northwind — Sprint planning", meetingStartedAt: atDays(-1), clientSlug: "northwind", clientName: "Northwind Studio", hasTask: false },
     { id: "ai2", title: "Confirm timezone handling with Fairway Nine", text: "Confirm the booking timezone edge cases with the Fairway Nine team.", meetingId: "mtg2", meetingTitle: "Fairway Nine weekly", meetingStartedAt: atDays(-2), clientSlug: "fairway-nine", clientName: "Fairway Nine", hasTask: true },
@@ -509,7 +537,7 @@ const demoActionItems = {
 
 // ─── Desk: Slack activity ────────────────────────────────────────────────────────
 
-const demoSlack = {
+const demoSlack: DeskSlackResult = {
   configured: true,
   reason: "ok" as const,
   messages: [
@@ -522,7 +550,10 @@ const demoSlack = {
 
 // ─── Clients list ────────────────────────────────────────────────────────────────
 
-const demoClients = {
+// Deliberately a subset: the demo's client picker reads id/name/slug and nothing else, so the
+// fixture is `Partial<ClientListItem>` rather than 30 invented fields. TypeScript's
+// excess-property check still fires on a `Partial<T>` literal, so a misspelt key is an error.
+const demoClients: { clients: Partial<ClientListItem>[] } = {
   clients: CLIENTS.map((c) => ({ id: c.id, name: c.name, slug: c.slug })),
 };
 
@@ -588,7 +619,7 @@ export const demoGanttMilestones: GanttMilestone[] = [
 
 // ─── Design system (Northwind brand tokens) ─────────────────────────────────────
 
-const demoDesignTokens = {
+const demoDesignTokens: DesignTokens = {
   clientName: "Northwind Studio",
   version: "1.0",
   generatedAt: atDays(-6),
@@ -652,7 +683,7 @@ const demoDesignTokens = {
     ":root {\n  --colour-primary: #14B8A6;\n  --colour-ink: #0F172A;\n  --colour-midnight: #0B1020;\n  --radius-md: 10px;\n  --font-display: 'Clash Display';\n  --font-body: 'Inter';\n}",
 };
 
-const demoDesignSystem = {
+const demoDesignSystem: DesignSystemDTO = {
   exists: true,
   enabled: true,
   showFoundryBranding: true,
@@ -955,7 +986,9 @@ function wikiTimelineFromGantt(): WikiDTO["timeline"] {
   return {
     blocks,
     releases,
-    milestones: demoGanttMilestones as WikiDTO["timeline"]["milestones"],
+    // Mapped, not cast: `GanttMilestone.color` is optional and the wiki's is required, so the
+    // old `as` was papering over exactly one real difference. Filling it is honest and checked.
+    milestones: demoGanttMilestones.map((m) => ({ id: m.id, name: m.name, date: m.date, color: m.color ?? null })),
     // ⚠️ Live work attached to no phase — the exact shape that made RoundUp render an
     // empty "ON NOW" on GAIA Bloom while two tasks were in progress. A demo without it
     // cannot express the bug and therefore cannot verify the fix (§42.15).
@@ -2049,7 +2082,7 @@ const demoClientDetail: ClientDetailRecord = {
 };
 
 // Scribe — dummy meeting notes for the client detail's "Meeting notes" panel.
-const demoClientMeetings = {
+const demoClientMeetings: ClientMeetingsResponse = {
   calendarConnected: true,
   candidates: [],
   query: null,
@@ -2216,7 +2249,7 @@ function denseClientMeetings() {
   };
 }
 
-const demoSlackActivity = {
+const demoSlackActivity: ClientSlackActivity = {
   configured: true,
   channelName: "northwind-internal",
   summary: null,
@@ -2236,7 +2269,7 @@ const demoSlackActivity = {
 
 // ─── Docs (dev-visible document types only: HANDOVER / REPORT / BRIEF / OTHER) ────
 
-const demoProposals = {
+const demoProposals: ProposalListResponse = {
   proposals: [
     { id: "d1", title: "Northwind — API handover", clientName: "Northwind Studio", status: "ACCEPTED", updatedAt: atDays(-2), documentType: "HANDOVER", documentNumber: "HAND-014", ownerName: "Alex Rivera", sectionCount: 7 },
     { id: "d2", title: "Cadenza — Sprint 8 report", clientName: "Cadenza", status: "SENT", updatedAt: atDays(-1), documentType: "REPORT", documentNumber: "REP-032", ownerName: "Alex Rivera", sectionCount: 5 },
@@ -2655,7 +2688,7 @@ const demoMilestones = demoGanttMilestones.map((m) => ({
 
 // ─── Care (support triage) ───────────────────────────────────────────────────────
 
-const demoSupportClients = {
+const demoSupportClients: { clients: SupportClient[] } = {
   clients: [
     { id: "sup-northwind", name: "Northwind Studio", slug: "northwind", status: "active", unreadCount: 3, supportDaysPerMonth: 5, supportDaysUsed: 2 },
     { id: "sup-cadenza", name: "Cadenza", slug: "cadenza", status: "active", unreadCount: 1, supportDaysPerMonth: 3, supportDaysUsed: 1 },
@@ -2680,10 +2713,10 @@ const demoSupportClients = {
  * Threads are written as real support exchanges (an inbound, our reply, a follow-up) so the
  * transcript, the Replied state and the reply gating all have something true to render.
  */
-const demoSupportMembers = [
-  { id: "sup-m1", name: "Harry Beckett", email: "harry@example.com" },
-  { id: "sup-m2", name: "Sian Lloyd", email: "sian@example.com" },
-  { id: "sup-m3", name: "Alex Rivera", email: "alex@example.com" },
+const demoSupportMembers: SupportMemberLite[] = [
+  { id: "sup-m1", name: "Harry Beckett", email: "harry@example.com", role: "ADMIN" },
+  { id: "sup-m2", name: "Sian Lloyd", email: "sian@example.com", role: "STAFF" },
+  { id: "sup-m3", name: "Alex Rivera", email: "alex@example.com", role: "DEVELOPER" },
 ];
 
 /**
@@ -2701,7 +2734,7 @@ const demoSupportMembers = [
  * express a state cannot verify it (§42.8, §43.3), and "a channel has stopped delivering" is the
  * state Care most needs to show, so one of these is deliberately broken.
  */
-const demoSupportConnections = [
+const demoSupportConnections: Connection[] = [
   { id: "sup-cn1", clientId: "sup-northwind", source: "imap", health: "connected", label: "support@northwind.co", authMode: "manual", scraperConfig: {}, lastSyncedAt: atDays(0), lastSyncStats: { ingested: 4, filtered: 1, errors: [], at: atDays(0), consecutiveFailures: 0, failingSince: null } },
   { id: "sup-cn2", clientId: "sup-northwind", source: "discord", health: "connected", label: "Northwind community", authMode: "bot_token", scraperConfig: {}, lastSyncedAt: atDays(0), lastSyncStats: { ingested: 2, filtered: 0, errors: [], at: atDays(0), consecutiveFailures: 0, failingSince: null } },
   {
@@ -2945,12 +2978,12 @@ const demoCalendarMonth = buildCalendarMonth();
 
 // Desk "around the team" holidays + staffing alerts (added when On Your Desk gained
 // the dual-clocks / around-the-team strip + staffing overview).
-const demoDeskHolidays = {
+const demoDeskHolidays: DeskHolidays = {
   gb: { name: "Summer bank holiday", date: atDays(20), inDays: 20 },
   pk: { name: "Independence Day", date: atDays(12), inDays: 12 },
 };
 
-const demoStaffingAlerts = {
+const demoStaffingAlerts: StaffingAlertsResponse = {
   windowDays: 30,
   generatedAt: atDays(0),
   alerts: [
@@ -2962,7 +2995,7 @@ const demoStaffingAlerts = {
 
 // ─── DevSignal (developer vetting) demo data ────────────────────────────────────
 
-const demoDevSignalStageResults = [
+const demoDevSignalStageResults: DevSignalStageResultDTO[] = [
   {
     id: "ds-st-1",
     stageId: "application_intake",
@@ -3067,7 +3100,7 @@ const demoDevSignalStageResults = [
   },
 ];
 
-const demoDevSignalBreakdown = {
+const demoDevSignalBreakdown: DevSignalScoreBreakdown = {
   formulaVersion: "devsignal-score-v1",
   configVersion: "v1",
   pipelineVersion: "devsignal-pipeline-v1",
@@ -3086,7 +3119,7 @@ const demoDevSignalBreakdown = {
   ],
 };
 
-const demoDevSignalDetail = {
+const demoDevSignalDetail: DevSignalAssessmentDTO = {
   id: "ds-1",
   workspaceId: "demo-ws",
   clientId: null,
@@ -3119,7 +3152,7 @@ const demoDevSignalDetail = {
   outcomeLinks: [],
 };
 
-const demoDevSignalAssessments = [
+const demoDevSignalAssessments: DevSignalAssessmentDTO[] = [
   {
     id: "ds-1",
     workspaceId: "demo-ws",
@@ -3226,7 +3259,11 @@ const demoDevSignalAssessments = [
     decisionReason: "Coding challenge tests failed; footprint showed no delivery history.",
     finalScore: 46,
     scoreBreakdown: null,
-    bestMatchSummary: { label: "NOT_A_MATCH", labelDisplay: "Not a match", strengths: [], vetted: false },
+    // ⚠️ "NOT_A_MATCH" is not a `BestMatchLabel` — it never was. The union is
+    // BEST_MATCH | STRONG_MATCH | QUALIFIED_MATCH | REVIEW_RECOMMENDED | NOT_RECOMMENDED, and
+    // the display string comes from BEST_MATCH_DISPLAY, so the demo was showing a label the
+    // product cannot produce. Found the day this fixture was typed.
+    bestMatchSummary: { label: "NOT_RECOMMENDED", labelDisplay: "Not recommended", strengths: [], vetted: false },
     flags: [],
     promotedToCode: false,
     promotedToCodeAt: null,
@@ -3237,7 +3274,7 @@ const demoDevSignalAssessments = [
   },
 ];
 
-const demoDevSignalNewAssessment = {
+const demoDevSignalNewAssessment: DevSignalAssessmentDTO = {
   ...demoDevSignalDetail,
   id: "ds-new",
   candidateName: "New candidate",
@@ -3250,7 +3287,7 @@ const demoDevSignalNewAssessment = {
   stageResults: [],
 };
 
-const demoDevSignalAnalytics = {
+const demoDevSignalAnalytics: DevSignalAnalyticsDTO = {
   total: 5,
   byStatus: { PENDING_HUMAN: 1, COMPLETED: 2, DRAFT: 1, RUNNING: 1 },
   byDecision: { APPROVED_FOR_STAGING: 1, APPROVED_FOR_CODE: 1, NONE: 2, REJECTED: 1 },
@@ -3268,7 +3305,7 @@ const demoDevSignalAnalytics = {
   ],
 };
 
-const demoDevSignalConfig = {
+const demoDevSignalConfig: DevSignalPipelineConfigDTO = {
   id: "ds-cfg-1",
   clientId: null,
   name: "Default",
@@ -3310,7 +3347,7 @@ const demoDevSignalConfig = {
 };
 
 // Minimal candidate for the detail's outcome-links placement picker.
-const demoDevSignalCandidate = {
+const demoDevSignalCandidate: Partial<CodeClearCandidateDetail> = {
   id: "ds-cand-1",
   name: "Octavia Catelyn",
   githubHandle: "octocat",
@@ -3341,7 +3378,7 @@ const demoDevSignalCandidate = {
 // Candidate-facing /vet/[token] flow (the 8-step funnel) — served to the demo
 // so the full candidate experience is walkable. The coding challenge ships its
 // real hidden tests so the in-browser Web Worker runner actually executes.
-const demoVetSession = {
+const demoVetSession: PublicVetSession = {
   token: "demo-token-octocat",
   status: "DRAFT",
   submitted: false,
@@ -3360,11 +3397,38 @@ const demoVetSession = {
   consentGiven: true,
   notice: { version: "v1", ...DEFAULT_NOTICE_CONTENT },
   githubConnected: true,
+  // ⚠️ Required by PublicVetSession, and never sent until this fixture was typed — so the
+  // demo's step 4 ("Extend a real internal spec") always rendered its empty state, "No starter
+  // task assigned", and `StarterFluencyStep` could not be seen at all on the only surface where
+  // an auth-gated funnel can be seen.
+  starterFixture: {
+    starterId: "starter-webhook-replay",
+    starterName: "Webhook replay console",
+    starterSummary: "A small internal console for replaying failed webhook deliveries.",
+    techStack: ["Next.js", "TypeScript", "Postgres"],
+    briefMarkdown:
+      "The console lists failed deliveries and lets an operator replay one.\n\n" +
+      "Replays are not idempotent: pressing Replay twice sends the payload twice, and operators " +
+      "have done it. Extend the spec so a replay is safe to repeat, and say what the UI shows " +
+      "while one is in flight.",
+    scenario:
+      "You have joined the team that owns this console. Read the brief and extend it — we are " +
+      "reading how you think about the edges, not counting lines.",
+  },
+  starterFluencySubmitted: false,
   challenge: {
     id: "js-normalise-invoices",
     title: "Normalise invoice totals",
     language: "javascript",
     difficulty: "junior",
+    // ⚠️ Required by PublicChallengeDTO and rendered by the challenge runner
+    // (`src/app/vet/[token]/challenge-runner.tsx`). Without it the demo's candidate funnel
+    // showed a coding challenge with no brief at all.
+    promptMarkdown:
+      "Write `invoiceTotal(lineItems)`.\n\n" +
+      "Each line item is `{ qty, unitPrice, taxRate }`. Return the total of every line — " +
+      "`qty × unitPrice × (1 + taxRate)` — rounded to two decimal places. " +
+      "An empty list totals `0`.",
     functionName: "invoiceTotal",
     starterCode: "function invoiceTotal(lineItems) {\n  // your code here\n}\n",
     timeLimitSec: 1500,
@@ -3864,15 +3928,22 @@ function demoCodePortfolio() {
   return { repos, items: DEMO_PORTFOLIO_REPORTS.flatMap((r) => workItemsFor(r.report)), unmeasured: [] };
 }
 
-const demoPulseScanList = [
-  { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: RECORDED_FAIRWAY_SCORE, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
-  { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: RECORDED_CADENZA_SCORE, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
-  { id: "scan-northwind", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 86, generatedProposalId: null, createdAt: atDays(-5), updatedAt: atDays(-5) },
+/**
+ * ⚠️ `isShared` and `shareToken` are required on `PulseScanListItem` (§39.1: the badge studio
+ * reads them to decide whether a scan can carry a public badge yet). No demo row carried either
+ * until this file was typed, because two `as unknown as PulseScanListItem[]` casts hid it — so
+ * the studio's "share this report first" path could never be rendered on the demo. The newest
+ * Northwind scan is shared so both states are present.
+ */
+const demoPulseScanList: PulseScanListItem[] = [
+  { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: RECORDED_FAIRWAY_SCORE, generatedProposalId: null, isShared: false, shareToken: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
+  { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: RECORDED_CADENZA_SCORE, generatedProposalId: null, isShared: false, shareToken: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
+  { id: "scan-northwind", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 86, generatedProposalId: null, isShared: true, shareToken: "demo-share-northwind", createdAt: atDays(-5), updatedAt: atDays(-5) },
   // Earlier scans of the same site, so the demo has a project history and a trend to show.
-  { id: "scan-northwind-prev", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 80, generatedProposalId: null, createdAt: atDays(-33), updatedAt: atDays(-33) },
-  { id: "scan-northwind-first", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co/", inputGithubRepo: null, status: "COMPLETED", healthScore: 71, generatedProposalId: null, createdAt: atDays(-61), updatedAt: atDays(-61) },
-  { id: "scan-cadenza-prev", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: RECORDED_CADENZA_SCORE - 4, generatedProposalId: null, createdAt: atDays(-30), updatedAt: atDays(-30) },
-  { id: "scan-fairway-prev", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: RECORDED_FAIRWAY_SCORE + 4, generatedProposalId: null, createdAt: atDays(-20), updatedAt: atDays(-20) },
+  { id: "scan-northwind-prev", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 80, generatedProposalId: null, isShared: false, shareToken: null, createdAt: atDays(-33), updatedAt: atDays(-33) },
+  { id: "scan-northwind-first", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co/", inputGithubRepo: null, status: "COMPLETED", healthScore: 71, generatedProposalId: null, isShared: false, shareToken: null, createdAt: atDays(-61), updatedAt: atDays(-61) },
+  { id: "scan-cadenza-prev", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: RECORDED_CADENZA_SCORE - 4, generatedProposalId: null, isShared: false, shareToken: null, createdAt: atDays(-30), updatedAt: atDays(-30) },
+  { id: "scan-fairway-prev", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: RECORDED_FAIRWAY_SCORE + 4, generatedProposalId: null, isShared: false, shareToken: null, createdAt: atDays(-20), updatedAt: atDays(-20) },
 ];
 
 /**
@@ -3989,7 +4060,7 @@ const demoScanDiffs: Record<string, PulseScanDiff> = {
   "scan-fairway": demoScanDiffFairway,
 };
 
-const demoPulseStats = {
+const demoPulseStats: PulseStatsResponse = {
   totalScans: 3,
   completedScans: 3,
   avgHealthScore: Math.round((86 + RECORDED_CADENZA_SCORE + RECORDED_FAIRWAY_SCORE) / 3),
@@ -4004,7 +4075,7 @@ const demoPulseStats = {
   recentScans: demoPulseScanList,
 };
 
-const demoPulsePortfolio = [
+const demoPulsePortfolio: PulsePortfolioEntry[] = [
   { key: "client:northwind", clientId: WIKI_CLIENT.id, label: "Northwind Studio", scanCount: 3, latestScanId: "scan-northwind", latestScore: 86, latestStatus: "COMPLETED", lastScannedAt: atDays(-5), delta: 7, sparkline: [71, 74, 79, 86], worstScore: 86, monitor: { active: true, alerting: false }, running: false },
   { key: "client:cadenza", clientId: null, label: "Cadenza", scanCount: 2, latestScanId: "scan-cadenza", latestScore: RECORDED_CADENZA_SCORE, latestStatus: "COMPLETED", lastScannedAt: atDays(-2), delta: 4, sparkline: [RECORDED_CADENZA_SCORE - 4, RECORDED_CADENZA_SCORE], worstScore: RECORDED_CADENZA_SCORE - 4, monitor: null, running: false },
   { key: "client:fairway", clientId: null, label: "Fairway Nine", scanCount: 2, latestScanId: "scan-fairway", latestScore: RECORDED_FAIRWAY_SCORE, latestStatus: "COMPLETED", lastScannedAt: atDays(-1), delta: -4, sparkline: [RECORDED_FAIRWAY_SCORE + 4, RECORDED_FAIRWAY_SCORE], worstScore: RECORDED_FAIRWAY_SCORE, monitor: { active: true, alerting: true }, running: false },
@@ -5340,6 +5411,9 @@ export function resolveDemoApi(
       launchpad: demoLaunchpadNow(),
       // A copy: the fixture is mutated by writes, and React Query's structural sharing would
       // otherwise compare the cache against the very object that changed and see no change.
+      // `JSON.parse` returns `any`, so this `as` names the type rather than overriding one —
+      // it is the only kind of cast left in this file, and it cannot hide a shape difference
+      // because there is no source type to differ from.
       comparisons: JSON.parse(JSON.stringify(demoWiki.comparisons)) as WikiDTO["comparisons"],
       board: demoBoardSection(),
       courseRequestCounts: countCourseRequests(demoWiki.courseRequests),
@@ -5516,12 +5590,12 @@ export function resolveDemoApi(
   // Pulse (AI project validation) — 3 seeded reports.
   if (pathname === "/api/pulse/scans") return { scans: demoPulseScanList };
   if (pathname === "/api/pulse/code-portfolio") return demoCodePortfolio();
-  if (pathname === "/api/pulse/projects") return { projects: demoWithOpenFindings(buildProjects(demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[])) };
+  if (pathname === "/api/pulse/projects") return { projects: demoWithOpenFindings(buildProjects(demoPulseScanList)) };
   {
     const pp = pathname.match(/^\/api\/pulse\/projects\/([^/]+)$/);
     if (pp) {
       const key = decodeTargetKey(pp[1]);
-      const scans = (demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[]).filter((sc) => targetKey(sc) === key).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      const scans = demoPulseScanList.filter((sc) => targetKey(sc) === key).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
       return scans.length ? { project: demoWithOpenFindings(buildProjects(scans))[0], scans } : { project: null, scans: [] };
     }
   }
@@ -5666,7 +5740,7 @@ function demoPulseLeads(now: number) {
   ];
 }
 
-const demoLeadChecks = [
+const demoLeadChecks: PulseLeadPreview["checks"] = [
   { checkKey: "csp_header", category: "Security", label: "Content-Security-Policy", status: "FAIL", detail: "No Content-Security-Policy header." },
   { checkKey: "privacy_policy", category: "Legal & Compliance", label: "Privacy Policy", status: "FAIL", detail: "No privacy policy link found on the page." },
   { checkKey: "x_frame_options", category: "Security", label: "X-Frame-Options header", status: "WARN", detail: "No X-Frame-Options header and no CSP frame-ancestors directive." },
@@ -5687,7 +5761,7 @@ function demoPulseMonitors(now: number) {
   ];
 }
 
-const demoPulseEmbedConfig = {
+const demoPulseEmbedConfig: PulseEmbedConfig = {
   enabled: true,
   freeCheckKeys: null,
   bookingUrl: "https://gitwork.co.uk/contact",

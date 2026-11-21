@@ -107,7 +107,7 @@ export function DemoShell({
   const handleDemoNav = useDemoLinkReroute();
 
   return (
-    <SessionProvider session={demoSession as never}>
+    <SessionProvider session={demoSession}>
       <div
         className="relative isolate flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]"
         onClickCapture={handleDemoNav}
