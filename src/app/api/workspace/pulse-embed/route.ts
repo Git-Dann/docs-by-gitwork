@@ -9,6 +9,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { assertAtLeastAdmin, requireAuthedUser } from "@/server/auth/effective-user";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
@@ -53,6 +54,10 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    // ⚠️ This writes what the PUBLIC embed shows — the kill switch, the curated check list
+    // and the booking URL — and had no permission check at all, so any member could change
+    // what anonymous visitors on gitwork.co.uk see.
+    assertAtLeastAdmin(await requireAuthedUser(request));
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") return apiError("Invalid JSON body", 400);

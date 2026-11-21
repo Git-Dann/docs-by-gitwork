@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
+import { assertAtLeastAdmin, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { z } from "zod";
 import { apiOk, fromError, apiError } from "@/lib/api-response";
 import { listAgentConfigs, saveAgentConfig } from "@/server/agent-config";
-import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
+    assertAtLeastAdmin(await requireAuthedUser(request));
     const agents = await listAgentConfigs(await workspaceIdForRequest(request));
     return apiOk(agents);
   } catch (e) {

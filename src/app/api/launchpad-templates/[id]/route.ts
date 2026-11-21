@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    assertCan(await getEffectiveUserOrNull(_request), canManageClients, "read a Launchpad template");
     const { id } = await params;
     const template = await getLaunchpadTemplate(await workspaceIdForRequest(_request), id);
     if (!template) return apiError("Template not found", 404);

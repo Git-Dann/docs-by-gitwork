@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { proofDocumentInclude, serializeProofDocument } from "@/server/proof";
@@ -12,6 +13,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "edit a proof document");
     const body = proofUpdateSchema.parse(await request.json());
     const workspace = { id: await workspaceIdForRequest(request) };
     const { id } = await context.params;

@@ -8,6 +8,7 @@
  */
 
 import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { assertAtLeastAdmin, requireAuthedUser } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { getSlackBotToken } from "@/server/slack/client";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
@@ -41,6 +42,7 @@ interface SlackApiResponse {
 
 export async function GET(request: Request) {
   try {
+    assertAtLeastAdmin(await requireAuthedUser(request));
     const workspace = { id: await workspaceIdForRequest(request) };
     const wsWithToken = await prisma.workspace.findUnique({
       where: { id: workspace.id },

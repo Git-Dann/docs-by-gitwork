@@ -145,6 +145,21 @@ describe("routeFiles and handlers", () => {
     expect(preamble(src)).toContain(`import { x }`);
   });
 
+  it("sees `export const GET = handler`, which a function-only splitter makes invisible", () => {
+    const src = [`async function ping() { return ok(); }`, `export const GET = ping;`, `export const POST = ping;`].join(
+      "\n",
+    );
+    const hs = handlers(src);
+    expect(hs.map((h) => h.method).sort()).toEqual(["GET", "POST"]);
+    // The logic is in the named function above, so the body is the whole file.
+    expect(hs[0].body).toContain("async function ping");
+  });
+
+  it("does not report a const export twice when the same method is also a function", () => {
+    const src = [`export async function GET() { return a(); }`, `export const POST = GET;`].join("\n");
+    expect(handlers(src).map((h) => h.method).sort()).toEqual(["GET", "POST"]);
+  });
+
   it("does not let a guarded POST vouch for an ungated GET", () => {
     const src = [
       `export async function GET(r) { return listAll(); }`,

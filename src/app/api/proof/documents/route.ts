@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { assertCan, canViewDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canViewDocs, "list proof documents");
     const workspace = { id: await workspaceIdForRequest(request) };
     const proposalId = request.nextUrl.searchParams.get("proposalId")?.trim();
 

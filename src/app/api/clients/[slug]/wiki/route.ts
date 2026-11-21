@@ -6,7 +6,7 @@ import { internalCommentViewer } from "@/server/wiki-comment-viewer";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
-import { assertClientWriter } from "@/server/client-write-access";
+import { assertClientReader, assertClientWriter } from "@/server/client-write-access";
 
 export async function GET(
   req: NextRequest,
@@ -14,6 +14,7 @@ export async function GET(
 ) {
   try {
     const { slug } = await params;
+    await assertClientReader(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
     // `?courseRequests=0`: the app loads that list on its own (it's 5,000+ rows for Wedge).
     // `?board=0`: likewise the Board's cards (the summary still comes).

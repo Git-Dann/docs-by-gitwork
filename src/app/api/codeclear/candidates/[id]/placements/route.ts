@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { placementCreateSchema } from "@/server/validators";
@@ -12,6 +13,7 @@ type RouteContext = {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageCode, "create a placement");
     const workspace = { id: await workspaceIdForRequest(request) };
     const { id: candidateId } = await context.params;
 

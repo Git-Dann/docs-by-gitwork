@@ -3,7 +3,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { createCodeModule, loadWikiCodeHandover, setWikiCodeHandoverEnabled } from "@/server/wiki-code";
 import { clientIdForSlug } from "@/server/clients-scope";
-import { assertClientWriter } from "@/server/client-write-access";
+import { assertClientReader, assertClientWriter } from "@/server/client-write-access";
 
 const toggleSchema = z.object({ enabled: z.boolean() });
 const moduleSchema = z.object({
@@ -14,6 +14,7 @@ const moduleSchema = z.object({
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientReader(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await loadWikiCodeHandover(clientId));

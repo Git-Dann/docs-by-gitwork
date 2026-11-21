@@ -24,6 +24,7 @@ type RouteContext = {
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(_request), canManageCode, "read GitHub analysis runs");
     const workspace = { id: await workspaceIdForRequest(_request) };
     const { id } = await context.params;
     const candidate = await prisma.candidate.findFirst({

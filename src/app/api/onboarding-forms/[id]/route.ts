@@ -16,6 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    assertCan(await getEffectiveUserOrNull(_request), canManageClients, "read an onboarding form");
     const { id } = await params;
     const form = await getOnboardingForm(await workspaceIdForRequest(_request), id);
     if (!form) return apiError("Onboarding form not found", 404);
