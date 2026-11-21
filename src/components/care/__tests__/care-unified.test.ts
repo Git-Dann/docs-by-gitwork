@@ -68,17 +68,62 @@ describe("Care is one UI", () => {
 
   it("every moved capability is reachable from the cockpit or Care home", () => {
     const cockpit = read("src/components/care/client-cockpit.tsx");
-    for (const name of ["TicketsTableView", "ReportsView", "CareAutomationView", "ConnectorsView", "PortalLinkCard", "HealthBadge", "useSemanticSearch"]) {
+    /*
+     * ⚠️ `TicketsTableView` left this list in Nov 2026, and that is the ONE removal this guard
+     * is allowed: Tickets was retired, not mislaid. The cockpit never wrote a ticket — `tickets/`
+     * was a view of rows nothing created, and the two metric routes under it read conversations
+     * — so keeping the tab meant offering a screen that could only ever be empty. Everything else
+     * here is a capability the legacy dashboard exclusively owned; dropping one to make this test
+     * pass is how the one-UI merge would quietly regress.
+     */
+    for (const name of ["ReportsView", "CareAutomationView", "ConnectorsView", "PortalLinkCard", "HealthBadge", "useSemanticSearch"]) {
       expect(cockpit, name).toContain(name);
     }
     expect(read("src/components/care/care-home.tsx")).toContain("AddClientModal");
+  });
+
+  it("Tickets is retired from the UI, but its tables and write routes are kept", () => {
+    // Dropping a table or an enum value is a data-losing schema change, and the guarded
+    // `prisma db push` skips the WHOLE sync when it sees one (CLAUDE.md §2). An integration
+    // could also still POST a ticket, so the write routes stay.
+    expect(read("src/lib/care-links.ts")).not.toMatch(/"tickets"/);
+    expect(existsSync(join(root, "src/components/care/care-tickets.tsx"))).toBe(false);
+    expect(existsSync(join(root, "src/components/care/care-tickets-kanban.tsx"))).toBe(false);
+    expect(existsSync(join(root, "src/app/api/support/clients/[clientId]/tickets/route.ts"))).toBe(true);
+    expect(read("prisma/schema.prisma")).toMatch(/model SupportTicket\b/);
+  });
+
+  it("the performance strip reads conversations, so it survives Tickets", () => {
+    // `getPerformanceMetricsForPeriod` touches SupportTicket nowhere — it was only ever named
+    // for tickets. The byte-identical `tickets/performance` and `tickets/stats` routes are gone;
+    // the conversations ones they duplicated are what the strip and the report pre-fill call.
+    // Matched on the REQUEST PATH, not on any mention: the comment above each fetcher names the
+    // retired route it used to call, and a bare `toContain` would read that as the bug.
+    const api = read("src/lib/api.ts");
+    const fetched = [...api.matchAll(/apiFetch\(`([^`]+)`/g)].map((m) => m[1]);
+    expect(fetched.some((p) => p.includes("/conversations/performance"))).toBe(true);
+    expect(fetched.filter((p) => /\/tickets\/(performance|stats)/.test(p))).toEqual([]);
+    expect(existsSync(join(root, "src/app/api/support/clients/[clientId]/conversations/performance/route.ts"))).toBe(true);
+    expect(existsSync(join(root, "src/app/api/support/clients/[clientId]/tickets/performance/route.ts"))).toBe(false);
   });
 });
 
 describe("permission gates are unchanged by the move", () => {
   it("Add client is only offered to whoever may manage Care (the route asserts the same)", () => {
+    /*
+     * Asserted on the GATE rather than on the control's shape. It used to pin
+     * `const addClientButton = canManageSupport ?` — a 10px mono text link in the Clients panel's
+     * header that REPLACED the client count — so the redesign that made it a real button in the
+     * hero failed a test about permissions for a reason that had nothing to do with permissions.
+     * What matters is that every "Add client" affordance sits behind `canManageSupport`.
+     */
     const home = stripComments(read("src/components/care/care-home.tsx"));
-    expect(home).toMatch(/const addClientButton = canManageSupport \?/);
+    const mentions = [...home.matchAll(/Add client/g)];
+    expect(mentions.length, "Care home should offer Add client").toBeGreaterThan(0);
+    for (const m of mentions) {
+      const before = home.slice(Math.max(0, m.index! - 400), m.index!);
+      expect(before, "every Add client control must be behind canManageSupport").toContain("canManageSupport");
+    }
     expect(stripComments(read("src/app/api/support/clients/route.ts"))).toMatch(/assertCan\(user, canManageSupport/);
   });
 

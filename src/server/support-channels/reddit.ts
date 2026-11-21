@@ -23,7 +23,7 @@ export const redditAdapter: ChannelAdapter = {
     const isFirstOrResync = !ctx.connection.lastSyncedAt;
     const afterUtc = ctx.connection.lastSyncedAt
       ? Math.floor(ctx.connection.lastSyncedAt.getTime() / 1000)
-      : lookbackSeconds(config?.lookbackDays, 7);
+      : lookbackSeconds(config?.lookbackDays, 7, ctx.connection.ingestFrom);
 
     const include = normalizeKeywords(config?.keywords);
     const exclude = normalizeKeywords(config?.excludeKeywords);

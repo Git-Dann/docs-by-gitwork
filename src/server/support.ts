@@ -13,6 +13,7 @@ import type {
   ConversationNote,
   ConversationViewCounts,
   ClientQueueSummary,
+  OldestAwaitingItem,
   ReplyState,
   Message,
   Ticket,
@@ -23,6 +24,7 @@ import type {
   SupportReportPayload,
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
+import { resetBatchMarker } from "@/lib/care-reset";
 import { dispatchNotification } from "@/server/notifications";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
@@ -198,6 +200,7 @@ export function serializeSupportClient(row: {
   reportingRecipient: string | null;
   reportDueDay: number | null;
   workspaceClientId?: string | null;
+  ingestOnly?: boolean | null;
   courseRequestOnly?: boolean | null;
   workspaceClient?: { slug: string } | null;
   _count?: { conversations?: number };
@@ -216,6 +219,7 @@ export function serializeSupportClient(row: {
     // is a different string for the same client ("big-wedge-golf" vs "wedge"), so gating on
     // `slug` above would silently never match.
     workspaceClientSlug: row.workspaceClient?.slug ?? undefined,
+    ingestOnly: row.ingestOnly ?? false,
     courseRequestOnly: row.courseRequestOnly ?? false,
     unreadCount: row._count?.conversations ?? 0,
   };
@@ -247,6 +251,7 @@ export function serializeConnection(row: {
   nextStep: string | null;
   scraperConfig: unknown;
   lastSyncedAt?: Date | null;
+  ingestFrom?: Date | null;
   lastSyncStats?: unknown;
   channelTokens?: Array<{ tokenData: unknown }>;
 }): Connection {
@@ -276,6 +281,7 @@ export function serializeConnection(row: {
         ) as Connection["scraperConfig"])
       : undefined,
     lastSyncedAt: row.lastSyncedAt ? row.lastSyncedAt.toISOString() : undefined,
+    ingestFrom: row.ingestFrom ? row.ingestFrom.toISOString() : undefined,
     lastSyncStats: (row.lastSyncStats as Connection["lastSyncStats"]) ?? undefined,
   };
 }
@@ -452,13 +458,16 @@ export function serializeAuditLog(row: {
   actorId: string | null;
   action: string;
   target: string | null;
+  metadata?: unknown;
   createdAt: Date;
 }): AuditLog {
+  const meta = (row.metadata ?? null) as { reason?: unknown } | null;
   return {
     id: row.id,
     clientId: row.clientId,
     actor: row.actorId ?? "System",
     action: row.action,
+    reason: typeof meta?.reason === "string" ? meta.reason : null,
     target: row.target ?? "",
     createdAt: row.createdAt.toISOString(),
   };
@@ -484,6 +493,16 @@ async function assertSupportClientInScope(user: EffectiveUser, supportClientId: 
 }
 
 // ─── SupportClient CRUD ───────────────────────────────────────────────────────
+
+/**
+ * Care clients we answer for, as a Prisma filter. The mirror of `isSupportDesk` in
+ * `src/lib/care-mode.ts` — keep the two in step.
+ *
+ * ⚠️ Both flags, not just `ingestOnly`: Wedge is `courseRequestOnly` today and nothing sets the
+ * new flag on it until someone does. Leaving the second clause out would put its 249 course-request
+ * conversations straight back into the awaiting total, which is the whole thing this removes.
+ */
+export const SUPPORT_DESK_CLIENT = { ingestOnly: false, courseRequestOnly: false } as const;
 
 export async function listSupportClients(
   workspaceId: string,
@@ -607,19 +626,23 @@ export async function getSupportDashboardSummary(
 ): Promise<SupportDashboardSummary> {
   const limit = options?.recentConversationLimit ?? 8;
 
+  // Every figure here is about the support desk, so ingest-only clients are out of all of them
+  // — a client whose mail we only harvest is not a client anyone is failing to answer.
+  const deskClients = { workspaceId, ...SUPPORT_DESK_CLIENT };
+
   const [clientCount, openTicketCount, queues, conversationRows] = await Promise.all([
-    prisma.supportClient.count({ where: { workspaceId } }),
+    prisma.supportClient.count({ where: deskClients }),
     // "Open" now means conversations needing a human (NEW or OPEN) — the conversation
     // is the unit of triage. Field name kept for back-compat with the HQ widget/iOS.
     prisma.supportConversation.count({
-      where: { status: { in: ["NEW", "OPEN"] }, client: { workspaceId } },
+      where: { status: { in: ["NEW", "OPEN"] }, client: deskClients },
     }),
     // Per-client awaiting-reply counts. Already indexed groupBys (§42.6) —
     // the same read the web's Care home and HQ widget use, so the phone and
     // the browser can never report different queues.
     getClientQueueSummaries(workspaceId),
     prisma.supportConversation.findMany({
-      where: { client: { workspaceId } },
+      where: { client: deskClients },
       orderBy: { receivedAt: "desc" },
       take: limit,
       include: {
@@ -637,6 +660,8 @@ export async function getSupportDashboardSummary(
             reportingRecipient: true,
             reportDueDay: true,
             workspaceClientId: true,
+            ingestOnly: true,
+            courseRequestOnly: true,
           },
         },
         tickets: { select: { id: true }, take: 1 },
@@ -700,12 +725,14 @@ export async function updateSupportClient(
     reportingRecipient: string;
     reportDueDay: number;
     workspaceClientId: string | null;
+    ingestOnly: boolean;
     courseRequestOnly: boolean;
   }>,
 ): Promise<SupportClient> {
   const row = await prisma.supportClient.update({
     where: { id: clientId },
     data: {
+      ...(data.ingestOnly !== undefined ? { ingestOnly: data.ingestOnly } : {}),
       ...(data.courseRequestOnly !== undefined ? { courseRequestOnly: data.courseRequestOnly } : {}),
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.slug !== undefined ? { slug: data.slug } : {}),
@@ -785,6 +812,54 @@ export async function oldestUnansweredInboundAt(clientId: string): Promise<Date 
     _min: { lastInboundAt: true },
   });
   return row._min.lastInboundAt ?? null;
+}
+
+/**
+ * The longest-waiting conversations across every support-desk client, worst first.
+ *
+ * Care home could tell you WHICH client was being let down and then left you to go and find the
+ * conversation yourself. This is the thing a desk is actually for: the next five people to
+ * answer, one click each, before you have picked a client at all. §42.10 put the same list on
+ * the cockpit's empty pane, where it was only ever seen by someone who had already chosen a
+ * client and then not opened anything.
+ *
+ * One indexed query, ordered on `lastInboundAt` — the customer's last message, which is what
+ * "waiting" means. `id` breaks ties so paging is stable and two runs agree.
+ */
+export async function listOldestAwaiting(
+  workspaceId: string,
+  limit = 6,
+): Promise<OldestAwaitingItem[]> {
+  const rows = await prisma.supportConversation.findMany({
+    where: {
+      client: { workspaceId, ...SUPPORT_DESK_CLIENT },
+      status: { in: ["NEW", "OPEN"] },
+      AND: [replyStateWhere("awaiting_reply")],
+    },
+    orderBy: [{ lastInboundAt: "asc" }, { id: "asc" }],
+    take: Math.min(Math.max(limit, 1), 20),
+    select: {
+      id: true,
+      clientId: true,
+      subject: true,
+      customerLabel: true,
+      source: true,
+      priority: true,
+      lastInboundAt: true,
+      client: { select: { name: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    clientId: r.clientId,
+    clientName: r.client.name,
+    subject: r.subject,
+    customerLabel: r.customerLabel,
+    source: r.source.toLowerCase() as SupportSource,
+    priority: r.priority.toLowerCase() as ConversationPriority,
+    // Never null in practice — `awaiting_reply` requires an inbound message — but typed honestly.
+    waitingSince: r.lastInboundAt?.toISOString() ?? null,
+  }));
 }
 
 export async function listConversations(
@@ -1024,17 +1099,31 @@ export async function getConversationViewCounts(
  * version — if the two disagreed, the home page and the cockpit would report different numbers for
  * the same client, which is exactly the class of thing that destroys trust in a dashboard.
  */
+/**
+ * Queue figures per client, for Care home, the HQ tile and the iOS dashboard.
+ *
+ * ⚠️ Ingest-only clients are excluded HERE rather than in each caller, because all four surfaces
+ * read this one function — so the exclusion is one line and they cannot disagree. Opening such a
+ * client's own queue still counts it honestly (`getConversationViewCounts` is deliberately
+ * untouched); what it must not do is tell Gitwork that 249 course-request emails are customers
+ * waiting on a reply.
+ */
 export async function getClientQueueSummaries(workspaceId: string): Promise<Record<string, ClientQueueSummary>> {
-  const scope: Prisma.SupportConversationWhereInput = { client: { workspaceId } };
+  const scope: Prisma.SupportConversationWhereInput = { client: { workspaceId, ...SUPPORT_DESK_CLIENT } };
   const active: Prisma.SupportConversationWhereInput = { ...scope, status: { in: ["NEW", "OPEN"] } };
   const awaiting: Prisma.SupportConversationWhereInput = {
     ...active,
     AND: [replyStateWhere("awaiting_reply")],
   };
 
-  const [openRows, awaitingRows, unassignedRows, urgentRows, oldestRows] = await Promise.all([
+  const [openRows, awaitingRows, repliedRows, unassignedRows, urgentRows, oldestRows, failingRows] = await Promise.all([
     prisma.supportConversation.groupBy({ by: ["clientId"], where: active, _count: { _all: true } }),
     prisma.supportConversation.groupBy({ by: ["clientId"], where: awaiting, _count: { _all: true } }),
+    prisma.supportConversation.groupBy({
+      by: ["clientId"],
+      where: { ...active, AND: [replyStateWhere("replied")] },
+      _count: { _all: true },
+    }),
     prisma.supportConversation.groupBy({
       by: ["clientId"],
       where: { ...awaiting, assigneeId: null },
@@ -1050,11 +1139,18 @@ export async function getClientQueueSummaries(workspaceId: string): Promise<Reco
       where: awaiting,
       _min: { lastInboundAt: true },
     }),
+    // A channel that has stopped delivering reads exactly like a quiet week, so the count rides
+    // with the queue figures instead of waiting on the Settings screen to be opened.
+    prisma.accountConnection.groupBy({
+      by: ["clientId"],
+      where: { health: "ERROR", client: { workspaceId, ...SUPPORT_DESK_CLIENT } },
+      _count: { _all: true },
+    }),
   ]);
 
   const out: Record<string, ClientQueueSummary> = {};
   const ensure = (clientId: string): ClientQueueSummary =>
-    (out[clientId] ??= { awaiting: 0, replied: 0, unassigned: 0, urgent: 0, open: 0, oldestAwaitingAt: null });
+    (out[clientId] ??= { awaiting: 0, replied: 0, unassigned: 0, urgent: 0, open: 0, oldestAwaitingAt: null, connectorsFailing: 0 });
 
   for (const r of openRows) ensure(r.clientId).open = r._count._all;
   for (const r of awaitingRows) ensure(r.clientId).awaiting = r._count._all;
@@ -1063,9 +1159,21 @@ export async function getClientQueueSummaries(workspaceId: string): Promise<Reco
   for (const r of oldestRows) {
     ensure(r.clientId).oldestAwaitingAt = r._min.lastInboundAt?.toISOString() ?? null;
   }
-  // "Replied" is the rest of the active set — derived rather than counted, saving a query and
-  // guaranteeing awaiting + replied === open instead of three numbers that can disagree.
-  for (const s of Object.values(out)) s.replied = Math.max(0, s.open - s.awaiting);
+  /*
+   * ⚠️ "Replied" is COUNTED, not derived from `open - awaiting`.
+   *
+   * Reply state has three values, not two: `awaiting_reply`, `replied` and `no_inbound` — a
+   * thread we started, or one rebuilt from the Sent folder, where no customer has written at all
+   * (§42.2). Subtracting folded `no_inbound` in with replied, so Care home said a client had
+   * N replied conversations while opening that client said something smaller, from the same
+   * data, on the next screen. Two numbers for one thing is exactly what destroys trust in a
+   * dashboard — the paragraph above this function says so about a different pair.
+   *
+   * It costs one more groupBy in a Promise.all that already runs five, and it uses the same
+   * `replyStateWhere("replied")` the per-client counts use, so they cannot disagree.
+   */
+  for (const r of repliedRows) ensure(r.clientId).replied = r._count._all;
+  for (const r of failingRows) ensure(r.clientId).connectorsFailing = r._count._all;
 
   return out;
 }
@@ -1230,6 +1338,100 @@ export async function reopenConversation(
   actor?: string,
 ): Promise<Conversation> {
   return setConversationTriage(convId, { status: "open" }, actor);
+}
+
+/**
+ * How many conversations a cutoff would close. Written, so the dialog can state the number
+ * before anything happens rather than after.
+ */
+export async function countConversationsOlderThan(clientId: string, before: Date): Promise<number> {
+  return prisma.supportConversation.count({ where: resetWhere(clientId, before) });
+}
+
+/**
+ * The rows one reset touches. Extracted so the preview and the write cannot select different
+ * things — a dry run that disagrees with the run is worse than no dry run.
+ *
+ * ⚠️ `lastMessageAt`, never `receivedAt`. `receivedAt` is stamped once at creation and never
+ * updated (§42.1 defect 4), so an old thread that got a reply yesterday would be closed by it.
+ * And a NULL `lastMessageAt` is deliberately NOT matched: it means the activity backfill has not
+ * reached that row yet, which is "we do not know how old this is", not "it is old" (§35).
+ *
+ * SNOOZED is never touched. A snooze is a decision someone made with a wake date on it; closing
+ * it would strand the thread between two states. Already-closed rows are left alone too, so a
+ * second run over a drained client is a no-op rather than a re-stamp.
+ */
+function resetWhere(clientId: string, before: Date): Prisma.SupportConversationWhereInput {
+  return {
+    clientId,
+    status: { in: ["NEW", "OPEN"] },
+    lastMessageAt: { not: null, lt: before },
+  };
+}
+
+/**
+ * Close everything on this client whose last message predates `before`.
+ *
+ * Nothing is deleted: the rows keep their thread, messages, notes and audit trail, and simply
+ * leave every open queue. A customer who writes again lands back in the queue on the next sync.
+ *
+ * ⚠️ It deliberately does NOT stamp `firstTriagedAt`, which `batchUpdateConversations` does and
+ * is right to for a human bulk-close. These rows were never triaged. Stamping them would tell
+ * `getPerformanceMetricsForPeriod` that we first responded to an August thread in November, and
+ * quietly poison the first-response figure in every report that has already been sent.
+ *
+ * Returns the count and the batch id, so the caller can offer a real undo and so "nothing
+ * happened" stays distinguishable from "there was nothing to close" (§53.3).
+ */
+export async function closeConversationsOlderThan(
+  clientId: string,
+  before: Date,
+  actor?: string,
+): Promise<{ closed: number; batchId: string }> {
+  const log = await createAuditLog(clientId, {
+    actor: actor ?? "user",
+    action: "conversations_bulk_closed",
+    metadata: { before: before.toISOString() },
+  });
+  const marker = resetBatchMarker(log.id);
+
+  const result = await prisma.supportConversation.updateMany({
+    where: resetWhere(clientId, before),
+    data: { status: "CLOSED", closedAt: new Date(), unread: false, closedReason: marker },
+  });
+
+  await createAuditLog(clientId, {
+    actor: actor ?? "user",
+    action: "conversations_bulk_closed_done",
+    target: log.id,
+    metadata: { before: before.toISOString(), closed: result.count },
+  });
+
+  return { closed: result.count, batchId: log.id };
+}
+
+/**
+ * Put one reset back, and only that one.
+ *
+ * Scoped to the batch marker rather than to a date, so a second reset run — or a conversation a
+ * person closed by hand in between — is never reopened by undoing the first.
+ */
+export async function undoConversationReset(
+  clientId: string,
+  batchId: string,
+  actor?: string,
+): Promise<{ reopened: number }> {
+  const result = await prisma.supportConversation.updateMany({
+    where: { clientId, closedReason: resetBatchMarker(batchId), status: "CLOSED" },
+    data: { status: "OPEN", closedAt: null, closedReason: null },
+  });
+  await createAuditLog(clientId, {
+    actor: actor ?? "user",
+    action: "conversations_bulk_close_undone",
+    target: batchId,
+    metadata: { reopened: result.count },
+  });
+  return { reopened: result.count };
 }
 
 export async function batchUpdateConversations(
@@ -2035,6 +2237,13 @@ export async function createConnection(
     secretRef?: string;
     nextStep?: string;
     scraperConfig?: Connection["scraperConfig"];
+    /**
+     * Never read mail from before this. Defaults to NOW, which is the half of Dan's ask about
+     * future clients: connecting a mailbox used to pull whatever the adapter's rolling lookback
+     * reached — 30 days by default — so Fellas' queue was 324 deep on the day it was connected.
+     * Pass null explicitly to read whatever the mailbox still holds.
+     */
+    ingestFrom?: Date | string | null;
   },
 ): Promise<Connection> {
   const row = await prisma.accountConnection.create({
@@ -2046,6 +2255,8 @@ export async function createConnection(
       health: data.health ? toDbHealth(data.health) : "NEEDS_SETUP",
       secretRef: data.secretRef ?? null,
       nextStep: data.nextStep ?? null,
+      ingestFrom:
+        data.ingestFrom === null ? null : data.ingestFrom ? new Date(data.ingestFrom) : new Date(),
       scraperConfig: data.scraperConfig
         ? (encryptScraperConfig(data.scraperConfig as Record<string, unknown>) as object)
         : undefined,
@@ -2063,6 +2274,8 @@ export async function updateConnection(
     secretRef: string;
     nextStep: string;
     scraperConfig: Connection["scraperConfig"];
+    /** ISO date, or null to read whatever the mailbox still holds. */
+    ingestFrom: string | null;
   }>,
 ): Promise<Connection> {
   // scraperConfig updates MERGE into the existing (decrypted) config rather than replace it.
@@ -2090,6 +2303,9 @@ export async function updateConnection(
       ...(data.secretRef !== undefined ? { secretRef: data.secretRef } : {}),
       ...(data.nextStep !== undefined ? { nextStep: data.nextStep } : {}),
       ...(scraperConfigUpdate !== undefined ? { scraperConfig: scraperConfigUpdate } : {}),
+      ...(data.ingestFrom !== undefined
+        ? { ingestFrom: data.ingestFrom ? new Date(data.ingestFrom) : null }
+        : {}),
     },
   });
   return serializeConnection(row);

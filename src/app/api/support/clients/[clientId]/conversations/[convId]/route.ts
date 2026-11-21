@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { getConversation, updateConversation } from "@/server/support";
 import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
@@ -26,7 +25,6 @@ export async function PATCH(
   { params }: { params: Promise<{ clientId: string; convId: string }> },
 ) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care conversations");
     const { clientId, convId } = await params;
     await requireSupportClient(request, clientId);
     await requireSupportRow("conversation", convId, clientId);

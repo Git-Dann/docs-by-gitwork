@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { getClientQueueSummaries } from "@/server/support";
-import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { requireSupportWorkspace } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: NextRequest) {
   try {
-    const summaries = await getClientQueueSummaries(await workspaceIdForRequest(request));
+    const summaries = await getClientQueueSummaries(await requireSupportWorkspace(request));
     return apiOk({ summaries });
   } catch (error) {
     return fromError(error);

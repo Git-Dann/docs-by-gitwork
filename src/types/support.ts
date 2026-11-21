@@ -43,6 +43,8 @@ export interface SupportClient {
    */
   workspaceClientSlug?: string;
   /** Support paused: ingest quietly, skip triage/rules, auto-import course requests. */
+  /** Not a support desk: ingested, never answered here. See `src/lib/care-mode.ts`. */
+  ingestOnly?: boolean;
   courseRequestOnly?: boolean;
   unreadCount?: number;
 }
@@ -67,6 +69,8 @@ export interface Connection {
   connectedEmail?: string;
   /** ISO timestamp of the last sync run (from the server). */
   lastSyncedAt?: string;
+  /** Never read mail from before this (ISO date). Undefined = whatever the mailbox still holds. */
+  ingestFrom?: string;
   /** Compact summary of the last sync run, for the Sync Health card. */
   lastSyncStats?: {
     fetched?: number | null;
@@ -196,6 +200,22 @@ export interface Conversation {
  * True per-view totals, counted in SQL over the whole client rather than derived from whatever
  * page happened to be loaded. Keys mirror the SAVED_VIEWS ids.
  */
+/**
+ * One row of Care home's "Needs you first" — the longest-waiting conversations across every
+ * support-desk client. Deliberately narrow: enough to decide whether to open it, nothing more.
+ */
+export interface OldestAwaitingItem {
+  id: string;
+  clientId: string;
+  clientName: string;
+  subject: string;
+  customerLabel: string;
+  source: SupportSource;
+  priority: ConversationPriority;
+  /** When the customer last wrote. Null only if a row somehow has no inbound stamp. */
+  waitingSince: string | null;
+}
+
 export interface ConversationViewCounts {
   awaiting: number;
   replied: number;
@@ -228,6 +248,14 @@ export interface ClientQueueSummary {
   open: number;
   /** ISO timestamp of the longest-waiting customer message, or null when nobody is waiting. */
   oldestAwaitingAt: string | null;
+  /**
+   * How many of this client's connectors have stopped working.
+   *
+   * A dead channel is the one thing a support queue can be most wrong about: it looks like a
+   * quiet week. So it rides with the queue figures rather than waiting to be noticed on the
+   * Settings screen, which is a screen nobody opens while things are fine.
+   */
+  connectorsFailing: number;
 }
 
 /** An internal, staff-only note on a conversation (never shown to the customer). */
@@ -294,6 +322,12 @@ export interface AuditLog {
   action: string;
   target: string;
   createdAt: string;
+  /**
+   * Why, in plain words, for the entries where "it happened" is not the whole story —
+   * `enrichment_failed` carries the reason an AI classification could not be made. Already run
+   * through `describeAiError`, never a provider's raw text. Null for every other action.
+   */
+  reason: string | null;
 }
 
 export interface SupportReportPayload {

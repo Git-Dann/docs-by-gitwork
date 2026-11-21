@@ -1,10 +1,20 @@
 "use client";
 
-import { ArrowUpTrayIcon, BoltIcon, ChartBarIcon, ChatBubbleLeftRightIcon, EnvelopeIcon, KeyIcon, StarIcon } from "@heroicons/react/24/outline";
+/*
+ * Care's own widgets and connector reference data.
+ *
+ * ⚠️ This file used to carry a SECOND copy of the Care vocabulary — `SourceIcon`, `SOURCE_LABEL`,
+ * `STATUS_LABEL`, `STATUS_TONE`, `PRIORITY_TONE` — alongside `care-constants.tsx`'s. They were not
+ * even the same thing: `STATUS_LABEL` meant TICKET status here and CONVERSATION status there,
+ * which is how two of them survived side by side, and this copy's `SourceIcon` handled `imap`
+ * while that one did not. Whichever screen you were on decided which answer you got. The
+ * vocabulary lives in `care-constants.tsx` now; nothing here re-exports it.
+ */
+
 import { useState } from "react";
 import { cn } from "@/lib/format";
 import { Modal } from "@/components/ui/modal";
-import type { ClientHealthScore, SupportSource, TicketPriority, TicketStatus } from "@/types/support";
+import type { ClientHealthScore, SupportSource } from "@/types/support";
 
 // ─── health badge ────────────────────────────────────────────────────────────
 
@@ -101,63 +111,8 @@ export function TrendBadge({ delta, previous }: { delta: number; previous?: numb
   );
 }
 
-function HighlightedText({ text, keywords }: { text: string; keywords: string[] }) {
-  if (keywords.length === 0) return <>{text}</>;
-  const pattern = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-  const regex = new RegExp(`(${pattern})`, "gi");
-  const parts = text.split(regex);
-  return (
-    <>
-      {parts.map((part, i) =>
-        regex.test(part) ? (
-          <mark key={i} className="rounded bg-amber-200 px-0.5 text-amber-900">
-            {part}
-          </mark>
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
-    </>
-  );
-}
 
-export function SourceIcon({ source, className }: { source: SupportSource; className?: string }) {
-  const cls = cn("h-4 w-4", className);
-  switch (source) {
-    case "gmail":
-    case "imap":
-      return <EnvelopeIcon className={cls} />;
-    case "reddit":
-    case "instagram":
-    case "discord":
-      return <ChatBubbleLeftRightIcon className={cls} />;
-    case "youtube":
-      return <BoltIcon className={cls} />;
-    case "stripe":
-      return <KeyIcon className={cls} />;
-    case "analytics":
-      return <ChartBarIcon className={cls} />;
-    case "app_reviews":
-      return <StarIcon className={cls} />;
-    case "webhook":
-      return <ArrowUpTrayIcon className={cls} />;
-    default:
-      return <BoltIcon className={cls} />;
-  }
-}
 
-export const SOURCE_LABEL: Record<SupportSource, string> = {
-  gmail: "Gmail",
-  imap: "Email (IMAP/SMTP)",
-  reddit: "Reddit",
-  instagram: "Instagram",
-  youtube: "YouTube",
-  discord: "Discord",
-  stripe: "Stripe",
-  analytics: "Analytics API",
-  app_reviews: "App Reviews",
-  webhook: "Webhook",
-};
 
 export const LIVE_SOURCES: SupportSource[] = ["gmail", "imap", "discord", "reddit", "analytics", "app_reviews", "webhook"];
 
@@ -189,28 +144,8 @@ export const ANALYTICS_ADAPTERS: { key: string; label: string; defaultBaseUrl: s
   { key: "generic", label: "Generic JSON API", defaultBaseUrl: "", requiresToken: false, hint: "Enter the full endpoint URL — every numeric field becomes a metric." },
 ];
 
-export const STATUS_LABEL: Record<TicketStatus, string> = {
-  open: "Open",
-  in_progress: "In progress",
-  dev_review: "Dev review",
-  awaiting_customer: "Awaiting customer",
-  resolved: "Resolved",
-};
 
-export const STATUS_TONE: Record<TicketStatus, string> = {
-  open: "bg-[var(--surface-1)] text-[var(--text-3)]",
-  in_progress: "bg-amber-50 text-amber-700 border border-amber-200",
-  dev_review: "bg-[var(--mist)] text-[var(--brand-700)] border border-[var(--mist-border)]",
-  awaiting_customer: "bg-purple-50 text-purple-700 border border-purple-200",
-  resolved: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-};
 
-export const PRIORITY_TONE: Record<TicketPriority, string> = {
-  urgent: "bg-red-50 text-red-700 border border-red-200",
-  high: "bg-amber-50 text-amber-700 border border-amber-200",
-  normal: "bg-[var(--surface-1)] text-[var(--text-3)]",
-  low: "bg-[var(--surface-1)] text-[var(--text-4)]",
-};
 
 // ─── shared modal ────────────────────────────────────────────────────────────
 

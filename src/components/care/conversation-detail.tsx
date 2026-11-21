@@ -678,7 +678,14 @@ export function ConversationDetail({
                 {notesQ.data?.notes.map((note) => (
                   <div key={note.id} className="rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-2">
                     <div className="widget-data-label mb-1">
-                      {note.authorId ?? "system"} · {formatWhen(note.createdAt)}
+                      {/* The id is a CUID. It was rendered raw until Nov 2026 — a note read
+                          "cm3x8k2p40001… · 2 days ago" — while the member list that names it was
+                          already loaded two hundred lines above. An author we cannot name is
+                          "Unknown", never their id: an id tells the reader nothing and looks
+                          like a fault. */}
+                      {note.authorId ? (members.find((m) => m.id === note.authorId)?.name ?? "Unknown") : "System"}
+                      {" · "}
+                      {formatWhen(note.createdAt)}
                     </div>
                     <p className="whitespace-pre-wrap text-[13px] text-[var(--text-2)]">{note.body}</p>
                   </div>

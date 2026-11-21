@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { listTickets, createTicket } from "@/server/support";
 import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
@@ -30,9 +29,8 @@ export async function POST(
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care tickets");
     const { clientId } = await params;
-    await requireSupportClient(request, clientId);
+    await requireSupportClient(request, clientId, "manage");
     const body = await request.json();
     if (typeof body?.conversationId === "string" && body.conversationId) {
       await requireSupportRow("conversation", body.conversationId, clientId);

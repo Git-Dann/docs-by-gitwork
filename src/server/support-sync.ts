@@ -7,6 +7,14 @@ import { toSyncContext } from "@/server/support-scraper-config";
 import { enrichConversations } from "@/server/care-agents/enrich";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
+import { careMode } from "@/lib/care-mode";
+import { notifyConnectorHealth } from "@/server/care-alerts";
+import {
+  nextConnectorHealth,
+  readHealthState,
+  SENDABLE_CONNECTION,
+  type ConnectorHealth,
+} from "@/lib/care-connector-health";
 
 // Re-exported for the API routes / agents that import these from here.
 export type { SyncContext, SyncResult, FilterReasons };
@@ -67,6 +75,35 @@ export async function buildSyncContext(connId: string): Promise<SyncContext> {
 export async function syncConnection(ctx: SyncContext): Promise<SyncResult> {
   const result = await runChannelSync(ctx);
 
+  /*
+   * ⚠️ Health used to be written as `...(errors.length > 0 ? {} : { health: "CONNECTED" })` —
+   * so it could only ever go UP. A mailbox whose app password had been revoked kept its green
+   * badge while every run failed and no mail arrived, which is the single thing Care most needs
+   * to be honest about. It degrades after two consecutive failures now (one run is a blip), and
+   * `care-connector-health.ts` carries the recovery path with it.
+   */
+  const outcome = nextConnectorHealth({
+    previousHealth: ctx.connection.health as ConnectorHealth,
+    previous: readHealthState(ctx.connection.lastSyncStats),
+    errors: result.errors,
+  });
+
+  /*
+   * ⚠️ `justFailed` / `justRecovered` were computed here and DISCARDED — the latch was armed and
+   * persisted in `ff19f83` and nothing ever fired on it, so a connector went red on a screen and
+   * told nobody. The transition is the alert: one per outage, by construction.
+   */
+  if (outcome.justFailed || outcome.justRecovered) {
+    notifyConnectorHealth({
+      workspaceId: ctx.workspace.id,
+      clientId: ctx.client.id,
+      clientName: ctx.client.name,
+      label: ctx.connection.label || ctx.connection.source,
+      recovered: outcome.justRecovered,
+      reason: result.errors[0] ?? null,
+    });
+  }
+
   try {
     await prisma.accountConnection.update({
       where: { id: ctx.connection.id },
@@ -79,8 +116,10 @@ export async function syncConnection(ctx: SyncContext): Promise<SyncResult> {
           hints: result.hints ?? [],
           errors: result.errors,
           at: new Date().toISOString(),
+          consecutiveFailures: outcome.consecutiveFailures,
+          failingSince: outcome.failingSince,
         } as object,
-        ...(result.errors.length > 0 ? {} : { health: "CONNECTED" }),
+        health: outcome.health,
       },
     });
   } catch {
@@ -110,8 +149,13 @@ export async function syncClientConnections(
     select: WORKSPACE_AI_SELECT,
   });
 
+  /*
+   * ⚠️ `health: "CONNECTED"` here would make a failing connector unreachable from the ONE button
+   * a person presses to fix it — flipping it to ERROR would strand it for good. A NEEDS_SETUP
+   * connector is genuinely not configured, so it stays out.
+   */
   const connections = await prisma.accountConnection.findMany({
-    where: { health: "CONNECTED", clientId },
+    where: { ...SENDABLE_CONNECTION, clientId },
     include: {
       channelTokens: true,
       client: { select: { id: true, name: true, slug: true } },
@@ -204,17 +248,20 @@ export async function runPostSyncHousekeeping({
     console.error("[support-sync] post-sync housekeeping failed", err);
   }
 
-  // Course-requests-only clients (support paused): never triage; instead auto-import the
-  // "New Feedback" course requests into the wiki. Runs on EVERY sync — not only when new mail
-  // arrived — so an already-ingested backlog still gets filed. The import dedupes by source
-  // conversation, so once caught up it is a cheap no-op (nothing new → no AI call).
+  // An ingest-only client is never triaged: their mail is harvested, not answered, so classifying
+  // it and running workflow rules over it would spend tokens on conversations nobody will read.
+  //
+  // ⚠️ The course-request IMPORT is gated on `courseRequestOnly` specifically, not on the mode.
+  // `ingestOnly` is the general form and a client carrying it has no golf-course pipeline to file
+  // anything into — running the importer against one would be looking for "New Feedback" emails
+  // in a wiki section that does not exist.
   const sc = await prisma.supportClient.findUnique({
     where: { id: clientId },
-    select: { courseRequestOnly: true, workspaceClientId: true },
+    select: { ingestOnly: true, courseRequestOnly: true, workspaceClientId: true },
   });
-  if (sc?.courseRequestOnly) {
+  if (sc && careMode(sc) === "ingest_only") {
     const wsClientId = sc.workspaceClientId;
-    if (wsClientId) {
+    if (sc.courseRequestOnly && wsClientId) {
       after(async () => {
         await runCourseFeedbackImport(wsClientId, { onlyCourseRequests: true }).catch(console.error);
       });

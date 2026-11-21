@@ -512,7 +512,23 @@ export function canManageClients(user: EffectiveUser): boolean {
 export function canShareClientTimeline(user: EffectiveUser): boolean {
   return can(user, "clients.shareTimeline");
 }
-/** Connect/disconnect channels + edit workflow rules in Care. */
+/**
+ * Open Care, read a conversation, reply to it, and triage it — close, snooze, assign, set
+ * status or priority, add a note, mark it read.
+ *
+ * ⚠️ Triage used to sit behind `support.manage`, whose label is "Connect channels and edit
+ * workflow rules". So a DEVELOPER — who holds `support`, the permission labelled "Open Care and
+ * answer conversations" — could send a reply and then not close the thread they had just
+ * answered, could not assign it to anyone, and could not even mark it read (the mark-read write
+ * is skipped client-side for exactly this reason, so their rows stayed bold for ever). The
+ * keyboard triage, the checkbox column and the bulk bar that were built to let someone burn a
+ * queue down were invisible to the largest role on the platform. The two gates now mean what
+ * their labels say.
+ */
+export function canUseSupport(user: EffectiveUser): boolean {
+  return can(user, "support");
+}
+/** Connect/disconnect channels, edit workflow rules, add a client, clear a backlog. Setup. */
 export function canManageSupport(user: EffectiveUser): boolean {
   return can(user, "support.manage");
 }

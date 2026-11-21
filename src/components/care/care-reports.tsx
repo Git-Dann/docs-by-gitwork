@@ -8,12 +8,14 @@ import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/motion/spinner";
 import type { AnalyticsReportMetric, SupportClient, SupportReport, SupportReportPayload } from "@/types/support";
-import { useCreateSupportReport, useDeleteSupportReport, useGenerateReportNarrative, useGenerateSupportReportDoc, useSupportConnections, useSupportReports, useTicketPerformance, useUpdateSupportReport } from "@/hooks/use-support";
-import { getTicketStats } from "@/lib/api";
+import { useCreateSupportReport, useDeleteSupportReport, useGenerateReportNarrative, useGenerateSupportReportDoc, useSupportConnections, useSupportReports, useCarePerformance, useUpdateSupportReport } from "@/hooks/use-support";
+import { getCareStats } from "@/lib/api";
 import { usePermissions } from "@/hooks/use-permissions";
 import { PerformanceStrip } from "./care-performance-strip";
 import Link from "next/link";
 import { TrendBadge } from "./care-shared";
+import { CarePanel } from "./care-panel";
+import { careSectionNumbers } from "@/lib/care-sections";
 import { careReportHref } from "@/lib/care-links";
 
 // ─── reports view ────────────────────────────────────────────────────────────
@@ -156,7 +158,7 @@ function ReportBuilder({
   }
 
   const generateNarrative = useGenerateReportNarrative(clientId);
-  const { data: reportPerf } = useTicketPerformance(clientId, p.periodStart, p.periodEnd);
+  const { data: reportPerf } = useCarePerformance(clientId, p.periodStart, p.periodEnd);
   const [narrativeMsg, setNarrativeMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   async function handleWriteNarrative() {
@@ -263,7 +265,7 @@ function ReportBuilder({
     try {
       const month = p.periodStart.slice(0, 7);
       const [statsRes, analyticsRes] = await Promise.allSettled([
-        getTicketStats(clientId, p.periodStart, p.periodEnd),
+        getCareStats(clientId, p.periodStart, p.periodEnd),
         analyticsConn
           ? fetch(`/api/support/clients/${clientId}/analytics?month=${month}`).then((r) => r.json() as Promise<{ data?: { metrics?: AnalyticsReportMetric[] }; error?: string }>)
           : Promise.resolve(null),
@@ -318,14 +320,6 @@ function ReportBuilder({
     onSaved();
   }
 
-  const widgetHeader = (num: string, label: string, right?: React.ReactNode) => (
-    <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-      <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-        {num} {"//"} {label}
-      </span>
-      {right ?? null}
-    </div>
-  );
 
   return (
     <div className="space-y-4">
@@ -377,8 +371,7 @@ function ReportBuilder({
       )}
 
       {/* 01 // PERIOD & AUTHOR */}
-      <div className="app-card overflow-hidden p-0">
-        {widgetHeader("01", "PERIOD & AUTHOR")}
+      <CarePanel number="01" title="Period & author" flush>
         {/* Month quick-pick */}
         <div className="flex items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-2.5">
           <span className="text-[11px] font-medium text-[var(--text-3)]">Quick-select month</span>
@@ -436,20 +429,18 @@ function ReportBuilder({
             />
           </div>
         </div>
-      </div>
+      </CarePanel>
 
       {/* 02 // OVERVIEW */}
-      <div className="app-card overflow-hidden p-0">
-        {widgetHeader("02", "OVERVIEW")}
+      <CarePanel number="02" title="Overview" flush>
         <div className="p-5">
           {textareaInput("Overview narrative", p.overviewText, (v) => update("overviewText", v),
             "Write 3–4 bullet points summarising the month's support activity…", 5)}
         </div>
-      </div>
+      </CarePanel>
 
       {/* 03 // TICKET VOLUME BY CATEGORY */}
-      <div className="app-card overflow-hidden p-0">
-        {widgetHeader("03", "TICKET VOLUME BY CATEGORY")}
+      <CarePanel number="03" title="Ticket volume by category" flush>
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {numInput("Total tickets", p.totalTickets, (v) => update("totalTickets", v))}
@@ -460,11 +451,10 @@ function ReportBuilder({
             {numInput("Other", p.catOther, (v) => update("catOther", v))}
           </div>
         </div>
-      </div>
+      </CarePanel>
 
       {/* 04 // SUPPORT PERFORMANCE */}
-      <div className="app-card overflow-hidden p-0">
-        {widgetHeader("04", "SUPPORT PERFORMANCE")}
+      <CarePanel number="04" title="Support performance" flush>
         <div className="space-y-4 p-5">
           {reportPerf?.metrics && (
             <div className="space-y-2">
@@ -478,11 +468,10 @@ function ReportBuilder({
           {textareaInput("Performance notes", p.performanceText, (v) => update("performanceText", v),
             "Comment on resolution rate, backlog, SLA adherence…", 4)}
         </div>
-      </div>
+      </CarePanel>
 
       {/* 05 // REFUND REQUESTS */}
-      <div className="app-card overflow-hidden p-0">
-        {widgetHeader("05", "REFUND REQUESTS")}
+      <CarePanel number="05" title="Refund requests" flush>
         <div className="p-5 space-y-4">
           <p className="text-xs text-[var(--text-4)]">
             Refund count is derived from cancellations above — enter the total £ value and any notes.
@@ -493,11 +482,14 @@ function ReportBuilder({
           {textareaInput("Breakdown notes", p.refundNotes, (v) => update("refundNotes", v),
             "e.g. 4 × £6.99 monthly (duplicate sub), 1 × £69.99 yearly…", 3)}
         </div>
-      </div>
+      </CarePanel>
 
       {/* 06 // ANALYTICS */}
-      <div className="app-card overflow-hidden p-0">
-        {widgetHeader("06", "ANALYTICS", (
+      <CarePanel
+        number="06"
+        title="Analytics"
+        flush
+        right={(
           analyticsConn ? (
             <button
               type="button"
@@ -513,7 +505,8 @@ function ReportBuilder({
               {fetchingApi ? "Fetching…" : `Fetch ${p.periodStart.slice(0, 7)}`}
             </button>
           ) : null
-        ))}
+        )}
+      >
 
         {/* connection status / hint */}
         <div className="border-b border-[var(--border-2)] bg-[var(--surface-1)] px-5 py-3 space-y-1.5">
@@ -625,16 +618,15 @@ function ReportBuilder({
             </div>
           )}
         </div>
-      </div>
+      </CarePanel>
 
       {/* 07 // SUMMARY */}
-      <div className="app-card overflow-hidden p-0">
-        {widgetHeader("07", "SUMMARY")}
+      <CarePanel number="07" title="Summary" flush>
         <div className="p-5">
           {textareaInput("Summary narrative", p.summaryText, (v) => update("summaryText", v),
             "Write the closing summary bullet points for the report…", 5)}
         </div>
-      </div>
+      </CarePanel>
 
       {/* bottom save */}
       <div className="flex justify-end pb-4">
@@ -693,21 +685,22 @@ export function ReportsView({ client }: { client: SupportClient }) {
     );
   }
 
+  /*
+   * ⚠️ These were hardcoded `01` and `02` with an UNNUMBERED card between them — so a client with
+   * no support-day allocation saw a screen whose only number was `02`.
+   */
+  const num = careSectionNumbers([hasAllocation, true, true]);
+
   return (
     <div className="space-y-4">
       {hasAllocation && (
-        <div className="app-card overflow-hidden p-0">
-          <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-              01 // SUPPORT DAYS
-            </span>
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.8px] text-[var(--text-4)]">
-              {month}
-            </span>
-          </div>
-          <div className="p-5">
+        <CarePanel number={num[0]} title="Support days" right={month}>
+          <div>
             <div className="mt-1 flex items-end gap-4">
-              <p className="font-display text-[32px] leading-none text-[var(--text-1)]">
+              {/* `font-[family-name:var(--font-display)]`, not the bare `font-display` utility this
+                  used: both resolve, but one spelling of the house figure is enough, and it is the
+                  one `CareStat` uses. */}
+              <p className="font-[family-name:var(--font-display)] text-[32px] font-normal leading-none text-[var(--text-1)]">
                 {used}
                 <span className="text-[18px] text-[var(--text-3)]">/{total}</span>
               </p>
@@ -728,12 +721,13 @@ export function ReportsView({ client }: { client: SupportClient }) {
               {client.reportingRecipient && ` → ${client.reportingRecipient}`}
             </p>
           </div>
-        </div>
+        </CarePanel>
       )}
 
-      {/* One-click customer report — pulls live data into a shareable Docs document. */}
-      <div className="app-card overflow-hidden p-0">
-        <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+      {/* One-click customer report — pulls live data into a shareable Docs document.
+          ⚠️ This rendered with no number at all, between `01` and `02`. */}
+      <CarePanel number={num[1]} title="Customer report">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[var(--text-1)]">Customer report</p>
             <p className="mt-0.5 text-xs text-[var(--text-4)]">
@@ -751,13 +745,13 @@ export function ReportsView({ client }: { client: SupportClient }) {
             {generateDoc.isPending ? "Generating…" : "Generate customer report"}
           </button>
         </div>
-      </div>
+      </CarePanel>
 
-      <div className="app-card overflow-hidden p-0">
-        <div className="flex h-9 items-center justify-between border-b border-black/[0.06] px-4">
-          <span className="font-mono text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]">
-            02 // SAVED REPORTS (LEGACY)
-          </span>
+      <CarePanel
+        number={num[2]}
+        title="Saved reports (legacy)"
+        flush
+        right={
           <button
             type="button"
             onClick={() => setEditing("new")}
@@ -766,7 +760,8 @@ export function ReportsView({ client }: { client: SupportClient }) {
             <PlusIcon className="h-3 w-3" />
             New (old builder)
           </button>
-        </div>
+        }
+      >
         {isLoading && <div className="h-20 animate-pulse bg-[var(--surface-1)]" />}
         {!isLoading && reports.length === 0 && (
           <div className="flex flex-col items-center gap-3 px-5 py-10">
@@ -829,7 +824,7 @@ export function ReportsView({ client }: { client: SupportClient }) {
             </div>
           </div>
         ))}
-      </div>
+      </CarePanel>
     </div>
   );
 }

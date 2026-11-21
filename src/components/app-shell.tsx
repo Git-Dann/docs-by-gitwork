@@ -26,6 +26,13 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
+import {
+  HEADER_BAND_CLASS,
+  HEADER_BAND_H,
+  HEADER_BAND_MIN,
+  HEADER_SUBTITLE_CLASS,
+  HEADER_TITLE_CLASS,
+} from "@/components/shell-header";
 import { buildPageTitle } from "@/lib/page-title";
 import { avatarPosition, resolveAvatar } from "@/lib/avatar";
 import { useAccount } from "@/hooks/use-account";
@@ -66,21 +73,10 @@ type NavItem = {
 // sidebar renders the CORRECT filtered nav on first paint — before /api/account
 // resolves — instead of flashing the full list then collapsing it.
 const NAV_CACHE_KEY = "gitwork.nav.modules.v1";
-/**
- * The height of the top band — the sidebar's brand cell and the page header, which sit
- * side by side and must show ONE continuous hairline across the top of the app.
- *
- * They are separate elements in separate columns (the rail spans full height and carries
- * its own brand block), so nothing structural keeps their bottom borders level. In August
- * 2026 the logo was reduced from 48px to 32px and the two silently drifted 48.6px apart —
- * the brand line at 81px, the header line at 129.6px. Both now read this one value.
- *
- * Written as two class constants rather than one because the sides need different
- * behaviour: the brand cell's content is fixed so it takes an exact height, while the
- * header takes a MINIMUM so an unusually tall accessory can grow it rather than overflow.
- */
-const HEADER_BAND_H = "h-20";
-const HEADER_BAND_MIN = "min-h-20";
+// The top band's geometry — the sidebar's brand cell and the page header, which sit side by
+// side and must show ONE continuous hairline — lives in `shell-header.ts`, because the demo
+// shell draws the same band and could not reach it from here. Why it matters is written there.
+
 // Persists the desktop sidebar's collapsed/expanded state across sessions.
 const SIDEBAR_COLLAPSED_KEY = "gitwork.sidebar.collapsed.v1";
 // Every module key a nav item can gate on. Admins/super-admins with full access
@@ -492,23 +488,17 @@ export function AppShell({
                 scroll is what `audit:clipping` calls a TRUNCATED defect, and rightly: that
                 is information the user can no longer reach. */}
           {!hideContentHeader && (
-            <header className={cn(
-              "halloween-clear hidden border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 py-3 sm:px-8 lg:flex lg:items-center",
-              HEADER_BAND_MIN,
-            )}>
+            <header className={cn(HEADER_BAND_CLASS, HEADER_BAND_MIN)}>
               <div className="flex w-full items-center justify-between gap-4">
                 <div className="min-w-0 max-w-4xl">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <h1
-                      title={title}
-                      className="truncate text-[28px] font-normal leading-[1.15] tracking-[-0.02em] text-[var(--text-1)]"
-                    >
+                    <h1 title={title} className={HEADER_TITLE_CLASS}>
                       {title}
                     </h1>
                     {titleAccessory}
                   </div>
                   {subtitle ? (
-                    <p title={subtitle} className="mt-0.5 truncate text-[13px] leading-5 text-[var(--text-3)]">{subtitle}</p>
+                    <p title={subtitle} className={HEADER_SUBTITLE_CLASS}>{subtitle}</p>
                   ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">

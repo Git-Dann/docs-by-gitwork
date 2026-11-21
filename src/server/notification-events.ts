@@ -26,7 +26,10 @@ export const NOTIFICATION_EVENTS = [
   "study.report_ready",
   // Care
   "care.ticket_created",
-  "care.ticket_escalated",
+  // A customer on one client's desk has been waiting past Care's own threshold (src/server/care-alerts.ts)
+  "care.waiting_too_long",
+  // A client's Care channel has stopped delivering, or started again (src/server/support-sync.ts)
+  "care.connector_failing",
   // Docs
   "docs.viewed_by_client",
   "docs.signed",
@@ -95,7 +98,15 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   "pulse.monitor_drift": ["inApp", "push", "email"],
   "study.report_ready": ["inApp", "email"],
   "care.ticket_created": ["inApp", "push"],
-  "care.ticket_escalated": ["inApp", "push", "email"],
+  // Care measured this all along and said nothing: LONG_WAIT_HOURS is its own alarm threshold and
+  // nothing was attached to it, so the chip went amber on a screen nobody had open. Once per
+  // outage, to whoever may run Care — not a channel, because one client's queue is not news.
+  "care.waiting_too_long": ["inApp", "push"],
+  // A channel that has stopped delivering makes an empty queue look like a quiet week, which is
+  // the thing a support desk most needs to be wrong about never. Follows clients.monitor_alert:
+  // posts to channelRoutes["care.connector_failing"] as well as admins' devices, and is a
+  // documented silent no-op until a channel is configured.
+  "care.connector_failing": ["inApp", "push", "slack"],
   "docs.viewed_by_client": ["inApp"],
   "docs.signed": ["inApp", "email"],
   "docs.accepted": ["inApp", "push"],

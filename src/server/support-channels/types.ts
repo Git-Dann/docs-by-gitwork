@@ -30,6 +30,21 @@ export interface SyncContext {
     scraperConfig: unknown;
     syncCursor: string | null;
     lastSyncedAt: Date | null;
+    /** Never read mail from before this. See `ingest-window.ts`. Null = whatever the mailbox holds. */
+    ingestFrom: Date | null;
+    /*
+     * Health and the previous run's stats, so `syncConnection` can decide where this connector
+     * now stands (`care-connector-health.ts`).
+     *
+     * ⚠️ REQUIRED, not optional. A caller that narrowed its select and left them out would make
+     * every run look like the first one — the failure counter would reset to zero on every
+     * failed sync and the connector could never reach ERROR. Requiring them makes that a compile
+     * error rather than a connector that silently stays green forever.
+     */
+    health: "CONNECTED" | "NEEDS_SETUP" | "ERROR";
+    lastSyncStats: unknown;
+    /** What the operator called this channel — the name an alert about it has to use. */
+    label: string;
     channelTokens: unknown[];
   };
   client: { id: string; name: string; slug: string };

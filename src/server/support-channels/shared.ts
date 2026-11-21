@@ -1,3 +1,4 @@
+import { floorSeconds } from "./ingest-window";
 // Shared, dependency-light helpers used by the channel adapters. Kept separate from the
 // registry/core so adapters can import them without pulling in the whole module graph.
 
@@ -17,9 +18,20 @@ export function passesKeywordFilters(text: string, include: string[], exclude: s
   return true;
 }
 
-export function lookbackSeconds(lookbackDays: number | undefined, fallbackDays: number): number {
+/**
+ * The epoch-second floor for a rolling lookback, clamped to the connector's `ingestFrom`.
+ *
+ * Three adapters compute their window here (Gmail, Reddit, app reviews), so the clamp goes in
+ * once rather than three times — the shape that let the Care sync paths drift apart in the first
+ * place (§42.15). See `ingest-window.ts` for why it is a floor and not a window.
+ */
+export function lookbackSeconds(
+  lookbackDays: number | undefined,
+  fallbackDays: number,
+  ingestFrom?: Date | null,
+): number {
   const days = lookbackDays && lookbackDays > 0 ? lookbackDays : fallbackDays;
-  return Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000);
+  return floorSeconds(Math.floor((Date.now() - days * 24 * 60 * 60 * 1000) / 1000), ingestFrom);
 }
 
 // ─── Reddit RSS helpers ───────────────────────────────────────────────────────

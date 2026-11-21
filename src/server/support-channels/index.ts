@@ -10,6 +10,7 @@ import { imapAdapter } from "./imap";
 import { appReviewsAdapter } from "./app-reviews";
 import { webhookAdapter } from "./webhook";
 import { analyticsAdapter } from "./analytics";
+import { dropsBeforeFloor } from "./ingest-window";
 
 // Register a channel = add it here. New connectors implement `fetchItems` (or
 // `run` for self-contained flows) and ride the shared ingest core below.
@@ -64,6 +65,20 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
         OR: [{ connectionId: ctx.connection.id }, { connectionId: null }],
       },
     });
+
+    /*
+     * The backstop behind the per-adapter clamps: an adapter that forgets the floor — or a future
+     * one that never knew about it — still cannot reintroduce old mail. Counted under `excluded`
+     * so the connector card's "N filtered" stays explainable rather than silently dropping rows.
+     *
+     * ⚠️ NEW conversations only, and only when EVERY message predates the floor. A thread opened
+     * in January that got a customer message this morning is a live customer waiting on a reply;
+     * dropping it would be the exact failure this work exists to remove.
+     */
+    if (!conv && dropsBeforeFloor(item, ctx.connection.ingestFrom, true)) {
+      reasons.excluded = (reasons.excluded ?? 0) + 1;
+      continue;
+    }
 
     if (!conv) {
       conv = await prisma.supportConversation.create({

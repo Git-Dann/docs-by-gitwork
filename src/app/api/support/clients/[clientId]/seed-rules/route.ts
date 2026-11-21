@@ -11,7 +11,7 @@ export async function POST(
 ) {
   try {
     const { clientId } = await params;
-    await requireSupportClient(request, clientId);
+    await requireSupportClient(request, clientId, "manage");
     await seedDefaultWorkflowRules(clientId);
     return apiOk({ ok: true });
   } catch (error) {

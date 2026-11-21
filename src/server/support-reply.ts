@@ -10,6 +10,14 @@
  */
 
 import { prisma } from "@/lib/prisma";
+/*
+ * ⚠️ These dispatchers filtered `health: "CONNECTED"`, so a connector that had degraded made
+ * Care answer "No connected email mailbox for this client" — a statement about the CLIENT that
+ * was simply false, and the opposite of the honest one. The send is attempted now and fails with
+ * the provider's own reason, which is what an operator can act on (§35). Only NEEDS_SETUP, a
+ * connector nobody finished configuring, genuinely cannot send.
+ */
+import { SENDABLE_CONNECTION } from "@/lib/care-connector-health";
 import { google } from "googleapis";
 import { sendDiscordMessage } from "./discord-sync";
 import { decryptScraperConfig } from "./support";
@@ -62,7 +70,7 @@ async function imapReplyDispatch(
   body: string,
 ): Promise<ReplyResult> {
   const conn = await prisma.accountConnection.findFirst({
-    where: { clientId, source: "IMAP", health: "CONNECTED" },
+    where: { clientId, source: "IMAP", ...SENDABLE_CONNECTION },
     select: { id: true },
   });
   if (!conn) {
@@ -120,7 +128,7 @@ async function appReviewReply(
   }
 
   const conn = await prisma.accountConnection.findFirst({
-    where: { clientId, source: "APP_REVIEWS", health: "CONNECTED" },
+    where: { clientId, source: "APP_REVIEWS", ...SENDABLE_CONNECTION },
     select: { scraperConfig: true },
   });
   const cfg = decryptScraperConfig(conn?.scraperConfig as Record<string, unknown> | null) as { serviceAccountJson?: string } | null;
@@ -161,7 +169,7 @@ async function discordReply(
   body: string,
 ): Promise<ReplyResult> {
   const conn = await prisma.accountConnection.findFirst({
-    where: { clientId, source: "DISCORD", health: "CONNECTED" },
+    where: { clientId, source: "DISCORD", ...SENDABLE_CONNECTION },
     select: { scraperConfig: true },
   });
   const cfg = decryptScraperConfig(conn?.scraperConfig as Record<string, unknown> | null) as { botToken?: string } | null;
@@ -201,7 +209,7 @@ async function gmailReply(
 
   // Check GMAIL connection for per-connection impersonation override
   const conn = await prisma.accountConnection.findFirst({
-    where: { clientId, source: "GMAIL", health: "CONNECTED" },
+    where: { clientId, source: "GMAIL", ...SENDABLE_CONNECTION },
     select: { scraperConfig: true },
   });
   const connCfg = decryptScraperConfig(conn?.scraperConfig as Record<string, unknown> | null) as { impersonateEmail?: string; intakeAddress?: string } | null;

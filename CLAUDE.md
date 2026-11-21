@@ -239,7 +239,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 > | Canonical | Legacy (still resolves) |
 > |---|---|
 > | `/app/portal` | `/app/clients` → `redirect()` stubs |
-> | `/app/care` | `/app/support` — ⚠️ still a **live, different** UI, not a stub |
+> | `/app/care` | `/app/support` → query-preserving `redirect()` stub (§42.16) |
 > | `/app/staff` | `/app/code` and `/app/codeclear/**` → query-preserving `redirect()` stubs (§87.1) |
 > | `/app/docs` | `/app/proposals` → `redirect()` stubs |
 >
@@ -256,7 +256,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio`. **No sidebar item since Aug 2026** — reached from **Settings → Labs**, which is Super-Admin-gated, so this narrows it from the `studio` module perm (§4a) |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
-| **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops. ⚠️ **Two UIs are live.** `/app/care` is the rebuilt cockpit; `/app/support` still serves the 5,535-line legacy dashboard and exclusively owns add-client, Tickets, monthly Reports, health scoring, AI search and workflow rules. `client-cockpit.tsx` imports `ConnectorsView` *out of* the legacy file, so it cannot be deleted yet. Finishing the port is a two-way merge, not a cutover |
+| **Care** | `/app/care` (legacy `/app/support` → redirect stub) | `src/server/support.ts` | Client support ops: one UI since Nov 2026 (§42.16). Conversations · Reports · Automation · Channels & settings per client. Operator runbook: `docs/care.md` |
 | **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip |
 | **Money** | `/app/money` | `src/server/money.ts` · `money-deals.ts` | Revenue under contract, still to bill, won, pipeline, recorded deals (§141). **Super Admins + `clients.viewFinancials` only**, checked by the page (404) and `/api/money` (403); in `UNGATED_APP_PREFIXES` because Siân holds the permission without Portal. **No sidebar item** — a mono `· MONEY` link in the HQ context strip |
 | **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate. **No sidebar item since Aug 2026** — a mono `· STARTERS` link in the HQ context strip |
@@ -658,7 +658,6 @@ npm run deck:verify  # Deck's own regression gate (see §30)
 
 | Issue | File | Notes |
 |---|---|---|
-| **Care runs two UIs at once** | `src/components/care/` + `src/components/support/support-dashboard.tsx` | `/app/care` is the rebuilt cockpit; `/app/support` is the 5,535-line legacy dashboard. Each holds capabilities the other lacks, so it is a **two-way merge**. Legacy exclusively owns add-client, Tickets, monthly Reports (~815 lines), health scoring, AI semantic search and workflow rules; the cockpit owns triage, snooze, notes and batch actions. `client-cockpit.tsx` imports `ConnectorsView` from the legacy file, so it cannot be deleted today. (The "Care never clears `unread`" bug listed here was fixed in July 2026 — see §33.) |
 | ~~Cron scheduling has drifted~~ | `deploy/crontab` | **Fixed Nov 2026 (§132):** the repo owns the VPS crontab and every deploy installs it; `vercel.json` has no crons. Every cron route is scheduled. |
 | `pulse-scan.ts` is 4000+ lines | `src/server/pulse-scan.ts` | Works fine — don't split without a clear plan. Future task. |
 | 26 `any` type usages | various | Not breaking. Gradual cleanup is a future task. |
@@ -3613,10 +3612,9 @@ that was reverted before commit. **Post-deploy:** open Fellas, confirm the table
 across the awaiting tab, sort WAITING both ways, select a few rows and bulk-close, open a thread and
 confirm the properties sidebar saves assignee/priority/status.
 
-**Deferred:** the legacy `/app/support` dashboard still owns add-client, Tickets, Reports, health
-scoring, AI search and workflow rules, and `client-cockpit.tsx` still imports `ConnectorsView` out
-of it — so `ConnectorsView` renders its own chrome inside `01 // MODE`'s screen rather than a
-numbered sibling. Extracting it is the first step of retiring the legacy file (§11).
+~~**Deferred:** the legacy `/app/support` dashboard still owns…~~ **Resolved.** The legacy
+dashboard was deleted on 19 Nov 2026 (#850, 5,797 lines) and `ConnectorsView` moved to
+`src/components/care/care-connectors.tsx`; it renders as numbered siblings since §42.16.
 
 ### 42.13 The Care touchpoints outside the module
 
@@ -3836,6 +3834,153 @@ header leave too little for both panels, so the thread is squeezed — to a few 
 to ~120px in the app. The reply stays put by design. Reclaiming the title band on the record screen
 is the real fix and needs `hideContentHeader` to become runtime state rather than a page prop
 (`/app/docs/[id]` and the Pulse report already pass it statically).
+
+### 42.16 One Care (Nov 2026) — the gate, the desk, the reset, and a module that says when it breaks
+
+`src/app/(app)/app/support/page.tsx` has cited this section since #850 and it was never written.
+It is the record of Care becoming one product, prompted by Dan opening `/app/care`, seeing
+**573 awaiting · 573 unassigned · 19 urgent**, and saying *"I hate this page… do a full audit and
+make this product something we can be proud of"*, then *"reset the numbers… only pick up Fellas and
+only from the last 7 days… we don't look after Wedge from a support perspective"*.
+
+**First, the correction this section exists to make.** The legacy `/app/support` dashboard
+**no longer exists**: deleted 19 Nov 2026 in `7adab0d` (#850, 5,797 lines). `/app/support` is a
+redirect stub, `ConnectorsView` lives at `src/components/care/care-connectors.tsx`, and
+`care-unified.test.ts` keeps it that way. §4's two rows, §11's "Care runs two UIs at once" and
+§42.12's "Deferred" paragraph all said otherwise and are corrected.
+
+**Operator runbook: `docs/care.md`** — reply states, connecting a client, ingest-only, clearing a
+backlog, what alerts when, and why the dormant tables stay.
+
+#### The gate
+
+`/api/support/**` is **not** covered by the module gate (that reads `/app` paths only), so a
+per-route `assertCan` was the whole enforcement — and **eleven handlers had none**. The worst sent
+real mail to a client's customer, in the client's name. Next worst, `/api/support/discord/channels`
+had no permission check, **no workspace scope and no client in its path**, so any account in any
+workspace had Foundry call Discord with a guild id and bot token of their choosing.
+
+⚠️ It survived two audits because, having no `[clientId]` segment, it fell outside every sweep —
+and was then written into the route test's `EXEMPT` list with a note describing *what it does*
+rather than why that made it safe. **An exemption must say why the route is safe without the gate.**
+
+The check now lives **inside `requireSupportClient`**, with a `need` of `"use"` or `"manage"`,
+checked before the client lookup so someone with no Care grant is not told whether an id exists.
+
+**Triage moved from `support.manage` to `support`.** That gate is labelled *"Connect channels and
+edit workflow rules"* but gated triage too, so a DEVELOPER could send a reply and then not close,
+assign or snooze the thread they had just answered. No role matrix moved; ids unchanged.
+
+#### Wedge is not a support desk
+
+**249 of the 573 were Wedge's**, course-request emails on their way into a wiki.
+`courseRequestOnly` already said so and already made the sync skip triage — but nothing ever
+excluded those rows from the queue, the totals, the client list, the HQ tile or the digest. New
+additive **`ingestOnly`** is the general form, scoped inside `getClientQueueSummaries` because
+Care home, the HQ tile, the iOS dashboard and the digest all read that one function.
+⚠️ `getConversationViewCounts` is deliberately **not** scoped: it is per-client and the client was
+chosen on purpose.
+
+#### The page, and the reset
+
+Care home was two cards in a void — `h-full overflow-y-auto` around a plain block, so nothing
+inside could claim the slack: **284px of dead space at 1440, 521px at 768**. Two of its three
+headline figures read 573/573, which is not a coincidence, because `unassigned` is a strict subset
+of `awaiting`. It is now a desk: the one figure, who is worst off, a client rail, and
+**Needs you first** across every client.
+
+⚠️ **`flex-1 min-h-0` on a `widget-card` is how you destroy a panel.** It lets the item shrink
+below its content, and `widget-card` is `overflow: hidden` — so a short viewport did not make the
+panels scroll, it made them **2px tall with everything inside gone**, while `audit:clipping`
+reported zero findings and zero overflow because hidden overflow absorbs both (§45.2).
+
+**`AccountConnection.ingestFrom` is a floor, not a window** — the window start is the later of it
+and `lookbackDays`, so a sync that has not run for a fortnight still catches up.
+⚠️ **It must clamp when `lastSyncedAt` is null**: "Re-sync history" nulls it deliberately, so
+without the floor one press of the button an operator reaches for when a board looks wrong pulls
+the whole backlog straight back. **Clear the backlog** closes rather than deletes, selects on
+**last message** (never creation), never closes a row whose age is unknown, leaves snoozed rows
+alone, and does **not** stamp first-response times — which would tell every past report we first
+answered an August thread in November.
+
+#### Honest failure
+
+Five places Care turned "we could not look" into a confident statement (§35):
+
+1. **Connector health could only ever go up.** A revoked app password kept its green badge while
+   every run failed. It degrades after **two consecutive** failures now — ⚠️ and the recovery path
+   is widened in the same commit, because the cron, "Sync now" and all four reply dispatchers
+   filtered `health: "CONNECTED"`: flipping a connector to ERROR against that would strand it
+   permanently, including from the button you would press to fix it.
+2. **A failed AI triage was written as a triage** — `other / normal / neutral` plus an
+   `agent_classified` audit row. §53.5 exactly. ⚠️ The same bug sat one layer down: `extractJson`
+   returns its *fallback* for prose, so passing a real decision as that fallback stored
+   unparseable output as a verdict.
+3. **Webhook conversations were born "Sent by us"** — that route never called
+   `recordMessageActivity`, so all three stamps stayed null and they never entered the queue.
+4. **Two Replied counts** — `open − awaiting` folded in `no_inbound`, so Care home and the client's
+   own queue disagreed from the same data.
+5. **Housekeeping skipped most clients** — the cron's client set came from the *interval-filtered*
+   connectors, so a manual-only client never got the identity repair or the activity backfill.
+
+#### Tickets, and one vocabulary
+
+**Tickets was a view of rows nothing created** — the cockpit has never written a `SupportTicket` —
+so the tab, the Kanban and the undispatched `care.ticket_escalated` notification are gone. ⚠️ The
+tables, enums and write routes stay (§2). `tickets/performance` and `tickets/stats` turned out to
+be **byte-identical copies that read conversations**, so the performance strip *survives* Tickets
+rather than dying with it.
+
+⚠️ **Care had two vocabularies and they disagreed.** `care-constants.tsx` and `care-shared.tsx`
+both exported `SourceIcon`, `SOURCE_LABEL`, `STATUS_LABEL`, `STATUS_TONE` and `PRIORITY_TONE` —
+not copies: `STATUS_LABEL` meant TICKET status in one and CONVERSATION status in the other, which
+is why nobody noticed. And one drew an envelope for `imap` while the other had no `imap` case and
+fell through to a lightning bolt, so **every row in Fellas' live queue showed the wrong icon**.
+
+#### Chrome, and a screen that skipped a number
+
+Care had **four** ways of numbering a pane. `PortalLinkCard` computed its own number as
+`(showMode ? 1 : 0) + (showCourseMode ? 1 : 0) + 2` — arithmetic assuming `ConnectorsView`
+contributed one number when it contributed none, so the Settings screen measurably read
+**`01`, `03`**. Reports showed a lone `02` whenever its first pane was hidden, with an unnumbered
+card above it. One helper now, `src/lib/care-sections.ts`, modelled on `portalSectionNumbers`.
+
+⚠️ A literal is still honest where every pane around it is unconditional. The rule is about
+*conditional* panes, and the guard says so rather than banning literals.
+
+The three section views are `next/dynamic` (§140's treatment) — all behind the section nav,
+mutually exclusive at runtime, and all three shipped on every cockpit load.
+
+#### Alerts
+
+`LONG_WAIT_HOURS = 24` is Care's own alarm threshold and **nothing was attached to it**; the
+connector latch computed `justFailed`/`justRecovered` on every sync and **discarded both**. Now
+`care.waiting_too_long` (once per client, `support.manage` holders) and `care.connector_failing`
+(once per outage, admins + a Slack route). ⚠️ Both latch — a desk that pages someone every minute
+gets muted, and a muted alert is worse than none because it looks like cover — and the wait latch
+is written **after** the dispatch, because latching first loses the alert if the send fails.
+
+The digest counted `NEW|OPEN` and called it "needing action", the pre-§42.4 metric §42.13
+criticised the HQ tile for. It reports **awaiting**, the longest wait, anything past the threshold
+and any dead channel, and is silent on a clear morning.
+
+⚠️ `LONG_WAIT_HOURS`, `isLongWait`, `formatAge` and `formatWhen` live in `src/lib/care-alerts.ts`
+and `care-constants.tsx` re-exports them: that file imports Heroicons and JSX, so reaching for the
+threshold from the jobs worker would pull React into a cron path.
+
+#### Things that generalise
+
+- **A source-reading test must assert on CODE.** Three guards failed on correct code by matching
+  the ⚠️ comments explaining the bug they guard against; a fourth matched its own prose once
+  committed, because `git grep` only searches tracked files.
+- **`font-[var(--font-x)]` compiles to `font-weight`**, not a family. Two Docs labels had never
+  been monospaced. The fix is almost never `font-[family-name:…]` — these are `@theme` tokens, so
+  `font-mono` already exists and carries the fallback chain.
+- **The demo must be able to express the state.** Its connections carried `status:`, a key the DTO
+  does not have, so no demo connector had ever rendered a health state at all.
+- `/demo/care` settings · automation · reports × 4 viewports × light and dark: **0 clipping
+  findings across 24**, against 3/2/3/3 before — which is how the unreachable "Refresh now" at
+  390px and every truncated connector label were found.
 
 ## 43. Recent Changes (August 2026) — Launchpad (what we need FROM the client)
 

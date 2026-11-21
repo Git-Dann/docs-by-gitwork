@@ -6,6 +6,7 @@ import { loggerFor } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { syncConnection, toSyncContext, runPostSyncHousekeeping } from "@/server/support-sync";
 import { forEachWorkspace } from "@/server/workspaces/for-each";
+import { isSyncDue, readHealthState, SENDABLE_CONNECTION } from "@/lib/care-connector-health";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -67,8 +68,14 @@ export async function GET(request: NextRequest) {
 async function syncWorkspace(
   workspace: SyncWorkspace,
 ): Promise<{ total: number; ingested: number; filtered: number; errors: string[] }> {
+  /*
+   * ⚠️ NOT `health: "CONNECTED"`. Auto-sync is the only thing that can ever prove a failing
+   * connector has recovered, so excluding ERROR would strand it the moment it degraded — the
+   * recovery path has to be widened in the same breath as the degrading (see
+   * `care-connector-health.ts`). It retries on a slower cadence instead, via `isSyncDue`.
+   */
   const allConnections = await prisma.accountConnection.findMany({
-    where: { health: "CONNECTED", client: { workspaceId: workspace.id } },
+    where: { ...SENDABLE_CONNECTION, client: { workspaceId: workspace.id } },
     include: {
       channelTokens: true,
       client: { select: { id: true, name: true, slug: true } },
@@ -79,13 +86,17 @@ async function syncWorkspace(
   // since its last sync. Interval lives on scraperConfig.syncIntervalMinutes (default 60 =
   // hourly; 0 = manual-only, never auto-synced). This lets the cron fire often (e.g. hourly)
   // while each connector keeps its own cadence.
-  const now = Date.now();
+  const now = new Date();
   const connections = allConnections.filter((conn) => {
     const cfg = (conn.scraperConfig ?? {}) as { syncIntervalMinutes?: number };
     const interval = typeof cfg.syncIntervalMinutes === "number" ? cfg.syncIntervalMinutes : 60;
-    if (interval <= 0) return false; // manual-only
-    if (!conn.lastSyncedAt) return true; // never synced → due
-    return now - new Date(conn.lastSyncedAt).getTime() >= interval * 60_000;
+    return isSyncDue({
+      health: conn.health,
+      intervalMinutes: interval,
+      lastSyncedAt: conn.lastSyncedAt,
+      consecutiveFailures: readHealthState(conn.lastSyncStats).consecutiveFailures,
+      now,
+    });
   });
 
   let totalIngested = 0;
@@ -128,8 +139,14 @@ async function syncWorkspace(
   //
   // Called once per CLIENT, not once per connection: a client with three connectors would
   // otherwise pay for the repair three times per run.
+  /*
+   * ⚠️ Built from ALL this workspace's connectors, not the interval-filtered set. Housekeeping
+   * is per-client work — the forwarded-identity repair, the activity backfill, the course-request
+   * drain — and it is exactly the clients whose connectors are manual-only, or not due this
+   * minute, that would otherwise never get it. The client set is the point, not the sync set.
+   */
   const touchedClientIds = [...new Set(newConvByClient.map((n) => n.clientId).concat(
-    connections.map((c) => c.client.id),
+    allConnections.map((c) => c.client.id),
   ))];
   const newByClient = new Map<string, string[]>();
   for (const { clientId, convId } of newConvByClient) {

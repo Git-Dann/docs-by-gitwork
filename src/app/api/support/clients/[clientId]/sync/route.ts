@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { syncClientConnections } from "@/server/support-sync";
 import { requireSupportClient } from "@/server/support-scope";
 
@@ -14,9 +13,8 @@ export async function POST(
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageSupport, "sync Care connectors");
     const { clientId } = await params;
-    await requireSupportClient(request, clientId);
+    await requireSupportClient(request, clientId, "manage");
     const result = await syncClientConnections(clientId);
     return apiOk(result);
   } catch (error) {

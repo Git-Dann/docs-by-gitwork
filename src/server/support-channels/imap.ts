@@ -31,6 +31,7 @@ import type {
   SyncContext,
   FilterReasons,
 } from "./types";
+import { floorDate } from "./ingest-window";
 
 export interface ImapConnectionConfig {
   imapHost?: string;
@@ -79,6 +80,11 @@ const DEFAULT_LOOKBACK_DAYS = 30;
  * can't make every run scan years of mail.
  */
 const SENT_AUTO_BACKFILL_MAX_DAYS = 180;
+/*
+ * ⚠️ That cap stays even though a connector with an `ingestFrom` will normally be bounded by the
+ * floor long before it. It is the only bound for every connector that has no floor set — which is
+ * every existing one — so removing it would silently un-cap them all.
+ */
 const DAY_MS = 24 * 3600 * 1000;
 
 /**
@@ -96,17 +102,35 @@ export function resolveScanWindows(
    * oldestUnansweredInboundAt). Null when nothing is waiting.
    */
   oldestUnansweredAt: Date | null = null,
+  /**
+   * The connector's floor — never read mail from before this. Clamps BOTH windows, including the
+   * unanswered-thread widening below: otherwise the Sent reconciliation reaches back past the
+   * start date and re-creates the history the floor exists to leave behind.
+   */
+  ingestFrom: Date | null = null,
 ): { inboxSince: Date; sentSince: Date } {
   const lookbackDays = cfg.lookbackDays && cfg.lookbackDays > 0 ? cfg.lookbackDays : DEFAULT_LOOKBACK_DAYS;
   // Incremental with a 2-day overlap (SINCE is day-granular); full lookback on a first sync or
   // after "Re-sync history", which nulls lastSyncedAt.
-  const inboxSince = lastSyncedAt
-    ? new Date(lastSyncedAt.getTime() - 2 * DAY_MS)
-    : new Date(now.getTime() - lookbackDays * DAY_MS);
+  /*
+   * ⚠️ The floor is applied HERE, before anything else uses inboxSince, and it has to survive
+   * `lastSyncedAt` being null. "Re-sync history" nulls it deliberately, which drops this to
+   * `now − lookbackDays` (30 days by default) — so without the clamp one press of that button
+   * pulls the whole backlog straight back in and undoes the reset.
+   */
+  const inboxSince = floorDate(
+    lastSyncedAt
+      ? new Date(lastSyncedAt.getTime() - 2 * DAY_MS)
+      : new Date(now.getTime() - lookbackDays * DAY_MS),
+    ingestFrom,
+  );
 
   // An explicit backfill wins outright — it ignores lastSyncedAt, which is its whole point.
   if (cfg.sentBackfillDays && cfg.sentBackfillDays > 0) {
-    return { inboxSince, sentSince: new Date(now.getTime() - cfg.sentBackfillDays * DAY_MS) };
+    return {
+      inboxSince,
+      sentSince: floorDate(new Date(now.getTime() - cfg.sentBackfillDays * DAY_MS), ingestFrom),
+    };
   }
 
   /**
@@ -125,7 +149,7 @@ export function resolveScanWindows(
     oldestUnansweredAt && oldestUnansweredAt < inboxSince ? oldestUnansweredAt : inboxSince;
   // Only ever widen, never narrow, and never past the cap — one ancient unanswered thread must not
   // turn every run into a two-year IMAP search.
-  const sentSince = candidate < floor ? floor : candidate;
+  const sentSince = floorDate(candidate < floor ? floor : candidate, ingestFrom);
 
   return { inboxSince, sentSince };
 }
@@ -217,6 +241,7 @@ export async function fetchImapItems(ctx: SyncContext): Promise<ChannelFetchResu
     ctx.connection.lastSyncedAt,
     new Date(),
     oldestUnansweredAt,
+    ctx.connection.ingestFrom ?? null,
   );
 
   const client = new ImapFlow({

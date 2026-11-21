@@ -12,7 +12,7 @@ export async function POST(
 ) {
   try {
     const { clientId, connId } = await params;
-    await requireSupportClient(request, clientId);
+    await requireSupportClient(request, clientId, "manage");
     await requireSupportRow("connection", connId, clientId);
     const resync = request.nextUrl.searchParams.get("resync") === "1";
 

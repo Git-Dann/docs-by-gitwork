@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { recordMessageActivity } from "@/server/support";
 import { apiError } from "@/lib/api-response";
 
 // Public endpoint — authenticated by the per-connection webhookToken in scraperConfig.
@@ -117,10 +118,20 @@ export async function POST(
       },
     });
 
+    /*
+     * ⚠️ This used to set `unread: true` by hand and never call `recordMessageActivity`, so a
+     * webhook conversation was born with all three activity stamps null. `deriveReplyState` reads
+     * null `lastInboundAt` as `no_inbound` — "Sent by us" — so an inbound webhook message landed
+     * in Care already looking answered and never appeared in the awaiting queue. It also raised
+     * `unread` for ANY message including our own, which is the defect §42.2 removed everywhere
+     * else. One writer for the stamps, on every ingest path (§42.2).
+     */
     await prisma.supportConversation.update({
       where: { id: conv.id },
-      data: { unread: true, preview: body.slice(0, 150) },
+      data: { preview: body.slice(0, 150) },
     });
+
+    await recordMessageActivity(conv.id, [{ direction: "inbound", createdAt: receivedAt }]);
 
     await prisma.accountConnection.update({
       where: { id: conn.id },

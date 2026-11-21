@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { generateEmbedding } from "@/server/care-agents/embeddings";
 import { aiKeyFor } from "@/server/ai-keys";
 import { requireSupportClient } from "@/server/support-scope";
+import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,9 @@ export async function POST(
   { params }: { params: Promise<{ clientId: string }> },
 ) {
   try {
+    // Semantic search embeds the query, so it spends tokens on every keystroke-ended search —
+    // every other AI entry point in Care asserts this and this one did not.
+    assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "run AI search in Care");
     const { clientId } = await params;
     const workspaceId = await requireSupportClient(request, clientId);
     const body = await request.json() as { query?: string; limit?: number };

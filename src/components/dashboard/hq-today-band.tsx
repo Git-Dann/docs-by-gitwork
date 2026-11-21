@@ -32,7 +32,7 @@ import { nowOrNext, startsIn } from "@/lib/hq-calendar";
 import { formatAge } from "@/components/care/care-constants";
 import { Skeleton } from "@/components/ui/motion/skeleton";
 import { StatusDot } from "@/components/ui/motion/status-dot";
-import { CountUp } from "@/components/dashboard/count-up";
+import { BigFigure, MONO, SplitBar } from "@/components/dashboard/tile-parts";
 
 export type TodayBandAccess = {
   tasks: boolean;
@@ -45,8 +45,6 @@ export type TodayBandAccess = {
   pulse: boolean;
   calendar: boolean;
 };
-
-const MONO = { fontFamily: "var(--font-mono)" } as const;
 
 export function HqTodayBand({ access }: { access: TodayBandAccess }) {
   const tiles: ReactNode[] = [];
@@ -121,44 +119,12 @@ function Tile({
   );
 }
 
-function BigFigure({ value, unit }: { value: number | null; unit: string }) {
-  return (
-    <p className="mt-1 flex items-baseline gap-1.5">
-      <span className="text-[32px] leading-none tabular-nums text-[var(--text-1)]" style={{ fontFamily: "var(--font-display)" }}>
-        <CountUp value={value} />
-      </span>
-      <span className="text-xs text-[var(--text-3)]">{unit}</span>
-    </p>
-  );
-}
-
 function TileSkeleton() {
   return (
     <div className="flex min-h-[112px] flex-col justify-between rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3">
       <Skeleton className="h-3 w-24" />
       <Skeleton className="h-8 w-16" />
       <Skeleton className="h-2 w-full" />
-    </div>
-  );
-}
-
-/** A proportional bar of a few parts, with a key under it. */
-function SplitBar({ parts }: { parts: Array<{ label: string; n: number; colour: string }> }) {
-  const total = parts.reduce((n, p) => n + p.n, 0);
-  return (
-    <div className="mt-2">
-      <div className="flex h-1.5 w-full gap-[2px] overflow-hidden rounded-[2px] bg-[var(--surface-2)]" aria-hidden>
-        {total > 0
-          ? parts.map((p) =>
-              p.n > 0 ? (
-                <span key={p.label} className="h-full transition-[width] duration-500" style={{ width: `${(p.n / total) * 100}%`, background: p.colour }} />
-              ) : null,
-            )
-          : null}
-      </div>
-      <p className="mt-1 truncate text-[10px] text-[var(--text-4)]" style={MONO} title={parts.map((p) => `${p.n} ${p.label}`).join(" · ")}>
-        {parts.map((p) => `${p.n} ${p.label}`).join(" · ")}
-      </p>
     </div>
   );
 }

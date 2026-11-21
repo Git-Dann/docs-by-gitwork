@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowDownIcon,
   ArrowPathIcon,
@@ -43,14 +44,33 @@ import {
   waitingSince,
 } from "./care-constants";
 import { hasCourseRequests } from "@/lib/wiki-sections";
+import { ingestOnlyReason, isSupportDesk } from "@/lib/care-mode";
 import { CareEmpty } from "./care-panel";
+import { LoadingState } from "@/components/ui/motion/loading-state";
 import { ConversationDetail } from "./conversation-detail";
-import { ConnectorsView } from "./care-connectors";
+import { CONNECTOR_SECTION_COUNT } from "./care-connectors";
+import { careSectionCount, careSectionNumbers } from "@/lib/care-sections";
 import { HealthBadge } from "./care-shared";
-import { TicketsTableView } from "./care-tickets";
-import { ReportsView } from "./care-reports";
-import { CareAutomationView, PortalLinkCard } from "./care-automation";
-import { CARE_SECTIONS, CARE_SECTION_LABEL, type CareSection } from "@/lib/care-links";
+
+/*
+ * The three section views load when their section is opened, not with the cockpit.
+ *
+ * They are mutually exclusive at runtime — all three sit behind the section nav, and the landing
+ * surface is the conversation list — yet every one of them shipped on every cockpit load.
+ * `care-connectors.tsx` alone is ~2,200 lines including two ~795-line modals. Same treatment the
+ * wiki sections got in §140; `CONNECTOR_SECTION_COUNT` above is a plain const, so importing it
+ * statically pulls in nothing.
+ */
+function SectionLoading() {
+  return <LoadingState label="Loading…" />;
+}
+
+const ConnectorsView = dynamic(() => import("./care-connectors").then((m) => m.ConnectorsView), { loading: SectionLoading });
+const ReportsView = dynamic(() => import("./care-reports").then((m) => m.ReportsView), { loading: SectionLoading });
+const CareAutomationView = dynamic(() => import("./care-automation").then((m) => m.CareAutomationView), { loading: SectionLoading });
+const PortalLinkCard = dynamic(() => import("./care-automation").then((m) => m.PortalLinkCard), { loading: SectionLoading });
+import { CARE_SECTION_LABEL, careSectionsFor, type CareSection } from "@/lib/care-links";
+import { ClearBacklogModal } from "./care-clear-backlog";
 
 // One page. Small on purpose: because the views are server-side filters, 50 rows is 50 rows of
 // the thing you asked for, and "Load more" walks the rest.
@@ -241,10 +261,57 @@ function SortHeader({
  * and their schedule (ConnectorsView), and the Portal link. Workflow rules and AI agents are the
  * Automation section.
  */
+/** One switch row in the MODE panel. The toggle markup lived inline and was about to be copied. */
+function ModeSwitch({
+  on,
+  pending,
+  title,
+  body,
+  onToggle,
+  hint,
+}: {
+  on: boolean;
+  pending: boolean;
+  title: string;
+  body: string;
+  onToggle: () => void;
+  hint: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-[var(--text-1)]">{title}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-3)]">{body}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={title}
+        disabled={pending}
+        onClick={onToggle}
+        title={hint}
+        className={cn(
+          "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50",
+          on ? "bg-[var(--brand-600)]" : "bg-[var(--border-1)]",
+        )}
+      >
+        <span
+          className={cn(
+            "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+            on ? "translate-x-[22px]" : "translate-x-0.5",
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
 function CareSettingsPanel({ client }: { client: SupportClient }) {
   const { canManageSupport } = usePermissions();
   const updateClient = useUpdateSupportClient(client.id);
   const courseOnly = client.courseRequestOnly ?? false;
+  const ingestOnly = client.ingestOnly ?? false;
   /*
    * The course-requests mode is Wedge's golf-course pipeline, not a Care feature. Everything behind
    * the toggle is client-specific — Big Wedge's own course API, a `"New Feedback"` subject line, a
@@ -256,56 +323,73 @@ function CareSettingsPanel({ client }: { client: SupportClient }) {
    * somehow has it set can always turn it off rather than being stuck with a hidden switch.
    */
   const showCourseMode = canManageSupport && (hasCourseRequests(client.workspaceClientSlug) || courseOnly);
+  // Ingest-only is a general Care setting, so the panel is offered to anyone who may set Care up.
+  const showMode = canManageSupport;
+
+  /*
+   * ⚠️ One sequence for the whole screen, from one helper.
+   *
+   * The Portal link used to compute its own number as
+   * `(showMode ? 1 : 0) + (showCourseMode ? 1 : 0) + 2` — arithmetic resting on the assumption
+   * that `ConnectorsView` contributed exactly ONE number. It contributed none (its only numbered
+   * block was switched off right here by `showAgentLogs={false}`), so this screen skipped a
+   * number on every client: `01`, `02`, then connectors, then `04`.
+   */
+  const num = careSectionNumbers([showMode, showCourseMode]);
+  const connectorsFirst = careSectionCount([showMode, showCourseMode]) + 1;
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
       <div className="mx-auto max-w-3xl space-y-4">
-        {showCourseMode && (
+        {showMode && (
         <section className="widget-card">
           {/* No close button of its own: the persistent client header owns "back", and an ✕ sitting
               on the MODE panel reads as "dismiss this panel" rather than "leave settings". */}
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">01</span>{" // MODE"}
+              <span className="widget-header__label--number">{num[0]}</span>{" // MODE"}
             </span>
-            <span className="widget-header__status">{courseOnly ? "COURSE REQUESTS ONLY" : "FULL TRIAGE"}</span>
+            <span className="widget-header__status">
+              {courseOnly ? "COURSE REQUESTS ONLY" : ingestOnly ? "INGEST ONLY" : "SUPPORT DESK"}
+            </span>
           </div>
-          <div className="widget-body">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-[var(--text-1)]">Support paused — course requests only</p>
-                <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-3)]">
-                  Keep pulling the inbox quietly, but skip all triage, tickets and auto-replies. Incoming
-                  “New Feedback” emails are auto-filed into the Course Requests wiki (course requests only —
-                  bugs and general feedback are left untouched in the inbox).
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={courseOnly}
-                disabled={updateClient.isPending}
-                onClick={() => updateClient.mutate({ courseRequestOnly: !courseOnly })}
-                title={courseOnly ? "Turn off — resume normal triage" : "Turn on — pause support, course requests only"}
-                className={cn(
-                  "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:opacity-50",
-                  courseOnly ? "bg-[var(--brand-600)]" : "bg-[var(--border-1)]",
-                )}
-              >
-                <span
-                  className={cn(
-                    "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-                    courseOnly ? "translate-x-[22px]" : "translate-x-0.5",
-                  )}
-                />
-              </button>
-            </div>
+          <div className="widget-body space-y-5">
+            <ModeSwitch
+              on={ingestOnly}
+              pending={updateClient.isPending}
+              title="Ingest only — not a support desk"
+              body="Keep the connectors running so their mail still lands, but leave this client out of Care's queues, totals and the HQ tile. For a client whose inbox we harvest and whose customers we do not answer."
+              hint={ingestOnly ? "Turn off — put this client back on the support desk" : "Turn on — ingest their mail, but do not answer for them"}
+              onToggle={() => updateClient.mutate({ ingestOnly: !ingestOnly })}
+            />
+            {showCourseMode && <div className="border-t border-[var(--border-3)]" />}
           </div>
         </section>
         )}
-        <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} showAgentLogs={false} />
+        {showCourseMode && (
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label">
+              <span className="widget-header__label--number">{num[1]}</span>{" // COURSE REQUESTS"}
+            </span>
+            <span className="widget-header__status">{courseOnly ? "ON" : "OFF"}</span>
+          </div>
+          <div className="widget-body">
+            <ModeSwitch
+              on={courseOnly}
+              pending={updateClient.isPending}
+              title="File “New Feedback” into the Course Requests wiki"
+              body="Incoming “New Feedback” emails are auto-filed into this client's Course Requests tracker. Course requests only — bugs and general feedback are left untouched in the inbox. This also puts the client in ingest-only mode."
+              hint={courseOnly ? "Turn off — stop filing course requests" : "Turn on — file course requests into the wiki"}
+              onToggle={() => updateClient.mutate({ courseRequestOnly: !courseOnly })}
+            />
+          </div>
+        </section>
+        )}
+        <ConnectorsView clientId={client.id} clientSlug={client.slug ?? ""} firstNumber={connectorsFirst} />
         {/* The Portal link lived in the legacy dashboard's Settings panel; it is per-client setup,
-            so it sits here with the channels. Numbered after the connectors' own panels. */}
-        <PortalLinkCard clientId={client.id} number={showCourseMode ? 4 : 3} />
+            so it sits here with the channels, carrying the sequence on after them. */}
+        <PortalLinkCard clientId={client.id} number={connectorsFirst + CONNECTOR_SECTION_COUNT} />
       </div>
     </div>
   );
@@ -340,7 +424,13 @@ export function ClientCockpit({
   client: SupportClient;
   /** Which part of the client's Care to open on — from a deep link (`?section=`). */
   initialSection?: CareSection;
-  /** A conversation to open on arrival, from a ?conversation= link (search results). */
+  /**
+   * Open straight on this conversation, rather than on the client's queue.
+   *
+   * Two callers: Care home's "Needs you first", because landing on the queue instead would put
+   * you on a list sorted newest-first (§42.15) — anywhere but the row you just clicked — and a
+   * `?conversation=` deep link from ⌘K search.
+   */
   initialConversationId?: string | null;
   onSectionChange?: (section: CareSection) => void;
   // No currentUserId: "Assigned to me" is now a server query (assigneeId=me), resolved from the
@@ -354,7 +444,8 @@ export function ClientCockpit({
   const markRead = useMarkConversationRead(client.id);
   const closeWithUndo = useCloseConversationWithUndo(client.id);
   const snooze = useSnoozeConversation(client.id);
-  const { canManageSupport } = usePermissions();
+  const { canUseSupport, canManageSupport } = usePermissions();
+  const [showClearBacklog, setShowClearBacklog] = useState(false);
 
   const [activeView, setActiveView] = useState(DEFAULT_VIEW_ID);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
@@ -376,8 +467,14 @@ export function ClientCockpit({
   const [sortOverride, setSortOverride] = useState<SortKey | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   // Which part of this client's Care is showing. Everything the legacy /app/support dashboard
-  // owned (tickets, monthly reports, rules + agents, channels) is a section here now.
-  const [section, setSectionState] = useState<CareSection>(initialSection);
+  // owned (monthly reports, rules + agents, channels) is a section here now.
+  // An ingest-only client has one section: the connector that keeps its mail flowing. Anything
+  // that asks for another — a stale deep link, a remembered tab — lands on Settings rather than
+  // on an empty queue.
+  const sections = careSectionsFor(client);
+  const [section, setSectionState] = useState<CareSection>(
+    sections.includes(initialSection) ? initialSection : sections[0],
+  );
   function setSection(next: CareSection) {
     setSectionState(next);
     setSelectedId(null);
@@ -475,12 +572,17 @@ export function ClientCockpit({
   // always had. Guarded on `conv.unread` so re-opening an already-read thread doesn't fire a
   // pointless write; the mutation is optimistic, so the row de-bolds on this click.
   //
-  // Also guarded on canManageSupport because the PATCH route asserts it: without the guard a
-  // read-only Care viewer would take a 403 on every open and watch the row re-bold as the
-  // optimistic patch rolled back.
+  // Also guarded on canUseSupport because the PATCH route asserts it: without the guard a
+  // viewer with no Care grant at all would take a 403 on every open and watch the row re-bold as
+  // the optimistic patch rolled back.
+  //
+  // ⚠️ This used to read `canManageSupport`, whose label is "Connect channels and edit workflow
+  // rules" — so a DEVELOPER, who holds the permission labelled "Open Care and answer
+  // conversations", could never mark anything read and their rows stayed bold for ever. Triage,
+  // including this, is now on `support` where the labels always said it was.
   function openConversation(conv: Conversation) {
     setSelectedId(conv.id);
-    if (conv.unread && canManageSupport) markRead.mutate(conv.id);
+    if (conv.unread && canUseSupport) markRead.mutate(conv.id);
   }
 
   /**
@@ -525,12 +627,12 @@ export function ClientCockpit({
         }
         case "x": {
           const conv = conversations[focusedIndex];
-          if (conv && canManageSupport) { e.preventDefault(); toggleSelect(conv.id); }
+          if (conv && canUseSupport) { e.preventDefault(); toggleSelect(conv.id); }
           return;
         }
         case "e": {
           const conv = conversations[focusedIndex];
-          if (conv && canManageSupport) {
+          if (conv && canUseSupport) {
             e.preventDefault();
             closeWithUndo(conv);
             // Hold position rather than following the row out of the view it just left, so a
@@ -541,7 +643,7 @@ export function ClientCockpit({
         }
         case "s": {
           const conv = conversations[focusedIndex];
-          if (conv && canManageSupport) {
+          if (conv && canUseSupport) {
             e.preventDefault();
             snooze.mutate({ convId: conv.id, until: new Date(Date.now() + 24 * 3600_000).toISOString() });
             setFocusedIndex((i) => Math.min(i, conversations.length - 2));
@@ -587,7 +689,7 @@ export function ClientCockpit({
 
   const allLoadedSelected = conversations.length > 0 && conversations.every((c) => selection.has(c.id));
   // Column count, so the empty/loading row can span the table without leaving a ragged cell.
-  const columnCount = 4 + (canManageSupport ? 1 : 0) + (showRowState ? 1 : 0) + 1;
+  const columnCount = 4 + (canUseSupport ? 1 : 0) + (showRowState ? 1 : 0) + 1;
 
   return (
     // w-full + min-w-0: <main> is a row-flex container, so without an explicit fill the cockpit
@@ -622,7 +724,12 @@ export function ClientCockpit({
             clipped away entirely. A phone spends one extra line on it; that is the right trade.
           */}
           <div className="widget-data-label mt-0.5">
-            {mode !== "index" && mode !== "record" ? (
+            {/* ⚠️ An ingest-only client must never show a queue readout. Nobody is waiting on us
+                here; saying "0 awaiting" or "All replied" would both be claims about a support
+                relationship this client does not have. */}
+            {!isSupportDesk(client) ? (
+              <span title={ingestOnlyReason(client)}>Ingest only</span>
+            ) : mode !== "index" && mode !== "record" ? (
               CARE_SECTION_LABEL[mode]
             ) : mode === "record" ? (
               "Conversation"
@@ -659,13 +766,13 @@ export function ClientCockpit({
       {/* ── The client's sections. Conversations is the queue; the rest are what the legacy
              /app/support dashboard used to own exclusively. Hidden on a record, where the header's
              back arrow is the way out. ── */}
-      {mode !== "record" && (
+      {mode !== "record" && sections.length > 1 && (
         <div className="shrink-0 overflow-x-auto border-b border-[var(--border-2)] px-3 py-2 sm:px-4">
           <nav
             className="inline-flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
             aria-label="Client sections"
           >
-            {CARE_SECTIONS.map((id) => {
+            {sections.map((id) => {
               const active = section === id;
               return (
                 <button
@@ -691,11 +798,10 @@ export function ClientCockpit({
 
       {mode === "settings" ? (
         <CareSettingsPanel client={client} />
-      ) : mode === "tickets" || mode === "reports" || mode === "automation" ? (
+      ) : mode === "reports" || mode === "automation" ? (
         // pb-20 clears the fixed 48px "On Your Desk" dock, as the legacy dashboard did.
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-20 pt-5 sm:px-6">
           <div className="mx-auto max-w-6xl">
-            {mode === "tickets" && <TicketsTableView clientId={client.id} />}
             {mode === "reports" && <ReportsView client={client} />}
             {mode === "automation" && <CareAutomationView clientId={client.id} />}
           </div>
@@ -863,10 +969,26 @@ export function ClientCockpit({
               {/* Keyboard triage is the whole point of the redesign, and an invisible shortcut is a
                   shortcut nobody uses — so it is stated once, quietly, where the eye lands before
                   the first row. */}
-              {canManageSupport && conversations.length > 0 && (
+              {canUseSupport && conversations.length > 0 && (
                 <p className="ml-auto hidden shrink-0 font-mono text-[10px] tracking-[0.4px] text-[var(--text-4)] lg:block">
                   <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>↵</Kbd> open · <Kbd>E</Kbd> close · <Kbd>S</Kbd> snooze · <Kbd>X</Kbd> select
                 </p>
+              )}
+              {/* Here, not buried in Settings, because this is where you are standing when you
+                  decide a board is too old to work through. Setup-level: it changes the whole
+                  client's board in one press, even though it is reversible. */}
+              {canManageSupport && (
+                <button
+                  type="button"
+                  onClick={() => setShowClearBacklog(true)}
+                  className={cn(
+                    "shrink-0 rounded-[6px] border border-[var(--border-2)] px-2 py-1 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+                    !(canUseSupport && conversations.length > 0) && "ml-auto",
+                  )}
+                  title="Close everything older than a date"
+                >
+                  Clear backlog…
+                </button>
               )}
             </div>
           )}
@@ -911,7 +1033,7 @@ export function ClientCockpit({
             <table className="app-table app-table--dense">
               <thead className="sticky top-0 z-10">
                 <tr>
-                  {canManageSupport && (
+                  {canUseSupport && (
                     <th scope="col" className="w-8">
                       <input
                         type="checkbox"
@@ -978,7 +1100,7 @@ export function ClientCockpit({
                     conv={c}
                     focused={i === focusedIndex}
                     selected={selection.has(c.id)}
-                    selectable={canManageSupport}
+                    selectable={canUseSupport}
                     showState={showRowState}
                     onOpen={() => openConversation(c)}
                     onToggleSelect={() => toggleSelect(c.id)}
@@ -1008,6 +1130,14 @@ export function ClientCockpit({
           </div>
           )}
         </>
+      )}
+
+      {showClearBacklog && (
+        <ClearBacklogModal
+          clientId={client.id}
+          clientName={client.name}
+          onClose={() => setShowClearBacklog(false)}
+        />
       )}
     </div>
   );

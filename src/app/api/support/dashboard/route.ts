@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
-import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { requireSupportWorkspace } from "@/server/support-scope";
 import { getSupportDashboardSummary } from "@/server/support";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // single round-trip backed by indexed Prisma queries.
 export async function GET(request: NextRequest) {
   try {
-    const summary = await getSupportDashboardSummary(await workspaceIdForRequest(request));
+    const summary = await getSupportDashboardSummary(await requireSupportWorkspace(request));
     return apiOk(summary);
   } catch (error) {
     return fromError(error);

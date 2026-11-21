@@ -55,9 +55,14 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         description: "A new support ticket landed in your queue.",
       },
       {
-        id: "care.ticket_escalated",
-        label: "Ticket escalated",
-        description: "A workflow rule or manual escalation flagged a ticket.",
+        id: "care.waiting_too_long",
+        label: "A customer has waited too long",
+        description: "One of your clients has an unanswered message older than a day. Once per client, not once an hour.",
+      },
+      {
+        id: "care.connector_failing",
+        label: "A channel has stopped delivering",
+        description: "A client's mailbox or channel has failed twice running, so their queue will look quiet whether or not it is.",
       },
     ],
   },
