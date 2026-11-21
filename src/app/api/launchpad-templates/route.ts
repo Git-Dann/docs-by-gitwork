@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageClients, "read Launchpad templates");
     const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";
     return apiOk(await listLaunchpadTemplates(await workspaceIdForRequest(request), { includeArchived }));
   } catch (error) {

@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
@@ -22,6 +23,7 @@ function truncate(value: string, maxLength = 110) {
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(_request), canManageCode, "read a candidate scorecard");
     const workspace = { id: await workspaceIdForRequest(_request) };
     const { id } = await context.params;
     const candidate = await prisma.candidate.findFirst({

@@ -9,10 +9,10 @@
  */
 
 import { NextRequest } from "next/server";
+import { assertAtLeastAdmin, getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const VALID_EVENTS = [
@@ -36,6 +36,7 @@ const createSchema = z.object({
 
 export async function GET(request: Request) {
   try {
+    assertAtLeastAdmin(await requireAuthedUser(request));
     const workspace = { id: await workspaceIdForRequest(request) };
     const subs = await prisma.slackWebhookSubscription.findMany({
       where: { workspaceId: workspace.id },

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
@@ -24,6 +25,7 @@ type RouteContext = {
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageCode, "manage a developer's clients");
     const workspaceId = await workspaceIdForRequest(request);
     const { id: candidateId } = await context.params;
 

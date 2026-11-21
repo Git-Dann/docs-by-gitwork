@@ -5,6 +5,7 @@
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { requireAuthedUser } from "@/server/auth/effective-user";
 import { approvePurge, canReviewPurges } from "@/server/retention/purge";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
     const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string") : [];
     if (ids.length === 0) return apiError("No archive ids provided", 400);
 
-    return apiOk(await approvePurge(ids));
+    return apiOk(await approvePurge(await requestWorkspaceId(user), ids));
   } catch (e) {
     return fromError(e);
   }

@@ -9,7 +9,7 @@ import {
 } from "@/server/wiki-documents";
 import { z } from "zod";
 import { clientIdForSlug } from "@/server/clients-scope";
-import { assertClientWriter } from "@/server/client-write-access";
+import { assertClientReader, assertClientWriter } from "@/server/client-write-access";
 
 export const maxDuration = 60;
 
@@ -22,6 +22,7 @@ const toggleSchema = z.object({ enabled: z.boolean() });
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientReader(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await loadWikiDocuments(clientId));

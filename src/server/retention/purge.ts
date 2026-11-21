@@ -4,12 +4,21 @@
  * `listPurgeCandidates` surfaces cold archives past their retention window (purgeEligibleAt <= now,
  * not yet purged). An admin approves specific ids via `approvePurge`, which deletes the cold copy
  * and stamps `purgedAt`. `getPurgeAttention` powers the On Your Desk banner (admins/super-admins).
+ *
+ * ⚠️ Every one of the three takes a workspace, and every query filters on it. `canReviewPurges`
+ * is a WORKSPACE role (`isAtLeast(user.role, "ADMIN")`), so without the filter an admin of any
+ * business could list every other business's archive ids and then purge them by id — a
+ * cross-tenant delete, of the only destructive step in the lifecycle, behind a role that was
+ * never meant to reach past its own workspace. `/api/retention/**` is in no module gate either.
+ * `ColdArchive.workspaceId` is nullable in the schema but `policies.ts` is the only writer and
+ * always sets it, so filtering on it loses nothing.
  */
 
 import { prisma } from "@/lib/prisma";
 import { isAtLeast } from "@/types/auth";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { getColdStore, type ColdRef } from "@/server/retention/cold-store";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 /** Admins + super-admins review purges. */
 export function canReviewPurges(user: EffectiveUser | null | undefined): boolean {
@@ -28,9 +37,9 @@ export interface PurgeCandidate {
   purgeEligibleAt: string | null;
 }
 
-export async function listPurgeCandidates(limit = 100): Promise<PurgeCandidate[]> {
+export async function listPurgeCandidates(workspaceId: string, limit = 100): Promise<PurgeCandidate[]> {
   const rows = await prisma.coldArchive.findMany({
-    where: { purgedAt: null, purgeEligibleAt: { not: null, lte: new Date() } },
+    where: { workspaceId, purgedAt: null, purgeEligibleAt: { not: null, lte: new Date() } },
     orderBy: { purgeEligibleAt: "asc" },
     take: limit,
   });
@@ -55,7 +64,8 @@ export interface PurgeAttention {
 /** Lightweight count + reclaimable size for the Desk banner. Empty for non-admins. */
 export async function getPurgeAttention(user: EffectiveUser | null | undefined): Promise<PurgeAttention> {
   if (!canReviewPurges(user)) return { count: 0, reclaimableBytes: 0 };
-  const where = { purgedAt: null, purgeEligibleAt: { not: null, lte: new Date() } } as const;
+  const workspaceId = await requestWorkspaceId(user ?? null);
+  const where = { workspaceId, purgedAt: null, purgeEligibleAt: { not: null, lte: new Date() } } as const;
   const [count, agg] = await Promise.all([
     prisma.coldArchive.count({ where }),
     prisma.coldArchive.aggregate({ where, _sum: { byteSize: true } }),
@@ -72,12 +82,14 @@ export interface PurgeResult {
  * Permanently delete the cold copies for the given archive ids (admin-approved). Deletes the cold
  * object then stamps `purgedAt`. Skips ids that don't exist or are already purged.
  */
-export async function approvePurge(ids: string[]): Promise<PurgeResult> {
+export async function approvePurge(workspaceId: string, ids: string[]): Promise<PurgeResult> {
   const out: PurgeResult = { purged: 0, errors: [] };
   if (ids.length === 0) return out;
 
+  // ⚠️ `workspaceId` first, and in the WHERE. An id the caller's workspace does not own simply
+  // does not come back, so it is skipped exactly like one that never existed.
   const rows = await prisma.coldArchive.findMany({
-    where: { id: { in: ids }, purgedAt: null },
+    where: { workspaceId, id: { in: ids }, purgedAt: null },
     include: { workspace: { select: { id: true, docsBackupEnabled: true, coldStoreFolderId: true } } },
   });
 

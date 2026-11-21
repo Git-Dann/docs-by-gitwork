@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { assertAtLeastAdmin, requireAuthedUser } from "@/server/auth/effective-user";
 import { apiOk, apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
@@ -92,6 +93,7 @@ async function fetchLocalModels(baseUrl: string, apiKey: string | null): Promise
 }
 
 export async function GET(request: NextRequest) {
+  assertAtLeastAdmin(await requireAuthedUser(request));
   const provider = request.nextUrl.searchParams.get("provider") as
     | "ANTHROPIC"
     | "OPENAI"

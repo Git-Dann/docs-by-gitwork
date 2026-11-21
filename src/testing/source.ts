@@ -259,10 +259,20 @@ export function handlers(src: string): Handler[] {
   // ⚠️ No .slice(1) here. String.split with a zero-width lookahead emits NO leading empty
   // string when the match is at index 0, so slicing drops the first handler of any file that
   // opens with one. Filtering on the method is correct either way.
-  return src
+  const fns = src
     .split(HANDLER_SPLIT)
     .map((body) => ({ method: HANDLER_NAME.exec(body)?.[1] ?? "", body }))
     .filter((h) => h.method !== "");
+
+  // ⚠️ `export const GET = ping;` is a handler too, and a splitter that only knows
+  // `export async function` cannot see it — which makes the route invisible to every sweep
+  // built on this, and an invisible route is an ungated one. The logic lives in a named
+  // function above, so the whole file is the body.
+  const consts = [...src.matchAll(/^export const (GET|POST|PUT|PATCH|DELETE|HEAD)\s*=/gm)]
+    .map((m) => ({ method: m[1], body: src }))
+    .filter((c) => !fns.some((f) => f.method === c.method));
+
+  return [...fns, ...consts];
 }
 
 /** Anything above the first handler: imports, constants and any module-scope guard. */

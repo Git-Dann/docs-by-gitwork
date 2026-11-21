@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import {
   GitHubAnalysisError,
@@ -37,6 +38,8 @@ type RouteContext = {
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const { workspace, user } = await requestActor(_request);
+    // Spends the shared GitHub token, as above.
+    assertCan(await getEffectiveUserOrNull(_request), canManageCode, "run a repo validation");
     const { id: candidateId, placementId } = await context.params;
 
     const placement = await prisma.placement.findFirst({

@@ -10,6 +10,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { assertClientReader } from "@/server/client-write-access";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import {
   applyLaunchpadPrefill,
@@ -26,6 +27,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientReader(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk({ launchpad: await getLaunchpadForClient(clientId) });

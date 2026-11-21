@@ -14,6 +14,18 @@ const audit = vi.fn(async (..._a: unknown[]) => {});
 let stored: unknown = null;
 
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => ({ user: { id: "u1" } })) }));
+// The PATCH writes what the PUBLIC embed shows, so it is Admin-gated. `role` drives both the
+// happy path and the refusal below.
+let role = "ADMIN";
+vi.mock("@/server/auth/effective-user", async () => {
+  const actual = await vi.importActual<typeof import("@/server/auth/effective-user")>(
+    "@/server/auth/effective-user",
+  );
+  return {
+    ...actual,
+    requireAuthedUser: vi.fn(async () => ({ id: "u1", role, permissions: [], workspaceId: "w1" })),
+  };
+});
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     workspace: {
@@ -103,6 +115,14 @@ describe("PATCH freeCheckKeys", () => {
   it("leaves the limit untouched when the field is omitted (e.g. saving the booking link)", async () => {
     await patch({ bookingUrl: "https://example.com/book" });
     expect("pulseEmbedCheckKeys" in update.mock.calls[0][0].data).toBe(false);
+  });
+
+  it("refuses a member who is not an Admin, because this writes a PUBLIC page", async () => {
+    role = "DEVELOPER";
+    const res = await patch({ freeCheckKeys: KEYS });
+    role = "ADMIN";
+    expect(res.status).toBe(403);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("audits the COUNT, never a thousand keys", async () => {

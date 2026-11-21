@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { apiOk, fromError } from "@/lib/api-response";
 import { getWorkspaceSchedule, parseScheduleRange } from "@/server/schedule";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
@@ -24,6 +25,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageCode, "read the placement schedule");
     const workspaceId = await workspaceIdForRequest(request);
     const { from, to } = parseScheduleRange(request.nextUrl.searchParams);
     const blocks = await getWorkspaceSchedule({ workspaceId, from, to });

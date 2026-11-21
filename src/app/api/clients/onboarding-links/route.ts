@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canManageClients, "list onboarding links");
     const result = await listOnboardingLinks(await workspaceIdForRequest(request));
     return apiOk(result);
   } catch (error) {

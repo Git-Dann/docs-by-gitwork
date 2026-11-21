@@ -9,12 +9,14 @@
  */
 
 import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { assertAtLeastAdmin, requireAuthedUser } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { verifyHostnameDns } from "@/server/custom-hostname";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export async function POST(request: Request) {
   try {
+    assertAtLeastAdmin(await requireAuthedUser(request));
     const workspace = { id: await workspaceIdForRequest(request) };
     const ws = await prisma.workspace.findUnique({
       where: { id: workspace.id },

@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
-import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { auth } from "@/auth";
+import { apiOk, fromError } from "@/lib/api-response";
+import { assertAtLeastAdmin, requireAuthedUser } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { TECH_STACK_OPTIONS } from "@/types/codeclear";
 import { techStackCreateSchema } from "@/server/validators";
-import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -47,17 +46,16 @@ export async function GET() {
   }
 }
 
-async function requireAdminSession() {
-  const session = await auth();
-  if (!session?.user) return null;
-  if (!isAtLeast(session.user.role, "ADMIN")) return null;
-  return session;
-}
+// ⚠️ Admin is read from the DATABASE, not from `session.user.role`, which carries the role
+// the token was minted with. The FOURTH byte-identical copy of the same local helper.
+// ⚠️ TechStack is a GLOBAL catalogue — no workspaceId, and `name` is @unique — so a
+// workspace admin adds to a list every business shares. Left as it is: making it
+// per-workspace means replacing that unique index, which `prisma db push` treats as
+// data-losing and would skip the whole schema sync (§2). It holds no customer data.
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAdminSession();
-    if (!session) return apiError("Forbidden", 403);
+    assertAtLeastAdmin(await requireAuthedUser(request));
 
     const body = techStackCreateSchema.parse(await request.json());
     const stack = await prisma.techStack.create({

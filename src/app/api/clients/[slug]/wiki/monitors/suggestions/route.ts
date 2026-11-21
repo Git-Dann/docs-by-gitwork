@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { assertClientReader } from "@/server/client-write-access";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { loadMonitorSuggestions } from "@/server/wiki-monitors";
 import { prisma } from "@/lib/prisma";
@@ -11,6 +12,7 @@ import { workspaceIdForRequest } from "@/server/workspaces/scope";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    await assertClientReader(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },

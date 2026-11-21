@@ -14,3 +14,16 @@ import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 export async function assertClientWriter(req: Request, slug: string): Promise<void> {
   await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
 }
+
+/**
+ * The same rule, for a READ. §135 gated the writes and left the reads, so any signed-in
+ * member could still fetch another client's wiki documents, code handover, golf data,
+ * launchpad and course-request feedback — and the ingest token, which is a credential.
+ * Reading and writing share one question here: can you open this client at all?
+ *
+ * Two names rather than one because `assertClientWriter(req, slug)` inside a GET reads like
+ * a mistake, and a guard nobody can read is a guard people route around.
+ */
+export async function assertClientReader(req: Request, slug: string): Promise<void> {
+  await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
+}

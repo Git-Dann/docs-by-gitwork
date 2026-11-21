@@ -1,10 +1,10 @@
 import { Prisma } from "@prisma/client";
+import { assertAtLeastAdmin, assertCan, canViewRateCard, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { serializeRateCardPerson } from "@/server/rate-card";
 import { rateCardPersonUpdateSchema } from "@/server/validators";
-import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,7 @@ interface RouteContext {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
+    assertCan(await getEffectiveUserOrNull(request), canViewRateCard, "read a rate-card person");
     const { id } = await context.params;
     const workspaceId = await workspaceIdForRequest(request);
 
