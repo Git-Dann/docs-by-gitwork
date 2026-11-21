@@ -11,6 +11,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "@/testing/source";
 
 const root = process.cwd();
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -22,8 +23,7 @@ const read = (p: string) => readFileSync(join(root, p), "utf8");
  * file it fires on the comment explaining why the thing was removed — which is how
  * the first version of the status guards below failed.
  */
-const code = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+const code = stripComments;
 
 const BOARD = read("src/components/clients/client-summary-board.tsx");
 const SERVER = read("src/server/client-summary.ts");

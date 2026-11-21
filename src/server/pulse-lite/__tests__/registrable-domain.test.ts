@@ -13,6 +13,7 @@ import {
   SINGLE_LABEL_PUBLIC_SUFFIXES,
   subdomainLabels,
 } from "../registrable-domain";
+import { stripComments } from "@/testing/source";
 
 /**
  * These are the shapes the false-positive audit actually scanned, so they are
@@ -568,7 +569,7 @@ describe("purity — safe to import from the AI-free deterministic core", () => 
     // Comments are stripped first: the module header legitimately NAMES the
     // things it must not import ("never import anything from pulse-ai"), and a
     // grep over the raw file would match its own documentation.
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const code = stripComments(source);
     expect(code).not.toMatch(
       /\bfetch\s*\(|\brequire\s*\(|\bimport\s*\(|undici|node:dns|node:http|prisma|pulse-ai|dns\/promises/,
     );

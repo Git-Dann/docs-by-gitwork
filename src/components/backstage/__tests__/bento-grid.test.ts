@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/testing/source";
 
 /**
  * The Backstage bento row must be exactly full at EVERY permission level.
@@ -16,8 +17,6 @@ import { join } from "node:path";
  * string, not behaviour.
  */
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
-const stripComments = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const overview = stripComments(read("src/components/backstage/backstage-overview.tsx"));
 const team = stripComments(read("src/components/backstage/team-card.tsx"));

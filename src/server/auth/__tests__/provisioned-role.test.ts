@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_PROVISIONED_ROLE, DEFAULT_ROLE_PERMISSIONS } from "@/types/auth";
+import { stripComments } from "@/testing/source";
 
 /**
  * A person Foundry creates a membership for — a first sign-in, or accepting an
@@ -17,10 +18,7 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
  * and the assertion is about code. (`//` inside a string literal is not a concern
  * in these files; none of the provisioning code carries one.)
  */
-const code = (p: string) =>
-  read(p)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+const code = (p: string) => stripComments(read(p));
 
 const PROVISIONING_PATHS = [
   "src/auth.ts",

@@ -7,6 +7,7 @@ import {
   HANDOVER_KIND_META,
   HANDOVER_STATUSES,
 } from "@/types/handover";
+import { stripComments } from "@/testing/source";
 
 /**
  * A feature with several parallel allow-lists breaks by being added to some of
@@ -31,9 +32,6 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 // rule rather than the rule itself passes with the rule deleted. That has
 // happened five times in this codebase; it is the default failure of this
 // style of test, not an edge case.
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
 
 describe("handover — Backstage wiring", () => {
   const workspace = stripComments(read("src/components/backstage/backstage-workspace.tsx"));

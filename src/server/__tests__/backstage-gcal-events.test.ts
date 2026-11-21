@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/testing/source";
 
 /**
  * What the team calendar asks Google for, and what it is allowed to hide.
@@ -22,7 +23,7 @@ import { join } from "node:path";
 const ROOT = join(__dirname, "..", "..", "..");
 const src = readFileSync(join(ROOT, "src/server/backstage-gcal.ts"), "utf8");
 /** Comments contain the words the rules forbid — assert against code only. */
-const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const code = stripComments(src);
 
 describe("it asks for meetings, not everything on the calendar", () => {
   it("filters the event types at the API", () => {

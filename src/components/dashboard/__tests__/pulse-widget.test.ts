@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/testing/source";
 
 /**
  * The HQ Pulse tile.
@@ -24,10 +25,7 @@ const src = readFileSync(join(ROOT, "src/components/dashboard/pulse-widget.tsx")
  * here, and four other times in the same session. If a rule is worth a comment, the
  * comment will contain the words the rule forbids.
  */
-const code = src
-  .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/^\s*\/\/.*$/gm, "");
+const code = stripComments(src);
 const hooks = readFileSync(join(ROOT, "src/hooks/use-pulse.ts"), "utf8");
 
 describe("empty state", () => {
