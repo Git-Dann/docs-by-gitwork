@@ -4,13 +4,11 @@
  */
 
 import type { NextRequest } from "next/server";
-import { auth } from "@/auth";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { assertSuperAdmin, requireAuthedUser } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { getAiCostSummary } from "@/server/ai-cost";
-import { getRequestUser } from "@/server/auth/request-user";
-import { isSuperAdmin } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +18,11 @@ export async function GET(request: NextRequest) {
     // per-user Foundry mobile JWT (the Mac / iOS apps). Middleware verifies the JWT and forwards
     // the x-foundry-user-* headers that getRequestUser reads, so this role claim is already
     // server-verified. Super Admins only, either way.
-    const mobileUser = getRequestUser(request);
-    const role = mobileUser?.role ?? (await auth())?.user?.role;
-    if (!role || !isSuperAdmin(role)) return apiError("Forbidden", 403);
+    // ⚠️ The role is read from the DATABASE, not from the token. `session.user.role` and the
+    // mobile JWT's role claim both carry the role the token was MINTED with, so a demoted or
+    // archived caller keeps the route until their token turns over. §88 made a database read
+    // the rule; these were missed.
+    assertSuperAdmin(await requireAuthedUser(request));
 
     const ws = await prisma.workspace.findUnique({
       where: { id: await workspaceIdForRequest(request) },
