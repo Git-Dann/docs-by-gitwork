@@ -78,7 +78,7 @@ export function demoMoney(now: Date = new Date()): MoneySummary {
   ];
   return summariseMoney({
     now,
-    fx: { base: "GBP", rates: { USD: 0.79, EUR: 0.85 }, asOf: now.toISOString().slice(0, 10) },
+    fx: { base: "GBP", rates: { USD: 0.79, EUR: 0.85 }, asOf: now.toISOString().slice(0, 10), error: null },
     clients: [
       { id: "c1", name: "Northwind Labs", slug: "northwind", team: { amount: 9800, currency: "USD", unpricedDevs: 0 }, retainerDays: null, retainerDaysUsed: null },
       { id: "c2", name: "Fairway Club", slug: "fairway", team: { amount: 4200, currency: "USD", unpricedDevs: 1 }, retainerDays: 6, retainerDaysUsed: 4 },

@@ -37,7 +37,9 @@ const WIKI_USER_SELECT = {
   email: true,
 } as const satisfies Prisma.ClientWikiUserSelect;
 
-export async function backfillCommentAuthors(wikiId: string): Promise<{ examined: number; stamped: number }> {
+export async function backfillCommentAuthors(
+  wikiId: string,
+): Promise<{ examined: number; stamped: number; failed: boolean }> {
   try {
     const rows = await prisma.clientWikiIntakeComment.findMany({
       where: {
@@ -51,7 +53,7 @@ export async function backfillCommentAuthors(wikiId: string): Promise<{ examined
       orderBy: { createdAt: "asc" },
       take: BACKFILL_BATCH,
     });
-    if (rows.length === 0) return { examined: 0, stamped: 0 };
+    if (rows.length === 0) return { examined: 0, stamped: 0, failed: false };
 
     const users = await prisma.clientWikiUser.findMany({ where: { wikiId }, select: WIKI_USER_SELECT });
     let stamped = 0;
@@ -65,10 +67,12 @@ export async function backfillCommentAuthors(wikiId: string): Promise<{ examined
       });
       stamped += res.count;
     }
-    return { examined: rows.length, stamped };
+    return { examined: rows.length, stamped, failed: false };
   } catch (err) {
     // Housekeeping: a failure must never break the page that triggered it.
+    // ⚠️ `failed` is the point. { examined: 0, stamped: 0 } on its own reads exactly like
+    // "there was nothing left to stamp", which is the opposite of what happened.
     console.error("[wiki-intake-comment-backfill] failed", err);
-    return { examined: 0, stamped: 0 };
+    return { examined: 0, stamped: 0, failed: true };
   }
 }

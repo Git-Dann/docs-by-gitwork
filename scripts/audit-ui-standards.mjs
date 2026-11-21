@@ -189,6 +189,55 @@ const CSS_FIELD_CLASSES = /\b(app-input|app-input-compact|app-select|app-select-
 /** Text-ish inputs only — a checkbox/radio/range/color has no text box to pad. */
 const NON_TEXT_INPUT = /type=\s*["'](checkbox|radio|range|file|color|hidden|submit|button|image|reset)["']/;
 
+/**
+ * A word in the returned object that tells the reader this was a failure. Matched against
+ * the whole literal, not just its top-level keys: `collectorError`, a nested
+ * `diagnostics: { errors }` and a `summary: "Synthesis unavailable"` all speak.
+ */
+const SAYS_IT_FAILED =
+  /error|\bok\b|status|outcome|unreadable|fail|reason|\bwhy\b|fellBack|skipped|configured|degraded|unavailable|diagnostics|warning/i;
+
+/**
+ * Catches that return an ordinary answer because the thing really did succeed.
+ * ⚠️ An entry must say why the return is HONEST, not what the function does. Keyed on the
+ * start of the returned literal rather than a line number, so it does not rot on an edit.
+ */
+const SILENT_CATCH_EXEMPT = [
+  {
+    file: "src/server/staff.ts",
+    returns: "{ recordId: raced }",
+    why: "Not a failure: a second click raced this one and won on the memberId unique index. The record exists, and this hands back the one the other request made.",
+  },
+  {
+    file: "src/server/avatar-response.ts",
+    returns: "{ mime, body }",
+    why: "Not a failure the caller must know about: an image sharp cannot resize is served as STORED, so the viewer gets the real photo rather than a placeholder. Returning the original bytes is the honest answer.",
+  },
+  {
+    file: "src/server/wiki-monitors/http.ts",
+    returns: "{}",
+    why: "Corrupt stored headers are logged above this line, and probing without them makes the monitor fail its own check, so the operator is told loudly. The signature promises a plain record and never throws.",
+  },
+  {
+    file: "src/server/study-agents/researcher.ts",
+    returns: "{ followUps: [] }",
+    why: "The model is asked for 0 or 1 follow-up question, so none is a real answer. 'No follow-up' and 'could not read one' lead to the same next step by design, and neither is stored.",
+  },
+];
+
+/** Index of the `}` closing the `{` at `open`, or -1. */
+function matchBrace(src, open) {
+  let depth = 0;
+  for (let i = open; i < src.length; i += 1) {
+    if (src[i] === "{") depth += 1;
+    else if (src[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
 const RULES = [
   {
     id: "SELECT-CHEVRON",
@@ -493,6 +542,40 @@ const RULES = [
       }
     },
   },
+  {
+    id: "SILENT-CATCH",
+    title: "a catch that returns a confident answer",
+    why:
+      "CLAUDE.md §35 and §53.5: a catch that answers with a plausible object turns " +
+      '"we could not look" into "it is not there". It has cost this codebase a client-' +
+      "facing bug six times — 389 junk course requests on a wiki, Pulse reporting files " +
+      "a repo plainly contains, Care writing other/NORMAL/NEUTRAL over a failed triage. " +
+      "Return something that SAYS it failed: an error, ok:false, outcome, reason, or " +
+      "nothing at all. Of the 83 catch-returns-an-object sites in src/server, 77 already " +
+      "do.",
+    // Server-side only: this is about what gets persisted or reported, not about markup.
+    files: (rel) => /^src\/server\//.test(rel) && !rel.includes("__tests__"),
+    run(file, src, consts, report) {
+      const re = /\bcatch\s*(?:\([^)]*\))?\s*\{/g;
+      let m;
+      while ((m = re.exec(src))) {
+        const close = matchBrace(src, m.index + m[0].length - 1);
+        if (close === -1) continue;
+        const body = src.slice(m.index, close);
+        const rr = /\breturn\s*\{/g;
+        let r;
+        while ((r = rr.exec(body))) {
+          const objEnd = matchBrace(body, rr.lastIndex - 1);
+          if (objEnd === -1) continue;
+          const obj = body.slice(rr.lastIndex - 1, objEnd + 1);
+          if (SAYS_IT_FAILED.test(obj)) continue;
+          const flat = obj.replace(/\s+/g, " ").trim();
+          if (SILENT_CATCH_EXEMPT.some((e) => file === e.file && flat.startsWith(e.returns))) continue;
+          report(file, lineOf(src, m.index + r.index), `${flat.slice(0, 70)} — nothing here says it failed`);
+        }
+      }
+    },
+  },
 ];
 
 /* ── Runner ───────────────────────────────────────────────────────────────── */
@@ -571,6 +654,17 @@ function audit(files, rules, ctx) {
 /* Deliberately broken + deliberately fine markup, so a rule that silently stops
    firing is caught. Mirrors `audit-clipping.mjs --self-test`. */
 const SELF_TEST_CASES = {
+  // `bad` is the shape Care's triage agent really had before §53.5: a failed AI call written
+  // down as a confident classification. `good` is what the other 77 sites in src/server do.
+  "SILENT-CATCH": {
+    bad: `try { a(); } catch { return { sentiment: "NEUTRAL", issueType: "other", priority: "NORMAL" }; }`,
+    good: `try { a(); } catch (e) { return { ok: false, error: String(e) }; }
+           try { b(); } catch { return { checks: [], collectorError: "the page could not be loaded" }; }
+           try { c(); } catch { return { tree: null, unreadable: "the token cannot see this repo" }; }
+           try { d(); } catch { return { outcome: "error", links: [], reason: "not an address Pulse may connect to" }; }
+           try { e2(); } catch { return null; }
+           try { f(); } catch { return; }`,
+  },
   "SELECT-CHEVRON": {
     bad: `const a = <select className="w-full rounded border px-3 py-2" />;`,
     good: `const a = <select className="app-select w-full" />;

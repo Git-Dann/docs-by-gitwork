@@ -36,10 +36,10 @@ export async function notifyTeamMentionsOnRequest(input: {
   authorName: string;
   body: string;
   mentions: readonly StoredMention[];
-}): Promise<{ notified: number }> {
+}): Promise<{ notified: number; failed: boolean }> {
   try {
     const userIds = teamMentionRecipients(input.mentions, input.authorUserId);
-    if (userIds.length === 0) return { notified: 0 };
+    if (userIds.length === 0) return { notified: 0, failed: false };
     const wiki = await prisma.clientWiki.findUnique({
       where: { id: input.wikiId },
       select: {
@@ -47,7 +47,7 @@ export async function notifyTeamMentionsOnRequest(input: {
         intakeItems: { where: { id: input.itemId }, select: { title: true } },
       },
     });
-    if (!wiki) return { notified: 0 };
+    if (!wiki) return { notified: 0, failed: false };
     const title = wiki.intakeItems[0]?.title ?? "a request";
     const excerpt =
       input.body.length > NOTIFICATION_EXCERPT ? `${input.body.slice(0, NOTIFICATION_EXCERPT)}…` : input.body;
@@ -65,10 +65,11 @@ export async function notifyTeamMentionsOnRequest(input: {
       groupKey: `wiki.request_mention:${input.itemId}`,
       count: 1,
     });
-    return { notified: userIds.length };
+    return { notified: userIds.length, failed: false };
   } catch (err) {
     console.error("[wiki-intake-reply-notify] mention notification failed", err);
-    return { notified: 0 };
+    // `notified: 0` alone reads as "nobody was mentioned". `failed` says which it was.
+    return { notified: 0, failed: true };
   }
 }
 

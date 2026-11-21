@@ -99,9 +99,13 @@ ${question}`;
   try {
     return parseJson<PersonaInterviewResponse>(raw);
   } catch {
+    // ⚠️ sentiment stays null. Writing "neutral" here is CLAUDE.md §53.5 exactly: the
+    // synthesis would then average in a reading nobody took, and the report would say the
+    // participant felt neutral when the truth is that we could not read their answer.
     return {
+      parseFailed: true,
       spoken: raw.slice(0, 500),
-      sentiment: "neutral",
+      sentiment: null,
       painPoints: [],
       delights: [],
       confusionPoints: [],

@@ -13,6 +13,15 @@
 
 const TWELVE_HOURS = 60 * 60 * 12;
 
+/** Plain words for the reader. Never the provider's raw text. */
+function describeFxError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/abort|timeout/i.test(msg)) return "the exchange-rate service did not answer in time";
+  if (/HTTP 4\d\d/.test(msg)) return "the exchange-rate service refused the request";
+  if (/HTTP 5\d\d/.test(msg)) return "the exchange-rate service is down";
+  return "the exchange rates could not be read";
+}
+
 export interface FxRate {
   /** Source currency (e.g. "USD"). */
   base: string;
@@ -66,9 +75,12 @@ export async function loadFxRates(base = "GBP"): Promise<import("@/lib/money").F
     for (const [code, r] of Object.entries(body.rates ?? {})) {
       if (typeof r === "number" && r > 0) rates[code] = 1 / r;
     }
-    return { base, rates, asOf: typeof body.date === "string" ? body.date : null };
+    return { base, rates, asOf: typeof body.date === "string" ? body.date : null, error: null };
   } catch (err) {
     console.error("[fx] rates could not be read", err);
-    return { base, rates: {}, asOf: null };
+    // ⚠️ An empty rate table and "this currency has no rate" are not the same fact. Without
+    // `error` the Money page can only say an amount was left out, never that the rate service
+    // was unreachable — which is CLAUDE.md §35 in miniature.
+    return { base, rates: {}, asOf: null, error: describeFxError(err) };
   }
 }

@@ -48,7 +48,7 @@ function parseJson<T>(raw: string): T {
 
 export async function synthesizeTurn(
   questionText: string,
-  responses: Array<{ personaId: string; personaName: string; spoken: string; sentiment: string; painPoints: string[]; delights: string[]; confusionPoints: string[] }>,
+  responses: Array<{ personaId: string; personaName: string; spoken: string; sentiment: string | null; painPoints: string[]; delights: string[]; confusionPoints: string[] }>,
   config: AiConfig,
   workspaceId?: string,
 ): Promise<TurnSynthesis> {
@@ -63,7 +63,7 @@ Produce structured JSON only:
 }`;
 
   const responsesBlock = responses
-    .map((r) => `**${r.personaName}** (${r.sentiment})\n"${r.spoken}"\nPain points: ${r.painPoints.join(", ") || "none"}\nDelights: ${r.delights.join(", ") || "none"}`)
+    .map((r) => `**${r.personaName}** (${r.sentiment ?? "sentiment not established"})\n"${r.spoken}"\nPain points: ${r.painPoints.join(", ") || "none"}\nDelights: ${r.delights.join(", ") || "none"}`)
     .join("\n\n");
 
   const user = `Question: ${questionText}\n\nResponses:\n${responsesBlock}`;

@@ -129,7 +129,13 @@ export function lastEarningMonth(terms: DocTerms, wonMonth: string): string | nu
 }
 
 /** Rates to the base currency: 1 unit of the key = rates[key] units of base. */
-export type FxRates = { base: string; rates: Record<string, number>; asOf: string | null };
+export type FxRates = {
+  base: string;
+  rates: Record<string, number>;
+  asOf: string | null;
+  /** Why the rates could not be read. null when they were read (even if the table is empty). */
+  error: string | null;
+};
 
 /** Converts to the base currency, or null when there's no rate (never a guess). */
 export function toBase(amount: number, currency: string, fx: FxRates): number | null {
@@ -225,6 +231,8 @@ export interface MoneySummary {
   /** margin as a share of thisMonth; null when there's no revenue this month. */
   marginShare: number | null;
   fxAsOf: string | null;
+  /** Set when the rate service could not be read at all — not the same as 'no rate for X'. */
+  fxError: string | null;
 }
 
 export const PAST_MONTHS = 12;
@@ -384,6 +392,7 @@ export function summariseMoney(input: {
     margin,
     marginShare: margin != null && thisMonth > 0 ? margin / thisMonth : null,
     fxAsOf: fx.asOf,
+    fxError: fx.error,
   };
 }
 

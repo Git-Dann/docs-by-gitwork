@@ -161,7 +161,7 @@ describe("sawFiles", () => {
   });
 
   it("throws, naming the sweep, when a broken walk would otherwise pass for ever", () => {
-    expect(() => sawFiles([], 1, "client write routes")).toThrow(/client write routes.*pass for ever/s);
+    expect(() => sawFiles([], 1, "client write routes")).toThrow(/client write routes[\s\S]*pass for ever/);
   });
 });
 
@@ -176,8 +176,11 @@ describe("gitGrep", () => {
     expect(hits[0].line).toBeGreaterThan(0);
   });
 
+  // ⚠️ Both of these passed until this file was committed, and then started matching
+  // THEMSELVES — git grep reads tracked files, and an uncommitted test is not one. That is
+  // the whole reason `here(import.meta.url)` exists.
   it("returns an empty list rather than throwing when nothing matches", () => {
-    expect(gitGrep("zzzz_no_such_token_anywhere_zzzz")).toEqual([]);
+    expect(gitGrep("zzzz_no_such_token_anywhere_zzzz", { exclude: [here(import.meta.url)] })).toEqual([]);
   });
 
   it("can exclude the calling test, which otherwise matches itself once committed", () => {
@@ -190,7 +193,8 @@ describe("gitGrep", () => {
   it("skips comment-only lines by default", () => {
     // This phrase lives only in comments, in three tracked files.
     const phrase = "the token IS the credential";
-    expect(gitGrep(phrase)).toEqual([]);
-    expect(gitGrep(phrase, { skipComments: false }).length).toBeGreaterThan(0);
+    const self = { exclude: [here(import.meta.url)] };
+    expect(gitGrep(phrase, self)).toEqual([]);
+    expect(gitGrep(phrase, { ...self, skipComments: false }).length).toBeGreaterThan(0);
   });
 });
