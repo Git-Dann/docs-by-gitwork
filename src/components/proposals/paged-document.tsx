@@ -122,6 +122,66 @@ function packPages(
   return groups;
 }
 
+/** 210mm at 96dpi — the width a sheet is designed at. */
+const A4_WIDTH_PX = 793.7;
+
+/**
+ * Scales the sheets down when the column is narrower than an A4 page.
+ *
+ * ⚠️ The sheet's WIDTH was responsive (`width: 100%`) while the cover's HEIGHT stayed pinned
+ * (`height: 297mm`). Measured at a 390px viewport: the sheet was 293 x 1123, the cover content
+ * reflowed to 1233, and the extra 111px was cut by `overflow: hidden`. `/docs/[token]` renders
+ * this same path with `pageMode="paged"`, so that was a client opening a proposal link on their
+ * phone and reading a cover with the bottom sliced off.
+ *
+ * Scaling keeps the page's own layout — the document reads exactly as it does on a desktop, just
+ * smaller — rather than reflowing it into a shape no fixed-height page can hold.
+ *
+ * ⚠️ Screen only. `@media print` resets it in globals.css: the PDF route renders this page
+ * through Chromium at real A4 and must not be scaled twice.
+ * ⚠️ Above A4 width nothing is applied at all — no wrapper class, no transform — so the desktop
+ * render is byte-identical to before.
+ */
+function ScaleToFit({ children }: { children: React.ReactNode }) {
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [height, setHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const o = outer.current;
+    const i = inner.current;
+    if (!o || !i) return;
+    const measure = () => {
+      const width = o.clientWidth;
+      if (width <= 0) return;
+      const next = Math.min(1, width / A4_WIDTH_PX);
+      setScale(next);
+      // offsetHeight, not getBoundingClientRect: a transform changes the VISUAL box but not the
+      // layout box, so this stays the unscaled height and the arithmetic below holds.
+      setHeight(next < 1 ? i.offsetHeight * next : null);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(o);
+    observer.observe(i);
+    return () => observer.disconnect();
+  }, []);
+
+  const scaled = scale < 1 && height != null;
+  return (
+    <div
+      ref={outer}
+      className={scaled ? "doc-a4-scale" : undefined}
+      style={scaled ? ({ height, "--doc-scale": scale } as React.CSSProperties) : undefined}
+    >
+      <div ref={inner} className={scaled ? "doc-a4-scale__inner" : undefined}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function PagedDocument({
   proposal,
   sections,
@@ -295,6 +355,7 @@ export function PagedDocument({
         </div>
       </div>
 
+      <ScaleToFit>
       {pages.map((packedPage, pageIndex) => {
         // ⚠️ Resolve each page's sections from the CURRENT `sections` prop by id.
         //
@@ -381,6 +442,7 @@ export function PagedDocument({
           </div>
         );
       })}
+      </ScaleToFit>
     </div>
   );
 }

@@ -26,7 +26,7 @@ export function DemoProviders({ children }: { children: ReactNode }) {
   const [brandColor] = useState(() => readDemoColor());
 
   return (
-    <SessionProvider session={demoSession as never}>
+    <SessionProvider session={demoSession}>
       <div
         onClickCapture={handleDemoNav}
         className="min-h-[100dvh] bg-[var(--surface-canvas)] text-[var(--text-1)]"

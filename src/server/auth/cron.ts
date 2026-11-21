@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { after } from "next/server";
 import { UnauthorizedError } from "@/server/auth/effective-user";
 import { cronNameFromPath } from "@/lib/cron-watch";
 import { markSystem } from "@/server/system-markers";
@@ -35,7 +36,27 @@ export function assertCron(request: Request): void {
     throw new UnauthorizedError();
   }
   // Record that the scheduler called this job, for the watchdog that notices a job has
-  // stopped (src/server/cron-watchdog.ts, CLAUDE.md §144). Not awaited, never throws.
+  // stopped (src/server/cron-watchdog.ts, CLAUDE.md §144).
+  //
+  // ⚠️ This was `void markSystem(...)` and the marker NEVER landed — so the watchdog called
+  // every job stopped while the box's own cron log showed all of them running, and
+  // /api/health?cron=1 answered 503 on every probe. An alarm that cries wolf is worse than no
+  // alarm, which §144 says in its own words about the latches.
+  //
+  // The tell was that EVERY other `markSystem` call in the codebase is awaited and lands, and
+  // this one — the only un-awaited one — is the only one that does not: `cron-watch-since` and
+  // `cron-alert:*`, written from the jobs worker, persist fine. `assertCron` is synchronous and
+  // called by ~21 route handlers, so it cannot await; work merely started during a request is
+  // not guaranteed to run once the response is sent. `after()` is what this codebase already
+  // uses for post-response work (§36), and it is the one form that is guaranteed to finish.
   const name = cronNameFromPath(new URL(request.url).pathname);
-  if (name) void markSystem(`cron:${name}`);
+  if (!name) return;
+  try {
+    after(() => markSystem(`cron:${name}`));
+  } catch {
+    // `after()` throws outside a request scope. assertCron is only ever called from a route
+    // handler, but a direct call in a test or a script must not be made to fail by its own
+    // bookkeeping — and markSystem never throws either.
+    void markSystem(`cron:${name}`);
+  }
 }

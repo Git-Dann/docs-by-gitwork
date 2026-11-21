@@ -1819,6 +1819,23 @@ h2, h3, h4, h5 {
      options" affordance (and any per-block popovers) must not get clipped near a page edge. The
      16mm/18mm inner padding already keeps normal content clear of the rounded corners. */
 }
+/* Narrow columns scale the sheets instead of squeezing them. Applied by `ScaleToFit` in
+   paged-document.tsx, and ONLY when the column is narrower than A4 — above that there is no
+   wrapper class at all, so the desktop render is unchanged.
+
+   ⚠️ `overflow: hidden` here is on the SCALE wrapper, not on a page: the inner box is laid out
+   at the full 793.7px and then transformed, so without it the untransformed width would create
+   sideways page scroll. `.doc-a4-page` itself deliberately has no overflow clip (see below). */
+.doc-a4-scale {
+  width: 100%;
+  overflow: hidden;
+}
+.doc-a4-scale__inner {
+  width: 793.7px;
+  transform: scale(var(--doc-scale, 1));
+  transform-origin: top left;
+}
+
 /* Cover keeps the old full-bleed, zero-padding treatment — its own masthead already carries the
    client/doc-number/version/date metadata boldly, so it skips the running header/footer below. */
 .doc-a4-page__inner--cover {
@@ -2028,6 +2045,17 @@ h2, h3, h4, h5 {
   .doc-a4-page__margin {
     padding: 20mm !important;
     min-height: 297mm !important;
+  }
+  /* ⚠️ The screen-only scale is undone for print. The PDF route renders /docs/[token]?print=1
+     through Chromium at real A4 (§17), so a transform left in place would scale the document
+     twice. `height` is an inline style from the measuring effect, hence !important. */
+  .doc-a4-scale {
+    height: auto !important;
+    overflow: visible;
+  }
+  .doc-a4-scale__inner {
+    width: auto;
+    transform: none;
   }
   .doc-a4-page__inner--cover {
     padding: 0 !important;

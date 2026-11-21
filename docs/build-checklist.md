@@ -200,7 +200,30 @@ npm run test:baseline
 diff of `snapshot.json` shows the reviewer exactly what moved. `--update` refuses to record a run
 with a status, crash or gate failure, because a baseline that starts broken proves nothing.
 
-Not in CI (no browser there), so run it locally before every PR in the multi-tenant programme.
+Not in CI (no browser there). **Run it before any PR that touches a page**, not only the
+multi-tenant ones — nothing else runs it, so the snapshot drifts silently. The first full run
+after it had been left alone reported 23 problems across 62 pages, of which 15 were deliberate
+changes from six different PRs and the rest were a real client-facing defect (the A4 cover was
+cut off on a phone) that had been ratcheted in rather than fixed.
+
+⚠️ **Do not pipe it.** A shell pipeline's exit status is the LAST command's, so
+`npm run test:baseline | tail -40` reports `tail`'s success and the failures scroll past as
+ordinary output. Redirect instead, and read the code:
+
+```bash
+npm run test:baseline > /tmp/baseline.txt 2>&1; echo "EXIT: $?"
+```
+
+⚠️ **`CHROMIUM_PATH` may be needed.** The script looks for `<root>/chromium` and
+`<root>/chromium-*/chrome-linux{,64}/chrome` under `PLAYWRIGHT_BROWSERS_PATH` (default
+`/opt/pw-browsers`). Where the install does not match, point at the binary:
+
+```bash
+CHROMIUM_PATH=/opt/pw-browsers/chromium-1243/chrome-linux64/chrome npm run test:baseline
+```
+
+⚠️ **`--update` rewrites every page, and cannot be scoped** — it refuses `--only`. So everything
+else has to be green first, and the diff includes any page the crawler has newly discovered.
 
 ### 4b. Two businesses can't see each other's data (`npm run test:isolation`)
 
