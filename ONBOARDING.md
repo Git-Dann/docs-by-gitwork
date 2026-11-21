@@ -22,7 +22,8 @@ those disguises.
 
 | File | What it governs |
 |---|---|
-| `CLAUDE.md` | Project guide, conventions, module map, and the full change history |
+| `CLAUDE.md` | Project guide, conventions, module map, and an index of the change history |
+| `docs/history/` | The change history itself — one file a month. `CLAUDE.md` indexes every `§N` |
 | `DESIGN.md` | The design system — tokens, type, components, spacing, radius |
 | `docs/build-checklist.md` | The quality gate: `npm run verify` and what it checks |
 | `docs/mobile-playbook.md` | **Mandatory** for any layout / responsive / spacing work |
