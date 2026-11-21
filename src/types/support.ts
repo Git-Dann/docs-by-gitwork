@@ -57,6 +57,18 @@ export interface SupportUser {
   assignedClientIds: string[];
 }
 
+/**
+ * A workspace member as the assignee picker sees them. Declared here, not inline in the
+ * fetcher, so the demo fixture and `listSupportMembers` cannot disagree about the shape —
+ * they did: the fetcher required `role` and the fixture sent none.
+ */
+export interface SupportMemberLite {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
 export interface Connection {
   id: string;
   clientId: string;
@@ -87,6 +99,13 @@ export interface Connection {
     hints?: string[];
     errors: string[];
     at: string;
+    /**
+     * How many runs in a row have failed, and when the run of failures began. `support-sync.ts`
+     * writes both into this object and `readHealthState` reads them back; they were simply
+     * never declared, so nothing could read them without a cast.
+     */
+    consecutiveFailures?: number;
+    failingSince?: string | null;
   };
   scraperConfig?: {
     // Gmail

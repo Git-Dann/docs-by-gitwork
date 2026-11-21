@@ -19,6 +19,7 @@ import type {
   OldestAwaitingItem,
   Message,
   SupportClient,
+  SupportMemberLite,
   SupportReport,
   SupportReportPayload,
   WorkflowRule,
@@ -2345,7 +2346,7 @@ export async function listSupportAuditLogs(clientId: string): Promise<{ logs: Au
 
 export async function listSupportMembers(
   clientId: string,
-): Promise<{ members: { id: string; name: string; email: string; role: string }[] }> {
+): Promise<{ members: SupportMemberLite[] }> {
   return apiFetch(`/api/support/clients/${clientId}/members`);
 }
 
