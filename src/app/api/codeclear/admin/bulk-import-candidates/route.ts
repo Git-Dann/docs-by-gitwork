@@ -1,19 +1,17 @@
 import { NextRequest } from "next/server";
-import { auth } from "@/auth";
-import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { apiOk, fromError } from "@/lib/api-response";
+import { assertAtLeastAdmin, requireAuthedUser } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { candidateBulkImportSchema } from "@/server/validators";
-import { isAtLeast } from "@/types/auth";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
-async function requireAdminSession() {
-  const session = await auth();
-  if (!session?.user) return null;
-  if (!isAtLeast(session.user.role, "ADMIN")) return null;
-  return session;
-}
+// ⚠️ Admin is read from the DATABASE, not from `session.user.role`. A session carries the
+// role it was minted with, so a just-archived or just-demoted admin kept these three
+// routes — which delete demo data, rewrite dev groups and bulk-import candidates — until
+// their token turned over. §88 replaced that pattern everywhere else; three byte-identical
+// copies of the local helper were left behind here.
 
 /**
  * POST /api/codeclear/admin/bulk-import-candidates
@@ -26,8 +24,7 @@ async function requireAdminSession() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await requireAdminSession();
-    if (!session) return apiError("Forbidden", 403);
+    assertAtLeastAdmin(await requireAuthedUser(request));
 
     const workspace = { id: await workspaceIdForRequest(request) };
     const body = candidateBulkImportSchema.parse(await request.json());

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeGitHubAnalysisRun,
@@ -59,6 +60,9 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const { workspace, user } = await requestActor(_request);
+    // ⚠️ A run spends the SHARED GitHub token — one 5,000/hr budget for every repo scan in
+    // the workspace (§62.7) — so it is a write, not a read, whatever it returns.
+    assertCan(await getEffectiveUserOrNull(_request), canManageCode, "run a GitHub analysis");
     const { id } = await context.params;
     const candidate = await prisma.candidate.findFirst({
       where: {

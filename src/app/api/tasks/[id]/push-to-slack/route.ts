@@ -14,6 +14,7 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { requireAuthedUser } from "@/server/auth/effective-user";
+import { assertClientAccess } from "@/server/client-assignments";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
 import { buildStandupCard, type StandupTaskCardInput } from "@/server/slack/blocks";
 import { assertTaskSlackPushCooldown } from "@/server/slack-cooldown";
@@ -47,6 +48,11 @@ export async function POST(
       // by default but listing it here is harmless and self-documenting.
     });
     if (!task) return apiError("Task not found.", 404);
+    // ⚠️ Being in the workspace is not being on this client. Without this a developer with
+    // no access to the client could push their task card into that client's own Slack —
+    // and the fallback below is `slackChannelId`, the CLIENT-FACING channel, not the
+    // internal one. §135's rule, on a route that reaches outside Foundry.
+    await assertClientAccess(user, task.client.id);
 
     const channel = task.client.slackInternalChannelId ?? task.client.slackChannelId;
     if (!channel) {
