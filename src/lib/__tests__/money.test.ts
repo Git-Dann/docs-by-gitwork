@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { docTerms, earnedIn, lastEarningMonth, summariseMoney, toBase, type DocLine, type FxRates } from "@/lib/money";
 
 const NOW = new Date("2026-11-20T12:00:00Z");
-const GBP: FxRates = { base: "GBP", rates: { USD: 0.8 }, asOf: "2026-11-20" };
+const GBP: FxRates = { base: "GBP", rates: { USD: 0.8 }, asOf: "2026-11-20", error: null };
 
 const role = (unitCost: number, months: number): DocLine => ({
   itemName: "proposal-role:dev",

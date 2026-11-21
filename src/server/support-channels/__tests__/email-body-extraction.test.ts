@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { emailHtmlToText, extractGmailBodyText, isPlaintextStub } from "../shared";
+import { stripComments } from "@/testing/source";
 
 /** The real shape of a Big Wedge feedback notification. */
 const STUB_PLAIN = "Please view this email in HTML format.";
@@ -83,7 +84,7 @@ describe("IMAP applies the same rule", () => {
    * QUOTES the old expression, so matching the raw file fails on the fix's own
    * documentation — which is precisely how the first version of this test behaved.
    */
-  const IMAP = RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const IMAP = stripComments(RAW);
 
   it("does not take the plain part unconditionally", () => {
     expect(IMAP).not.toMatch(/parsed\.text\s*\?\?\s*parsed\.html/);

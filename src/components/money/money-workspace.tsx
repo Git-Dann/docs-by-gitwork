@@ -488,6 +488,7 @@ function HowWorkedOut({ m }: { m: MoneySummary }) {
             {unconverted.length > 0
               ? ` No rate was available for ${unconverted.map(([c, v]) => formatMoney(v, c)).join(", ")}, so it's left out of the totals.`
               : ""}
+            {m.fxError ? ` ${m.fxError[0].toUpperCase()}${m.fxError.slice(1)}, so nothing could be converted this time.` : ""}
           </li>
           <li>
             Team cost is what the developers on a client cost Gitwork each month at rate-card rates (the rate card is cost). Margin is this month&apos;s revenue under contract less that cost.

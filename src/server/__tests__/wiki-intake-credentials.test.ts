@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/testing/source";
 
 /**
  * Which credential each intake path authenticates against.
@@ -33,9 +34,6 @@ const source = readFileSync(WIKI, "utf8");
  * prose, so a bare word search hits the explanation and reports the very bug the
  * comment says was fixed — which is exactly what happened while writing this.
  */
-function stripComments(code: string): string {
-  return code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-}
 
 /** Crude but sufficient: the text from a function's signature to the next top-level `\n}`. */
 function bodyOf(name: string): string {

@@ -450,7 +450,7 @@ export async function runStudy(studyId: string): Promise<void> {
 
     for (const question of questions) {
       const exchanges: StudyTurn["exchanges"] = [];
-      const allResponses: Array<{ personaId: string; personaName: string; spoken: string; sentiment: string; painPoints: string[]; delights: string[]; confusionPoints: string[] }> = [];
+      const allResponses: Array<{ personaId: string; personaName: string; spoken: string; sentiment: string | null; painPoints: string[]; delights: string[]; confusionPoints: string[] }> = [];
 
       for (const persona of personasToInterview) {
         try {

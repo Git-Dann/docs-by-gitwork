@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/testing/source";
 
 /**
  * `useState(readSomethingFromLocalStorage)` is React error #418.
@@ -52,10 +53,6 @@ function walk(dir: string, out: string[] = []): string[] {
     } else if (/\.tsx?$/.test(entry)) out.push(full);
   }
   return out;
-}
-
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
 /** Functions in this file whose body reads browser-only storage. */

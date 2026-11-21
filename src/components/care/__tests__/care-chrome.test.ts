@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { careSectionCount, careSectionNumbers } from "@/lib/care-sections";
+import { stripComments } from "@/testing/source";
 
 /**
  * Care's panes are one grammar and one numbering sequence.
@@ -27,8 +28,7 @@ const dir = join(__dirname, "..");
  * `showAgentLogs`, "once a day" are all quoted in the fixes. The same thing happened to the
  * Tickets guard an hour earlier. A source-reading test asserts on CODE.
  */
-const stripComments = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
 const read = (f: string) => stripComments(readFileSync(join(dir, f), "utf8"));
 
 /*

@@ -102,7 +102,7 @@ describe("backfillCommentAuthors", () => {
       { id: "c-unknown", authorName: "Someone Else" },
     ];
     const out = await backfillCommentAuthors("w1");
-    expect(out).toEqual({ examined: 3, stamped: 1 });
+    expect(out).toEqual({ examined: 3, stamped: 1, failed: false });
     expect(db.updates).toHaveLength(1);
     expect(db.updates[0]).toEqual({
       where: { id: "c-ayesha", authorWikiUserId: null, authorKind: "CLIENT" },
@@ -112,7 +112,9 @@ describe("backfillCommentAuthors", () => {
 
   it("costs one read and writes nothing once a wiki has no unstamped replies", async () => {
     const out = await backfillCommentAuthors("w1");
-    expect(out).toEqual({ examined: 0, stamped: 0 });
+    // ⚠️ `failed: false` is what separates this from a run that blew up. Without it the two
+    // are the same three numbers, and "nothing left to stamp" reads as success either way.
+    expect(out).toEqual({ examined: 0, stamped: 0, failed: false });
     expect(db.updates).toHaveLength(0);
   });
 });

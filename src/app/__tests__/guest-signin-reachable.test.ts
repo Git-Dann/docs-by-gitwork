@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/testing/source";
 
 /**
  * A guest must be able to GET to the sign-in form from the site's front door.
@@ -27,11 +28,7 @@ const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
  * Exactly the false positive Pulse keeps hitting when a rule matches prose rather than
  * code (CLAUDE.md §37.6) — so strip the prose before asserting about the code.
  */
-const code = (f: string) =>
-  read(f)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .replace(/\/\/.*$/gm, "");
+const code = (f: string) => stripComments(read(f));
 
 describe("the front door reaches the guest form", () => {
   const portal = read("src/components/portal/portal-login-form.tsx");

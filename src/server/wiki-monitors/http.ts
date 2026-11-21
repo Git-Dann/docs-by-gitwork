@@ -25,7 +25,11 @@ export function monitorHeaders(stored: string | null): Record<string, string> {
   if (!plain) return {};
   try {
     return cleanHeaders(JSON.parse(plain));
-  } catch {
+  } catch (err) {
+    // ⚠️ Decryption worked and the JSON did not, so the stored headers are corrupt — which is
+    // NOT the same as a monitor with none. Probing without them makes the check fail and the
+    // monitor go down, blaming the client's service for our own bad row. Say so in the log.
+    console.error("[monitor] stored request headers could not be parsed", err);
     return {};
   }
 }

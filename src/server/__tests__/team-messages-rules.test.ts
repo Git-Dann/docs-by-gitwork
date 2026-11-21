@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "@/testing/source";
 
 // The rules that matter in team-messages.ts are expressed as Prisma `where` clauses, so
 // they cannot be exercised without a database — and every one of them is a privacy or
@@ -11,11 +12,6 @@ import { describe, expect, it } from "vitest";
 // than just make the string match again.
 
 const SOURCE = readFileSync("src/server/team-messages.ts", "utf8");
-
-/** Strips line and block comments so an assertion reads code, not prose. */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-}
 
 function body(fn: string): string {
   const start = SOURCE.indexOf(`export async function ${fn}`);

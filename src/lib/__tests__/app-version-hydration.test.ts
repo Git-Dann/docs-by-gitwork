@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { stripComments } from "@/testing/source";
 
 /**
  * React hydration error #418, which fired on EVERY `/app` page.
@@ -38,10 +39,7 @@ function appVersionBody(): string {
   const end = source.indexOf("\nfunction ", start + 1);
   expect(end).toBeGreaterThan(start);
 
-  return source
-    .slice(start, end)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
+  return stripComments(source.slice(start, end));
 }
 
 // Formatters that read the machine's timezone. `toLocaleString` and friends are included

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/testing/source";
 
 /**
  * Care is one UI at /app/care. The legacy /app/support dashboard is gone; its routes are
@@ -9,7 +10,6 @@ import { join } from "node:path";
  */
 const root = process.cwd();
 const read = (p: string) => readFileSync(join(root, p), "utf8");
-const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

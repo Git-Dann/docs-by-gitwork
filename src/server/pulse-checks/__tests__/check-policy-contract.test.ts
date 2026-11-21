@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { applyCheckPolicy, type CheckPolicy } from "@/server/check-config";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { CATEGORIES } from "../categories";
+import { stripComments } from "@/testing/source";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // What the Settings → Checks panel PROMISES, held against what the code DOES.
@@ -32,10 +33,7 @@ function check(overrides: Partial<PulseScanCheckInput> = {}): PulseScanCheckInpu
  * untrue copy so the reason for the change survives — asserting against the raw
  * file would match those quotes and pass on a revert.
  */
-const panel = readFileSync("src/components/settings/checks-panel.tsx", "utf8")
-  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "")
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/^\s*\/\/.*$/gm, "");
+const panel = stripComments(readFileSync("src/components/settings/checks-panel.tsx", "utf8"));
 
 describe("disabling a check", () => {
   const policy: CheckPolicy = { disabledKeys: new Set(["a_check"]), overrides: new Map() };

@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { footerFacts, latestWikiActivity } from "@/lib/wiki-footer";
+import { stripComments } from "@/testing/source";
 
 const base = {
   pages: [] as { updatedAt: string }[],
@@ -73,7 +74,7 @@ describe("footerFacts", () => {
 });
 
 describe("the dashboard", () => {
-  const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const strip = stripComments;
   const DASH = strip(readFileSync(join(process.cwd(), "src/components/clients/wiki/wiki-dashboard.tsx"), "utf8"));
 
   it("caps every dashboard with the footer, outside the sections-only branch", () => {

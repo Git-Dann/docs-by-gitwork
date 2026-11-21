@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/testing/source";
 
 /**
  * Linking a second client's work into a wiki.
@@ -10,8 +11,6 @@ import { join } from "node:path";
  * without a database.
  */
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
-const stripComments = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const server = stripComments(read("src/server/wiki-links.ts"));
 const wiki = stripComments(read("src/server/wiki.ts"));

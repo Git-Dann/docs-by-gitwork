@@ -80,7 +80,8 @@ describe("notifyTeamMentionsOnRequest", () => {
         body: "x",
         mentions: [{ id: "team:u-sam", name: "Sam", kind: "TEAM" }],
       }),
-    ).resolves.toEqual({ notified: 0 });
+      // `failed` is the point: `notified: 0` on its own reads as "nobody was mentioned".
+    ).resolves.toEqual({ notified: 0, failed: true });
   });
 });
 

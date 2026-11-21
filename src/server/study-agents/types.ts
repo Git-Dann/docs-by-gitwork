@@ -13,7 +13,10 @@ export interface ResearchPlanOutput {
 
 export interface PersonaInterviewResponse {
   spoken: string;
-  sentiment: "positive" | "neutral" | "negative" | "frustrated" | "confused" | "delighted";
+  /** null when the model's answer could not be parsed — NOT the same as a neutral one. */
+  sentiment: "positive" | "neutral" | "negative" | "frustrated" | "confused" | "delighted" | null;
+  /** Set when the model's answer could not be parsed, so `spoken` is raw text. */
+  parseFailed?: boolean;
   painPoints: string[];
   delights: string[];
   confusionPoints: string[];

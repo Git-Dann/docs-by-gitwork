@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { readdirSync } from "node:fs";
+import { stripComments } from "@/testing/source";
 
 /**
  * No gradient in the DOCUMENT layer may fade to the bare `transparent` keyword.
@@ -37,7 +38,7 @@ const FILES = [
  * over the very defect it was written for.
  */
 function offendingGradients(source: string): string[] {
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const code = stripComments(source);
   const out: string[] = [];
 
   for (const match of code.matchAll(/(?:linear|radial|conic)-gradient\(/g)) {

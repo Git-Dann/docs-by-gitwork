@@ -24,10 +24,10 @@ import {
   visibleStandups,
   type DevStandup,
 } from "@/lib/wiki-standups";
+import { stripComments } from "@/testing/source";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
-const code = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+const code = stripComments;
 
 const T = (id: string, title: string, parentTitle: string | null = null) => ({ id, title, parentTitle });
 
