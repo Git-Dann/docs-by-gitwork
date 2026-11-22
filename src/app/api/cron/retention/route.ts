@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * GET /api/cron/retention  (host cron on the VPS — see CLAUDE.md §23/§25)
+ * GET /api/cron/retention  (host cron on the VPS — see CLAUDE.md §23 and §132)
  *
  * Enqueues a single deduped RETENTION_SWEEP job; the job worker (`/api/cron/jobs`) runs it. Daily
  * is plenty — aging is measured in days. Deduped, so overlapping ticks don't stack sweeps.
