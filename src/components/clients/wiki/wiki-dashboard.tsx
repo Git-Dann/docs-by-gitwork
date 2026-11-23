@@ -520,13 +520,13 @@ export function WikiDashboard({
       }
       case "updates": {
         // Leads with the latest update the client was sent: what this page is opened to read.
-        const latest = wiki.updates.latest;
+        const latest = wiki.updates?.latest;
         if (!latest) return <p className="text-[13px] text-[var(--text-4)]">No update published yet.</p>;
         return (
           <div className="space-y-1.5">
             <p className="line-clamp-2 text-[14px] font-medium text-[var(--text-1)]">{latest.subject}</p>
             <p className="text-[12px] text-[var(--text-4)]">
-              {wiki.updates.published === 1 ? "1 update" : `${wiki.updates.published} updates`} · latest{" "}
+              {wiki.updates?.published === 1 ? "1 update" : `${wiki.updates?.published ?? 0} updates`} · latest{" "}
               {new Date(latest.publishedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
             </p>
           </div>

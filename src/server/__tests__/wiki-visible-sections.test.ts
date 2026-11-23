@@ -28,6 +28,7 @@ function bare(): AnyWiki {
     intakeEnabled: false,
     deliveryEnabled: false,
     roundupEnabled: false,
+    updates: { enabled: false, published: 0, latest: null },
     designSystem: null,
     timeline: { blocks: [], milestones: [] },
     monitors: { enabled: false, monitors: [] },

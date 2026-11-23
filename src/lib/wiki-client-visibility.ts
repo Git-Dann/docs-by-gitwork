@@ -91,7 +91,7 @@ export function clientVisibleSections(wiki: WikiDTO): WikiSection[] {
     ...(wiki.deliveryEnabled && wiki.timeline.blocks.length > 0 ? (["delivery"] as const) : []),
     // Updates needs something to read: a published update, or a plan whose weeks it can describe.
     // Enabled-and-empty would land the client on a page with nothing on it.
-    ...(wiki.updates.enabled && (wiki.updates.published > 0 || wiki.timeline.blocks.length > 0)
+    ...(wiki.updates?.enabled && (wiki.updates.published > 0 || wiki.timeline.blocks.length > 0)
       ? (["updates"] as const)
       : []),
     // Support needs a LINKED Care record, not merely the flag — an unlinked section would

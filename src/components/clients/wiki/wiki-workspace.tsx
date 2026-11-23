@@ -1028,7 +1028,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const comparisonsOn = wiki.comparisons.enabled;
   const boardOn = wiki.board.enabled;
   const roundupOn = wiki.roundupEnabled ?? false;
-  const updatesOn = wiki.updates.enabled;
+  const updatesOn = wiki.updates?.enabled ?? false;
   const deliveryOn = wiki.deliveryEnabled;
   const supportOn = wiki.support.enabled;
   const metricsOn = wiki.metrics.enabled;

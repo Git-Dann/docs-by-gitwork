@@ -261,7 +261,7 @@ describe("wiki-client-visibility.ts — each availableSections predicate has its
 
   it("updates — enabled AND a published update or a plan to describe", () => {
     // Enabled-and-empty would land the client on a page with nothing on it.
-    expect(available).toContain("wiki.updates.enabled");
+    expect(available).toContain("wiki.updates?.enabled");
     expect(available).toContain("wiki.updates.published > 0");
   });
 
