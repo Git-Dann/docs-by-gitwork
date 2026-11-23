@@ -156,6 +156,9 @@ jobs:
       # Throwaway values for this job only; nothing here is a real secret.
       AUTH_SECRET: smoke-only-auth-secret
       API_KEY: smoke-only-api-key
+      # `next start` refuses a localhost host unless told to trust it (`next dev` trusts it on its own),
+      # so without this every page bounces to /login with UntrustedHost.
+      AUTH_TRUST_HOST: "true"
       # The runner image ships Google Chrome, so no browser download.
       CHROMIUM_PATH: /usr/bin/google-chrome
     steps:
