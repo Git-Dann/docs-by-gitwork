@@ -1963,61 +1963,6 @@ docs that still described two UIs.
 Not verified: the redirects against a signed-in session (they are pure and unit-tested in
 `care-links.test.ts`), and the printable report page, which needs a database.
 
-## 151. Recent Changes (November 2026) — Needs you becomes an inbox
-
-HQ's "Needs you" card (§141.1) listed what every watcher found and linked away. Each source still
-had its own page to triage on, so people went to seven places. It is now one inbox: the card on HQ
-shows the top of it, and **`/app/inbox`** shows all of it. Rules in `src/lib/needs-you.ts` (pure),
-reader `src/server/needs-you.ts`, state `src/server/needs-you-state.ts`, actions
-`src/hooks/use-needs-you.ts`, UI `src/components/needs-you/`.
-
-- **Act in place, through the source's own route.** Every action calls the route the source's
-  own page calls, so its permission rule still applies, and an item only offers the actions that
-  person's own page would (`NeedsYouCaps`: the clients they can open, and Admin or above):
-  - Monitor incident: **Acknowledge** and **Post update** (`/api/clients/[slug]/wiki/monitors/incidents/[id]`),
-    for clients the person can open. Acknowledging changes the item's fingerprint.
-  - Foreman finding: Foreman's own **Dismiss** and **Mute** (`/api/foreman/findings`), admins only,
-    shared by the workspace as on Settings → Foreman. Undo clears it.
-  - **Commitments is a new source**: the person's own suggested commitments, never anyone else's,
-    and left out while "viewing as". **Add to my list** / **Dismiss** via
-    `/api/backstage/commitments/[id]`. A suggestion can't become a suggestion again, so Dismiss's
-    Undo adds it to the list, as on the Commitments page.
-  - Client request: now **one item per request** (oldest first, at most `MAX_REQUEST_ITEMS` = 60),
-    not one per client. **Mark dealt with** (anyone who can open the client; Undo sets it back to
-    New) and **Create task** (Admin or above too, as the promote route requires).
-  - Care, Docs and Pulse: Open, plus snooze and dismiss. Care's per-conversation snooze was not
-    added: the item is per client, so there is no one conversation to snooze.
-- **Snooze and dismiss are kept on the server, per person** (`NeedsYouState`, additive: workspaceId,
-  userId, itemKey, fingerprint, state, until; `@@index([userId, workspaceId])`, no unique, one row
-  per item enforced in code). `POST /api/hq/needs-you/state` { snooze | dismiss | clear }; the user
-  and workspace come from the session, never the body, and it is refused while "viewing as".
-  - Same rules as the old browser list: a snoozed or dismissed item comes back early when its
-    fingerprint changes, and ⚠️ **a critical item can't be held**, whatever is stored (`holdFor`
-    decides at read time, so the route needn't trust a severity sent to it).
-  - Snooze: 3 hours, tomorrow 08:00 or next Monday 08:00, in the browser's own time, at most 30
-    days. Dismiss lasts until the item changes. Neither is offered on an outage, and the person's
-    own Dismiss is left off where the source has one (Foreman, Commitments).
-  - Rows are pruned as the inbox is read (`staleHoldIds`): duplicates, ended snoozes, changed
-    items, and items gone from a source that was read. ⚠️ A source that failed to read keeps its
-    rows: "we couldn't look" is not "it's gone".
-  - The old `foundry.needsyou.hidden.v1` browser list is ignored and cleared once.
-- **Every row says why it's here** (`why`, one sentence per source rule, e.g. "A customer has
-  waited over 24 hours for a reply"), as well as the evidence (`detail`), the source, the
-  severity and the age.
-- **The inbox page** (`NeedsYouInbox`): Open / Snoozed / Dismissed with counts, filters by source
-  and severity, a "What was checked" card per source (a failed one says "Couldn't check"), and
-  the keyboard as in Care (§42.8): **j / k** move, **↵** open, **e** deal with it (the source's own
-  way, else your own dismiss; nothing on an outage), **s** snooze till tomorrow morning. Keys are
-  ignored in a field, a dialog or a menu. `/app/inbox` is in `INTERNAL_ONLY_PREFIXES` and has no
-  module of its own: every source in it is gated by `/api/hq/needs-you` as on its own page.
-- **Demo:** `/demo/hq` (the card) and `/demo/inbox`, through the real rules
-  (`src/lib/demo/demo-needs-you.ts`), with every source and every action working in memory. Demo
-  ids start `ny-`, so those handlers can't answer another demo's request. One item starts snoozed.
-- Tests: `src/lib/__tests__/needs-you-inbox.test.ts` (actions per permission, holds, pruning, the
-  inbox view), `src/server/__tests__/needs-you-state.test.ts` (one person's rows only, the route
-  refuses a user in the body and "view as"), `src/server/__tests__/needs-you-scope.test.ts`
-  (a developer's requests are their clients' only, no Create task, no Foreman, own commitments).
-
 ## 150. Recent Changes (November 2026) — Projects, and budget vs actual
 
 A client used to be the only thing tying work together, so a piece of work (proposal → plan →
@@ -2091,3 +2036,58 @@ budget. Dan approved a new table for it.
   (8), the MCP parity block. Proved to discriminate by reading placements without the financials
   gate (1 failure) and widening `BURN_SLACK` to 100% (1 failure).
 - **Verified:** tsc 0 errors, lint 0 errors, 10,828 tests passing, `audit:ui` 0 findings, `npx next build` clean (140 static pages). `/demo/portal` (card, project popup, edit popup under a temporary local grant) and `/demo/money` driven at 390 and 1440 (and 768 for the card and popup) in light and dark: 0 clipping findings from this work, 0 page overflow, 0 console errors. **Not verified against a real database**; post-deploy, add a project to a client with an accepted SOW and check the budget matches Money's figure for that document.
+
+## 151. Recent Changes (November 2026) — Needs you becomes an inbox
+
+HQ's "Needs you" card (§141.1) listed what every watcher found and linked away. Each source still
+had its own page to triage on, so people went to seven places. It is now one inbox: the card on HQ
+shows the top of it, and **`/app/inbox`** shows all of it. Rules in `src/lib/needs-you.ts` (pure),
+reader `src/server/needs-you.ts`, state `src/server/needs-you-state.ts`, actions
+`src/hooks/use-needs-you.ts`, UI `src/components/needs-you/`.
+
+- **Act in place, through the source's own route.** Every action calls the route the source's
+  own page calls, so its permission rule still applies, and an item only offers the actions that
+  person's own page would (`NeedsYouCaps`: the clients they can open, and Admin or above):
+  - Monitor incident: **Acknowledge** and **Post update** (`/api/clients/[slug]/wiki/monitors/incidents/[id]`),
+    for clients the person can open. Acknowledging changes the item's fingerprint.
+  - Foreman finding: Foreman's own **Dismiss** and **Mute** (`/api/foreman/findings`), admins only,
+    shared by the workspace as on Settings → Foreman. Undo clears it.
+  - **Commitments is a new source**: the person's own suggested commitments, never anyone else's,
+    and left out while "viewing as". **Add to my list** / **Dismiss** via
+    `/api/backstage/commitments/[id]`. A suggestion can't become a suggestion again, so Dismiss's
+    Undo adds it to the list, as on the Commitments page.
+  - Client request: now **one item per request** (oldest first, at most `MAX_REQUEST_ITEMS` = 60),
+    not one per client. **Mark dealt with** (anyone who can open the client; Undo sets it back to
+    New) and **Create task** (Admin or above too, as the promote route requires).
+  - Care, Docs and Pulse: Open, plus snooze and dismiss. Care's per-conversation snooze was not
+    added: the item is per client, so there is no one conversation to snooze.
+- **Snooze and dismiss are kept on the server, per person** (`NeedsYouState`, additive: workspaceId,
+  userId, itemKey, fingerprint, state, until; `@@index([userId, workspaceId])`, no unique, one row
+  per item enforced in code). `POST /api/hq/needs-you/state` { snooze | dismiss | clear }; the user
+  and workspace come from the session, never the body, and it is refused while "viewing as".
+  - Same rules as the old browser list: a snoozed or dismissed item comes back early when its
+    fingerprint changes, and ⚠️ **a critical item can't be held**, whatever is stored (`holdFor`
+    decides at read time, so the route needn't trust a severity sent to it).
+  - Snooze: 3 hours, tomorrow 08:00 or next Monday 08:00, in the browser's own time, at most 30
+    days. Dismiss lasts until the item changes. Neither is offered on an outage, and the person's
+    own Dismiss is left off where the source has one (Foreman, Commitments).
+  - Rows are pruned as the inbox is read (`staleHoldIds`): duplicates, ended snoozes, changed
+    items, and items gone from a source that was read. ⚠️ A source that failed to read keeps its
+    rows: "we couldn't look" is not "it's gone".
+  - The old `foundry.needsyou.hidden.v1` browser list is ignored and cleared once.
+- **Every row says why it's here** (`why`, one sentence per source rule, e.g. "A customer has
+  waited over 24 hours for a reply"), as well as the evidence (`detail`), the source, the
+  severity and the age.
+- **The inbox page** (`NeedsYouInbox`): Open / Snoozed / Dismissed with counts, filters by source
+  and severity, a "What was checked" card per source (a failed one says "Couldn't check"), and
+  the keyboard as in Care (§42.8): **j / k** move, **↵** open, **e** deal with it (the source's own
+  way, else your own dismiss; nothing on an outage), **s** snooze till tomorrow morning. Keys are
+  ignored in a field, a dialog or a menu. `/app/inbox` is in `INTERNAL_ONLY_PREFIXES` and has no
+  module of its own: every source in it is gated by `/api/hq/needs-you` as on its own page.
+- **Demo:** `/demo/hq` (the card) and `/demo/inbox`, through the real rules
+  (`src/lib/demo/demo-needs-you.ts`), with every source and every action working in memory. Demo
+  ids start `ny-`, so those handlers can't answer another demo's request. One item starts snoozed.
+- Tests: `src/lib/__tests__/needs-you-inbox.test.ts` (actions per permission, holds, pruning, the
+  inbox view), `src/server/__tests__/needs-you-state.test.ts` (one person's rows only, the route
+  refuses a user in the body and "view as"), `src/server/__tests__/needs-you-scope.test.ts`
+  (a developer's requests are their clients' only, no Create task, no Foreman, own commitments).

@@ -98,7 +98,6 @@ import type { WikiComparison } from "@/types/wiki-comparisons";
 import { resolveDemoDrive } from "@/lib/demo/demo-drive";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
-import { demoAchievements, demoDealDraft, demoMoney, demoNeedsYou } from "@/lib/demo/demo-money";
 import {
   demoDeliveryTimeline,
   demoPublishUpdate,
@@ -111,9 +110,7 @@ import {
 
 import { demoAchievements, demoDealDraft, demoMoney } from "@/lib/demo/demo-money";
 import { demoNeedsYouApi } from "@/lib/demo/demo-needs-you";
-
 import { demoProjectsApi } from "@/lib/demo/demo-projects";
-import { demoDeliveryTimeline, demoSearch, demoWeeklyUpdate } from "@/lib/demo/demo-delivery";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
