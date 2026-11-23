@@ -1,22 +1,17 @@
-# Staging environment. Deployed by .github/workflows/deploy-staging.yml on push to `staging`.
+# Staging (docs/staging.md). Deployed by .github/workflows/deploy-staging.yml, only when someone
+# dispatches it, which copies this file to /opt/apps/foundry-staging/docker-compose.yml on every
+# deploy (deploy/staging-deploy.sh). It never lives in /opt/apps/foundry, production's directory.
 #
-# Lives in its OWN directory on the VPS (/opt/apps/foundry-staging), never
-# /opt/apps/foundry — that's production's directory, and this file is not synced
-# there by CI (same as docker-compose.yml, CI never scp's it — see deploy.yml).
-# It must be copied to /opt/apps/foundry-staging/docker-compose.yml by hand once,
-# alongside its own .env. See the one-time VPS setup steps in deploy-staging.yml.
-#
-# Every identifier below is deliberately distinct from docker-compose.yml
-# (container names, port, volume, DB name, image tag) so a staging deploy can
-# never collide with — or overwrite — the production containers/DB/image on the
-# same box. Do not "simplify" these back to match prod's names.
+# Every identifier below is deliberately distinct from docker-compose.yml (project, container
+# names, port, volume, database, image tag) so staging can never collide with, or overwrite,
+# production's containers, database or image on the same box. staging-deploy.sh checks the
+# project name, the app container, the :staging image and the 127.0.0.1:3001 binding before it
+# runs anything. Do not "simplify" these back to production's names.
+name: foundry-staging
+
 services:
   db:
-    # pgvector required — bootstrap.ts runs CREATE EXTENSION IF NOT EXISTS vector
-    # on boot for Care semantic search; boot fails without it (CLAUDE.md §23).
-    # ⚠️ Note: production currently runs plain `postgres:17-alpine` (confirmed
-    # 2026-07-29), not this image — so staging is intentionally AHEAD of prod
-    # here, not mirroring it. See CLAUDE.md §36 before assuming parity.
+    # pgvector, as production: bootstrap.ts runs CREATE EXTENSION IF NOT EXISTS vector on boot.
     image: pgvector/pgvector:pg17
     container_name: foundry-staging-db
     restart: unless-stopped
@@ -25,27 +20,24 @@ services:
       POSTGRES_USER: foundry
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      # Exposed on the host (unlike prod's db, which is internal-only) so it can
-      # be reached directly from a local psql/DB GUI client for staging debugging.
-      # 5433, not 5432 — leaves 5432 free in case anything else ever needs it,
-      # and makes it obvious at a glance this is the staging port.
-      # Bound to localhost (Nov 2026): reach it over an SSH tunnel
-      # (ssh -L 5433:127.0.0.1:5433 deploy@<vps>), never from the internet.
+      # Localhost only: reach it over an SSH tunnel (ssh -L 5433:127.0.0.1:5433 <user>@<vps>),
+      # never from the internet. 5433, not 5432, so it is obviously staging's.
       - "127.0.0.1:5433:5432"
     volumes:
       - postgres_staging_data:/var/lib/postgresql/data
     healthcheck:
-      # -d explicit: pg_isready defaults dbname to the username when omitted, so
-      # a bare "pg_isready -U foundry" tries to connect to a db literally named
-      # "foundry" — which doesn't exist here (POSTGRES_DB is foundry_staging).
-      # It still reports healthy (pg_isready only checks the server responds at
-      # all), but logs a real FATAL every 10s. Same latent bug exists in prod's
-      # docker-compose.yml — invisible there only because POSTGRES_DB happens to
-      # equal POSTGRES_USER ("foundry").
+      # -d explicit: pg_isready defaults dbname to the username, and there is no "foundry" here.
       test: ["CMD-SHELL", "pg_isready -U foundry -d foundry_staging"]
       interval: 10s
       timeout: 5s
       retries: 5
+    # Production's database goes last if the box runs out of memory; staging's goes early.
+    oom_score_adj: 500
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   app:
     image: ghcr.io/git-dann/docs-by-gitwork:staging
@@ -55,9 +47,18 @@ services:
       db:
         condition: service_healthy
     ports:
+      # Localhost only; nginx proxies staging.foundry.gitwork.co.uk here (deploy/nginx/staging.conf).
       - "127.0.0.1:3001:3000"
     env_file:
       - .env
+    # Smaller than production's 6 GB, so staging can never take memory production needs.
+    mem_limit: 2g
+    memswap_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
 
 volumes:
   postgres_staging_data:
