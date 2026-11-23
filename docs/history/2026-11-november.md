@@ -1811,3 +1811,26 @@ was read from a cron log that had stopped changing.
   as cron makes it. That is what found the 0-byte file. It prints no file's contents.
 - ⚠️ **A file the deploy ships must be in its sparse checkout.** Add it to both lists, or the test
   fails.
+
+## 146. Recent Changes (November 2026) — The course backend logged in at the wrong server
+
+Wedge keep-warm and the Golf Data console failed every run with "Login to
+https://apiv1.bigwedgegolf.com/api/v1/auth/token/ failed (check WEDGE_COURSE_API_USER/PASSWORD)",
+recorded as a bad credential since October (§60). The host in that message was the clue: it is the
+Big Wedge **app** API, not the course backend (`wedge-course-backend.vercel.app`).
+
+- **Cause.** `resolveCourseApi` (`src/server/bigwedge-course-api.ts`) took its base URL from
+  `WEDGE_COURSE_API_URL`, else **the Care "Analytics API" connector**, else the course backend.
+  That connector is the app API, so the course backend's credentials went to the app's login.
+- **Fix.** The course backend's URL is `WEDGE_COURSE_API_URL` or the deployed backend, never the
+  connector, and the connector's admin JWT is no longer sent to it either. A failed login now names
+  its HTTP status (401 = wrong password, 404/405 = wrong host). Tests:
+  `src/server/__tests__/bigwedge-course-api.test.ts`.
+- ⚠️ If the keep-warm still fails after this, read the status. **401** means the credentials
+  really are wrong, and Dan has to set them. Anything else means the host or path is wrong.
+- **Found on the way: a deploy could fail at random at "Install scheduled jobs".** Under
+  `set -o pipefail`, `printf "$AFTER" | grep -qxF "$line"` reports a line that IS there as missing
+  when `grep -q` exits at its first match and the `printf` is SIGPIPE'd (exit 141). Reproduced 1
+  run in 40 under load, 0 in 200 after. `install-crontab.sh`, `health-check.sh` (where a false
+  "unhealthy" would roll back a good deploy) and `rollback.sh` now use here-strings, and
+  `deploy-scripts.test.ts` fails on any `| grep -q` in a pipefail deploy script.

@@ -8,27 +8,31 @@
  * backend or anywhere else — the console is a viewer.
  *
  * Auth — the course backend issues short-lived (12h) JWTs, so a stored static
- * token would expire. Precedence, in order:
+ * token would expire:
  *   1. env `WEDGE_COURSE_API_USER` + `WEDGE_COURSE_API_PASSWORD` → Foundry mints a
  *      FRESH access token per pull via `POST /api/v1/auth/token/` (never expires out).
- *   2. the Big Wedge admin JWT from the Care → Connectors "Analytics API" connector.
- *   3. no token (works only if the backend runs with `REQUIRE_AUTH=false`).
- * Base URL: env `WEDGE_COURSE_API_URL` wins, else the connector's base URL.
+ *   2. otherwise no token (works only if the backend runs with `REQUIRE_AUTH=false`).
+ * Base URL: env `WEDGE_COURSE_API_URL`, else the deployed course backend.
+ *
+ * ⚠️ Never the Care → Connectors "Analytics API" connector. That connector is the Big Wedge
+ * APP API (apiv1.bigwedgegolf.com), a different service. Its base URL used to win here, so
+ * the course backend's username/password were posted to the APP's /auth/token/ and refused,
+ * and the keep-warm and Golf Data console failed "check WEDGE_COURSE_API_USER/PASSWORD"
+ * from Oct to Nov 2026 with the right password. Its admin JWT must not go to this host either.
  */
 
 import { getJson } from "@/server/support-analytics/types";
-import { resolveBigWedgeApi } from "@/server/wiki-bigwedge-sync";
 import { cached, bustGolfCache } from "@/server/golf-cache";
 
 /** The deployed Big Wedge course backend (Vercel). Non-secret; override with env. */
 const DEFAULT_COURSE_API_URL = "https://wedge-course-backend.vercel.app";
 
-/** Mint a fresh access token from username/password. Returns null on failure. */
+/** Mint a fresh access token from username/password, or say why it couldn't. */
 async function mintCourseToken(
   baseUrl: string,
   username: string,
   password: string,
-): Promise<string | null> {
+): Promise<{ token: string } | { failure: string }> {
   try {
     const res = await fetch(`${baseUrl}/api/v1/auth/token/`, {
       method: "POST",
@@ -36,36 +40,32 @@ async function mintCourseToken(
       body: JSON.stringify({ username, password }),
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    // The status tells a wrong password (401) from a wrong host or path (404, 405).
+    if (!res.ok) return { failure: `HTTP ${res.status}` };
     const json = (await res.json()) as { access?: string };
-    return json.access ?? null;
-  } catch {
-    return null;
+    return json.access ? { token: json.access } : { failure: "no access token in the reply" };
+  } catch (err) {
+    return { failure: err instanceof Error ? err.message : String(err) };
   }
 }
 
-/** Resolve { baseUrl, token } for the course backend per the precedence above. */
-async function resolveCourseApi(
-  workspaceClientId: string,
-): Promise<{ baseUrl: string; token?: string } | { error: string }> {
-  const envUrl = process.env.WEDGE_COURSE_API_URL?.trim();
+/** Where the course backend is: env `WEDGE_COURSE_API_URL`, else the deployed backend. */
+export function courseApiBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return (env.WEDGE_COURSE_API_URL?.trim() || DEFAULT_COURSE_API_URL).replace(/\/$/, "");
+}
+
+/** Resolve { baseUrl, token } for the course backend per the rules above. */
+export async function resolveCourseApi(): Promise<{ baseUrl: string; token?: string } | { error: string }> {
+  const baseUrl = courseApiBaseUrl();
   const envUser = process.env.WEDGE_COURSE_API_USER?.trim();
   const envPass = process.env.WEDGE_COURSE_API_PASSWORD?.trim();
 
-  // Connector is optional when an env URL is configured.
-  const connector = await resolveBigWedgeApi(workspaceClientId);
-  const connectorOk = !("error" in connector);
-
-  const baseUrl = (envUrl || (connectorOk ? connector.baseUrl : "") || DEFAULT_COURSE_API_URL).replace(/\/$/, "");
-
-  // 1) mint from env creds
   if (envUser && envPass) {
-    const token = await mintCourseToken(baseUrl, envUser, envPass);
-    if (token) return { baseUrl, token };
-    return { error: `Login to ${baseUrl}/api/v1/auth/token/ failed (check WEDGE_COURSE_API_USER/PASSWORD).` };
+    const minted = await mintCourseToken(baseUrl, envUser, envPass);
+    if ("token" in minted) return { baseUrl, token: minted.token };
+    return { error: `Login to ${baseUrl}/api/v1/auth/token/ failed (${minted.failure}; check WEDGE_COURSE_API_USER/PASSWORD).` };
   }
-  // 2) static connector token, or 3) no token (open backend)
-  return { baseUrl, token: connectorOk ? connector.apiToken : undefined };
+  return { baseUrl };
 }
 
 export interface CourseBackendStats {
@@ -189,11 +189,11 @@ interface CronEvent {
 }
 
 export async function getCourseBackendData(workspaceClientId: string, force = false): Promise<CourseBackendData> {
-  return cached(`course-backend:${workspaceClientId}`, () => loadCourseBackendData(workspaceClientId), { force });
+  return cached(`course-backend:${workspaceClientId}`, () => loadCourseBackendData(), { force });
 }
 
-async function loadCourseBackendData(workspaceClientId: string): Promise<CourseBackendData> {
-  const resolved = await resolveCourseApi(workspaceClientId);
+async function loadCourseBackendData(): Promise<CourseBackendData> {
+  const resolved = await resolveCourseApi();
   if ("error" in resolved) {
     return { connected: false, baseUrl: null, error: resolved.error, stats: null, sources: null, activity: [] };
   }
@@ -235,11 +235,9 @@ async function loadCourseBackendData(workspaceClientId: string): Promise<CourseB
  * Lightweight keep-warm ping — a tiny authed DB read so the course backend's
  * CockroachDB (free tier) never idles into a cold start. Not cached; always hits.
  */
-export async function pingCourseBackend(
-  workspaceClientId: string,
-): Promise<{ ok: boolean; status?: number; ms: number; error?: string }> {
+export async function pingCourseBackend(): Promise<{ ok: boolean; status?: number; ms: number; error?: string }> {
   const start = Date.now();
-  const resolved = await resolveCourseApi(workspaceClientId);
+  const resolved = await resolveCourseApi();
   if ("error" in resolved) return { ok: false, ms: Date.now() - start, error: resolved.error };
   try {
     const res = await fetch(`${resolved.baseUrl}/api/v1/courses/?page=1&page_size=1`, {
@@ -257,11 +255,11 @@ export async function pingCourseBackend(
 
 /** Read-only monitor of all connectors: coverage (/sources) + last run (/cron-status). */
 export async function getCourseIntegrations(workspaceClientId: string, force = false): Promise<CourseIntegrationsData> {
-  return cached(`course-integrations:${workspaceClientId}`, () => loadCourseIntegrations(workspaceClientId), { force });
+  return cached(`course-integrations:${workspaceClientId}`, () => loadCourseIntegrations(), { force });
 }
 
-async function loadCourseIntegrations(workspaceClientId: string): Promise<CourseIntegrationsData> {
-  const resolved = await resolveCourseApi(workspaceClientId);
+async function loadCourseIntegrations(): Promise<CourseIntegrationsData> {
+  const resolved = await resolveCourseApi();
   if ("error" in resolved) {
     return { connected: false, baseUrl: null, error: resolved.error, total: 0, integrations: [] };
   }
@@ -342,7 +340,7 @@ export async function runCourseJob(
   const allowed = INTEGRATION_CATALOG.some((d) => d.jobKey === job);
   if (!allowed) return { ok: false, job, detail: `Job "${job}" is not runnable.` };
 
-  const resolved = await resolveCourseApi(workspaceClientId);
+  const resolved = await resolveCourseApi();
   if ("error" in resolved) return { ok: false, job, detail: resolved.error };
   const { baseUrl, token } = resolved;
 
