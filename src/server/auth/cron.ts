@@ -38,17 +38,19 @@ export function assertCron(request: Request): void {
   // Record that the scheduler called this job, for the watchdog that notices a job has
   // stopped (src/server/cron-watchdog.ts, CLAUDE.md §144).
   //
-  // ⚠️ This was `void markSystem(...)` and the marker NEVER landed — so the watchdog called
-  // every job stopped while the box's own cron log showed all of them running, and
-  // /api/health?cron=1 answered 503 on every probe. An alarm that cries wolf is worse than no
-  // alarm, which §144 says in its own words about the latches.
+  // `assertCron` is synchronous and called by ~21 route handlers, so it cannot await the write.
+  // Work merely started during a request is not guaranteed to run once the response has been
+  // sent, so the marker goes through `after()` — the form this codebase already uses for
+  // post-response work (§36), and the one that is guaranteed to finish.
   //
-  // The tell was that EVERY other `markSystem` call in the codebase is awaited and lands, and
-  // this one — the only un-awaited one — is the only one that does not: `cron-watch-since` and
-  // `cron-alert:*`, written from the jobs worker, persist fine. `assertCron` is synchronous and
-  // called by ~21 route handlers, so it cannot await; work merely started during a request is
-  // not guaranteed to run once the response is sent. `after()` is what this codebase already
-  // uses for post-response work (§36), and it is the one form that is guaranteed to finish.
+  // ⚠️ This replaced a bare `void markSystem(...)` in #894, and that PR's reasoning was WRONG.
+  // It argued the `void` form was why no marker had landed and why /api/health?cron=1 answered
+  // 503. The real cause was §145: a 0-byte `run-cron.sh` shipped on 20 Nov, so for two days
+  // NOTHING called these routes at all. Nothing here was ever reached, and the `void` form was
+  // never shown to be at fault. Keep the change on its own merits, above — but do not cite this
+  // line as the fix for that outage, and do not infer from it that the watchdog was wrong. The
+  // watchdog was right throughout; #894 read a cron log that had stopped changing and said
+  // otherwise. See §145 for what actually happened.
   const name = cronNameFromPath(new URL(request.url).pathname);
   if (!name) return;
   try {

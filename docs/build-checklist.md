@@ -214,6 +214,14 @@ ordinary output. Redirect instead, and read the code:
 npm run test:baseline > /tmp/baseline.txt 2>&1; echo "EXIT: $?"
 ```
 
+⚠️ **And an exit code is not evidence that the work happened.** The same mistake in its general
+form: a step that exits 0 has not necessarily *done* anything. **An empty script is executable,
+exits 0 and prints nothing** — which is exactly how a 0-byte `run-cron.sh` passed the deploy's
+smoke test and stopped every scheduled job for two days (§145), while a stale log and a
+`cmp`-match of empty against empty made it look healthy. Assert on the **output the step is
+supposed to produce**, not on `$?`: the smoke test now requires the runner's own
+`jobs HTTP 2xx` line. When a check and the thing it checks can both be empty, it is not a check.
+
 ⚠️ **`CHROMIUM_PATH` may be needed.** The script looks for `<root>/chromium` and
 `<root>/chromium-*/chrome-linux{,64}/chrome` under `PLAYWRIGHT_BROWSERS_PATH` (default
 `/opt/pw-browsers`). Where the install does not match, point at the binary:
