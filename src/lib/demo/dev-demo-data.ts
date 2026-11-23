@@ -108,6 +108,10 @@ import {
   demoUpdatesView,
   demoWeeklyUpdate,
 } from "@/lib/demo/demo-delivery";
+
+import { demoAchievements, demoDealDraft, demoMoney } from "@/lib/demo/demo-money";
+import { demoNeedsYouApi } from "@/lib/demo/demo-needs-you";
+import { demoDeliveryTimeline, demoSearch, demoWeeklyUpdate } from "@/lib/demo/demo-delivery";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
@@ -5147,6 +5151,9 @@ export function resolveDemoApi(
   search?: URLSearchParams,
   init?: { method?: string; body?: unknown },
 ): unknown {
+  // The "Needs you" inbox and the source actions it takes on its own "ny-" items (§151).
+  const needsYou = demoNeedsYouApi(pathname, init);
+  if (needsYou !== undefined) return needsYou;
   switch (pathname) {
     case "/api/account":
       return demoAccount;
@@ -5220,8 +5227,7 @@ export function resolveDemoApi(
   // The Monitors page (/demo/monitors): the same board, and every client openable.
   if (pathname === "/api/monitors") return { ...demoMonitorBoard(), openableClientIds: null };
   if (pathname === "/api/monitors/platform") return demoPlatformHealth();
-  // HQ's "Needs you" and the Money page, through the real rules (src/lib/demo/demo-money.ts).
-  if (pathname === "/api/hq/needs-you") return demoNeedsYou();
+  // The Money page, through the real rules (src/lib/demo/demo-money.ts).
   if (pathname === "/api/money") return demoMoney();
   if (pathname === "/api/search") return demoSearch(search?.get("q") ?? null);
   // The Portal client's Timeline card and its weekly update draft, through the real rules.

@@ -6503,3 +6503,24 @@ model CommitmentSettings {
 
   @@index([workspaceId, userId])
 }
+
+/// A person's own snooze or dismissal of one item in HQ's "Needs you" inbox (§151).
+/// Per person, per workspace, keyed on the item's id (`${source}:${subject}`). It applies only
+/// while the item's fingerprint is unchanged, so an item that gets worse comes back. One row per
+/// item is enforced in code (src/server/needs-you-state.ts), not by a unique constraint: adding
+/// one is a data-losing change to Prisma's push (CLAUDE.md §2). Loose ids, no relations.
+model NeedsYouState {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  itemKey     String
+  fingerprint String
+  /// "snoozed" | "dismissed"
+  state       String
+  /// When a snooze ends. Null for a dismissal.
+  until       DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, workspaceId])
+}

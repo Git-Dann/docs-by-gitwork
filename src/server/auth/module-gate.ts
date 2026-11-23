@@ -113,6 +113,10 @@ export const INTERNAL_ONLY_PREFIXES = [
   // Every client's monitor status, by name. A guest granted the Monitors module would
   // otherwise see the whole client list; the API refuses external roles too.
   "/app/monitors",
+  // The "Needs you" inbox (§151). No module of its own: /api/hq/needs-you gates and scopes
+  // every source exactly as its own page does, so it shows nobody anything they couldn't open.
+  // Internal only because every source in it is internal work.
+  "/app/inbox",
   "/app/team",
   "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
   "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)

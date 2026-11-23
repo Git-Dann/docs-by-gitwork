@@ -2694,3 +2694,23 @@ export const boardKeyDatePatchSchema = z
 export const teamFeedbackSchema = z
   .object({ body: z.string().trim().min(1, "Write something first.").max(BOARD_LIMITS.feedback) })
   .strict();
+
+/** POST /api/hq/needs-you/state — a person's own snooze, dismissal or clear of one inbox item. */
+export const needsYouHoldSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      action: z.literal("snooze"),
+      itemKey: z.string().trim().min(3).max(300),
+      fingerprint: z.string().max(500),
+      until: z.string().datetime({ offset: true }),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("dismiss"),
+      itemKey: z.string().trim().min(3).max(300),
+      fingerprint: z.string().max(500),
+    })
+    .strict(),
+  z.object({ action: z.literal("clear"), itemKey: z.string().trim().min(3).max(300) }).strict(),
+]);

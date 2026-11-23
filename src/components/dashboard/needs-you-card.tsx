@@ -1,85 +1,57 @@
 "use client";
 
 /**
- * HQ's "Needs you": one ranked list of what every watcher found (outages, slipping delivery,
- * customers waiting, new client requests, stalled documents, Pulse regressions). Each row links to
- * where it's dealt with; nothing is done from here. Rules in src/lib/needs-you.ts.
+ * HQ's "Needs you": the top of one inbox of what every watcher found (outages, slipping
+ * delivery, suggested commitments, customers waiting, new client requests, stalled documents,
+ * Pulse regressions). Rules in src/lib/needs-you.ts; the full list, filters and keyboard live
+ * at /app/inbox (§151).
  *
- * A row can be hidden until tomorrow (per browser, with Undo), and comes back sooner if it gets
- * worse. An outage can't be hidden.
+ * Each row can be acted on in place, through the source's own route, with only the actions that
+ * person's own page would offer. Snooze and dismiss are the person's own and kept on the server,
+ * so they follow them between browsers; an item comes back early if it gets worse, and an outage
+ * can't be snoozed at all.
  */
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckIcon, EyeSlashIcon, ArrowRightIcon } from "@heroicons/react/24/outline";
-import { cn } from "@/lib/format";
+import { CheckIcon } from "@heroicons/react/24/outline";
 import { useNeedsYou } from "@/hooks/use-desk";
-import { useToast } from "@/components/ui/toast";
 import { TileHeader } from "@/components/dashboard/tile-header";
-import { StatusDot } from "@/components/ui/motion/status-dot";
 import { Skeleton } from "@/components/ui/motion/skeleton";
-import {
-  HIDDEN_KEY,
-  SOURCE_LABEL,
-  allClearLine,
-  hideUntilTomorrow,
-  isHidden,
-  parseHidden,
-  pruneHidden,
-  type HiddenMap,
-  type NeedsYouItem,
-} from "@/lib/needs-you";
+import { NeedsYouRow } from "@/components/needs-you/needs-you-row";
+import { LEGACY_HIDDEN_KEY, SOURCE_LABEL, allClearLine, countInbox } from "@/lib/needs-you";
 
-const MONO = { fontFamily: "var(--font-mono)" } as const;
 /** Rows shown before "Show more". */
 const FIRST = 5;
 
-function readStored(): HiddenMap {
-  try {
-    return parseHidden(window.localStorage.getItem(HIDDEN_KEY));
-  } catch {
-    return {};
-  }
-}
-
-function writeStored(map: HiddenMap) {
-  try {
-    window.localStorage.setItem(HIDDEN_KEY, JSON.stringify(map));
-  } catch {
-    // Storage blocked: hiding just lasts until the page is reloaded.
-  }
+/** The inbox page for where we are (the demo has its own). */
+export function useInboxHref(): string {
+  const pathname = usePathname() ?? "";
+  return pathname.startsWith("/demo") ? "/demo/inbox" : "/app/inbox";
 }
 
 export function NeedsYouCard({ index, onVisibilityChange }: { index: number; onVisibilityChange?: (visible: boolean) => void }) {
   const query = useNeedsYou();
-  const { undo } = useToast();
   const reduce = useReducedMotion();
-  const [hidden, setHidden] = useState<HiddenMap>({});
+  const inboxHref = useInboxHref();
   const [showAll, setShowAll] = useState(false);
-  const [showHidden, setShowHidden] = useState(false);
 
-  // Read after mount so the server render and the first client render match.
-  useEffect(() => setHidden(readStored()), []);
+  // The old browser-only hide list is replaced by snoozes kept on the server. Clear it once.
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem(LEGACY_HIDDEN_KEY);
+    } catch {
+      // Storage blocked: nothing to clear.
+    }
+  }, []);
 
   const data = query.data;
   const visible = Boolean(data && (data.checked.length > 0 || data.failed.length > 0));
   useEffect(() => onVisibilityChange?.(visible || query.isPending), [visible, query.isPending, onVisibilityChange]);
 
   const now = useMemo(() => new Date(), [data?.readAt]); // eslint-disable-line react-hooks/exhaustive-deps
-  const items = data?.items ?? [];
-  const shown = items.filter((i) => !isHidden(i, hidden, now));
-  const hiddenItems = items.filter((i) => isHidden(i, hidden, now));
-
-  // Forget hidden entries whose item has gone or whose day has passed.
-  useEffect(() => {
-    if (!data) return;
-    const pruned = pruneHidden(hidden, data.items, now);
-    if (Object.keys(pruned).length !== Object.keys(hidden).length) {
-      setHidden(pruned);
-      writeStored(pruned);
-    }
-  }, [data, hidden, now]);
 
   if (query.isPending) {
     return (
@@ -95,36 +67,13 @@ export function NeedsYouCard({ index, onVisibilityChange }: { index: number; onV
   }
   if (!data || !visible) return null;
 
-  function hide(item: NeedsYouItem) {
-    const next = { ...hidden, [item.id]: { fingerprint: item.fingerprint, until: hideUntilTomorrow(new Date()) } };
-    setHidden(next);
-    writeStored(next);
-    undo("Hidden until tomorrow", () => {
-      setHidden((cur) => {
-        const { [item.id]: _gone, ...rest } = cur;
-        void _gone;
-        writeStored(rest);
-        return rest;
-      });
-    });
-  }
-
-  function unhideAll() {
-    const rest = { ...hidden };
-    for (const i of hiddenItems) delete rest[i.id];
-    setHidden(rest);
-    writeStored(rest);
-    setShowHidden(false);
-  }
-
-  const critical = shown.filter((i) => i.severity === "critical").length;
-  const list = showAll ? shown : shown.slice(0, FIRST);
+  const open = data.items.filter((i) => i.hold === null);
+  const counts = countInbox(data.items);
+  const held = counts.snoozed + counts.dismissed;
+  const critical = open.filter((i) => i.severity === "critical").length;
+  const list = showAll ? open : open.slice(0, FIRST);
   const status =
-    shown.length === 0
-      ? "All clear"
-      : critical > 0
-        ? `${critical} urgent · ${shown.length} in all`
-        : `${shown.length} to look at`;
+    open.length === 0 ? "All clear" : critical > 0 ? `${critical} urgent · ${open.length} in all` : `${open.length} to look at`;
 
   return (
     <section className="widget-card" data-hq-card aria-label="Needs you">
@@ -132,10 +81,12 @@ export function NeedsYouCard({ index, onVisibilityChange }: { index: number; onV
         index={index}
         label="Needs you"
         status={status}
-        statusTone={shown.length === 0 ? "success" : critical > 0 ? "danger" : "warning"}
+        statusTone={open.length === 0 ? "success" : critical > 0 ? "danger" : "warning"}
+        href={inboxHref}
+        hrefLabel="Open inbox"
       />
 
-      {shown.length === 0 ? (
+      {open.length === 0 ? (
         <AllClear line={allClearLine(data.checked)} reduce={Boolean(reduce)} />
       ) : (
         <ul className="divide-y divide-[var(--border-1)]">
@@ -148,7 +99,7 @@ export function NeedsYouCard({ index, onVisibilityChange }: { index: number; onV
                 animate={{ opacity: 1, y: 0, transition: { delay: reduce ? 0 : Math.min(i, 6) * 0.04 } }}
                 exit={reduce ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.18 } }}
               >
-                <Row item={item} onHide={() => hide(item)} />
+                <NeedsYouRow item={item} now={now} compact />
               </motion.li>
             ))}
           </AnimatePresence>
@@ -156,63 +107,13 @@ export function NeedsYouCard({ index, onVisibilityChange }: { index: number; onV
       )}
 
       <Footer
-        more={shown.length - list.length}
+        more={open.length - list.length}
         onMore={() => setShowAll(true)}
-        hiddenCount={hiddenItems.length}
-        showHidden={showHidden}
-        onToggleHidden={() => setShowHidden((v) => !v)}
-        onUnhideAll={unhideAll}
-        hiddenItems={hiddenItems}
+        held={held}
+        inboxHref={`${inboxHref}?view=${counts.snoozed > 0 ? "snoozed" : "dismissed"}`}
         failed={data.failed.map((s) => SOURCE_LABEL[s])}
       />
     </section>
-  );
-}
-
-function Row({ item, onHide }: { item: NeedsYouItem; onHide: () => void }) {
-  const tone = item.severity === "critical" ? "danger" : item.severity === "warn" ? "warning" : "neutral";
-  return (
-    <div className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--surface-1)]">
-      <StatusDot
-        tone={tone}
-        motion={item.severity === "critical" ? "ping" : "none"}
-        className="mt-1.5 shrink-0"
-        label={item.severity === "critical" ? "Urgent" : item.severity === "warn" ? "Worth a look" : "For your information"}
-      />
-      <Link href={item.href} className="min-w-0 flex-1 outline-none">
-        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-4)]" style={MONO}>
-            {SOURCE_LABEL[item.source]}
-          </span>
-          {item.clientName ? (
-            <span className="truncate text-xs text-[var(--text-3)]" title={item.clientName}>
-              {item.clientName}
-            </span>
-          ) : null}
-        </span>
-        <span className="mt-0.5 block text-sm font-medium text-[var(--text-1)] group-hover:text-[var(--brand-700)]">
-          {item.title}
-        </span>
-        {item.detail ? <span className="mt-0.5 block text-xs text-[var(--text-3)]">{item.detail}</span> : null}
-      </Link>
-      <div className="flex shrink-0 items-center gap-1 self-center">
-        {item.severity !== "critical" ? (
-          <button
-            type="button"
-            onClick={onHide}
-            title="Hide until tomorrow"
-            aria-label={`Hide “${item.title}” until tomorrow`}
-            className="app-button app-button-tertiary app-button-icon-sm opacity-100 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-          >
-            <EyeSlashIcon className="h-4 w-4" />
-          </button>
-        ) : null}
-        <Link href={item.href} className="app-button app-button-tertiary app-button-xs text-[var(--brand-700)]">
-          {item.action}
-          <ArrowRightIcon className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-        </Link>
-      </div>
-    </div>
   );
 }
 
@@ -235,23 +136,17 @@ function AllClear({ line, reduce }: { line: string; reduce: boolean }) {
 function Footer({
   more,
   onMore,
-  hiddenCount,
-  showHidden,
-  onToggleHidden,
-  onUnhideAll,
-  hiddenItems,
+  held,
+  inboxHref,
   failed,
 }: {
   more: number;
   onMore: () => void;
-  hiddenCount: number;
-  showHidden: boolean;
-  onToggleHidden: () => void;
-  onUnhideAll: () => void;
-  hiddenItems: NeedsYouItem[];
+  held: number;
+  inboxHref: string;
   failed: string[];
 }) {
-  if (more <= 0 && hiddenCount === 0 && failed.length === 0) return null;
+  if (more <= 0 && held === 0 && failed.length === 0) return null;
   return (
     <div className="border-t border-[var(--border-1)] px-4 py-2.5 text-xs text-[var(--text-3)]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -260,28 +155,13 @@ function Footer({
             Show {more} more
           </button>
         ) : null}
-        {hiddenCount > 0 ? (
-          <button type="button" onClick={onToggleHidden} className="hover:text-[var(--text-1)]">
-            {hiddenCount} hidden until tomorrow · {showHidden ? "Close" : "Show"}
-          </button>
+        {held > 0 ? (
+          <Link href={inboxHref} className="hover:text-[var(--text-1)]">
+            {held} snoozed or dismissed · See them
+          </Link>
         ) : null}
-        {failed.length > 0 ? (
-          <span className="text-[var(--text-2)]">Couldn&apos;t check {failed.join(", ")} just now</span>
-        ) : null}
+        {failed.length > 0 ? <span className="text-[var(--text-2)]">Couldn&apos;t check {failed.join(", ")} just now</span> : null}
       </div>
-      {showHidden && hiddenItems.length > 0 ? (
-        <div className="mt-2 space-y-1">
-          {hiddenItems.map((i) => (
-            <Link key={i.id} href={i.href} className={cn("block truncate text-[var(--text-3)] hover:text-[var(--brand-700)]")} title={i.title}>
-              {SOURCE_LABEL[i.source]} · {i.title}
-              {i.clientName ? ` · ${i.clientName}` : ""}
-            </Link>
-          ))}
-          <button type="button" onClick={onUnhideAll} className="app-button app-button-hyperlink mt-1">
-            Bring them all back
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

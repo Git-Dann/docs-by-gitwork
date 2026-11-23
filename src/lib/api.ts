@@ -5780,6 +5780,44 @@ export async function getNeedsYou(): Promise<import("@/lib/needs-you").NeedsYouD
   return apiFetch("/api/hq/needs-you");
 }
 
+/** Snooze, dismiss or clear one item in your own "Needs you" inbox (§151). */
+export async function setNeedsYouHold(
+  input:
+    | { action: "snooze"; itemKey: string; fingerprint: string; until: string }
+    | { action: "dismiss"; itemKey: string; fingerprint: string }
+    | { action: "clear"; itemKey: string },
+): Promise<{ itemKey: string; state: "snoozed" | "dismissed" | null; until: string | null }> {
+  return apiFetch("/api/hq/needs-you/state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+/** A monitor incident: acknowledge it, or post an update (the Monitors board's own route). */
+export async function actOnMonitorIncident(
+  slug: string,
+  incidentId: string,
+  body:
+    | { action: "acknowledge" }
+    | { action: "update"; status: import("@/lib/monitor-incidents").IncidentStatus; message: string; isPublic: boolean },
+): Promise<import("@/lib/monitor-incidents").IncidentDTO> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/monitors/incidents/${encodeURIComponent(incidentId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Foreman's own dismiss / mute / clear (Settings → Foreman's route). */
+export async function actOnForemanFindings(input: { findingKeys: string[]; action: "dismiss" | "mute" | "clear" }): Promise<unknown> {
+  return apiFetch("/api/foreman/findings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 // ── Money (Super Admins + clients.viewFinancials) ──────────────────────────
 
 export async function getMoney(): Promise<import("@/lib/money").MoneySummary> {
