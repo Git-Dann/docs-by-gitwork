@@ -54,6 +54,10 @@
 # Off-site, encrypted database backup (src/server/db-backup.ts). Does nothing until the
 # BACKUP_S3_* bucket and BACKUP_ENCRYPTION_KEY are set. Quiet hours, after the other dailies.
 45 3 * * * /opt/apps/foundry/run-cron.sh db-backup >> /tmp/foundry-cron.log 2>&1
+# Monthly restore test of that backup (src/server/db-restore-test.ts): the newest backup is
+# restored into the throwaway database foundry_restore_test, counted against production and
+# dropped. Off until the same secrets are set. The 2nd, so the 1st's backup is there to test.
+15 5 2 * * /opt/apps/foundry/run-cron.sh db-restore-test >> /tmp/foundry-cron.log 2>&1
 
 # Weekly (Monday 01:00)
 0 1 * * 1 /opt/apps/foundry/run-cron.sh curator >> /tmp/foundry-cron.log 2>&1

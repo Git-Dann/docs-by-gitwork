@@ -67,10 +67,16 @@ const SECTIONS = [
   { id: "platforms", label: "Platforms" },
   { id: "comparisons", label: "Comparisons" },
   { id: "board", label: "Board" },
+  { id: "updates", label: "Updates" },
 ] as const;
 
 /** Sections the CLIENT can write to — they have a token route, under the hardened posture. */
 const CLIENT_WRITABLE = new Set<string>(["board"]);
+/**
+ * Read-only sections whose page loads on its own (§140) through a token GET route, with the
+ * Board's read posture: Updates (§147). No write method, ever.
+ */
+const CLIENT_READ_ROUTE = new Set<string>(["updates"]);
 
 describe.each(SECTIONS)("$label — the twelve parallel allow-lists", ({ id, label }) => {
   const sidebar = read("components/clients/wiki/wiki-sidebar.tsx");
@@ -253,6 +259,12 @@ describe("wiki-client-visibility.ts — each availableSections predicate has its
     expect(available).toContain("boardSummaryOf(wiki.board).items > 0");
   });
 
+  it("updates — enabled AND a published update or a plan to describe", () => {
+    // Enabled-and-empty would land the client on a page with nothing on it.
+    expect(available).toContain("wiki.updates?.enabled");
+    expect(available).toContain("wiki.updates.published > 0");
+  });
+
   it("platforms — enabled AND at least one platform", () => {
     expect(available).toContain("wiki.clientPlatforms.enabled");
     expect(available).toContain("wiki.clientPlatforms.platforms.length > 0");
@@ -274,11 +286,36 @@ describe("there is no client-facing write route, and there must not be one", () 
     // the full `resolvePublicWiki` → cookie → belongs → rate-limit posture first, not a
     // quiet `route.ts`.
     for (const { id } of SECTIONS) {
-      if (CLIENT_WRITABLE.has(id)) continue;
+      if (CLIENT_WRITABLE.has(id) || CLIENT_READ_ROUTE.has(id)) continue;
       expect(existsSync(join(ROOT, `app/api/wiki/[token]/${id}`)), `${id} route exists`).toBe(
         false,
       );
     }
+  });
+});
+
+describe("updates — the client's route only reads, behind the Board's posture", () => {
+  const src = read("app/api/wiki/[token]/updates/route.ts");
+
+  it("exports GET only", () => {
+    expect(src).toMatch(/export async function GET/);
+    expect(src).not.toMatch(/export async function (POST|PATCH|PUT|DELETE)/);
+  });
+
+  it("checks the section, the per-section link and the reader before reading anything", () => {
+    const sectionOff = src.indexOf("wiki.updatesEnabled");
+    const reader = src.indexOf("resolveWikiAccessUser(");
+    const team = src.indexOf("teamWriterFor(");
+    const rate = src.indexOf("assertBoardReadRate(req)");
+    const load = src.indexOf("loadUpdatesView(");
+    expect(src).toContain("map.updates === token");
+    for (const at of [sectionOff, reader, team, rate]) expect(at).toBeGreaterThan(-1);
+    expect(Math.max(sectionOff, reader, team, rate)).toBeLessThan(load);
+  });
+
+  it("the page loads on its own: only a summary rides in the wiki DTO (§140)", () => {
+    expect(read("server/wiki.ts")).toContain("loadWikiUpdatesSummary(");
+    expect(read("server/wiki.ts")).not.toContain("loadUpdatesView(");
   });
 });
 

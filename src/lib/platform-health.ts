@@ -7,6 +7,7 @@
  */
 
 import { DB_GROWTH_ALERT_MIN_BYTES, DB_GROWTH_ALERT_SHARE, DISK_ALERT_AT } from "@/lib/disk-watch";
+import type { RestoreTestState } from "@/lib/db-restore-test";
 
 export type HealthLevel = "ok" | "attention" | "problem" | "unknown";
 
@@ -25,10 +26,12 @@ export interface PlatformHealth {
   database: { bytes: number | null; weekAgoBytes: number | null; growthShare: number | null } | null;
   memory: { usedBytes: number; limitBytes: number | null; peakBytes: number | null; hostBytes: number } | null;
   backups: { state: "off" | "misconfigured" | "on"; reason: string | null; lastOk: string | null };
+  /** The monthly restore test of the newest backup (src/lib/db-restore-test.ts). */
+  restore: RestoreTestState;
   alerts: { slack: boolean };
 }
 
-export type PartKey = "jobs" | "disk" | "database" | "memory" | "backups" | "alerts";
+export type PartKey = "jobs" | "disk" | "database" | "memory" | "backups" | "restore" | "alerts";
 
 export interface Part {
   key: PartKey;
@@ -94,6 +97,8 @@ export function judge(h: PlatformHealth, now: Date = new Date(h.readAt)): Part[]
     parts.push({ key: "backups", label: "Off-site backups", level: fresh ? "ok" : "problem", summary: b.lastOk ? (fresh ? "Last one in the past day" : "None in over a day") : "None made yet" });
   }
 
+  parts.push(restorePart(h.restore));
+
   parts.push({
     key: "alerts",
     label: "Alerts to Slack",
@@ -102,6 +107,28 @@ export function judge(h: PlatformHealth, now: Date = new Date(h.readAt)): Part[]
   });
 
   return parts;
+}
+
+const shortDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+/** A backup nobody has restored is unproven, so "never passed" is worth a look, not fine. */
+export function restorePart(r: RestoreTestState): Part {
+  const base = { key: "restore" as const, label: "Restore test" };
+  switch (r.state) {
+    case "off":
+      return { ...base, level: "attention", summary: "Off: backups aren't set up yet" };
+    case "misconfigured":
+      return { ...base, level: "problem", summary: "Set up wrongly" };
+    case "never":
+      return { ...base, level: "attention", summary: "Not run yet: monthly, on the 2nd" };
+    case "failed":
+      return { ...base, level: "problem", summary: `Failed ${shortDate(r.at)}` };
+    case "overdue":
+      return { ...base, level: "problem", summary: `Overdue: last passed ${shortDate(r.lastPassed)}` };
+    case "passed":
+      return { ...base, level: "ok", summary: `Last passed ${shortDate(r.at)}` };
+  }
 }
 
 const RANK: Record<HealthLevel, number> = { problem: 3, unknown: 2, attention: 1, ok: 0 };

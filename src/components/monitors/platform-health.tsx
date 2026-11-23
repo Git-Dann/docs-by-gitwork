@@ -215,6 +215,27 @@ function body(key: PartKey, h: PlatformHealth): React.ReactNode {
           ) : null}
         </>
       );
+    case "restore": {
+      const r = h.restore;
+      const state =
+        r.state === "off" ? "Off" : r.state === "misconfigured" ? "Set up wrongly" : r.state === "never" ? "On, not run yet" : r.state === "failed" ? "Failed" : r.state === "overdue" ? "Overdue" : "Passed";
+      const lastPassed = r.state === "passed" ? r.at : r.state === "overdue" || r.state === "failed" ? r.lastPassed : null;
+      return (
+        <>
+          <p className="mb-2">
+            On the 2nd of each month the newest off-site backup is restored into a throwaway database on the same server, its row counts are checked against production, and it is dropped. Production&apos;s data is only read.
+          </p>
+          <Row label="State" value={state} tone={r.state === "failed" || r.state === "overdue" || r.state === "misconfigured" ? "problem" : undefined} />
+          <Row label="Last passed" value={lastPassed ? relTime(lastPassed) : "Never"} />
+          {r.state === "failed" ? <Row label="Last failed" value={relTime(r.at)} tone="problem" /> : null}
+          {r.state === "failed" ? <p className="mt-2 text-xs text-[var(--text-3)]">The reason is in the ops alert sent when it failed.</p> : null}
+          {r.state === "misconfigured" ? <p className="mt-2 text-xs text-red-700">{r.reason}</p> : null}
+          {r.state === "off" ? (
+            <p className="mt-2 text-xs text-[var(--text-3)]">Switches on with the off-site backups: the same BACKUP_S3_* and BACKUP_ENCRYPTION_KEY secrets.</p>
+          ) : null}
+        </>
+      );
+    }
     case "alerts":
       return (
         <>

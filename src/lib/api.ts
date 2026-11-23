@@ -4409,6 +4409,38 @@ export async function getClientWiki(slug: string): Promise<WikiDTO> {
   return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki?courseRequests=0&board=0`);
 }
 
+/** Updates in the client wiki (CLAUDE.md §147): the team's side by slug, the client's by share token. */
+export async function getWikiUpdates(target: { slug: string } | { token: string }): Promise<import("@/lib/wiki-updates").UpdatesView> {
+  return apiFetch(
+    "slug" in target
+      ? `/api/clients/${encodeURIComponent(target.slug)}/wiki/updates`
+      : `/api/wiki/${encodeURIComponent(target.token)}/updates`,
+  );
+}
+
+export async function publishWikiUpdateApi(
+  slug: string,
+  input: { weekStart: string; subject: string; body: string },
+): Promise<import("@/lib/wiki-updates").PublishedUpdate> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/updates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function unpublishWikiUpdateApi(slug: string, id: string): Promise<void> {
+  await apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/updates/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function setWikiUpdatesEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/updates`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function getWikiBoard(slug: string): Promise<WikiBoardSection> {
   return apiFetch<WikiBoardSection>(`/api/clients/${slug}/wiki/board`);
 }

@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { totalmem } from "node:os";
 import { weeklyGrowth } from "@/lib/disk-watch";
 import type { PlatformHealth } from "@/lib/platform-health";
+import { restoreTestState } from "@/lib/db-restore-test";
 import { cronHealth } from "@/server/cron-watchdog";
 import { backupConfig } from "@/server/db-backup";
 import { readDisk } from "@/server/disk-watch";
@@ -52,11 +53,12 @@ export async function readPlatformHealth(now: Date = new Date()): Promise<Platfo
     safe(() => readDisk()),
     safe(() => readDaily("db-size")),
     safe(() => readMemory()),
-    safe(() => readSystemMarkers(["db-backup-ok"])),
+    safe(() => readSystemMarkers(["db-backup-ok", "db-restore-ok", "db-restore-failed"])),
   ]);
 
   const growth = series ? weeklyGrowth(series.map((r) => ({ at: r.at, bytes: r.value })), now) : null;
   const config = backupConfig();
+  const configState = "skipped" in config ? "off" : "error" in config ? "misconfigured" : "on";
   return {
     readAt: now.toISOString(),
     jobs,
@@ -64,10 +66,18 @@ export async function readPlatformHealth(now: Date = new Date()): Promise<Platfo
     database: disk ? { bytes: disk.databaseBytes, weekAgoBytes: growth?.from ?? null, growthShare: growth?.share ?? null } : null,
     memory,
     backups: {
-      state: "skipped" in config ? "off" : "error" in config ? "misconfigured" : "on",
+      state: configState,
       reason: "error" in config ? config.error : null,
       lastOk: markers?.["db-backup-ok"]?.toISOString() ?? null,
     },
+    // Markers unreadable → read as "not run yet", which shows as worth a look, never as fine.
+    restore: restoreTestState({
+      config: configState,
+      reason: "error" in config ? config.error : null,
+      lastOk: markers?.["db-restore-ok"]?.toISOString() ?? null,
+      lastFailed: markers?.["db-restore-failed"]?.toISOString() ?? null,
+      now,
+    }),
     alerts: { slack: Boolean(process.env.SLACK_OPS_WEBHOOK_URL?.trim()) },
   };
 }

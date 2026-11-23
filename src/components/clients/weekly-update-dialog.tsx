@@ -7,12 +7,12 @@
  */
 
 import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { ArrowPathIcon, CheckIcon, ClipboardDocumentIcon, EnvelopeIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowPathIcon, CheckIcon, ClipboardDocumentIcon, EnvelopeIcon, GlobeAltIcon, SparklesIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/motion/skeleton";
-import { draftWeeklyUpdateApi } from "@/lib/api";
+import { draftWeeklyUpdateApi, publishWikiUpdateApi } from "@/lib/api";
 import { gmailComposeUrl, quietWeek, type WeeklyFacts, type WeeklyUpdateResult } from "@/lib/weekly-update";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
@@ -43,6 +43,20 @@ export function WeeklyUpdateDialog({
     },
   });
   const { mutate } = draft;
+
+  // Publishing puts the words, as written here, on the client's wiki (Updates, CLAUDE.md §147).
+  const qc = useQueryClient();
+  const [published, setPublished] = useState(false);
+  const publish = useMutation({
+    mutationFn: () => publishWikiUpdateApi(slug, { weekStart: result!.week.start, subject, body }),
+    onSuccess: () => {
+      setPublished(true);
+      void qc.invalidateQueries({ queryKey: ["wiki-updates", slug] });
+      void qc.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+  // A changed draft or another week is a new thing to publish.
+  useEffect(() => setPublished(false), [subject, body, week]);
 
   // Draft when opened and when the week changes.
   useEffect(() => {
@@ -142,10 +156,26 @@ export function WeeklyUpdateDialog({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--border-1)] px-4 py-3">
-        <p className="min-w-0 truncate text-xs text-[var(--text-3)]" title={to.join(", ")}>
-          {to.length ? `To ${to.join(", ")}` : "No contact email on this client yet. Add one in Edit client."}
+        <p className="min-w-0 truncate text-xs text-[var(--text-3)]" title={publish.isError ? (publish.error as Error).message : to.join(", ")}>
+          {publish.isError ? (
+            <span className="text-[var(--danger-500)]">{(publish.error as Error).message}</span>
+          ) : to.length ? (
+            `To ${to.join(", ")}`
+          ) : (
+            "No contact email on this client yet. Add one in Edit client."
+          )}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => publish.mutate()}
+            className="app-button app-button-secondary app-button-sm"
+            disabled={!body || !result || publish.isPending}
+            title="Show this update to the client in their wiki, under Updates"
+          >
+            {published ? <CheckIcon className="h-4 w-4 text-[var(--success-500)]" /> : <GlobeAltIcon className="h-4 w-4" />}
+            {published ? "On their wiki" : publish.isPending ? "Publishing…" : "Publish to wiki"}
+          </button>
           <button type="button" onClick={copy} className="app-button app-button-secondary app-button-sm" disabled={!body}>
             {copied ? <CheckIcon className="h-4 w-4 text-[var(--success-500)]" /> : <ClipboardDocumentIcon className="h-4 w-4" />}
             {copied ? "Copied" : "Copy"}

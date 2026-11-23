@@ -36,6 +36,7 @@ import {
   GlobeAltIcon,
   LifebuoyIcon,
   NewspaperIcon,
+  EnvelopeOpenIcon,
   PlusIcon,
   PresentationChartLineIcon,
   RocketLaunchIcon,
@@ -57,6 +58,7 @@ export type WikiSection =
   | "comparisons"
   | "board"
   | "roundup"
+  | "updates"
   | "delivery"
   | "support"
   | "metrics"
@@ -224,6 +226,7 @@ export function WikiSidebar({
       "comparisons",
       "board",
       "roundup",
+      "updates",
       "delivery",
       "support",
       "metrics",
@@ -398,6 +401,7 @@ export function WikiSidebar({
           navItem("timeline", "Timeline", <CalendarDaysIcon />),
           navItem("delivery", "Delivery", <ChartBarSquareIcon />),
           navItem("roundup", "RoundUp", <NewspaperIcon />),
+          navItem("updates", "Updates", <EnvelopeOpenIcon />),
           navItem("meetings", "Meetings", <VideoCameraIcon />),
         ])}
         {group("together", [

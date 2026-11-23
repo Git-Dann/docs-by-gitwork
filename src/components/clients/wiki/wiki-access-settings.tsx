@@ -82,6 +82,7 @@ const SHARE_SECTION_LABELS: Partial<Record<WikiSection, string>> = {
   comparisons: "Comparisons",
   board: "Board",
   roundup: "RoundUp",
+  updates: "Updates",
   delivery: "Delivery",
   support: "Support",
   metrics: "Metrics",

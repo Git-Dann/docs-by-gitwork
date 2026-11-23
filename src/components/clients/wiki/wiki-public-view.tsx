@@ -34,6 +34,7 @@ const WikiCostsSection = dynamic(() => import("./wiki-costs-section").then((m) =
 const WikiEstimatesSection = dynamic(() => import("./wiki-estimates-section").then((m) => m.WikiEstimatesSection), { loading: SectionLoading });
 const WikiComparisonsSectionView = dynamic(() => import("./wiki-comparisons-section").then((m) => m.WikiComparisonsSectionView), { loading: SectionLoading });
 const WikiRoundupSection = dynamic(() => import("./wiki-roundup-section").then((m) => m.WikiRoundupSection), { loading: SectionLoading });
+const WikiUpdatesSection = dynamic(() => import("./wiki-updates-section").then((m) => m.WikiUpdatesSection), { loading: SectionLoading });
 const WikiSupportSectionView = dynamic(() => import("@/components/clients/wiki/wiki-support-section").then((m) => m.WikiSupportSectionView), { loading: SectionLoading });
 const WikiMetricsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-metrics-section").then((m) => m.WikiMetricsSectionView), { loading: SectionLoading });
 const WikiMeetingsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-meetings-section").then((m) => m.WikiMeetingsSectionView), { loading: SectionLoading });
@@ -193,6 +194,9 @@ export function WikiPublicView({
     }
     if (activeSection === "support") {
       return <WikiSupportSectionView support={wiki.support} />;
+    }
+    if (activeSection === "updates") {
+      return <WikiUpdatesSection target={{ token }} mode="client" clientName={wiki.clientName} />;
     }
     if (activeSection === "roundup") {
       return (

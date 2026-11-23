@@ -1834,3 +1834,90 @@ Big Wedge **app** API, not the course backend (`wedge-course-backend.vercel.app`
   run in 40 under load, 0 in 200 after. `install-crontab.sh`, `health-check.sh` (where a false
   "unhealthy" would roll back a good deploy) and `rollback.sh` now use here-strings, and
   `deploy-scripts.test.ts` fails on any `| grep -q` in a pipefail deploy script.
+
+## 147. Recent Changes (November 2026) — Updates: the weekly email, published to the client's wiki
+
+A client-wiki section, **Updates** (id `updates`, group Overview), so the client has the record of
+what they were told and what happened, in one place they can always open. Dan's ask: "build weekly
+report and timeline in clients wiki".
+
+- **Two things on one page.** `01 // WHERE THINGS STAND` (waiting on you, next release, in
+  progress, up next) and `02 // WEEK BY WEEK`: each week's published update, as sent, with "What
+  happened this week" folded under it; a week with no update shows what happened. Runs of quiet
+  weeks fold into one line. The team sees exactly the client's page, plus **Write this week's
+  update** and **Unpublish**.
+- **Publishing.** The weekly update dialog (Portal Timeline card, §142.2) gained **Publish to
+  wiki**: the subject and body as edited there, frozen in `WikiWeeklyUpdate` (additive, one per
+  wiki per week, enforced in code; replacing a week overwrites it; unpublishing archives, never
+  deletes). Publishing switches the section on. Needs 'Manage clients'.
+- **The timeline is the client's copy, cut at two layers.** `loadDeliveryTimeline(…, { audience:
+  "client" })` reads only meetings shared with the client (`sharedWithClientAt`), outages on
+  production services, and documents that were sent. Then `forClientTimeline`
+  (`src/lib/wiki-updates.ts`, pure, tested) drops every developer's name, board tidy-ups, the
+  contacts' emails and every `/app` link. The published update shows the author's first name only.
+- **Loaded on its own (§140):** the DTO carries `updates: WikiUpdatesSummary` (flag, count, latest
+  subject) for the nav, the dashboard card and the visibility rule; the page reads
+  `GET /api/clients/[slug]/wiki/updates` (team) or `GET /api/wiki/[token]/updates` (client: the
+  Board's read posture — section on, per-section link for Updates, signed-in client user or this
+  client's team, read rate limit). The token route has no write method; the wiring test pins it.
+- The client sees the section when it's on AND there is a published update or a plan to describe.
+- ⚠️ **Overlap, deliberately left:** RoundUp is a live "last seven days" summary of
+  the plan only; Delivery is the plan's progress. Updates is the frozen record plus everything
+  else that happened (releases, requests, meetings, outages). Folding RoundUp into Updates is a
+  reasonable later tidy-up.
+- Demo: `/demo/wiki#updates` (publish and unpublish work in memory).
+
+## 148. Recent Changes (November 2026) — Phase 0: restore test, staging, browser smoke tests
+
+The last of "Phase 0" of making releases safe: a backup is proven restorable, a branch can run on
+real infrastructure before `main`, and the signed-in app is opened in a browser on every PR.
+
+### 148.1 Monthly restore test of the off-site backup
+
+`src/server/db-restore-test.ts`, cron `db-restore-test` (the 2nd of the month, 05:15; route answers
+`{ started }` at once and works in `after()`, under `runOnce`, because a restore can outlast
+`run-cron.sh`'s 330s). Rules are pure in `src/lib/db-restore-test.ts`.
+
+- Lists this month's and last month's backup folders (S3 ListObjectsV2; `signS3Request` gained a
+  `canonicalQuery`, `canonicalQueryOf` builds it), picks the newest of OUR keys, and fails if it is
+  over 3 days old (the daily backup has stopped).
+- Refuses to start without disk for a second copy plus 2 GB, or if it can't read the disk.
+- Downloads, decrypts streaming (`decryptBackupFile`, the reverse of the backup's format),
+  `pg_restore --list`, then `DROP … WITH (FORCE)` / `CREATE DATABASE foundry_restore_test` and
+  `pg_restore --no-owner --no-privileges --exit-on-error` with libpq variables (no password in argv).
+- Counts eight core tables (`RESTORE_CHECK_TABLES`) in the copy and in production; a missing or
+  empty table, or a difference over max(200 rows, 15%), fails. Then the copy is always dropped.
+- ⚠️ **The throwaway name is a fixed constant**, asserted before every create or drop and refused
+  outright if the live database already has that name. Production's data is only read.
+- Pass → marker `db-restore-ok` (and a "passes again" alert after a failure). Fail → marker
+  `db-restore-failed` + `sendOpsAlert` with the reason. Off (`{ skipped }`) with the backup;
+  half set is an error.
+- **Platform popup:** a "Restore test" row: off, not run yet (attention), passed, failed or
+  overdue (no pass in 35 days). `CRON_MAX_GAP` gives it 32 days.
+- Verified end to end against a local Postgres and a fake bucket: the real `runRestoreTest`
+  listed, downloaded, restored, matched the counts, recorded the marker and dropped the copy.
+
+### 148.2 Staging
+
+`.github/workflows/deploy-staging.yml` now runs **only when dispatched**, with a `ref` (branch, tag
+or sha) and an optional `seed`. It builds that ref as `:staging` / `:staging-<sha>` (never
+`:latest`) and runs `deploy/staging-deploy.sh` on the box, which refuses to do anything unless the
+directory is `foundry-staging`, the staging `.env`'s `DATABASE_URL`/`DIRECT_URL` point at
+`@db:5432/foundry_staging`, and the compose file is staging's (project, container, image, port
+`127.0.0.1:3001`, no production name). Every Compose command is pinned to `-p foundry-staging`;
+it health-checks the exact commit on 3001 with `deploy/health-check.sh`; `seed` calls the existing
+`/api/dev/seed-*` routes with staging's own `API_KEY` on stdin. `docker-compose-staging.yml` gained
+`name: foundry-staging`, a 2 GB app cap, a high OOM score for its database and log rotation.
+`deploy/nginx/staging.conf` puts `staging.foundry.gitwork.co.uk` behind a password. Dan's one-time
+steps (DNS, `.env`, Google redirect URI, nginx + certbot) are in `docs/staging.md`.
+Tests: `src/__tests__/staging-deploy.test.ts`.
+
+### 148.3 Browser smoke tests on /app
+
+`scripts/smoke.mjs` (`npm run test:smoke`, CI job `smoke`): seeds `foundry_smoke` with the isolation
+suite's two businesses (`scripts/smoke-db.sh`, `tests/smoke/seed.ts`), starts the production build,
+mints an Auth.js session cookie with the server's own `AUTH_SECRET` (no test-only route in the app),
+and opens ten `/app` pages at 390 and 1440px: 200 on its own URL, no uncaught or console error, no
+"Application error", a visible h1, no sideways scroll. ⚠️ The shell has two h1s (phone and desktop),
+one hidden at each width, so the check takes the visible one. Details: `docs/build-checklist.md` §4c.
+

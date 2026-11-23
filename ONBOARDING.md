@@ -49,9 +49,10 @@ monitors work across the team, so an untagged chat is effectively invisible. Ful
 ## 3. The loop for every change
 
 **`main` is production.** Anything that lands on `main` — merged *or* committed directly —
-auto-deploys to the Fasthosts VPS in about 6 minutes. There is **no staging environment and there
-are no branch preview URLs** (Vercel built some until it was retired in Nov 2026). Check a branch
-locally: the dev server and the `/demo/**` pages.
+auto-deploys to the Fasthosts VPS in about 6 minutes. There are **no per-PR preview URLs**
+(Vercel built some until it was retired in Nov 2026). Check a branch locally: the dev server and
+the `/demo/**` pages. When a change needs real infrastructure, Actions → **Deploy to staging** puts
+any branch on its own staging copy (`docs/staging.md`); it only runs when you ask.
 
 **A deploy is only green once the new release is healthy.** After the restart it must answer
 `/api/health?deep=1` with its own commit and a reachable database within two minutes; if not, the
@@ -108,6 +109,11 @@ broken or lost content. See `docs/build-checklist.md` §4a.
 business's ids, and fails if anything new crosses. Run it locally with `./scripts/isolation-db.sh`
 then `npm run test:isolation` (§4b).
 
+**Touching an `/app` page?** CI's `smoke` job signs in as a seeded Super Admin and opens the main
+`/app` pages at 390 and 1440px: each must answer 200, log no console error, render its header and
+not scroll sideways. Run it locally with `./scripts/smoke-db.sh`, `npx next build`, then
+`AUTH_SECRET=smoke npm run test:smoke` (§4c). It proves pages open, not that every feature works.
+
 ## 4. Eight traps that have actually bitten people here
 
 1. **Never run `npm run build`** against a real `DATABASE_URL` — it does a `prisma db push` and
@@ -160,8 +166,9 @@ then `npm run test:isolation` (§4b).
 
 ## 5. Verifying honestly
 
-Every `/app` page is behind Google OAuth and there's no staging, so **you cannot screenshot the
-gated screens** to check your own work. Two consequences:
+Every `/app` page is behind Google OAuth, so **you cannot screenshot the gated screens** with real
+data to check your own work (the smoke suite only proves they open, and staging is on request).
+Two consequences:
 
 - If a change only got a typecheck and a careful read, **say exactly that.** Then hand over a
   precise capture list: the page, 2–3 viewports, the specific elements to look at.

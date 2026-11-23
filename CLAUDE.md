@@ -897,3 +897,5 @@ be resolved by reading. Do not renumber either one.
 - **§144** — The platform tells us when it needs a look
 - **§145** — Every scheduled job ran an empty script for two days
 - **§146** — The course backend logged in at the wrong server
+- **§147** — Updates: the weekly email, published to the client's wiki
+- **§148** — Phase 0: restore test, staging, browser smoke tests

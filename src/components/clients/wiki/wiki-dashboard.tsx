@@ -28,6 +28,7 @@ import {
   GlobeAltIcon,
   LifebuoyIcon,
   NewspaperIcon,
+  EnvelopeOpenIcon,
   PhoneIcon,
   PresentationChartLineIcon,
   RocketLaunchIcon,
@@ -82,6 +83,7 @@ const SECTION_META: Record<
   comparisons: { label: "Comparisons", icon: TableCellsIcon },
   board: { label: "Board", icon: RectangleStackIcon },
   roundup: { label: "RoundUp", icon: NewspaperIcon },
+  updates: { label: "Updates", icon: EnvelopeOpenIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
   metrics: { label: "Metrics", icon: PresentationChartLineIcon },
@@ -514,6 +516,20 @@ export function WikiDashboard({
           </div>
         ) : (
           <p className="text-[13px] text-[var(--text-4)]">No requests submitted yet.</p>
+        );
+      }
+      case "updates": {
+        // Leads with the latest update the client was sent: what this page is opened to read.
+        const latest = wiki.updates?.latest;
+        if (!latest) return <p className="text-[13px] text-[var(--text-4)]">No update published yet.</p>;
+        return (
+          <div className="space-y-1.5">
+            <p className="line-clamp-2 text-[14px] font-medium text-[var(--text-1)]">{latest.subject}</p>
+            <p className="text-[12px] text-[var(--text-4)]">
+              {wiki.updates?.published === 1 ? "1 update" : `${wiki.updates?.published ?? 0} updates`} · latest{" "}
+              {new Date(latest.publishedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+            </p>
+          </div>
         );
       }
       case "roundup": {

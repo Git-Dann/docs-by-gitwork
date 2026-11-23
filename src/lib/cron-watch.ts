@@ -40,6 +40,8 @@ export const CRON_MAX_GAP: Readonly<Record<string, number>> = {
   retention: 26 * HOUR,
   curator: 8 * DAY,
   "db-backup": 26 * HOUR,
+  // Monthly, on the 2nd: the longest gap is 31 days, plus a day of slack.
+  "db-restore-test": 32 * DAY,
 };
 
 export interface StaleJob {

@@ -149,16 +149,21 @@ are not remapped at all).
 
 ## 4. Verification honesty
 
-**There is no staging environment.** Production is the Fasthosts VPS and only `main` deploys to it
-(`CLAUDE.md` §23).
+**Only `main` deploys to production** (the Fasthosts VPS, `CLAUDE.md` §23).
 
-**There are no branch previews.** Vercel built one per PR until Nov 2026; it was retired (its
+**Staging exists, on request** ([`docs/staging.md`](staging.md), §148): Actions → "Deploy to
+staging" puts any branch, tag or commit on `staging.foundry.gitwork.co.uk`, on its own database,
+health-checked. It never runs by itself and never touches production. Use it when a change needs
+real infrastructure; it is not a gate.
+
+**There are no per-PR previews.** Vercel built one per PR until Nov 2026; it was retired (its
 builds ran out of memory, it was backed by the stale Neon rollback database, and nothing served
 production from it). Verify a branch locally instead:
 
 - **Public routes:** run the dev server and `npm run audit:clipping http://localhost:<port>/<route>`,
   or drive the `/demo/**` pages, which carry real components over fixtures.
-- **`/app` pages** are auth-gated: use the `/demo/**` equivalents, or the `renderToStaticMarkup` +
+- **`/app` pages:** the smoke suite (§4c) signs in for real against a seeded database. For the
+  detail of one screen, use the `/demo/**` equivalents, or the `renderToStaticMarkup` +
   compiled-CSS technique (`CLAUDE.md` §39.1).
 - **Some public paths have real side effects.** `POST /api/public/pulse/scan` permanently burns
   that email's one free scan, writes a `PulseLead`, and emails the admins. Reachable is not free.
@@ -291,6 +296,43 @@ never borrows another business's Google account.
 
 **Not covered:** the middleware's module gate (the suite calls handlers directly), webhooks, and
 anything an `after()` would have done.
+
+### 4c. The signed-in app opens in a browser (`npm run test:smoke`)
+
+`/app` is behind sign-in, so before this nothing loaded a real `/app` page before it reached
+production: unit tests render components, the baseline only covers `/demo`. `scripts/smoke.mjs`
+signs in as a seeded Super Admin and opens the main pages at **390px and 1440px**:
+
+`/app` · `/app/portal` · a client page · `/app/pulse` · `/app/docs` · `/app/care` · `/app/monitors` ·
+`/app/staff` · `/app/backstage` · `/app/money`
+
+Each must answer 200 and stay on its own URL, throw no uncaught error and log no console error,
+not show Next's "Application error", render its page header, and not scroll sideways.
+
+- **Data:** `scripts/smoke-db.sh` (re)creates `foundry_smoke` (it refuses any other name), applies
+  the schema and seeds the isolation suite's two businesses (`tests/smoke/seed.ts`).
+- **Sign-in:** the test mints an Auth.js session cookie itself, with the server's own
+  `AUTH_SECRET`. The token holds the seeded user's id and the session version; the app's own jwt
+  callback reads the role, permissions and workspace from the database. ⚠️ **Never add a test-only
+  sign-in route or bypass to the app** for this.
+- **Adding a page:** add it to `PAGES` in `scripts/smoke.mjs`. A console line can only be ignored
+  if it is the browser's own noise (`IGNORED_CONSOLE`), never an error from the app.
+
+```bash
+./scripts/smoke-db.sh
+npx next build                                   # once; never `npm run build`
+AUTH_SECRET=smoke npm run test:smoke             # starts next start on :3200, runs, stops it
+# or, against a dev server already running on the seeded database:
+SMOKE_URL=http://localhost:3200 AUTH_SECRET=<its secret> npm run test:smoke
+```
+
+Needs `playwright-core` (`npm i --no-save playwright-core`; not a repo dependency) and a Chromium
+(`CHROMIUM_PATH`, else `/opt/pw-browsers` or the system Chrome). CI runs it in its own `smoke` job:
+a production build against a pgvector Postgres service, the system Chrome, about two minutes
+for the suite itself after the build.
+
+**Not covered:** clicking through a page, dialogs, the other `/app` pages, dark mode and other
+widths. It proves the pages open, not that every feature on them works.
 
 ---
 
