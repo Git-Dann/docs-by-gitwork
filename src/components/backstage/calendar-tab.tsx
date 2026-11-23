@@ -194,6 +194,14 @@ const ABSENCE_META: Record<AbsenceKind, { label: string; emoji: string; pill: st
   APPOINTMENT: { label: "Appt", emoji: "📅", pill: "border-amber-200 bg-amber-50 text-amber-800", dot: "bg-amber-500" },
 };
 
+/**
+ * The styling for an absence kind. `Absence.kind` is a plain text column, so a value outside the
+ * four known kinds (an older row, an API caller) must not crash the whole calendar: it reads as Away.
+ */
+function absenceMeta(kind: string) {
+  return ABSENCE_META[kind as AbsenceKind] ?? ABSENCE_META.AWAY;
+}
+
 // The grid-day ISO keys an event covers. Google all-day `end` is exclusive.
 function eventDayKeys(ev: TeamCalendarEvent): string[] {
   const startIso = ev.start.slice(0, 10);
@@ -914,7 +922,7 @@ function DayCell({
       {absences.length > 0 ? (
         <div className="mt-1 space-y-0.5">
           {absences.slice(0, 3).map((a) => {
-            const meta = ABSENCE_META[a.kind];
+            const meta = absenceMeta(a.kind);
             return (
               <div
                 key={a.id}
@@ -1045,7 +1053,7 @@ function DayDetail({
         <div className="space-y-1.5">
           <p className="widget-data-label">Out today</p>
           {absences.map((a) => {
-            const meta = ABSENCE_META[a.kind];
+            const meta = absenceMeta(a.kind);
             return (
               <div key={a.id} className="text-xs">
                 <div className="flex items-center gap-1.5 text-[var(--text-1)]">

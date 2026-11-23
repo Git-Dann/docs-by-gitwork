@@ -143,6 +143,10 @@ async function checkPage(browser, cookie, path, [width, height]) {
     if (msg.type() !== 'error') return
     const text = msg.text()
     if (IGNORED_CONSOLE.some((re) => re.test(text))) return
+    // A resource that failed to load from ANOTHER site (Google's favicon service has no icon for
+    // the seed's made-up domain) says nothing about our page. One from our own server still fails.
+    const url = msg.location()?.url ?? ''
+    if (/^Failed to load resource/.test(text) && url && !url.startsWith(BASE)) return
     const where = msg.location()?.url ? ` (${msg.location().url.replace(BASE, '')})` : ''
     problems.push(`console: ${text.split('\n')[0].slice(0, 300)}${where}`)
   })
