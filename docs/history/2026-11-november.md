@@ -1834,3 +1834,35 @@ Big Wedge **app** API, not the course backend (`wedge-course-backend.vercel.app`
   run in 40 under load, 0 in 200 after. `install-crontab.sh`, `health-check.sh` (where a false
   "unhealthy" would roll back a good deploy) and `rollback.sh` now use here-strings, and
   `deploy-scripts.test.ts` fails on any `| grep -q` in a pipefail deploy script.
+
+## 147. Recent Changes (November 2026) — Updates: the weekly email, published to the client's wiki
+
+A client-wiki section, **Updates** (id `updates`, group Overview), so the client has the record of
+what they were told and what happened, in one place they can always open. Dan's ask: "build weekly
+report and timeline in clients wiki".
+
+- **Two things on one page.** `01 // WHERE THINGS STAND` (waiting on you, next release, in
+  progress, up next) and `02 // WEEK BY WEEK`: each week's published update, as sent, with "What
+  happened this week" folded under it; a week with no update shows what happened. Runs of quiet
+  weeks fold into one line. The team sees exactly the client's page, plus **Write this week's
+  update** and **Unpublish**.
+- **Publishing.** The weekly update dialog (Portal Timeline card, §142.2) gained **Publish to
+  wiki**: the subject and body as edited there, frozen in `WikiWeeklyUpdate` (additive, one per
+  wiki per week, enforced in code; replacing a week overwrites it; unpublishing archives, never
+  deletes). Publishing switches the section on. Needs 'Manage clients'.
+- **The timeline is the client's copy, cut at two layers.** `loadDeliveryTimeline(…, { audience:
+  "client" })` reads only meetings shared with the client (`sharedWithClientAt`), outages on
+  production services, and documents that were sent. Then `forClientTimeline`
+  (`src/lib/wiki-updates.ts`, pure, tested) drops every developer's name, board tidy-ups, the
+  contacts' emails and every `/app` link. The published update shows the author's first name only.
+- **Loaded on its own (§140):** the DTO carries `updates: WikiUpdatesSummary` (flag, count, latest
+  subject) for the nav, the dashboard card and the visibility rule; the page reads
+  `GET /api/clients/[slug]/wiki/updates` (team) or `GET /api/wiki/[token]/updates` (client: the
+  Board's read posture — section on, per-section link for Updates, signed-in client user or this
+  client's team, read rate limit). The token route has no write method; the wiring test pins it.
+- The client sees the section when it's on AND there is a published update or a plan to describe.
+- ⚠️ **Overlap, deliberately left:** RoundUp is a live "last seven days" summary of
+  the plan only; Delivery is the plan's progress. Updates is the frozen record plus everything
+  else that happened (releases, requests, meetings, outages). Folding RoundUp into Updates is a
+  reasonable later tidy-up.
+- Demo: `/demo/wiki#updates` (publish and unpublish work in memory).

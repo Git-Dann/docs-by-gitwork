@@ -60,9 +60,12 @@ export type { LoadedTimeline } from "@/lib/client-delivery-timeline";
 export async function loadDeliveryTimeline(
   workspaceId: string,
   clientId: string,
-  opts: { weeks?: number; now?: Date } = {},
+  opts: { weeks?: number; now?: Date; audience?: "team" | "client" } = {},
 ): Promise<LoadedTimeline | null> {
   const now = opts.now ?? new Date();
+  // The client's copy only reads what the client may see: meetings shared with them, outages on
+  // production services, documents that were sent. The rest is stripped by `forClientTimeline`.
+  const forClient = opts.audience === "client";
   const weeks = Math.min(Math.max(opts.weeks ?? 8, 1), TIMELINE_WEEKS_MAX);
   const from = weekStart(new Date(now.getTime() - (weeks - 1) * 7 * 86_400_000));
 
@@ -129,7 +132,7 @@ export async function loadDeliveryTimeline(
       : Promise.resolve([]),
     read("meetings", () =>
       prisma.meeting.findMany({
-        where: { workspaceId, clientId, startedAt: { gte: from } },
+        where: { workspaceId, clientId, startedAt: { gte: from }, ...(forClient ? { sharedWithClientAt: { not: null } } : {}) },
         select: { id: true, title: true, startedAt: true, summary: true },
         take: 100,
       }),
@@ -137,7 +140,7 @@ export async function loadDeliveryTimeline(
     wikiId
       ? read("monitors", () =>
           prisma.wikiMonitorIncident.findMany({
-            where: { wikiId, startedAt: { gte: from } },
+            where: { wikiId, startedAt: { gte: from }, ...(forClient ? { monitor: { environment: "production" } } : {}) },
             select: { id: true, kind: true, title: true, startedAt: true, resolvedAt: true, monitor: { select: { name: true, environment: true } } },
             take: 100,
           }),
@@ -145,7 +148,13 @@ export async function loadDeliveryTimeline(
       : Promise.resolve([]),
     read("documents", () =>
       prisma.document.findMany({
-        where: { workspaceId, clientId, archivedAt: null, OR: [{ sharedAt: { gte: from } }, { acceptedAt: { gte: from } }] },
+        where: {
+          workspaceId,
+          clientId,
+          archivedAt: null,
+          ...(forClient ? { sharedAt: { not: null } } : {}),
+          OR: [{ sharedAt: { gte: from } }, { acceptedAt: { gte: from } }],
+        },
         select: { id: true, title: true, sharedAt: true, acceptedAt: true },
         take: 100,
       }),

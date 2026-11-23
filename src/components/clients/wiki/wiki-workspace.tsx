@@ -80,6 +80,7 @@ import {
   useSetWikiEstimatesEnabled,
   useSetWikiComparisonsEnabled,
   useSetWikiRoundupEnabled,
+  useSetWikiUpdatesEnabled,
   useSetWikiSupportEnabled,
   useUpdateWikiMetrics,
   useSetWikiMeetingsEnabled,
@@ -107,6 +108,7 @@ const WikiEstimatesSection = dynamic(() => import("./wiki-estimates-section").th
 const WikiComparisonsSectionView = dynamic(() => import("./wiki-comparisons-section").then((m) => m.WikiComparisonsSectionView), { loading: SectionLoading });
 const BoardCards = dynamic(() => import("./board-cards").then((m) => m.BoardCards), { loading: SectionLoading });
 const WikiRoundupSection = dynamic(() => import("./wiki-roundup-section").then((m) => m.WikiRoundupSection), { loading: SectionLoading });
+const WikiUpdatesSection = dynamic(() => import("./wiki-updates-section").then((m) => m.WikiUpdatesSection), { loading: SectionLoading });
 const WikiSupportSectionView = dynamic(() => import("@/components/clients/wiki/wiki-support-section").then((m) => m.WikiSupportSectionView), { loading: SectionLoading });
 const WikiMetricsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-metrics-section").then((m) => m.WikiMetricsSectionView), { loading: SectionLoading });
 const WikiMeetingsSectionView = dynamic(() => import("@/components/clients/wiki/wiki-meetings-section").then((m) => m.WikiMeetingsSectionView), { loading: SectionLoading });
@@ -161,6 +163,7 @@ const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   comparisons: "COMPARISONS",
   board: "BOARD",
   roundup: "ROUNDUP",
+  updates: "UPDATES",
   delivery: "DELIVERY",
   support: "SUPPORT",
   metrics: "METRICS",
@@ -861,7 +864,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "estimates", "comparisons", "board", "roundup", "delivery", "support", "metrics", "meetings", "platforms", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "estimates", "comparisons", "board", "roundup", "updates", "delivery", "support", "metrics", "meetings", "platforms", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -968,6 +971,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setDashboardDefault = useSetWikiDashboardDefault(slug);
   const { canManageClients } = usePermissions();
   const setRoundupEnabled = useSetWikiRoundupEnabled(slug);
+  const setUpdatesEnabled = useSetWikiUpdatesEnabled(slug);
   const setDeliveryEnabled = useSetWikiDeliveryEnabled(slug);
   const setSupportEnabled = useSetWikiSupportEnabled(slug);
   const updateMetrics = useUpdateWikiMetrics(slug);
@@ -1024,6 +1028,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const comparisonsOn = wiki.comparisons.enabled;
   const boardOn = wiki.board.enabled;
   const roundupOn = wiki.roundupEnabled ?? false;
+  const updatesOn = wiki.updates.enabled;
   const deliveryOn = wiki.deliveryEnabled;
   const supportOn = wiki.support.enabled;
   const metricsOn = wiki.metrics.enabled;
@@ -1047,6 +1052,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(comparisonsOn ? (["comparisons"] as const) : []),
     ...(boardOn ? (["board"] as const) : []),
     ...(roundupOn ? (["roundup"] as const) : []),
+    ...(updatesOn ? (["updates"] as const) : []),
     ...(deliveryOn ? (["delivery"] as const) : []),
     ...(supportOn ? (["support"] as const) : []),
     ...(metricsOn ? (["metrics"] as const) : []),
@@ -1077,6 +1083,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(comparisonsOn ? [] : [{ section: "comparisons" as WikiSection, label: "Comparisons" }]),
     ...(boardOn ? [] : [{ section: "board" as WikiSection, label: "Board" }]),
     ...(roundupOn ? [] : [{ section: "roundup" as WikiSection, label: "RoundUp" }]),
+    ...(updatesOn ? [] : [{ section: "updates" as WikiSection, label: "Updates" }]),
     ...(deliveryOn ? [] : [{ section: "delivery" as WikiSection, label: "Delivery" }]),
     ...(supportOn ? [] : [{ section: "support" as WikiSection, label: "Support" }]),
     ...(metricsOn ? [] : [{ section: "metrics" as WikiSection, label: "Metrics" }]),
@@ -1170,6 +1177,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (section === "roundup") {
       await setRoundupEnabled.mutateAsync(true);
       setActiveSection("roundup");
+      return;
+    }
+    if (section === "updates") {
+      await setUpdatesEnabled.mutateAsync(true);
+      setActiveSection("updates");
       return;
     }
     if (section === "delivery") {
@@ -1272,6 +1284,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "roundup") ?? "dashboard");
       return;
     }
+    if (section === "updates") {
+      await setUpdatesEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "updates") ?? "dashboard");
+      return;
+    }
     if (section === "delivery") {
       await setDeliveryEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "delivery") ?? "dashboard");
@@ -1323,6 +1340,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "comparisons" &&
       section !== "board" &&
       section !== "roundup" &&
+      section !== "updates" &&
       section !== "delivery" &&
       section !== "support" &&
       section !== "metrics" &&
@@ -1350,7 +1368,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                   ? " The source, hidden metrics and stored figures are kept, so re-adding it restores them."
                   : section === "meetings"
                     ? " Meetings stay marked as shared, so re-adding it shows the same ones."
-                    : "";
+                    : section === "updates"
+                      ? " Published updates are kept, so re-adding it shows them again."
+                      : "";
     const ok = window.confirm(
       `Delete ${SECTION_TITLES[section]} from this wiki?${extra} You can add it back later from Add New.`,
     );
@@ -1576,6 +1596,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     }
     if (activeSection === "support") {
       return <WikiSupportSectionView support={wiki!.support} />;
+    }
+    if (activeSection === "updates") {
+      return <WikiUpdatesSection target={{ slug }} mode="internal" clientName={wiki!.clientName} />;
     }
     if (activeSection === "roundup") {
       return (
@@ -2077,6 +2100,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 s === "comparisons" ||
                 s === "board" ||
                 s === "roundup" ||
+                s === "updates" ||
                 s === "delivery" ||
                 s === "support" ||
                 s === "metrics" ||

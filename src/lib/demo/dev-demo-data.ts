@@ -98,7 +98,15 @@ import { resolveDemoDrive } from "@/lib/demo/demo-drive";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import { demoAchievements, demoDealDraft, demoMoney, demoNeedsYou } from "@/lib/demo/demo-money";
-import { demoDeliveryTimeline, demoSearch, demoWeeklyUpdate } from "@/lib/demo/demo-delivery";
+import {
+  demoDeliveryTimeline,
+  demoPublishUpdate,
+  demoSearch,
+  demoUnpublishUpdate,
+  demoUpdatesSummary,
+  demoUpdatesView,
+  demoWeeklyUpdate,
+} from "@/lib/demo/demo-delivery";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
@@ -1422,6 +1430,7 @@ const demoWiki: WikiDTO = {
   ],
   deliveryEnabled: true,
   roundupEnabled: true,
+  updates: demoUpdatesSummary(),
   // A LINKED support section with two months of figures, so the trend badges have
   // something to compare against — a demo with one month would render every trend as an
   // em-dash and prove nothing about the part most likely to be wrong (a duration where
@@ -5213,6 +5222,12 @@ export function resolveDemoApi(
   if (pathname === "/api/search") return demoSearch(search?.get("q") ?? null);
   // The Portal client's Timeline card and its weekly update draft, through the real rules.
   {
+    const up = pathname.match(/^\/api\/clients\/([^/]+)\/wiki\/updates$/);
+    if (up && init?.method === "POST") return demoPublishUpdate(typeof init.body === "string" ? init.body : undefined);
+    if (up && init?.method === "PATCH") return { enabled: true };
+    if (up) return demoUpdatesView(decodeURIComponent(up[1]));
+    const upDel = pathname.match(/^\/api\/clients\/[^/]+\/wiki\/updates\/([^/]+)$/);
+    if (upDel && init?.method === "DELETE") return demoUnpublishUpdate(decodeURIComponent(upDel[1]));
     const tl = pathname.match(/^\/api\/clients\/([^/]+)\/delivery-timeline$/);
     if (tl) return demoDeliveryTimeline(decodeURIComponent(tl[1]));
     const wu = pathname.match(/^\/api\/clients\/([^/]+)\/weekly-update$/);

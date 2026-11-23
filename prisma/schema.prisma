@@ -1573,6 +1573,11 @@ model ClientWiki {
   /// RoundUp — the weekly summary. Derived entirely from the timeline the wiki already
   /// carries, so this flag is the only stored state the section has.
   roundupEnabled      Boolean                @default(false)
+  /// Updates — the weekly reports the team publishes to the client (the Friday email, as sent) and
+  /// a week-by-week record of what happened, derived from the board, releases, requests, shared
+  /// meetings and outages (CLAUDE.md §147). Off until switched on.
+  updatesEnabled      Boolean                @default(false)
+  weeklyUpdates       WikiWeeklyUpdate[]
   /// Board — the client's own Kanban of their product cards, grouped by release. The client can
   /// move cards (never into or out of Done), add cards and leave feedback or sign off a card.
   boardEnabled        Boolean                @default(false)
@@ -1836,6 +1841,26 @@ model WikiMonitor {
 /// recent-status bar strip. Pruned by the cron beyond the retention window.
 /// An outage on a monitor: opened when its down/unstable alert fires, resolved on recovery.
 /// Acknowledged by a person; carries updates, some shown to the client (src/lib/monitor-incidents.ts).
+/// A weekly update the team published to a client's wiki (CLAUDE.md §147): the words as sent, frozen,
+/// so the client's record of what they were told never changes when the board does. One per wiki
+/// per week, enforced in code (no @unique: CLAUDE.md §2). Unpublishing archives it.
+model WikiWeeklyUpdate {
+  id              String     @id @default(cuid())
+  wikiId          String
+  wiki            ClientWiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  /// The Monday the update is for (UTC).
+  weekStart       DateTime   @db.Date
+  subject         String
+  body            String     @db.Text
+  publishedById   String?
+  publishedByName String?
+  publishedAt     DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  archivedAt      DateTime?
+
+  @@index([wikiId, weekStart])
+}
+
 model WikiMonitorIncident {
   id                 String                      @id @default(cuid())
   wikiId             String

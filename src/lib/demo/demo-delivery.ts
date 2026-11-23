@@ -5,6 +5,14 @@
 
 import { groupByWeek, weekStart, type DeliveryItem, type LoadedTimeline } from "@/lib/client-delivery-timeline";
 import { plainDraft, weeklyFacts, type WeeklyUpdateResult } from "@/lib/weekly-update";
+import {
+  forClientTimeline,
+  parseWeekStart,
+  publishProblem,
+  type PublishedUpdate,
+  type UpdatesView,
+  type WikiUpdatesSummary,
+} from "@/lib/wiki-updates";
 
 const daysAgo = (now: Date, d: number, h = 11) => {
   const x = new Date(now.getTime() - d * 86_400_000);
@@ -89,4 +97,76 @@ export function demoSearch(q: string | null): import("@/lib/global-search").Sear
   ];
   const hits = words.length ? all.filter((h) => words.every((w) => `${h.title} ${h.hint}`.toLowerCase().includes(w))) : [];
   return { query, hits, failed: [] };
+}
+
+// ── Updates in the client wiki (CLAUDE.md §147), through the real rules ──────────────────────
+
+/** Published updates, held in memory so Publish and Unpublish work on the demo. */
+let demoPublished: PublishedUpdate[] | null = null;
+
+function seedPublished(now: Date): PublishedUpdate[] {
+  const last = weekStart(new Date(now.getTime() - 7 * 86_400_000)).toISOString().slice(0, 10);
+  return [
+    {
+      id: "wu-1",
+      weekStart: last,
+      subject: "Northwind Labs: weekly update",
+      body: [
+        "Hi Priya and Tom,",
+        "",
+        "A good week on the platform side.",
+        "",
+        "Platform: done",
+        "- Hosting has moved to your own cloud account, so you own the bill and the keys.",
+        "- The web app now releases itself when a change is approved.",
+        "",
+        "Next week",
+        "- Finishing the booking changes for the 2.4 release.",
+        "",
+        "What we need from you",
+        "- Admin access to your Stripe account, so we can start on payments.",
+        "",
+        "Have a great weekend,",
+        "Dan",
+      ].join("\n"),
+      publishedAt: daysAgo(now, 3, 16),
+      publishedBy: "Dan",
+    },
+  ];
+}
+
+export function demoUpdatesView(slug: string, now: Date = new Date()): UpdatesView {
+  demoPublished ??= seedPublished(now);
+  return { ...forClientTimeline(demoDeliveryTimeline(slug, now)), published: [...demoPublished], failed: [] };
+}
+
+export function demoUpdatesSummary(now: Date = new Date()): WikiUpdatesSummary {
+  demoPublished ??= seedPublished(now);
+  const latest = [...demoPublished].sort((a, b) => b.weekStart.localeCompare(a.weekStart))[0] ?? null;
+  return {
+    enabled: true,
+    published: demoPublished.length,
+    latest: latest ? { subject: latest.subject, weekStart: latest.weekStart, publishedAt: latest.publishedAt } : null,
+  };
+}
+
+export function demoPublishUpdate(body: string | undefined, now: Date = new Date()) {
+  demoPublished ??= seedPublished(now);
+  let input = { weekStart: "", subject: "", body: "" };
+  try {
+    input = { ...input, ...(JSON.parse(body ?? "{}") as Partial<typeof input>) };
+  } catch {
+    // validated below
+  }
+  const problem = publishProblem(input, now);
+  if (problem) return { error: problem, __status: 400 };
+  const week = parseWeekStart(input.weekStart)!;
+  const next = { id: `wu-${week}`, weekStart: week, subject: input.subject.trim(), body: input.body.trimEnd(), publishedAt: now.toISOString(), publishedBy: "Dan" };
+  demoPublished = [next, ...demoPublished.filter((p) => p.weekStart !== week)];
+  return next;
+}
+
+export function demoUnpublishUpdate(id: string) {
+  demoPublished = (demoPublished ?? []).filter((p) => p.id !== id);
+  return { ok: true };
 }

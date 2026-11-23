@@ -104,6 +104,8 @@ export interface ChangelogEntryRecord {
 
 export { countCourseRequests, type CourseRequestCounts } from "@/lib/course-request-counts";
 import { countCourseRequests, type CourseRequestCounts } from "@/lib/course-request-counts";
+import { EMPTY_UPDATES_SUMMARY, type WikiUpdatesSummary } from "@/lib/wiki-updates";
+import { loadWikiUpdatesSummary } from "@/server/wiki-updates";
 
 export interface CourseRequestRecord {
   id: string;
@@ -482,6 +484,11 @@ export interface WikiDTO {
   deliveryEnabled: boolean;
   /** RoundUp — the weekly summary. Pure derivation; this flag is its only state. */
   roundupEnabled: boolean;
+  /**
+   * Updates — published weekly reports and the week-by-week record (src/server/wiki-updates.ts).
+   * Only a summary rides here; the page loads its own data (§140).
+   */
+  updates: WikiUpdatesSummary;
   /** The client's own Care figures — see src/server/wiki-support.ts. */
   support: WikiSupportSection;
   /** The client's own product numbers — see src/server/wiki-metrics.ts. */
@@ -1072,6 +1079,7 @@ async function buildDTO(
   insightsEnabled?: boolean;
   deliveryEnabled?: boolean;
   roundupEnabled?: boolean;
+  updatesEnabled?: boolean;
   intakeCategories?: unknown;
   platforms: unknown;
   pageShares?: unknown;
@@ -1179,6 +1187,7 @@ async function buildDTO(
     meetings,
     clientPlatforms,
     drive,
+    updates,
   ] = await Promise.all([
     settle("blockers", () => loadWikiBlockers(wiki.clientId), []),
     settle(
@@ -1245,6 +1254,7 @@ async function buildDTO(
     settle("meetings", () => loadWikiMeetings(wiki.clientId), EMPTY_MEETINGS),
     settle("platforms", () => loadWikiPlatforms(wiki.clientId), EMPTY_PLATFORMS),
     settle("drive", () => loadWikiDrive(wiki.clientId), EMPTY_DRIVE),
+    settle("updates", () => loadWikiUpdatesSummary(wiki.id, wiki.updatesEnabled ?? false), EMPTY_UPDATES_SUMMARY),
   ]);
   return {
     id: wiki.id,
@@ -1313,6 +1323,7 @@ async function buildDTO(
     board,
     deliveryEnabled: wiki.deliveryEnabled ?? false,
     roundupEnabled: wiki.roundupEnabled ?? false,
+    updates,
     support,
     standups,
     metrics,
@@ -3460,6 +3471,7 @@ const SHAREABLE_SECTIONS = [
   "board",
   "roundup",
   "delivery",
+  "updates",
   "support",
   "metrics",
   "meetings",

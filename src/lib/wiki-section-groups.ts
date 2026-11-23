@@ -30,6 +30,7 @@ export const SECTION_GROUP = {
   timeline: "overview",
   delivery: "overview",
   roundup: "overview",
+  updates: "overview",
   meetings: "overview",
 
   intake: "together",
@@ -87,6 +88,7 @@ export const SECTION_BLURB: Record<GroupedWikiSection, string> = {
   timeline: "The plan, phase by phase",
   delivery: "Where the project stands",
   roundup: "Weekly progress write-up",
+  updates: "Weekly updates, as sent",
   meetings: "Shared meeting notes",
   intake: "Bugs, feedback and requests",
   board: "Product cards to move and sign off",
