@@ -231,4 +231,24 @@ describe("the repo's own files", () => {
     expect(wf).toContain("docker-compose.yml");
     expect(wf.indexOf("sync-compose.sh")).toBeLessThan(wf.indexOf("docker compose pull app"));
   });
+
+  // 20–23 Nov 2026: deploy/run-cron.sh was encoded but not checked out, so an EMPTY runner was
+  // shipped, passed its exit-code-only smoke test, and every scheduled job ran a 0-byte script.
+  it("deploy.yml checks out every file it encodes, and refuses an empty one", () => {
+    const wf = readFileSync(join(ROOT, ".github/workflows/deploy.yml"), "utf8");
+    const sparse = [...wf.matchAll(/sparse-checkout: \|\n([\s\S]*?)\n\s*sparse-checkout-cone-mode/g)]
+      .flatMap((m) => m[1].split("\n").map((l) => l.trim()).filter(Boolean));
+    const encoded = [...wf.matchAll(/base64 -w0 ([\w./-]+)\)/g)].map((m) => m[1]);
+    expect(encoded).toEqual(expect.arrayContaining(["deploy/crontab", "deploy/install-crontab.sh", "deploy/run-cron.sh"]));
+    for (const f of encoded) expect(sparse, `${f} is encoded but not checked out`).toContain(f);
+    expect(wf).toMatch(/\[ -s "\$f" \] \|\| \{/);
+  });
+
+  it("deploy.yml's runner smoke test needs the runner's own 'jobs HTTP 2xx' line, not just exit 0", () => {
+    const wf = readFileSync(join(ROOT, ".github/workflows/deploy.yml"), "utf8");
+    expect(wf).toContain("grep -qE ' jobs HTTP 2[0-9][0-9]:' \"$SMOKE\" || SMOKE_OK=0");
+    expect(wf).not.toContain('if bash "$WORK/run-cron.sh" jobs >> /tmp/foundry-cron.log 2>&1; then');
+    // and the line it looks for is the one run-cron.sh really prints
+    expect(readFileSync(join(ROOT, "deploy/run-cron.sh"), "utf8")).toContain('echo "$(date -u +%FT%TZ) $name HTTP ${code}: ${body}"');
+  });
 });

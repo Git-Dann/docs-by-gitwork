@@ -36,6 +36,12 @@ if [ ! -x "$RUN_CRON" ]; then
   echo "::error::$RUN_CRON is missing or not executable, so no scheduled job could run. Nothing installed."
   exit 1
 fi
+# An empty runner is executable, exits 0 and prints nothing, so every job "runs" and none does
+# (20–23 Nov 2026). Fail the deploy rather than schedule it.
+if [ ! -s "$RUN_CRON" ] || ! grep -q '/api/cron/' "$RUN_CRON"; then
+  echo "::error::$RUN_CRON is empty or not a cron runner, so every scheduled job would silently do nothing."
+  exit 1
+fi
 
 # Job names the managed file schedules.
 NAMES="$(grep -v '^[[:space:]]*#' "$MANAGED" | grep -oE 'run-cron\.sh[[:space:]]+[a-z0-9-]+' | awk '{print $2}' | sort -u)"

@@ -21,7 +21,15 @@ vi.mock("@/server/wiki-monitor-board", () => ({
   loadMonitorBoard: vi.fn(async () => ({ clients: [], incidents: [], readAt: "2026-11-02T00:00:00Z" })),
 }));
 
-import { GET } from "../route";
+const afterTasks: Array<() => Promise<void>> = [];
+vi.mock("next/server", async (orig) => ({
+  ...(await orig<typeof import("next/server")>()),
+  after: (fn: () => Promise<void>) => { afterTasks.push(fn); },
+}));
+const runDueMonitors = vi.fn(async () => ({ checked: 3, pruned: 0 }));
+vi.mock("@/server/wiki-monitors", () => ({ runDueMonitors: (...a: unknown[]) => runDueMonitors(...(a as [])) }));
+
+import { GET, POST } from "../route";
 
 const req = () => new NextRequest("http://localhost/api/monitors");
 const as = (role: string, permissions: string[]) => {
@@ -73,5 +81,38 @@ describe("GET /api/monitors", () => {
     as("STAFF", ["monitors", "clients", "seeAllClients"]);
     const body = await (await GET(req())).json();
     expect(JSON.stringify(body)).toContain('"openableClientIds":null');
+  });
+});
+
+describe("POST /api/monitors (Refresh runs the overdue checks)", () => {
+  const post = () => new NextRequest("http://localhost/api/monitors", { method: "POST" });
+  beforeEach(() => { user.current = null; afterTasks.length = 0; runDueMonitors.mockClear(); });
+
+  it("runs this workspace's due checks after answering, without pruning history", async () => {
+    as("STAFF", ["monitors"]);
+    const res = await POST(post());
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(await res.json())).toContain('"started":true');
+    expect(runDueMonitors).not.toHaveBeenCalled();
+    await afterTasks[0]();
+    expect(runDueMonitors).toHaveBeenCalledWith({ workspaceId: "w1", prune: false });
+  });
+
+  it("a second press while one is running does not start another", async () => {
+    as("STAFF", ["monitors"]);
+    await POST(post());
+    const body = await (await POST(post())).json();
+    expect(JSON.stringify(body)).toContain('"alreadyRunning":true');
+    expect(afterTasks).toHaveLength(1);
+    await afterTasks[0]();
+    expect(JSON.stringify(await (await POST(post())).json())).toContain('"started":true');
+  });
+
+  it("is gated like the page: no permission, or a guest, gets 403 and nothing runs", async () => {
+    as("DEVELOPER", ["clients"]);
+    expect((await POST(post())).status).toBe(403);
+    as("GUEST", ["monitors"]);
+    expect((await POST(post())).status).toBe(403);
+    expect(afterTasks).toHaveLength(0);
   });
 });

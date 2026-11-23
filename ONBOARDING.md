@@ -62,6 +62,8 @@ commit, because the next push to `main` deploys over the rollback.
 **A new scheduled job needs two lines.** Add it to `deploy/crontab` and give it a longest allowed
 gap in `CRON_MAX_GAP` (`src/lib/cron-watch.ts`); a test fails without both. Gitwork's admins are
 told when a job stops, and the box's `run-cron.sh` now comes from `deploy/run-cron.sh`.
+**A file `deploy.yml` ships to the box must be in its sparse checkout** — `run-cron.sh` wasn't, and
+every job ran an empty script for two days (§145). A test now checks.
 
 **Secrets go in GitHub, not on the box.** The deploy syncs a managed allow-list of Actions secrets
 into the VPS `.env` on every run, so adding or rotating one needs no SSH — set it in repo →

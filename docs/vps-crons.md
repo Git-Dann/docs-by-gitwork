@@ -52,7 +52,9 @@ Every cron route is guarded by `CRON_SECRET` and must be called with
 `Authorization: Bearer $CRON_SECRET`. `run-cron.sh` does that and logs each endpoint's JSON result
 to `/tmp/foundry-cron.log`. Its source is `deploy/run-cron.sh`. Every deploy runs the new copy once
 against `jobs` and only then installs it at `/opt/apps/foundry/run-cron.sh` (the old one is kept
-as `run-cron.sh.before-deploy`); if that call fails, the box keeps the copy it had. It passes the
+as `run-cron.sh.before-deploy`); if that call fails, the box keeps the copy it had. The call only passes when the runner prints its own
+`jobs HTTP 2xx` line: an empty runner also exits 0, and that is how a 0-byte copy ran every job for two
+days in Nov 2026 (CLAUDE.md §145). It passes the
 secret to curl on stdin, so it never shows in `ps`.
 
 ## Noticing a job that stopped
