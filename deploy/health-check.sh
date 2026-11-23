@@ -34,7 +34,7 @@ last=""
 while :; do
   body="$(fetch 2>&1)" && status=0 || status=$?
   if [ "$status" -eq 0 ]; then
-    if [ -z "$EXPECTED" ] || printf '%s' "$body" | grep -q "\"commit\":\"$EXPECTED\""; then
+    if [ -z "$EXPECTED" ] || grep -q "\"commit\":\"$EXPECTED\"" <<<"$body"; then
       echo "Healthy: $URL${EXPECTED:+ is running $EXPECTED}"
       exit 0
     fi

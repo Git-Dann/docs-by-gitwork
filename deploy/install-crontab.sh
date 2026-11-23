@@ -101,7 +101,10 @@ printf '%s\n' "$AFTER" | sed 's/^/    /'
 MISSING=0
 while IFS= read -r line; do
   [ -z "$line" ] && continue
-  if ! printf '%s\n' "$AFTER" | grep -qxF -- "$line"; then
+  # A here-string, not `printf | grep -q`: under pipefail, grep -q exiting at the first match
+  # can SIGPIPE the printf, and the pipeline then reports a line that IS there as missing.
+  # That failed about 1 run in 40 under load (Nov 2026, §146).
+  if ! grep -qxF -- "$line" <<<"$AFTER"; then
     echo "::error::Managed line not in the installed crontab: $line"
     MISSING=1
   fi
@@ -125,7 +128,7 @@ if [ "$MISSING" != "0" ]; then
   exit 1
 fi
 
-if ! printf '%s\n' "$AFTER" | grep -q 'db-backup\.sh'; then
+if ! grep -q 'db-backup\.sh' <<<"$AFTER"; then
   echo "::warning::No db-backup.sh line in the crontab. The weekly database backup is not scheduled on this box."
 fi
 

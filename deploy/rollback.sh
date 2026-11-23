@@ -29,7 +29,7 @@ if [ "$TARGET" = "previous" ]; then
     exit 1
   fi
   source_ref="$IMAGE:previous"
-elif printf '%s' "$TARGET" | grep -qE '^[0-9a-f]{40}$'; then
+elif grep -qE '^[0-9a-f]{40}$' <<<"$TARGET"; then
   "$DOCKER_CMD" pull "$IMAGE:$TARGET"
   source_ref="$IMAGE:$TARGET"
   expect="$TARGET"

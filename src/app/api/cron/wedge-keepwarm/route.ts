@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       console.error("[wedge-keepwarm] course-feed watchdog failed", err),
     );
 
-    const result = await pingCourseBackend(client.id);
+    const result = await pingCourseBackend();
     return apiOk({ pinged: true, ...result });
   } catch (err) {
     return fromError(err);

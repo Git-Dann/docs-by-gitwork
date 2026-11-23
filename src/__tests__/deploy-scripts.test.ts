@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -250,5 +250,18 @@ describe("the repo's own files", () => {
     expect(wf).not.toContain('if bash "$WORK/run-cron.sh" jobs >> /tmp/foundry-cron.log 2>&1; then');
     // and the line it looks for is the one run-cron.sh really prints
     expect(readFileSync(join(ROOT, "deploy/run-cron.sh"), "utf8")).toContain('echo "$(date -u +%FT%TZ) $name HTTP ${code}: ${body}"');
+  });
+
+  // Under `set -o pipefail`, `printf … | grep -q` can fail when the text IS there: grep -q exits at
+  // its first match, the printf is SIGPIPE'd, and the pipeline reports 141. install-crontab.sh
+  // failed a deploy-shaped run about 1 in 40 that way (Nov 2026, §146). Use a here-string.
+  it("no deploy script pipes into grep -q under pipefail", () => {
+    for (const f of readdirSync(join(ROOT, "deploy")).filter((n) => n.endsWith(".sh"))) {
+      const src = readFileSync(join(ROOT, "deploy", f), "utf8");
+      if (!/set -[a-z]*o pipefail/.test(src)) continue;
+      const code = src.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+      // A single `|` (a pipe), not `||`.
+      expect(code, `${f} pipes into grep -q`).not.toMatch(/(^|[^|])\|\s*grep\s+-[a-zA-Z]*q/m);
+    }
   });
 });
