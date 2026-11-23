@@ -1,21 +1,21 @@
 /**
- * The scheduler's "this job ran" marker actually lands.
+ * The scheduler's "this job ran" marker actually lands — recorded through `after()`.
  *
- * ⚠️ It did not. `assertCron` ended in `void markSystem(...)`, and across the whole of 21
- * November the marker for every job was absent: `/api/health?cron=1` answered 503 naming
- * `jobs`, `wiki-monitors`, `wedge-keepwarm`, `pulse-reconcile`, `pulse-run-monitors` and
- * `wedge-course-feed` as stopped, while the box's own `/tmp/foundry-cron.log` showed all six
- * running and returning JSON. The external watchdog therefore failed on every single run.
+ * `assertCron` is synchronous and called by ~21 route handlers, so it cannot await the write.
+ * Work merely started during a request is not guaranteed to run once the response has been
+ * sent, so the marker goes through `after()`, which is guaranteed to finish (§36). These tests
+ * lock that: the marker is recorded, it is recorded for the right job name, a path that is not
+ * a cron route records nothing, and bookkeeping never fails the request.
  *
- * An alarm that is always red is an alarm nobody reads — which is the thing §144 set out to
- * avoid and, in this one place, became.
+ * ⚠️ READ THIS BEFORE TRUSTING THE ORIGINAL RATIONALE. The first version of this file claimed
+ * the preceding `void markSystem(...)` was why no marker ever landed and why the watchdog
+ * answered 503, and said the box's cron log showed every job running. **That was false.** The
+ * cause was §145: a 0-byte `run-cron.sh` shipped on 20 Nov, so for two days nothing called the
+ * cron routes at all — `assertCron` was never reached, and the `void` form was never shown to
+ * be at fault. The cron log had simply stopped being written to, and #894 read it as current.
  *
- * What distinguished this call site: EVERY other `markSystem` in the codebase is awaited and
- * lands (`cron-watch-since` and `cron-alert:*`, written from the jobs worker, persist — which
- * is why the health endpoint could count silent minutes from a fixed point at all). This was
- * the only un-awaited one, and the only one that never appeared. `assertCron` is synchronous
- * and called by ~21 route handlers, so it cannot await; work merely started during a request
- * is not guaranteed to run once the response has been sent.
+ * The watchdog was right the whole time. The tests below are still worth having, because
+ * "the marker lands" is a real behaviour to lock; only the story about why was wrong.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
