@@ -4582,6 +4582,11 @@ export async function getMonitorsPageApi(): Promise<MonitorsPageDTO> {
   return apiFetch("/api/monitors");
 }
 
+/** Refresh on the Monitors page: run the overdue checks now (they finish in the background). */
+export async function refreshMonitorsApi(): Promise<{ started: boolean; alreadyRunning: boolean }> {
+  return apiFetch("/api/monitors", { method: "POST" });
+}
+
 /** Foundry's own health for the Platform popup on /app/monitors (platform admins only). */
 export async function getPlatformHealthApi(): Promise<import("@/lib/platform-health").PlatformHealth> {
   return apiFetch("/api/monitors/platform");

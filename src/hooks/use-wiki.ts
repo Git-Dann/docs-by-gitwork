@@ -47,6 +47,7 @@ import {
   getWikiMonitorSuggestionsApi,
   getWikiMonitorBoardApi,
   getMonitorsPageApi,
+  refreshMonitorsApi,
   setWikiMonitorsEnabledApi,
   setWikiIntakeEnabledApi,
   setWikiCodeEnabledApi,
@@ -1226,5 +1227,22 @@ export function useMonitorsPage(enabled = true) {
     queryFn: () => getMonitorsPageApi(),
     enabled,
     refetchInterval: 60_000,
+  });
+}
+
+/**
+ * Refresh: run the overdue checks, then re-read the board as they land. The checks run after the
+ * server has answered (a probe can take 15s), so one re-read straight away would show nothing new.
+ */
+export function useRefreshMonitors() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await refreshMonitorsApi();
+      for (const wait of [3_000, 8_000, 15_000]) {
+        await new Promise((r) => setTimeout(r, wait));
+        await queryClient.invalidateQueries({ queryKey: ["monitors-page"] });
+      }
+    },
   });
 }

@@ -56,7 +56,7 @@ beforeEach(() => {
     '#!/usr/bin/env bash\nF="${FAKE_CRONTAB_FILE:?}"\nif [ "$1" = "-l" ]; then [ -f "$F" ] && cat "$F" || { echo "no crontab for user" >&2; exit 1; }; elif [ "$1" = "-" ]; then cat > "$F"; fi\n',
   );
   chmodSync(join(dir, "fakecron"), 0o755);
-  writeFileSync(join(dir, "run-cron.sh"), "#!/usr/bin/env bash\n");
+  writeFileSync(join(dir, "run-cron.sh"), '#!/usr/bin/env bash\ncurl "http://127.0.0.1:3000/api/cron/$1"\n');
   chmodSync(join(dir, "run-cron.sh"), 0o755);
 });
 
@@ -126,6 +126,15 @@ describe("install-crontab.sh", { timeout: 30_000 }, () => {
     writeFileSync(live, LIVE + "\n");
     const run = install({ RUN_CRON: join(dir, "missing.sh") });
     expect(run.status).not.toBe(0);
+    expect(readFileSync(live, "utf8")).toBe(LIVE + "\n");
+  });
+
+  it("refuses, changing nothing, when run-cron.sh is EMPTY (every job silently did nothing, Nov 2026)", () => {
+    writeFileSync(live, LIVE + "\n");
+    writeFileSync(join(dir, "run-cron.sh"), "");
+    const run = install();
+    expect(run.status).not.toBe(0);
+    expect(run.stdout + run.stderr).toContain("empty or not a cron runner");
     expect(readFileSync(live, "utf8")).toBe(LIVE + "\n");
   });
 

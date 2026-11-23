@@ -699,11 +699,14 @@ export async function checkMonitorsWatchdog(now: Date = new Date()): Promise<{ s
  * Cron entry point: probe every enabled monitor that's due (interval elapsed
  * since its last check), in small concurrent batches, then prune old history.
  */
-export async function runDueMonitors(): Promise<{ checked: number; pruned: number }> {
+export async function runDueMonitors(
+  opts: { workspaceId?: string; prune?: boolean } = {},
+): Promise<{ checked: number; pruned: number }> {
   const now = Date.now();
   const due = (
     await prisma.wikiMonitor.findMany({
-      where: { enabled: true },
+      // `workspaceId`: the Monitors page's Refresh runs only its own workspace's checks.
+      where: { enabled: true, ...(opts.workspaceId ? { wiki: { client: { workspaceId: opts.workspaceId } } } : {}) },
       orderBy: { lastCheckedAt: "asc" },
     })
   ).filter(
@@ -721,6 +724,7 @@ export async function runDueMonitors(): Promise<{ checked: number; pruned: numbe
     await Promise.all(due.slice(i, i + BATCH).map((m) => runMonitorCheck(m).catch(() => {})));
   }
 
+  if (opts.prune === false) return { checked: due.length, pruned: 0 };
   const pruned = await prisma.wikiMonitorCheck.deleteMany({
     where: { checkedAt: { lt: daysAgo(RETENTION_DAYS) } },
   });

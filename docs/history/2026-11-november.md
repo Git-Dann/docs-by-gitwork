@@ -1783,3 +1783,31 @@ synced by `deploy.yml`), to that Slack channel (`src/server/ops-alert.ts`). Mark
 - **Next.js 15.5.29** (security release).
 - **The box's compose file** was the old repo file minus one comment; its hash is now in
   `deploy/compose-history.sha256`, so the next deploy applies §143's port and log fixes.
+
+## 145. Recent Changes (November 2026) — Every scheduled job ran an empty script for two days
+
+From 20 Nov 23:34 to the fix, **no scheduled job did anything**: no uptime checks (Monitors read
+"45 services not being checked", last result two days old), no `jobs` worker, Pulse jobs, Wedge
+course feed, digests or backups. The watchdog was right all along; #894's "the jobs are running"
+was read from a cron log that had stopped changing.
+
+- **Cause.** #890 moved `run-cron.sh` into the repo, and `deploy.yml` base64s it into the SSH
+  step, but the deploy job's **sparse checkout** never listed `deploy/run-cron.sh`. `base64` failed
+  inside `$(…)`, an empty string was shipped, and the box installed a **0-byte**
+  `/opt/apps/foundry/run-cron.sh` (sha256 `e3b0c442…`). An empty script is executable, exits 0 and
+  prints nothing, so every cron line "succeeded", and the smoke test, which only checked the exit
+  code, passed it. Every later deploy said "unchanged": empty matched empty.
+- **Fixed in three places, each with a test** (`deploy-scripts.test.ts`, `install-crontab.test.ts`):
+  the file is in the sparse checkout, and a test fails if anything encoded isn't; the encode step
+  fails on a missing or empty file; the smoke test needs the runner's own `jobs HTTP 2xx` line;
+  `install-crontab.sh` refuses an empty runner, or one that doesn't call `/api/cron/`.
+- **Refresh on Monitors runs the checks.** It only re-read the database, so it reloaded the same
+  stale rows. `POST /api/monitors` (same gate as GET) runs this workspace's overdue checks after
+  answering (`runDueMonitors({ workspaceId, prune: false })`, one run per workspace at a time) and
+  the page re-reads at 3, 11 and 26s. A red line under the headline says when nothing has been
+  checked for 10 minutes: "not checking" on every card didn't say the scheduler had stopped.
+- **`VPS ops → inspect`** now shows disk, mounts, file owners and sizes, runner hashes, whether
+  the log can be appended to, the cron daemon, and one call of `run-cron.sh wiki-monitors` exactly
+  as cron makes it. That is what found the 0-byte file. It prints no file's contents.
+- ⚠️ **A file the deploy ships must be in its sparse checkout.** Add it to both lists, or the test
+  fails.

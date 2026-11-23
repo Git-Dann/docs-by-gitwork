@@ -89,6 +89,7 @@ jobs:
             deploy/rollback.sh
             deploy/crontab
             deploy/install-crontab.sh
+            deploy/run-cron.sh
           sparse-checkout-cone-mode: false
 
       - name: Encode the release files
@@ -340,6 +341,14 @@ jobs:
       - name: Encode the schedule
         id: schedule
         run: |
+          # ⚠️ Every file encoded here must be in the sparse checkout above. deploy/run-cron.sh was
+          # not (#890): `base64` failed inside $(…), an EMPTY runner was shipped and installed, and
+          # every scheduled job ran a 0-byte script — exit 0, no output — from 20 to 23 Nov 2026.
+          # A missing or empty file now fails the deploy here instead.
+          set -euo pipefail
+          for f in deploy/crontab deploy/install-crontab.sh deploy/run-cron.sh; do
+            [ -s "$f" ] || { echo "::error::$f is missing or empty in the checkout (sparse-checkout list?)"; exit 1; }
+          done
           echo "crontab_b64=$(base64 -w0 deploy/crontab)" >> "$GITHUB_OUTPUT"
           echo "installer_b64=$(base64 -w0 deploy/install-crontab.sh)" >> "$GITHUB_OUTPUT"
           echo "runner_b64=$(base64 -w0 deploy/run-cron.sh)" >> "$GITHUB_OUTPUT"
@@ -366,7 +375,13 @@ jobs:
             # `jobs` (idempotent, every minute anyway) and only replace the box's copy when it
             # works, so a broken script can never stop every scheduled job at once.
             RUNNER=/opt/apps/foundry/run-cron.sh
-            if bash "$WORK/run-cron.sh" jobs >> /tmp/foundry-cron.log 2>&1; then
+            # A pass needs the runner's own "jobs HTTP 2xx" line, not just exit 0: an EMPTY script
+            # also exits 0, and that is how a 0-byte runner was installed in Nov 2026.
+            SMOKE="$WORK/smoke.log"
+            bash "$WORK/run-cron.sh" jobs > "$SMOKE" 2>&1 && SMOKE_OK=1 || SMOKE_OK=0
+            cat "$SMOKE" >> /tmp/foundry-cron.log || true
+            grep -qE ' jobs HTTP 2[0-9][0-9]:' "$SMOKE" || SMOKE_OK=0
+            if [ "$SMOKE_OK" = 1 ]; then
               if [ -f "$RUNNER" ] && cmp -s "$WORK/run-cron.sh" "$RUNNER"; then
                 echo "run-cron.sh: unchanged"
               else

@@ -16,7 +16,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowPathIcon, ArrowTopRightOnSquareIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
-import { useMonitorsPage } from "@/hooks/use-wiki";
+import { useMonitorsPage, useRefreshMonitors } from "@/hooks/use-wiki";
 import {
   boardEnvironments,
   filterBoardByEnvironment,
@@ -222,8 +222,14 @@ function ClientCard({
   );
 }
 
+/** No check newer than this, across every monitor, means the scheduler has stopped. */
+const STOPPED_AFTER_MS = 10 * 60_000;
+
 export function MonitorsWorkspace({ demo = false }: { demo?: boolean } = {}) {
-  const { data, isLoading, isError, refetch, isFetching } = useMonitorsPage();
+  const { data, isLoading, isError } = useMonitorsPage();
+  // Refresh RUNS the overdue checks; re-reading alone showed the same stale rows when the
+  // scheduler stopped (Nov 2026).
+  const refresh = useRefreshMonitors();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   // The Add monitor popup: closed, or open on a client (null = choose one).
@@ -253,6 +259,9 @@ export function MonitorsWorkspace({ demo = false }: { demo?: boolean } = {}) {
       .filter((x): x is string => Boolean(x))
       .sort()
       .at(-1) ?? null;
+  // Monitors are checked every minute or two. Nothing newer than this means the scheduled
+  // checks themselves have stopped, which "not checking" on every card does not say.
+  const checksStopped = lastCheck !== null && Date.now() - new Date(lastCheck).getTime() > STOPPED_AFTER_MS;
 
   const needsAttention = monitored.filter((c) => worstState(c.monitors.map(monitorState)) !== "up");
   const q = query.trim().toLowerCase();
@@ -304,14 +313,14 @@ export function MonitorsWorkspace({ demo = false }: { demo?: boolean } = {}) {
               ) : null}
               <button
                 type="button"
-                onClick={() => refetch()}
-                disabled={isFetching}
+                onClick={() => refresh.mutate()}
+                disabled={refresh.isPending}
                 className="inline-flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-3)] hover:text-[var(--text-1)] disabled:opacity-60"
                 style={{ fontFamily: MONO }}
-                title="Updates itself every minute"
+                title="Check every overdue service now"
               >
-                <ArrowPathIcon className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} aria-hidden />
-                {isFetching ? "Refreshing…" : "Refresh"}
+                <ArrowPathIcon className={`h-3.5 w-3.5 ${refresh.isPending ? "animate-spin" : ""}`} aria-hidden />
+                {refresh.isPending ? "Checking…" : "Refresh"}
               </button>
             </div>
           </Header>
@@ -330,6 +339,13 @@ export function MonitorsWorkspace({ demo = false }: { demo?: boolean } = {}) {
                 <p className="mt-0.5 text-[13px] text-[var(--text-3)]">{summary.sub}</p>
               </div>
             </div>
+            {checksStopped ? (
+              <p role="alert" className="rounded-[10px] border border-dashed border-[var(--danger-500)] px-4 py-3 text-[13px] text-[var(--danger-500)]">
+                Scheduled checks have stopped: nothing has been checked since {relTime(lastCheck!)}.
+                Refresh runs them now. Tell a platform admin so the schedule is fixed.
+                {refresh.isError ? " Refresh failed too. Try again in a minute." : ""}
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatTile label="Services up" value={`${summary.up}/${summary.total}`} tone={null} />
               <StatTile label="Down" value={String(summary.down)} tone={summary.down ? "down" : null} />
