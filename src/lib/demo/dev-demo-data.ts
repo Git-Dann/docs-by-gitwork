@@ -81,6 +81,7 @@ import type {
 import type { PulseLeadPreview } from "@/server/pulse-lite/leads-admin";
 import type { WikiDTO } from "@/server/wiki";
 import { GITWORK } from "@/lib/gitwork";
+import { newDemoCareState, resolveDemoCare } from "@/lib/demo/demo-care";
 import { DEFAULT_INTAKE_CATEGORIES } from "@/lib/wiki-intake-categories";
 import { getDefaultLaunchpadStructure } from "@/lib/launchpad/default-template";
 import { applyItemPatch, computeCompleteness } from "@/lib/launchpad/structure";
@@ -2722,6 +2723,9 @@ const demoSupportClients: { clients: SupportClient[] } = {
  * Threads are written as real support exchanges (an inbound, our reply, a follow-up) so the
  * transcript, the Replied state and the reply gating all have something true to render.
  */
+/** In-memory Care reports and workflow rules, so the demo can add, edit and delete them. */
+const demoCareState = newDemoCareState();
+
 const demoSupportMembers: SupportMemberLite[] = [
   { id: "sup-m1", name: "Harry Beckett", email: "harry@example.com", role: "ADMIN" },
   { id: "sup-m2", name: "Sian Lloyd", email: "sian@example.com", role: "STAFF" },
@@ -5574,6 +5578,11 @@ export function resolveDemoApi(
   {
     const notes = pathname.match(/^\/api\/support\/clients\/[^/]+\/conversations\/([^/]+)\/notes$/);
     if (notes) return { notes: demoNotesByConversation[notes[1]] ?? [] };
+  }
+  // Reports, Automation, health, the performance strip and AI search (demo-care.ts).
+  {
+    const care = resolveDemoCare(demoCareState, pathname, init, demoConversationsByClient);
+    if (care !== undefined) return care;
   }
 
   // Backstage — calendar only.

@@ -257,7 +257,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Studio** | `/app/studio` | — (client-side only, no `/api/studio`) | Brand asset studio — design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. ~30 components under `src/components/studio/` (`studio-root.tsx` entry, plus `templates/`, `screenshots/`, `costing/`, `brand.tsx`, `export.ts`). Also now hosts the **Demo builder** (`demo-builder.tsx`), moved out of Settings in July 2026 — this is the `Demo {{Feat}}` workstream in §32. Module permission id `studio`. **No sidebar item since Aug 2026** — reached from **Settings → Labs**, which is Super-Admin-gated, so this narrows it from the `studio` module perm (§4a) |
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
-| **Care** | `/app/care` (legacy `/app/support` → redirect stub) | `src/server/support.ts` | Client support ops: one UI since Nov 2026 (§42.16). Conversations · Reports · Automation · Channels & settings per client. Operator runbook: `docs/care.md` |
+| **Care** | `/app/care` (legacy `/app/support` → redirect stub) | `src/server/support.ts` | Client support ops: one UI since Nov 2026 (§42.16, §149). Every `/app/support/**` path is a redirect stub. Conversations · Reports · Automation · Channels & settings per client. Operator runbook: `docs/care.md` |
 | **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip |
 | **Money** | `/app/money` | `src/server/money.ts` · `money-deals.ts` | Revenue under contract, still to bill, won, pipeline, recorded deals (§141). **Super Admins + `clients.viewFinancials` only**, checked by the page (404) and `/api/money` (403); in `UNGATED_APP_PREFIXES` because Siân holds the permission without Portal. **No sidebar item** — a mono `· MONEY` link in the HQ context strip |
 | **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate. **No sidebar item since Aug 2026** — a mono `· STARTERS` link in the HQ context strip |
@@ -337,7 +337,7 @@ src/
       codeclear/                  ← CodeClear pages
       proposals/                  ← Docs / Proposal builder pages
       clients/                    ← Portal / Client pages
-      support/                    ← Care pages
+      care/                       ← Care pages (support/ is redirect stubs only, §149)
       study/                      ← Study pages
       proof/                      ← Proof pages (built, nav hidden)
       settings/                   ← Settings page
@@ -408,7 +408,7 @@ src/
     app-overview.tsx              ← Foundry HQ dashboard component
     pulse/                        ← Pulse UI (overview, scan list, scan results, shared)
     study/                        ← Study UI (list, wizard, detail, report)
-    support/                      ← Care UI (support-dashboard.tsx)
+    care/                         ← Care UI (home, cockpit, reports, automation, connectors)
     proposals/                    ← Proposal builder (20+ components)
     codeclear/                    ← CodeClear UI
     clients/                      ← Client UI
@@ -899,3 +899,4 @@ be resolved by reading. Do not renumber either one.
 - **§146** — The course backend logged in at the wrong server
 - **§147** — Updates: the weekly email, published to the client's wiki
 - **§148** — Phase 0: restore test, staging, browser smoke tests
+- **§149** — Care has one UI

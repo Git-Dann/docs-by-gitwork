@@ -31,6 +31,7 @@ import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import "@/lib/demo/demo-fetch";
 import { demoSession } from "@/lib/demo/dev-demo-data";
 import { useDemoLinkReroute } from "@/lib/demo/use-demo-nav";
+import { demoBrandParam } from "@/lib/demo/demo-brand-param";
 import { filterModules, readDemoModules, readDemoColor, brandCssVars } from "@/lib/demo/demo-config";
 
 /** The command menu speaks in /app links; on the demo they open the demo's own pages. */
@@ -88,7 +89,7 @@ export function DemoShell({
   const [brand] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const KEY = "gitwork.demo.brand";
-    const param = new URLSearchParams(window.location.search).get("client");
+    const param = demoBrandParam(window.location.pathname, window.location.search);
     if (param !== null) {
       const trimmed = param.trim();
       if (trimmed) window.localStorage.setItem(KEY, trimmed);

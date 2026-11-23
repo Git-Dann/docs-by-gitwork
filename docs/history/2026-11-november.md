@@ -1921,3 +1921,44 @@ and opens ten `/app` pages at 390 and 1440px: 200 on its own URL, no uncaught or
 "Application error", a visible h1, no sideways scroll. ⚠️ The shell has two h1s (phone and desktop),
 one hidden at each width, so the check takes the visible one. Details: `docs/build-checklist.md` §4c.
 
+## 149. Recent Changes (November 2026) — Care has one UI
+
+Asked to retire Care's legacy `/app/support` dashboard. **That had already happened**: #850
+(`7adab0d`, 19 Nov 2026) deleted `support-dashboard.tsx` and moved every capability into
+`src/components/care/`, and §42.16 (`docs/history/2026-08-august.md`) is the full record. This
+pass checked the move against the deleted file, closed the gaps it found, and corrected the last
+docs that still described two UIs.
+
+**Where each legacy capability lives now** (checked against `7adab0d^`, hook by hook):
+
+| Legacy (`support-dashboard.tsx`) | Now |
+|---|---|
+| Add client (`AddClientModal`) | Care home, `care-add-client.tsx`, behind `canManageSupport` |
+| Inbox (`InboxView`, filters, triage) | The cockpit queue, `client-cockpit.tsx` + `conversation-detail.tsx` |
+| AI semantic search | The cockpit's search box, sparkle toggle (`useSemanticSearch`) |
+| Health score (`HealthBadge`) | Cockpit header, `care-shared.tsx` |
+| Reports (`ReportsView`, `ReportBuilder`, support days) | Reports section, `care-reports.tsx`; printable at `/app/care/reports/[id]` |
+| Connectors (`ConnectorsView` and its modals) | Channels & settings, `care-connectors.tsx` |
+| Workflow rules, AI agents, agent log, Portal link (`SettingsView`, `AgentsView`) | Automation section, `care-automation.tsx` |
+| Tickets (`TicketsTableView`) | **Retired on purpose** (§42.16): nothing wrote a ticket. Tables and write routes kept |
+| `SubredditView` | Was never mounted in the legacy page; not ported |
+
+**Added here:**
+- **`/app/support/[...rest]`** redirects any other path under the old dashboard the way the bare
+  `/app/support` does (query translated and carried across). `care-unified.test.ts` now fails if a
+  page under `/app/support` is anything but one of the three stubs.
+- **`/demo/care` can show the moved screens.** Reports, workflow rules, the agent log, the health
+  badge, the performance strip and AI search all fell through to the demo's `{}` catch-all, so they
+  rendered empty. `src/lib/demo/demo-care.ts` answers them, with reports and rules held in memory
+  so add / edit / delete / restore defaults can be driven. AI search there ranks by shared words
+  (`rankDemoSemantic`), since the demo has no embeddings.
+- ⚠️ **`?client=` meant two things on `/demo/care`.** The demo shell reads it as the white-label
+  brand; Care writes it into the address bar as the client id. Reloading a Care deep link renamed
+  the whole demo "sup-northwind" and kept it in localStorage for every other demo page.
+  `demoBrandParam` (`src/lib/demo/demo-brand-param.ts`) leaves the parameter to Care there.
+- "1 closest matches" in the AI search header now reads "1 closest match".
+
+**Verified:** `/demo/care` home, queue, AI search, reports, automation and settings at 390, 768,
+1280×620 and 1440, light and dark: 0 clipping findings, 0 sideways scroll, 0 console errors.
+Not verified: the redirects against a signed-in session (they are pure and unit-tested in
+`care-links.test.ts`), and the printable report page, which needs a database.

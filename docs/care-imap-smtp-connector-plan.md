@@ -107,7 +107,7 @@ export const imapAdapter: ChannelAdapter = {
 Surfaced as a "Test connection" button in the add/edit modal so operators get instant
 feedback instead of a saved-but-broken connector.
 
-## UI — `support-dashboard.tsx`
+## UI — `support-dashboard.tsx` (retired; this lives in `src/components/care/care-connectors.tsx` now)
 
 - `SupportSource` frontend union += `"imap"`; `SOURCE_LABEL.imap = "Email (IMAP/SMTP)"`;
   `SOURCE_TAGLINE.imap`; `SourceIcon` envelope glyph.
