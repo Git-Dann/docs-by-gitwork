@@ -140,6 +140,34 @@ jobs:
             ls /opt/apps/foundry 2>/dev/null | head -20 || true
             echo "(compare the crontab above against docs/vps-crons.md — the repo is the other half)"
 
+            echo
+            echo "=============== scheduled jobs: why might they be silent? ==============="
+            # Added Nov 2026: every job went quiet when #890 replaced run-cron.sh, and the log above
+            # stopped changing. These read file state only; nothing prints a file's contents, so
+            # no secret can reach this log.
+            echo "--- disk:"
+            df -h / /tmp /opt/apps/foundry 2>&1 | sort -u
+            df -i /tmp 2>&1 | tail -1
+            echo "--- mounts (noexec would stop cron running the script directly):"
+            findmnt -no TARGET,OPTIONS -T /tmp 2>&1 || true
+            findmnt -no TARGET,OPTIONS -T /opt/apps/foundry 2>&1 || true
+            echo "--- files:"
+            ls -ld /tmp 2>&1
+            ls -l --time-style=full-iso /tmp/foundry-cron.log /opt/apps/foundry/run-cron.sh /opt/apps/foundry/run-cron.sh.before-deploy /opt/apps/foundry/.env 2>&1
+            sha256sum /opt/apps/foundry/run-cron.sh /opt/apps/foundry/run-cron.sh.before-deploy 2>&1
+            head -c 64 /opt/apps/foundry/run-cron.sh | od -c | head -3
+            echo "--- can this user append to the log? (writes nothing)"
+            ( : >> /tmp/foundry-cron.log ) 2>&1 && echo "append-open: ok" || echo "append-open: FAILED"
+            sysctl fs.protected_regular 2>&1 || true
+            echo "--- cron daemon and any stuck runs:"
+            pgrep -a cron 2>&1 | head -3 || echo "(no cron process)"
+            ps -eo pid,etime,user,args 2>/dev/null | grep -E "run-cron|curl .*api/cron" | grep -v grep | head -10 || true
+            echo "--- cron's own log (may need adm/systemd-journal):"
+            journalctl -u cron --since "-10min" --no-pager 2>&1 | tail -15 || true
+            grep -h CRON /var/log/syslog 2>/dev/null | tail -10 || echo "(syslog unreadable)"
+            echo "--- one call exactly as cron makes it (the every-minute job; output here, not the log):"
+            /opt/apps/foundry/run-cron.sh wiki-monitors 2>&1 | cut -c1-400; echo "exit ${PIPESTATUS[0]}"
+
   nginx-sync:
     if: inputs.task == 'nginx-sync'
     runs-on: ubuntu-latest
