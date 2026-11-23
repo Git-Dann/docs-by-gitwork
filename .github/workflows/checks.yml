@@ -128,3 +128,63 @@ jobs:
 
       - name: Isolation suite
         run: npm run test:isolation
+
+  # The signed-in app in a real browser (docs/build-checklist.md §4c): the main /app pages, as a
+  # seeded Super Admin, at 390px and 1440px, against a production build on a throwaway Postgres
+  # named foundry_smoke (scripts/smoke-db.sh refuses any other name). The session is minted by the
+  # test with the server's own AUTH_SECRET; the app has no test-only sign-in. No secrets.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        # pgvector, as production, so first-time setup runs the same statements.
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: foundry
+          POSTGRES_PASSWORD: foundry
+          POSTGRES_DB: foundry_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foundry -d foundry_smoke"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SMOKE_DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry_smoke
+      # Throwaway values for this job only; nothing here is a real secret.
+      AUTH_SECRET: smoke-only-auth-secret
+      API_KEY: smoke-only-api-key
+      # The runner image ships Google Chrome, so no browser download.
+      CHROMIUM_PATH: /usr/bin/google-chrome
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install
+        run: |
+          npm ci
+          # Not a repo dependency (the app never ships it); pinned so the suite is repeatable.
+          npm i --no-save playwright-core@1.56.1
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      # `npx next build`, never `npm run build` (that one runs prisma db push).
+      - name: Build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: npx next build
+
+      - name: Schema and seed on the throwaway database
+        run: ./scripts/smoke-db.sh
+
+      - name: Smoke suite
+        run: npm run test:smoke
