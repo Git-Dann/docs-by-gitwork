@@ -4,13 +4,8 @@ import {
   careItems,
   docItems,
   foremanItems,
-  hideUntilTomorrow,
-  isHidden,
   monitorItems,
-  parseHidden,
-  pruneHidden,
   rankItems,
-  requestItems,
   type NeedsYouItem,
 } from "@/lib/needs-you";
 
@@ -29,12 +24,15 @@ function item(over: Partial<NeedsYouItem>): NeedsYouItem {
     action: "Open",
     since: null,
     fingerprint: "1",
+    why: "because",
+    actions: [],
+    hold: null,
     ...over,
   };
 }
 
 describe("monitorItems", () => {
-  const base = { clientName: "Wedge", clientSlug: "wedge", monitorId: "m1", name: "API", production: true, downSince: hoursAgo(1), error: "503" };
+  const base = { clientId: "c-wedge", clientName: "Wedge", clientSlug: "wedge", monitorId: "m1", name: "API", production: true, downSince: hoursAgo(1), error: "503" };
 
   it("makes production down critical and leaves up/slow/pending out", () => {
     const out = monitorItems(
@@ -79,22 +77,6 @@ describe("careItems", () => {
   });
 });
 
-describe("requestItems", () => {
-  it("is information on the day and a warning after two days", () => {
-    const out = requestItems(
-      [
-        { clientName: "A", clientSlug: "a", newCount: 1, oldestAt: hoursAgo(3) },
-        { clientName: "B", clientSlug: "b", newCount: 3, oldestAt: hoursAgo(72) },
-        { clientName: "C", clientSlug: "c", newCount: 0, oldestAt: hoursAgo(72) },
-      ],
-      NOW,
-    );
-    expect(out.map((i) => i.severity)).toEqual(["info", "warn"]);
-    expect(out[1].title).toBe("3 new requests to triage");
-    expect(out[1].href).toBe("/app/portal/b/wiki#intake");
-  });
-});
-
 describe("docItems", () => {
   it("nudges a document read with no decision, or never opened, after five days only", () => {
     const out = docItems(
@@ -131,38 +113,6 @@ describe("rankItems", () => {
       item({ id: "warn-old", severity: "warn", since: hoursAgo(50) }),
     ]);
     expect(out.map((i) => i.id)).toEqual(["mon-crit", "care-crit", "warn-old", "warn-new", "info"]);
-  });
-});
-
-describe("hiding", () => {
-  it("hides until tomorrow, and comes back early when the item gets worse", () => {
-    const i = item({ id: "r", severity: "warn", fingerprint: "2" });
-    const hidden = { r: { fingerprint: "2", until: hideUntilTomorrow(NOW) } };
-    expect(isHidden(i, hidden, NOW)).toBe(true);
-    expect(isHidden({ ...i, fingerprint: "3" }, hidden, NOW)).toBe(false);
-    const tomorrow = new Date(NOW.getTime() + 24 * 3_600_000);
-    expect(isHidden(i, hidden, tomorrow)).toBe(false);
-  });
-
-  it("never hides an outage", () => {
-    const i = item({ id: "m", severity: "critical", fingerprint: "down" });
-    expect(isHidden(i, { m: { fingerprint: "down", until: "2999-01-01" } }, NOW)).toBe(false);
-  });
-
-  it("forgets entries for items that are gone or expired", () => {
-    const live = item({ id: "a" });
-    const pruned = pruneHidden(
-      { a: { fingerprint: "1", until: "2999-01-01" }, gone: { fingerprint: "1", until: "2999-01-01" }, old: { fingerprint: "1", until: "2000-01-01" } },
-      [live, item({ id: "old" })],
-      NOW,
-    );
-    expect(Object.keys(pruned)).toEqual(["a"]);
-  });
-
-  it("reads anything malformed as nothing hidden", () => {
-    expect(parseHidden("{not json")).toEqual({});
-    expect(parseHidden("[1,2]")).toEqual({});
-    expect(parseHidden(JSON.stringify({ a: { fingerprint: 1 } }))).toEqual({});
   });
 });
 

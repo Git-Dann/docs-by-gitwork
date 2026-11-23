@@ -84,6 +84,8 @@ const QK = {
 /** Invalidate every task-derived query after a write. */
 function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ["tasks"] });
+  // A task or release moving in or out of a project changes that project's progress (§150).
+  void qc.invalidateQueries({ queryKey: ["client-projects"] });
 }
 
 // ─── Optimistic helpers ────────────────────────────────────────────────────────

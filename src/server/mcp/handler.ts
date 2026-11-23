@@ -120,6 +120,9 @@ import { listClientMeetings } from "@/server/meetings";
 import { allocateDocumentNumber, updateDocument } from "@/server/documents";
 import { prisma } from "@/lib/prisma";
 import { createRelease, listReleases } from "@/server/releases";
+import { createProject, getClientProject, listClientProjects } from "@/server/projects";
+import { PROJECT_LIMITS, PROJECT_STATUSES, PROJECT_STATUS_LABELS, percentText } from "@/lib/project-budget";
+import { formatMoney } from "@/lib/money";
 import { findReleaseByVersion, releaseLabel } from "@/lib/tasks/releases";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { applyClientNameToSections } from "@/lib/apply-client-name";
@@ -603,6 +606,22 @@ const updateTaskSchema = z.object({
 });
 
 const listReleasesSchema = z.object({ client: z.string() });
+const listProjectsSchema = z.object({ client: z.string() });
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}/, "Use an ISO date, e.g. 2026-12-01.");
+const createProjectSchema = z
+  .object({
+    client: z.string(),
+    name: z.string().trim().min(1).max(PROJECT_LIMITS.name),
+    startDate: isoDay,
+    endDate: isoDay.optional(),
+    status: z.enum(PROJECT_STATUSES).optional(),
+    documentId: z.string().cuid().optional(),
+    budgetAmount: z.number().finite().positive().max(PROJECT_LIMITS.budget).optional(),
+    budgetCurrency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  })
+  .strict()
+  .refine((v) => !v.endDate || new Date(v.endDate) >= new Date(v.startDate), { message: "The end date must be on or after the start date." })
+  .refine((v) => !(v.documentId && v.budgetAmount != null), { message: "A linked document sets the budget. Pass a document or a budget, not both." });
 function releaseCreateMcpParse(args: unknown) {
   const parsed = createReleaseSchema.parse(args);
   for (const d of [parsed.startDate, parsed.endDate]) {
@@ -2492,6 +2511,70 @@ const TOOLS: ToolDef[] = [
         endDate: parsed.endDate ?? null,
       });
       return textResult(created, `Added release ${releaseLabel(created)} to ${c.name}.`);
+    },
+  },
+  {
+    name: "list_projects",
+    description:
+      "List a client's live projects (CLAUDE.md §150): name, status, dates, work done, and the releases and categories in each. " +
+      "Budget, spend so far and the verdict ('On budget', 'Burning faster than work is getting done') are included only for " +
+      "Super Admins and people with 'View client financials'.",
+    inputSchema: {
+      type: "object",
+      properties: { client: { type: "string", description: "Client slug, name, or cuid." } },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = listProjectsSchema.parse(args);
+      const c = await resolveClient(user, parsed.client);
+      const projects = await listClientProjects(user.workspaceId, c.id, { financials: canViewClientFinancials(user) });
+      const line = (p: (typeof projects)[number]) =>
+        `${p.name} (${PROJECT_STATUS_LABELS[p.status]}, ${percentText(p.progress.share)} done` +
+        (p.money ? `, ${p.money.spent == null ? "spend unknown" : formatMoney(p.money.spent, p.money.currency)} of ${p.money.budget == null ? "no budget" : formatMoney(p.money.budget, p.money.currency)}: ${p.money.verdict.text}` : "") +
+        ")";
+      return textResult(
+        projects,
+        projects.length ? `${c.name} has ${projects.length} project${projects.length === 1 ? "" : "s"}: ${projects.map(line).join("; ")}.` : `${c.name} has no projects yet.`,
+      );
+    },
+  },
+  {
+    name: "create_project",
+    description:
+      "Add a project to a client: a name, an ISO start date, optional end date and status (PLANNED, ACTIVE, ON_HOLD, DONE). " +
+      "Link the accepted proposal or SOW it came from with `documentId` (from list_documents) and its cost lines become the budget; " +
+      "without one, a budget can be typed (`budgetAmount` + `budgetCurrency`). Requires 'Manage clients'.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid." },
+        name: { type: "string", description: "e.g. 'Members app, phase 2'." },
+        startDate: { type: "string", description: "ISO date." },
+        endDate: { type: "string", description: "ISO date, optional." },
+        status: { type: "string", enum: [...PROJECT_STATUSES], description: "Defaults to PLANNED." },
+        documentId: { type: "string", description: "An accepted or signed document on this client. It sets the budget." },
+        budgetAmount: { type: "number", description: "Only without a document." },
+        budgetCurrency: { type: "string", description: "Three-letter code, e.g. GBP. Defaults to GBP." },
+      },
+      required: ["client", "name", "startDate"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "add projects");
+      const parsed = createProjectSchema.parse(args);
+      const c = await resolveClient(user, parsed.client);
+      const id = await createProject(user.workspaceId, c.id, user.id, {
+        name: parsed.name,
+        startDate: parsed.startDate,
+        endDate: parsed.endDate ?? null,
+        status: parsed.status,
+        documentId: parsed.documentId ?? null,
+        budgetAmount: parsed.documentId ? null : (parsed.budgetAmount ?? null),
+        budgetCurrency: parsed.documentId || parsed.budgetAmount == null ? null : (parsed.budgetCurrency ?? "GBP"),
+      });
+      const project = await getClientProject(user.workspaceId, c.id, id, { financials: canViewClientFinancials(user) });
+      return textResult(project, `Added project "${project.name}" to ${c.name}.`);
     },
   },
   {

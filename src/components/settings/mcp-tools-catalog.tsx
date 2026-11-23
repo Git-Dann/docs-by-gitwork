@@ -299,6 +299,18 @@ const TOOLS: Tool[] = [
     examples: ["Add release v2.1.0 'Q1 Social' to Big Wedge, 5–19 January.", "Put the onboarding task in v2.1.0."],
   },
   {
+    name: "list_projects",
+    blurb:
+      "List a client's projects with their dates and how far the work has got. Budget against spend shows only for people who can see client financials.",
+    examples: ["What projects does Northwind have?", "Is the platform build on budget?"],
+  },
+  {
+    name: "create_project",
+    blurb:
+      "Add a project to a client, optionally linked to the accepted proposal it came from, which sets its budget. Requires 'Manage clients'.",
+    examples: ["Add a project 'Members app, phase 2' to Northwind starting 1 December, from the accepted SOW."],
+  },
+  {
     name: "sheets_to_board_plan",
     blurb:
       "Dry run of moving a client's old wiki Sheets onto their Board: each row becomes a card in a list named after its sheet, with every cell carried. Writes nothing. Requires 'Manage clients'.",

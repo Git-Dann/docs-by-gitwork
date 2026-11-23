@@ -81,6 +81,7 @@ import type {
 import type { PulseLeadPreview } from "@/server/pulse-lite/leads-admin";
 import type { WikiDTO } from "@/server/wiki";
 import { GITWORK } from "@/lib/gitwork";
+import { newDemoCareState, resolveDemoCare } from "@/lib/demo/demo-care";
 import { DEFAULT_INTAKE_CATEGORIES } from "@/lib/wiki-intake-categories";
 import { getDefaultLaunchpadStructure } from "@/lib/launchpad/default-template";
 import { applyItemPatch, computeCompleteness } from "@/lib/launchpad/structure";
@@ -97,7 +98,6 @@ import type { WikiComparison } from "@/types/wiki-comparisons";
 import { resolveDemoDrive } from "@/lib/demo/demo-drive";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
-import { demoAchievements, demoDealDraft, demoMoney, demoNeedsYou } from "@/lib/demo/demo-money";
 import {
   demoDeliveryTimeline,
   demoPublishUpdate,
@@ -107,6 +107,10 @@ import {
   demoUpdatesView,
   demoWeeklyUpdate,
 } from "@/lib/demo/demo-delivery";
+
+import { demoAchievements, demoDealDraft, demoMoney } from "@/lib/demo/demo-money";
+import { demoNeedsYouApi } from "@/lib/demo/demo-needs-you";
+import { demoProjectsApi } from "@/lib/demo/demo-projects";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
@@ -2650,9 +2654,9 @@ function releaseCounts(id: string) {
   return { taskCount: ts.length, doneCount: ts.filter((t) => t.status === "DONE").length };
 }
 let demoReleases: ReleaseDTO[] = [
-  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, docUrl: "https://docs.example.com/northwind/v1.4.0", ...releaseCounts(REL.v140.id) },
-  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, docUrl: null, ...releaseCounts(REL.v150.id) },
-  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, docUrl: null, ...releaseCounts(REL.v200.id) },
+  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, docUrl: "https://docs.example.com/northwind/v1.4.0", projectId: "proj-platform", ...releaseCounts(REL.v140.id) },
+  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, docUrl: null, projectId: "proj-platform", ...releaseCounts(REL.v150.id) },
+  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, docUrl: null, projectId: null, ...releaseCounts(REL.v200.id) },
 ];
 
 function demoReleasesApi(pathname: string, init?: { method?: string; body?: unknown }): unknown {
@@ -2677,6 +2681,7 @@ function demoReleasesApi(pathname: string, init?: { method?: string; body?: unkn
       endDate: body.endDate ?? null,
       orderKey: demoReleases.length + 1,
       docUrl: body.docUrl ?? null,
+      projectId: body.projectId ?? null,
       taskCount: 0,
       doneCount: 0,
     };
@@ -2722,6 +2727,9 @@ const demoSupportClients: { clients: SupportClient[] } = {
  * Threads are written as real support exchanges (an inbound, our reply, a follow-up) so the
  * transcript, the Replied state and the reply gating all have something true to render.
  */
+/** In-memory Care reports and workflow rules, so the demo can add, edit and delete them. */
+const demoCareState = newDemoCareState();
+
 const demoSupportMembers: SupportMemberLite[] = [
   { id: "sup-m1", name: "Harry Beckett", email: "harry@example.com", role: "ADMIN" },
   { id: "sup-m2", name: "Sian Lloyd", email: "sian@example.com", role: "STAFF" },
@@ -5143,6 +5151,9 @@ export function resolveDemoApi(
   search?: URLSearchParams,
   init?: { method?: string; body?: unknown },
 ): unknown {
+  // The "Needs you" inbox and the source actions it takes on its own "ny-" items (§151).
+  const needsYou = demoNeedsYouApi(pathname, init);
+  if (needsYou !== undefined) return needsYou;
   switch (pathname) {
     case "/api/account":
       return demoAccount;
@@ -5216,9 +5227,13 @@ export function resolveDemoApi(
   // The Monitors page (/demo/monitors): the same board, and every client openable.
   if (pathname === "/api/monitors") return { ...demoMonitorBoard(), openableClientIds: null };
   if (pathname === "/api/monitors/platform") return demoPlatformHealth();
-  // HQ's "Needs you" and the Money page, through the real rules (src/lib/demo/demo-money.ts).
-  if (pathname === "/api/hq/needs-you") return demoNeedsYou();
+  // The Money page, through the real rules (src/lib/demo/demo-money.ts).
   if (pathname === "/api/money") return demoMoney();
+  // Projects on the Portal client page and Money's per-project table (§150), through the real rules.
+  if (pathname === "/api/money/projects" || /^\/api\/clients\/[^/]+\/projects(\/[^/]+)?$/.test(pathname)) {
+    const result = demoProjectsApi(pathname, search ?? null, init as { method?: string; body?: unknown } | undefined);
+    if (result !== undefined) return result;
+  }
   if (pathname === "/api/search") return demoSearch(search?.get("q") ?? null);
   // The Portal client's Timeline card and its weekly update draft, through the real rules.
   {
@@ -5574,6 +5589,11 @@ export function resolveDemoApi(
   {
     const notes = pathname.match(/^\/api\/support\/clients\/[^/]+\/conversations\/([^/]+)\/notes$/);
     if (notes) return { notes: demoNotesByConversation[notes[1]] ?? [] };
+  }
+  // Reports, Automation, health, the performance strip and AI search (demo-care.ts).
+  {
+    const care = resolveDemoCare(demoCareState, pathname, init, demoConversationsByClient);
+    if (care !== undefined) return care;
   }
 
   // Backstage — calendar only.

@@ -76,6 +76,8 @@ export type SideIds = {
   message: string;
   notification: string;
   leadAction: string;
+  project: string;
+  weeklyUpdate: string;
   invite: string;
   proof: string;
   template: string;
@@ -138,6 +140,8 @@ export function idsFor(side: Side): SideIds {
     message: id(side, "message"),
     notification: id(side, "notification"),
     leadAction: id(side, "lead-action"),
+    project: id(side, "project"),
+    weeklyUpdate: id(side, "weekly-update"),
     invite: id(side, "invite"),
     proof: id(side, "proof"),
     template: id(side, "template"),
@@ -300,6 +304,8 @@ export async function seedSide(db: PrismaClient, side: Side) {
   await db.teamMessage.create({ data: { id: i.message, workspaceId: i.workspace, authorId: i.user, subject: m(side, "team-message"), body: m(side, "team-message-body") } });
   await db.notification.create({ data: { id: i.notification, workspaceId: i.workspace, userId: i.user, event: "iso", title: m(side, "notification"), groupKey: `iso-${side}` } });
   await db.leadAction.create({ data: { id: i.leadAction, workspaceId: i.workspace, clientId: i.client, title: m(side, "lead-action") } });
+  await db.project.create({ data: { id: i.project, workspaceId: i.workspace, clientId: i.client, name: m(side, "project"), status: "ACTIVE", startDate: now } });
+  await db.wikiWeeklyUpdate.create({ data: { id: i.weeklyUpdate, wikiId: i.wiki, weekStart: new Date("2026-11-16T00:00:00Z"), subject: m(side, "weekly-update"), body: m(side, "weekly-update-body") } });
   await db.workspaceInvite.create({ data: { id: i.invite, workspaceId: i.workspace, invitedById: i.user, label: m(side, "invite") } });
   await db.auditLog.create({ data: { workspaceId: i.workspace, action: m(side, "audit") } });
   await db.documentTemplate.create({
@@ -360,6 +366,8 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
     db.deskReminder.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.teamMessage.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.leadAction.findMany({ where: ws, orderBy: { id: "asc" } }),
+    db.project.findMany({ where: ws, orderBy: { id: "asc" } }),
+    db.wikiWeeklyUpdate.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
     db.workspaceInvite.findMany({ where: ws, orderBy: { id: "asc" } }),
   ]);
   return JSON.stringify(parts, (_k, v) => (typeof v === "bigint" ? v.toString() : v));

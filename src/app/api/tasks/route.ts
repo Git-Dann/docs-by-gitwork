@@ -46,6 +46,7 @@ function taskListResponse(task: TaskDTO): TaskDTO {
     estimateHours: task.estimateHours,
     externalRef: task.externalRef,
     boardList: task.boardList ?? null,
+    projectId: task.projectId ?? null,
     productCard: task.productCard,
     cardProgress: task.cardProgress,
     clientSignOff: task.clientSignOff,

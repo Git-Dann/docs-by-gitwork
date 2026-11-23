@@ -1,22 +1,72 @@
 /**
- * "Needs you" — the one list on HQ of things a person should act on, gathered from every watcher
- * Foundry already runs (Monitors, Foreman, Care, client Requests, Docs, Pulse). Each source keeps
- * its own rules and its own page; this only turns what they already found into one ranked list,
- * so nobody has to visit five pages to learn what's on fire.
+ * "Needs you" — one inbox of things a person should act on, gathered from every watcher
+ * Foundry already runs (Monitors, Foreman, Commitments, Care, client Requests, Docs, Pulse).
+ * Each source keeps its own rules and its own page; this turns what they already found into one
+ * ranked list, so nobody has to visit seven pages to learn what's on fire.
  *
  * Pure: the server reads the sources (src/server/needs-you.ts), this decides what each becomes,
- * how they rank and whether a hidden item comes back. Suggested, never acted on: every item is a
- * link to the place it's dealt with.
+ * which actions a person may take on it, how they rank, and whether a snoozed or dismissed item
+ * comes back.
+ *
+ * Suggested, never acted on: nothing here changes a source on its own. An action on a row is a
+ * person pressing a button, and it calls the same route the source's own page calls, so every
+ * permission rule there still applies. The actions listed on an item are only the ones that
+ * person's own page would offer them.
  */
 
 import { careHref } from "@/lib/care-links";
 
-export type NeedsYouSource = "monitors" | "foreman" | "care" | "requests" | "docs" | "pulse";
+export type NeedsYouSource = "monitors" | "foreman" | "commitments" | "care" | "requests" | "docs" | "pulse";
+
+export const NEEDS_YOU_SOURCES: readonly NeedsYouSource[] = [
+  "monitors",
+  "foreman",
+  "commitments",
+  "care",
+  "requests",
+  "docs",
+  "pulse",
+];
 
 export type NeedsYouSeverity = "critical" | "warn" | "info";
 
+/**
+ * Something a person can do to an item from the inbox, carrying exactly what the source's own
+ * route needs. Built only for people the source's page would let do it.
+ */
+export type NeedsYouAction =
+  | { kind: "acknowledge"; clientSlug: string; incidentId: string }
+  | { kind: "post-update"; clientSlug: string; incidentId: string }
+  | { kind: "foreman-dismiss"; findingKey: string }
+  | { kind: "foreman-mute"; findingKey: string }
+  | { kind: "accept-commitment"; commitmentId: string }
+  | { kind: "dismiss-commitment"; commitmentId: string }
+  | { kind: "create-task"; clientSlug: string; requestId: string }
+  | { kind: "mark-dealt-with"; clientSlug: string; requestId: string };
+
+export type NeedsYouActionKind = NeedsYouAction["kind"];
+
+export const ACTION_LABEL: Record<NeedsYouActionKind, string> = {
+  acknowledge: "Acknowledge",
+  "post-update": "Post update",
+  "foreman-dismiss": "Dismiss",
+  "foreman-mute": "Mute",
+  "accept-commitment": "Add to my list",
+  "dismiss-commitment": "Dismiss",
+  "create-task": "Create task",
+  "mark-dealt-with": "Mark dealt with",
+};
+
+/** A person's own snooze or dismissal of an item, as read back for that item. */
+export type HoldState = "snoozed" | "dismissed";
+export interface NeedsYouHold {
+  state: HoldState;
+  /** Snoozed until (ISO). Null for a dismissal, which lasts until the item changes. */
+  until: string | null;
+}
+
 export interface NeedsYouItem {
-  /** Stable across reads, so hiding it sticks: `${source}:${subject}`. */
+  /** Stable across reads, so a snooze sticks: `${source}:${subject}`. */
   id: string;
   source: NeedsYouSource;
   severity: NeedsYouSeverity;
@@ -24,6 +74,8 @@ export interface NeedsYouItem {
   title: string;
   /** The evidence: one line a person can check. */
   detail: string;
+  /** Why it's on the list: the rule that put it here, in plain words. */
+  why: string;
   /** Who it's about, when there is a client. */
   clientName: string | null;
   /** Where it's dealt with. */
@@ -34,9 +86,13 @@ export interface NeedsYouItem {
   since: string | null;
   /**
    * Changes when the item gets materially worse (more requests, another day overdue), so a
-   * hidden item comes back instead of staying hidden while it grows.
+   * snoozed or dismissed item comes back instead of staying hidden while it grows.
    */
   fingerprint: string;
+  /** What can be done here, for this person. Empty means "open it on its own page". */
+  actions: NeedsYouAction[];
+  /** This person's snooze or dismissal, when one applies right now. */
+  hold: NeedsYouHold | null;
 }
 
 export interface NeedsYouDTO {
@@ -51,10 +107,17 @@ export interface NeedsYouDTO {
 export const SOURCE_LABEL: Record<NeedsYouSource, string> = {
   monitors: "Monitors",
   foreman: "Delivery",
+  commitments: "Commitments",
   care: "Care",
   requests: "Requests",
   docs: "Docs",
   pulse: "Pulse",
+};
+
+export const SEVERITY_LABEL: Record<NeedsYouSeverity, string> = {
+  critical: "Urgent",
+  warn: "Worth a look",
+  info: "For your information",
 };
 
 const SEVERITY_RANK: Record<NeedsYouSeverity, number> = { critical: 0, warn: 1, info: 2 };
@@ -73,67 +136,198 @@ export function rankItems(items: NeedsYouItem[]): NeedsYouItem[] {
   });
 }
 
-// ── Hiding ──────────────────────────────────────────────────────────────────────
+// ── Who may do what ───────────────────────────────────────────────────────────
 
-/** A hidden item: the fingerprint it had, and the day it stays hidden until (YYYY-MM-DD, exclusive). */
-export type HiddenEntry = { fingerprint: string; until: string };
-export type HiddenMap = Record<string, HiddenEntry>;
-
-export const HIDDEN_KEY = "foundry.needsyou.hidden.v1";
-
-/** Local YYYY-MM-DD. */
-export function dayKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+/**
+ * What the reader knows about the person, so an item only offers what their own page would.
+ * Every route re-checks; this only keeps a button off a row that would refuse it.
+ */
+export interface NeedsYouCaps {
+  /** Clients this person can open in Portal. Null = every client. */
+  openableClientIds: string[] | null;
+  /** Admin or above (Foreman's routes, and creating a task from a request). */
+  admin: boolean;
 }
 
-/** Hidden until tomorrow: the list is a daily check, and tomorrow it should ask again. */
-export function hideUntilTomorrow(now: Date): string {
-  const t = new Date(now);
-  t.setDate(t.getDate() + 1);
-  return dayKey(t);
+export function canOpenClient(caps: NeedsYouCaps | undefined, clientId: string): boolean {
+  if (!caps) return false;
+  return caps.openableClientIds === null || caps.openableClientIds.includes(clientId);
+}
+
+// ── Snooze and dismiss ────────────────────────────────────────────────────────
+
+/** The old browser-only hide list. Ignored now, and cleared when the card first loads. */
+export const LEGACY_HIDDEN_KEY = "foundry.needsyou.hidden.v1";
+
+/** The longest a snooze can run, so a forgotten one can't hide something for good. */
+export const MAX_SNOOZE_DAYS = 30;
+
+/** A stored snooze or dismissal, as the database holds it. */
+export interface StoredHold {
+  id: string;
+  itemKey: string;
+  fingerprint: string;
+  state: string;
+  until: Date | string | null;
+  updatedAt: Date | string;
+}
+
+function time(v: Date | string | null): number {
+  if (v === null) return NaN;
+  return typeof v === "string" ? Date.parse(v) : v.getTime();
+}
+
+/** An outage can never be snoozed or dismissed: it stays on the list until it's over. */
+export function canHold(item: Pick<NeedsYouItem, "severity">): boolean {
+  return item.severity !== "critical";
 }
 
 /**
- * An item stays hidden only while it's the same item (same fingerprint) and the day hasn't
- * come. A critical item can never be hidden: an outage must stay on the list until it's over.
+ * Which of the person's own choices a row offers. Dismiss is left off where the source has its
+ * own (Foreman's Dismiss, a commitment's Dismiss), so a row never shows two buttons called Dismiss
+ * that do different things.
  */
-export function isHidden(item: NeedsYouItem, hidden: HiddenMap, now: Date): boolean {
-  if (item.severity === "critical") return false;
-  const h = hidden[item.id];
-  if (!h) return false;
-  return h.fingerprint === item.fingerprint && dayKey(now) < h.until;
+export function holdChoices(item: Pick<NeedsYouItem, "severity" | "source">): { snooze: boolean; dismiss: boolean } {
+  if (!canHold(item)) return { snooze: false, dismiss: false };
+  return { snooze: true, dismiss: item.source !== "foreman" && item.source !== "commitments" };
 }
 
-/** Drops entries that have expired or whose item is gone, so the stored map can't grow forever. */
-export function pruneHidden(hidden: HiddenMap, items: NeedsYouItem[], now: Date): HiddenMap {
-  const live = new Set(items.map((i) => i.id));
-  const today = dayKey(now);
-  const out: HiddenMap = {};
-  for (const [id, h] of Object.entries(hidden)) {
-    if (live.has(id) && today < h.until) out[id] = h;
+/**
+ * Whether a stored hold applies to an item now. It applies only while the item is the same
+ * (same fingerprint), never to a critical item, and a snooze only until its time.
+ */
+export function holdFor(item: Pick<NeedsYouItem, "severity" | "fingerprint">, row: StoredHold | undefined, now: Date): NeedsYouHold | null {
+  if (!row || !canHold(item)) return null;
+  if (row.fingerprint !== item.fingerprint) return null;
+  if (row.state === "dismissed") return { state: "dismissed", until: null };
+  if (row.state !== "snoozed") return null;
+  const until = time(row.until);
+  if (!Number.isFinite(until) || until <= now.getTime()) return null;
+  return { state: "snoozed", until: new Date(until).toISOString() };
+}
+
+/** The source an item key belongs to, or null for a key no source makes. */
+export function sourceOfKey(key: string): NeedsYouSource | null {
+  const i = key.indexOf(":");
+  if (i <= 0 || i === key.length - 1) return null;
+  const s = key.slice(0, i);
+  return (NEEDS_YOU_SOURCES as readonly string[]).includes(s) ? (s as NeedsYouSource) : null;
+}
+
+/** A snooze must end in the future and no more than MAX_SNOOZE_DAYS ahead. */
+export function isValidSnoozeUntil(until: Date, now: Date): boolean {
+  const t = until.getTime();
+  return Number.isFinite(t) && t > now.getTime() && t <= now.getTime() + MAX_SNOOZE_DAYS * 86_400_000;
+}
+
+/**
+ * Stored holds worth deleting: a duplicate for the same item (the newest is kept), a snooze that
+ * has run out, one whose item has changed (it came back), and one whose item has gone from a
+ * source that was read just now. A source that failed to read keeps its holds, because "we
+ * couldn't look" is not "it's gone".
+ */
+export function staleHoldIds(
+  rows: StoredHold[],
+  items: Pick<NeedsYouItem, "id" | "fingerprint">[],
+  checked: NeedsYouSource[],
+  now: Date,
+): string[] {
+  const byKey = new Map(items.map((i) => [i.id, i]));
+  const out: string[] = [];
+  const newest = new Map<string, StoredHold>();
+  for (const r of rows) {
+    const kept = newest.get(r.itemKey);
+    if (!kept || time(r.updatedAt) > time(kept.updatedAt)) {
+      if (kept) out.push(kept.id);
+      newest.set(r.itemKey, r);
+    } else {
+      out.push(r.id);
+    }
+  }
+  for (const r of newest.values()) {
+    const item = byKey.get(r.itemKey);
+    if (r.state === "snoozed" && !(time(r.until) > now.getTime())) {
+      out.push(r.id);
+    } else if (item && item.fingerprint !== r.fingerprint) {
+      out.push(r.id);
+    } else if (!item) {
+      const source = sourceOfKey(r.itemKey);
+      if (!source || checked.includes(source)) out.push(r.id);
+    }
   }
   return out;
 }
 
-/** Reads the stored map defensively: anything malformed is ignored. */
-export function parseHidden(raw: string | null): HiddenMap {
-  if (!raw) return {};
-  try {
-    const v = JSON.parse(raw) as unknown;
-    if (!v || typeof v !== "object" || Array.isArray(v)) return {};
-    const out: HiddenMap = {};
-    for (const [id, h] of Object.entries(v as Record<string, unknown>)) {
-      if (h && typeof h === "object" && typeof (h as HiddenEntry).fingerprint === "string" && typeof (h as HiddenEntry).until === "string") {
-        out[id] = { fingerprint: (h as HiddenEntry).fingerprint, until: (h as HiddenEntry).until };
-      }
-    }
-    return out;
-  } catch {
-    return {};
+/** Applies the person's holds, newest per item. */
+export function applyHolds(items: NeedsYouItem[], rows: StoredHold[], now: Date): NeedsYouItem[] {
+  const newest = new Map<string, StoredHold>();
+  for (const r of rows) {
+    const kept = newest.get(r.itemKey);
+    if (!kept || time(r.updatedAt) > time(kept.updatedAt)) newest.set(r.itemKey, r);
   }
+  return items.map((i) => ({ ...i, hold: holdFor(i, newest.get(i.id), now) }));
+}
+
+/** Snooze choices, worked out in the person's own time zone (the browser's). */
+export function snoozePresets(now: Date): { id: string; label: string; until: Date }[] {
+  const at8 = (d: Date) => {
+    const t = new Date(d);
+    t.setHours(8, 0, 0, 0);
+    return t;
+  };
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const monday = new Date(now);
+  // Next Monday, never today: a snooze to "next week" on a Monday means the Monday after.
+  monday.setDate(monday.getDate() + (((8 - monday.getDay()) % 7) || 7));
+  return [
+    { id: "3h", label: "3 hours", until: new Date(now.getTime() + 3 * 3_600_000) },
+    { id: "tomorrow", label: "Tomorrow morning", until: at8(tomorrow) },
+    { id: "week", label: "Next week", until: at8(monday) },
+  ];
+}
+
+// ── The inbox view ─────────────────────────────────────────────────────────────
+
+export type InboxView = "open" | "snoozed" | "dismissed";
+
+export interface InboxFilter {
+  view: InboxView;
+  source?: NeedsYouSource | null;
+  severity?: NeedsYouSeverity | null;
+}
+
+export function inInboxView(item: Pick<NeedsYouItem, "hold">, view: InboxView): boolean {
+  if (view === "open") return item.hold === null;
+  return item.hold?.state === view;
+}
+
+export function filterInbox(items: NeedsYouItem[], f: InboxFilter): NeedsYouItem[] {
+  return items.filter(
+    (i) => inInboxView(i, f.view) && (!f.source || i.source === f.source) && (!f.severity || i.severity === f.severity),
+  );
+}
+
+/** How many items sit in each view, so the switch can show its counts. */
+export function countInbox(items: NeedsYouItem[]): Record<InboxView, number> {
+  const out: Record<InboxView, number> = { open: 0, snoozed: 0, dismissed: 0 };
+  for (const i of items) {
+    if (i.hold === null) out.open += 1;
+    else out[i.hold.state] += 1;
+  }
+  return out;
+}
+
+/**
+ * What the `e` key does to an item: the source's own way of saying "dealt with" when it has one,
+ * else the person's own dismissal. Null when nothing can be done here (an outage with no incident
+ * to acknowledge, or no permission).
+ */
+export function resolveChoice(item: NeedsYouItem): NeedsYouAction | "dismiss" | null {
+  const pick = (k: NeedsYouActionKind) => item.actions.find((a) => a.kind === k);
+  const own = pick("acknowledge") ?? pick("mark-dealt-with") ?? pick("foreman-dismiss") ?? pick("dismiss-commitment");
+  if (own) return own;
+  return holdChoices(item).dismiss ? "dismiss" : null;
 }
 
 // ── Building items from each source ────────────────────────────────────────────
@@ -154,7 +348,13 @@ export function sinceWords(iso: string | null, now: Date): string | null {
   return plural(Math.floor(h / 24), "day");
 }
 
+/** The parts every item would otherwise repeat. */
+function base(): Pick<NeedsYouItem, "actions" | "hold"> {
+  return { actions: [], hold: null };
+}
+
 export type MonitorInput = {
+  clientId: string;
   clientName: string;
   clientSlug: string;
   monitorId: string;
@@ -164,10 +364,12 @@ export type MonitorInput = {
   production: boolean;
   downSince: string | null;
   error: string | null;
+  /** The monitor's open incident, when there is one. */
+  incident?: { id: string; acknowledged: boolean } | null;
 };
 
 /** Down in production is critical; down elsewhere, unstable or not being checked is a warning. */
-export function monitorItems(monitors: MonitorInput[], now: Date): NeedsYouItem[] {
+export function monitorItems(monitors: MonitorInput[], now: Date, caps?: NeedsYouCaps): NeedsYouItem[] {
   const out: NeedsYouItem[] = [];
   for (const m of monitors) {
     if (m.state !== "down" && m.state !== "flaky" && m.state !== "stale") continue;
@@ -178,17 +380,32 @@ export function monitorItems(monitors: MonitorInput[], now: Date): NeedsYouItem[
       m.state === "stale"
         ? "No recent check, so its status can't be trusted"
         : [how ? `For ${how}` : null, m.error, m.production ? null : "Not production"].filter(Boolean).join(" · ") || "Failing its checks";
+    const why =
+      m.state === "down"
+        ? `${m.production ? "A production" : "A non-production"} service is failing every check`
+        : m.state === "flaky"
+          ? "Its checks keep failing on and off"
+          : "Its checks stopped running";
+    const actions: NeedsYouAction[] = [];
+    if (m.incident && canOpenClient(caps, m.clientId)) {
+      if (!m.incident.acknowledged) actions.push({ kind: "acknowledge", clientSlug: m.clientSlug, incidentId: m.incident.id });
+      actions.push({ kind: "post-update", clientSlug: m.clientSlug, incidentId: m.incident.id });
+    }
     out.push({
+      ...base(),
       id: `monitors:${m.monitorId}`,
       source: "monitors",
       severity: m.state === "down" && m.production ? "critical" : "warn",
       title,
       detail,
+      why,
       clientName: m.clientName,
       href: "/app/monitors",
       action: "Open",
       since: m.downSince,
-      fingerprint: m.state,
+      // Acknowledging is part of the item's state: an acknowledged outage is a different fact.
+      fingerprint: `${m.state}${m.incident?.acknowledged ? ":ack" : ""}`,
+      actions,
     });
   }
   return out;
@@ -205,22 +422,68 @@ export type ForemanInput = {
   metric: number;
 };
 
-/** Foreman's own risks, minus its blind spots (those belong in Settings, not a daily list). */
-export function foremanItems(findings: ForemanInput[]): NeedsYouItem[] {
+/**
+ * Foreman's own risks, minus its blind spots (those belong in Settings, not a daily list).
+ * Dismiss and Mute are Foreman's own (shared by the workspace, as on Settings → Foreman), offered
+ * to admins only, as there.
+ */
+export function foremanItems(findings: ForemanInput[], caps?: NeedsYouCaps): NeedsYouItem[] {
   return findings
     .filter((f) => f.category !== "blindspot" && f.severity !== "info")
     .map((f) => ({
+      ...base(),
       id: `foreman:${f.key}`,
       source: "foreman" as const,
       severity: f.severity,
       title: f.headline,
       detail: f.evidence[0] ?? "",
+      why: f.category === "developer" ? "Foreman's morning check flagged a developer's workload" : "Foreman's morning check flagged this delivery risk",
       clientName: f.category === "project" ? f.subjectLabel : null,
       href: f.href ?? "/app",
       action: "Open",
       since: null,
       fingerprint: String(f.metric),
+      actions: caps?.admin
+        ? [
+            { kind: "foreman-dismiss" as const, findingKey: f.key },
+            { kind: "foreman-mute" as const, findingKey: f.key },
+          ]
+        : [],
     }));
+}
+
+export type CommitmentInput = {
+  id: string;
+  title: string;
+  quote: string | null;
+  counterpart: string | null;
+  sourceLabel: string;
+  createdAt: string;
+};
+
+/**
+ * Promises Foundry read in the person's own messages and is suggesting they keep. Only ever the
+ * person's own (Commitments are private), so Accept and Dismiss are always theirs to press.
+ */
+export function commitmentItems(rows: CommitmentInput[], now: Date): NeedsYouItem[] {
+  return rows.map((c) => ({
+    ...base(),
+    id: `commitments:${c.id}`,
+    source: "commitments" as const,
+    severity: "info" as const,
+    title: c.title,
+    detail: [c.quote ? `“${c.quote}”` : null, c.counterpart ? `To ${c.counterpart}` : null].filter(Boolean).join(" · "),
+    why: `Suggested from ${c.sourceLabel.toLowerCase()} ${sinceWords(c.createdAt, now) ?? "just now"} ago, not on your list yet`,
+    clientName: null,
+    href: "/app/backstage?area=commitments",
+    action: "Review",
+    since: c.createdAt,
+    fingerprint: "suggested",
+    actions: [
+      { kind: "accept-commitment" as const, commitmentId: c.id },
+      { kind: "dismiss-commitment" as const, commitmentId: c.id },
+    ],
+  }));
 }
 
 export type CareInput = {
@@ -240,12 +503,15 @@ export function careItems(rows: CareInput[], now: Date): NeedsYouItem[] {
     if (r.awaiting <= 0 || !r.oldestAwaitingAt) continue;
     const hours = (now.getTime() - Date.parse(r.oldestAwaitingAt)) / 3_600_000;
     if (!(hours >= CARE_WARN_HOURS)) continue;
+    const critical = hours >= CARE_CRITICAL_HOURS;
     out.push({
+      ...base(),
       id: `care:${r.supportClientId}`,
       source: "care",
-      severity: hours >= CARE_CRITICAL_HOURS ? "critical" : "warn",
+      severity: critical ? "critical" : "warn",
       title: `${plural(r.awaiting, "customer")} waiting for a reply`,
       detail: `Longest wait ${sinceWords(r.oldestAwaitingAt, now) ?? ""}`.trim(),
+      why: `A customer has waited over ${critical ? CARE_CRITICAL_HOURS : CARE_WARN_HOURS} hours for a reply`,
       clientName: r.clientName,
       href: careHref({ clientId: r.supportClientId }),
       action: "Reply",
@@ -256,32 +522,55 @@ export function careItems(rows: CareInput[], now: Date): NeedsYouItem[] {
   return out;
 }
 
-export type RequestsInput = {
+export type RequestInput = {
+  requestId: string;
+  clientId: string;
   clientName: string;
   clientSlug: string;
-  newCount: number;
-  oldestAt: string;
+  title: string;
+  /** BUG | FEEDBACK | TASK | DESIGN */
+  type: string;
+  requestedBy: string | null;
+  createdAt: string;
 };
 
-/** New client requests nobody has looked at. Older than two days is a warning. */
-export function requestItems(rows: RequestsInput[], now: Date): NeedsYouItem[] {
-  return rows
-    .filter((r) => r.newCount > 0)
-    .map((r) => {
-      const days = (now.getTime() - Date.parse(r.oldestAt)) / 86_400_000;
-      return {
-        id: `requests:${r.clientSlug}`,
-        source: "requests" as const,
-        severity: days >= 2 ? ("warn" as const) : ("info" as const),
-        title: `${plural(r.newCount, "new request")} to triage`,
-        detail: `Oldest ${sinceWords(r.oldestAt, now) ?? "today"}`,
-        clientName: r.clientName,
-        href: `/app/portal/${encodeURIComponent(r.clientSlug)}/wiki#intake`,
-        action: "Triage",
-        since: r.oldestAt,
-        fingerprint: String(r.newCount),
-      };
-    });
+const REQUEST_TYPE_LABEL: Record<string, string> = { BUG: "Bug", FEEDBACK: "Feedback", TASK: "Task", DESIGN: "Design" };
+
+/** The most new requests one read lists, oldest first, so one busy client can't fill the inbox. */
+export const MAX_REQUEST_ITEMS = 60;
+
+/**
+ * One item per client request nobody has looked at. Older than two days is a warning.
+ * Mark dealt with is offered to anyone who can open the client (the route's own rule); Create
+ * task to admins as well, as the route requires.
+ */
+export function requestItems(rows: RequestInput[], now: Date, caps?: NeedsYouCaps): NeedsYouItem[] {
+  return rows.map((r) => {
+    const days = (now.getTime() - Date.parse(r.createdAt)) / 86_400_000;
+    const age = sinceWords(r.createdAt, now);
+    const actions: NeedsYouAction[] = [];
+    if (canOpenClient(caps, r.clientId)) {
+      if (caps?.admin) actions.push({ kind: "create-task", clientSlug: r.clientSlug, requestId: r.requestId });
+      actions.push({ kind: "mark-dealt-with", clientSlug: r.clientSlug, requestId: r.requestId });
+    }
+    return {
+      ...base(),
+      id: `requests:${r.requestId}`,
+      source: "requests" as const,
+      severity: days >= 2 ? ("warn" as const) : ("info" as const),
+      title: r.title,
+      detail: [REQUEST_TYPE_LABEL[r.type] ?? "Request", r.requestedBy ? `from ${r.requestedBy}` : null, age ? `${age} ago` : "today"]
+        .filter(Boolean)
+        .join(" · "),
+      why: days >= 2 ? "A new client request, not triaged for over two days" : "A new client request, not triaged yet",
+      clientName: r.clientName,
+      href: `/app/portal/${encodeURIComponent(r.clientSlug)}/wiki#intake`,
+      action: "Triage",
+      since: r.createdAt,
+      fingerprint: "new",
+      actions,
+    };
+  });
 }
 
 export type DocInput = {
@@ -305,11 +594,15 @@ export function docItems(docs: DocInput[], now: Date): NeedsYouItem[] {
     const days = (now.getTime() - Date.parse(from)) / 86_400_000;
     if (!(days >= DOC_NUDGE_DAYS)) continue;
     out.push({
+      ...base(),
       id: `docs:${d.id}`,
       source: "docs",
       severity: "info",
       title: viewed ? `${d.title}: read, no decision` : `${d.title}: never opened`,
       detail: viewed ? `First read ${sinceWords(viewed, now)} ago` : `Shared ${sinceWords(d.sharedAt, now)} ago`,
+      why: viewed
+        ? `Sent and read, with no accept or decline after ${DOC_NUDGE_DAYS} days`
+        : `Sent and not opened after ${DOC_NUDGE_DAYS} days`,
       clientName: d.clientName,
       href: `/app/docs/${encodeURIComponent(d.id)}`,
       action: "Follow up",
@@ -333,11 +626,13 @@ export function pulseItems(projects: PulseInput[]): NeedsYouItem[] {
   return projects
     .filter((p) => p.reasons.length > 0)
     .map((p) => ({
+      ...base(),
       id: `pulse:${p.key}`,
       source: "pulse" as const,
       severity: p.urgent > 0 ? ("warn" as const) : ("info" as const),
       title: `${p.name} needs a look`,
       detail: p.reasons.slice(0, 2).join(" · "),
+      why: p.urgent > 0 ? `Its latest scan has ${plural(p.urgent, "urgent finding")}` : "Its latest scan flagged it on the Projects list",
       clientName: null,
       href: p.href,
       action: "Open",

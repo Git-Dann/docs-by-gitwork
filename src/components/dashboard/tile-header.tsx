@@ -53,6 +53,8 @@ export function TileHeader({
               statusTone === "success" && "text-[var(--success-500)]",
             )}
             style={{ fontFamily: "var(--font-mono)" }}
+            // The strip can't grow, so a status cut short on a phone keeps its full words here.
+            title={typeof status === "string" ? status : undefined}
           >
             {status}
           </span>

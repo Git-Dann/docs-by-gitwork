@@ -25,6 +25,7 @@ function walk(dir: string, out: string[] = []): string[] {
 const ALLOWED = new Set([
   "src/app/(app)/app/support/page.tsx",
   "src/app/(app)/app/support/reports/[reportId]/page.tsx",
+  "src/app/(app)/app/support/[...rest]/page.tsx",
   "src/lib/care-links.ts",
   "src/server/auth/module-gate.ts",
   "src/lib/workspace-modules.ts",
@@ -55,11 +56,21 @@ describe("Care is one UI", () => {
     for (const f of [
       "src/app/(app)/app/support/page.tsx",
       "src/app/(app)/app/support/reports/[reportId]/page.tsx",
+      "src/app/(app)/app/support/[...rest]/page.tsx",
     ]) {
       const src = stripComments(read(f));
       expect(src).toMatch(/redirect\(legacy(Support|Report)Redirect\(/);
       expect(src).not.toMatch(/<[A-Z]\w*(\s|\/?>)/); // renders no component (a generic like Promise<Record<…>> is not JSX)
     }
+  });
+
+  it("every page under /app/support is one of the redirect stubs", () => {
+    const pages = files.filter((f) => f.startsWith("src/app/(app)/app/support/") && f.endsWith("/page.tsx")).sort();
+    expect(pages).toEqual([
+      "src/app/(app)/app/support/[...rest]/page.tsx",
+      "src/app/(app)/app/support/page.tsx",
+      "src/app/(app)/app/support/reports/[reportId]/page.tsx",
+    ]);
   });
 
   it("the printable report lives under /app/care", () => {

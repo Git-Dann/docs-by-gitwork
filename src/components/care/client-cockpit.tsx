@@ -1003,7 +1003,7 @@ export function ClientCockpit({
             <div className="min-h-0 flex-1 overflow-auto">
               <div className="flex items-center justify-between border-b border-[var(--border-3)] px-4 py-2">
                 <span className="widget-data-label">
-                  {semantic.isPending ? "Searching by meaning…" : `AI search · ${aiResults?.length ?? 0} closest matches`}
+                  {semantic.isPending ? "Searching by meaning…" : `AI search · ${aiResults?.length ?? 0} closest ${(aiResults?.length ?? 0) === 1 ? "match" : "matches"}`}
                 </span>
                 {aiResults && (
                   <button type="button" onClick={clearAi} className="flex items-center gap-1 text-[11px] text-[var(--text-3)] transition hover:text-[var(--text-1)]">

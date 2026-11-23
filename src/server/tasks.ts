@@ -35,6 +35,7 @@ import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
 import { BoardColumnError, parseBoardColumns } from "@/lib/tasks/board-columns";
 import { BOARD_LIST_MAX, cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
+import { assertProjectInClient } from "@/server/projects";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     estimateHours: row.estimateHours,
     externalRef: row.externalRef,
     boardList: row.boardList,
+    projectId: row.projectId,
     // Title and progress are filled in by attachCardInfo (one query each per list).
     productCard: row.productCardId ? { id: row.productCardId, title: "", itemType: null } : null,
     cardProgress: null,
@@ -183,6 +185,7 @@ function taskListDTO(task: TaskDTO): TaskDTO {
     estimateHours: task.estimateHours,
     externalRef: task.externalRef,
     boardList: task.boardList ?? null,
+    projectId: task.projectId ?? null,
     productCard: task.productCard,
     cardProgress: task.cardProgress,
     clientSignOff: task.clientSignOff,
@@ -860,6 +863,7 @@ export async function createTask(
     assigneeIds?: string[];
     featureBlockId?: string | null;
     releaseId?: string | null;
+    projectId?: string | null;
     parentId?: string | null;
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
@@ -886,6 +890,9 @@ export async function createTask(
   }
   if (input.releaseId) {
     await assertReleaseInClient(user.workspaceId, input.clientId, input.releaseId);
+  }
+  if (input.projectId) {
+    await assertProjectInClient(user.workspaceId, input.clientId, input.projectId);
   }
   // A subtask with no explicit assignees inherits the parent's current assignees
   // (falling back to the legacy single-assignee column) so "assign the parent,
@@ -916,6 +923,7 @@ export async function createTask(
       createdById: user.id,
       featureBlockId: input.featureBlockId ?? null,
       releaseId: input.releaseId ?? null,
+      projectId: input.projectId ?? null,
       parentId: input.parentId ?? null,
       title: input.title,
       description: input.description ?? null,
@@ -1073,6 +1081,8 @@ export async function updateTask(
     assigneeIds?: string[];
     featureBlockId?: string | null;
     releaseId?: string | null;
+    /** The client's project (§150); null or "" takes it out. */
+    projectId?: string | null;
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
     archived?: boolean;
@@ -1153,6 +1163,10 @@ export async function updateTask(
     } else {
       data.release = { disconnect: true };
     }
+  }
+  if (input.projectId !== undefined) {
+    if (input.projectId) await assertProjectInClient(user.workspaceId, existing.clientId, input.projectId);
+    data.projectId = input.projectId || null;
   }
   if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
   Object.assign(data, cardFieldsData(input));

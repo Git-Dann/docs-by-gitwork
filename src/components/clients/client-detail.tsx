@@ -92,6 +92,7 @@ import { meetingStatusChip } from "@/lib/meeting-status";
 import { ClientDevelopersCard } from "@/components/clients/client-developers-card";
 import { ClientLifecycleCard } from "@/components/clients/client-lifecycle";
 import { ClientDeliveryCard } from "@/components/clients/client-delivery-card";
+import { ClientProjectsCard } from "@/components/projects/client-projects-card";
 import { ClientPulseCard, ClientStudiesCard } from "@/components/clients/client-portal-cards";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
@@ -345,6 +346,7 @@ export function ClientDetail({ slug }: { slug: string }) {
       case "lifecycle":
         return lifecycle.length > 0;
       case "timeline":
+      case "projects":
         return !isSuggested;
       default:
         return true;
@@ -1041,6 +1043,14 @@ export function ClientDetail({ slug }: { slug: string }) {
       {!isSuggested ? (
         <div className="motion-rise" style={rise()}>
           <ClientDeliveryCard number={num.timeline} slug={slug} />
+        </div>
+      ) : null}
+
+      {/* ── PROJECTS: each piece of work, its progress and (for money viewers) budget against spend.
+          Full width at its natural height, so it can't leave a gap beside another card (§129.1). */}
+      {!isSuggested ? (
+        <div className="motion-rise" style={rise()}>
+          <ClientProjectsCard number={num.projects} slug={slug} clientId={client.id} canManage={canManageClients} />
         </div>
       ) : null}
 

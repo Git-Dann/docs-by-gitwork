@@ -1921,3 +1921,173 @@ and opens ten `/app` pages at 390 and 1440px: 200 on its own URL, no uncaught or
 "Application error", a visible h1, no sideways scroll. ⚠️ The shell has two h1s (phone and desktop),
 one hidden at each width, so the check takes the visible one. Details: `docs/build-checklist.md` §4c.
 
+## 149. Recent Changes (November 2026) — Care has one UI
+
+Asked to retire Care's legacy `/app/support` dashboard. **That had already happened**: #850
+(`7adab0d`, 19 Nov 2026) deleted `support-dashboard.tsx` and moved every capability into
+`src/components/care/`, and §42.16 (`docs/history/2026-08-august.md`) is the full record. This
+pass checked the move against the deleted file, closed the gaps it found, and corrected the last
+docs that still described two UIs.
+
+**Where each legacy capability lives now** (checked against `7adab0d^`, hook by hook):
+
+| Legacy (`support-dashboard.tsx`) | Now |
+|---|---|
+| Add client (`AddClientModal`) | Care home, `care-add-client.tsx`, behind `canManageSupport` |
+| Inbox (`InboxView`, filters, triage) | The cockpit queue, `client-cockpit.tsx` + `conversation-detail.tsx` |
+| AI semantic search | The cockpit's search box, sparkle toggle (`useSemanticSearch`) |
+| Health score (`HealthBadge`) | Cockpit header, `care-shared.tsx` |
+| Reports (`ReportsView`, `ReportBuilder`, support days) | Reports section, `care-reports.tsx`; printable at `/app/care/reports/[id]` |
+| Connectors (`ConnectorsView` and its modals) | Channels & settings, `care-connectors.tsx` |
+| Workflow rules, AI agents, agent log, Portal link (`SettingsView`, `AgentsView`) | Automation section, `care-automation.tsx` |
+| Tickets (`TicketsTableView`) | **Retired on purpose** (§42.16): nothing wrote a ticket. Tables and write routes kept |
+| `SubredditView` | Was never mounted in the legacy page; not ported |
+
+**Added here:**
+- **`/app/support/[...rest]`** redirects any other path under the old dashboard the way the bare
+  `/app/support` does (query translated and carried across). `care-unified.test.ts` now fails if a
+  page under `/app/support` is anything but one of the three stubs.
+- **`/demo/care` can show the moved screens.** Reports, workflow rules, the agent log, the health
+  badge, the performance strip and AI search all fell through to the demo's `{}` catch-all, so they
+  rendered empty. `src/lib/demo/demo-care.ts` answers them, with reports and rules held in memory
+  so add / edit / delete / restore defaults can be driven. AI search there ranks by shared words
+  (`rankDemoSemantic`), since the demo has no embeddings.
+- ⚠️ **`?client=` meant two things on `/demo/care`.** The demo shell reads it as the white-label
+  brand; Care writes it into the address bar as the client id. Reloading a Care deep link renamed
+  the whole demo "sup-northwind" and kept it in localStorage for every other demo page.
+  `demoBrandParam` (`src/lib/demo/demo-brand-param.ts`) leaves the parameter to Care there.
+- "1 closest matches" in the AI search header now reads "1 closest match".
+
+**Verified:** `/demo/care` home, queue, AI search, reports, automation and settings at 390, 768,
+1280×620 and 1440, light and dark: 0 clipping findings, 0 sideways scroll, 0 console errors.
+Not verified: the redirects against a signed-in session (they are pure and unit-tested in
+`care-links.test.ts`), and the printable report page, which needs a database.
+
+## 150. Recent Changes (November 2026) — Projects, and budget vs actual
+
+A client used to be the only thing tying work together, so a piece of work (proposal → plan →
+board → releases → handover) had no record of its own, and nobody could say whether it was on
+budget. Dan approved a new table for it.
+
+- **Model `Project`** (additive): client, name, status (`PLANNED · ACTIVE · ON_HOLD · DONE`,
+  a string validated in code by `PROJECT_STATUSES`), start date, optional end date, optional
+  `documentId` (the accepted proposal or SOW), an optional typed budget (`budgetAmount` +
+  `budgetCurrency`), `archivedAt`. Relations to `Workspace` and `WorkspaceClient` (cascade).
+  Archived, never deleted.
+- **`projectId` on `Task`, `ClientRelease` and `FeatureBlock`**: nullable, indexed, **loose ids,
+  no FK**. A project is never hard-deleted, so there is nothing for a FK to clean up; three hot
+  tables each get one nullable column and an index; and the rule that matters (same client,
+  project still live) can't be a FK anyway. It is checked in code on every write
+  (`assertProjectInClient`, `src/server/projects.ts`): the task routes, the release routes and
+  the project's own category list. A link to an archived project just stops counting.
+- **Budget is derived, never stored, when a document is linked**: the document's cost lines
+  through Money's own `docTerms` (role lines are rate × months, the rest one-off, after
+  discount, without VAT). The document must be on the same client, not archived, and accepted
+  or signed. A typed budget is used only with no document, and saving a document clears it.
+  When the linked document stops giving a budget (archived, no costs) the page says why rather
+  than showing £0.
+- **Budget vs actual, derived every time** (`src/lib/project-budget.ts`, pure, tested):
+  - **Spent so far** = the developers placed on the client over the project's dates up to today,
+    at rate-card rates (the rate card is cost, as on Money and Portal: `normalizeToMonthly`,
+    pro-bono left out, an archived or missing rate = unpriced). Each monthly rate is spread over
+    that calendar month's weekdays, and the project is charged for the weekdays each developer
+    was placed inside its dates. One developer is never charged twice for a day.
+  - Unpriced developers are **counted and named**, never treated as free; when only unpriced
+    developers were placed, spend is "Unknown", not £0. Another currency is converted (ECB via
+    `loadFxRates`, base = the budget's currency); with no rate it is left out and listed.
+  - **Work done** = done share of the project's top-level live tasks. A task belongs directly
+    (`projectId`), else through its release, else through its category. No tasks = "—", never 0%.
+  - Estimate: the sum of the tasks' `estimateHours`, done and remaining, plus how many have none.
+  - **Verdict**: "No budget set" · "Not started yet" · "Over budget" · "Burning faster than
+    work is getting done" (burned more than 15 points ahead of work done, `BURN_SLACK`) ·
+    "Spending ahead of the dates" (no tasks: compared with time gone) · "On budget".
+  - ⚠️ **Known limits, stated on the page:** today's rate is used for the whole period (the rate
+    card keeps no history); allocation % is ignored, as Money and Portal ignore it; and
+    placements are per client, so two projects of one client running at once are both charged
+    for the same developers. The popup names the other project.
+- **Money figures are a server decision.** `buildProjects` only reads cost lines, placements
+  and rates when the route passes `financials: canViewClientFinancials(user)`; everyone else
+  gets `money: null` and a document read that selects its title only. A test fails if the
+  non-financial path ever touches a placement or a cost line.
+- **Routes:** `GET/POST /api/clients/[slug]/projects` (`?documents=1` adds the accepted
+  documents a project can link to), `GET/PATCH/DELETE /api/clients/[slug]/projects/[id]` (DELETE
+  archives). Reads need `assertClientReader`, writes 'Manage clients' plus `assertClientWriter`.
+  Another client's, or an archived, project is a 404. `GET /api/money/projects` has Money's gate.
+- **UI:**
+  - **Projects card** on the Portal client page (`client-projects-card.tsx`), after Timeline,
+    full width at its natural height so it can't leave a gap (§129.1), numbered in sequence by
+    `portalSectionNumbers` (`"projects"`). Each row: status, dates, work done, time gone and, for
+    money viewers, budget burned with "£x of £y" and the verdict.
+  - **New / Edit project** and the **project popup** (`project-dialogs.tsx`) are the house
+    fixed-height two-column popup. The popup shows work done, time gone, estimate, budget,
+    spent, burned, a burn chart (`burn-chart.tsx`, plain SVG on tokens: spent, an even pace to
+    the end date, the budget line; a screen-reader table of the same figures) and what's linked
+    (document, releases, categories, up to 60 tasks). Archive asks first.
+  - **Task form** and **Releases dialog** gain a Project select (this client's live projects only;
+    hidden when it has none). Categories are put in a project from the project's own editor.
+  - **Money** gains `04 // PROJECTS` (`projects-budget-table.tsx`); Deals moved to 05.
+- **MCP:** `list_projects` (money only for financial viewers) and `create_project` ('Manage
+  clients'). Catalogue, smoke script (60 tools) and the parity test updated.
+- **Demo:** `/demo/portal` shows "Platform build" with a budget from a document, two priced
+  developers and one unpriced, and "Support and hosting" not started yet;
+  `/demo/money` shows the same in the Projects table (`src/lib/demo/demo-projects.ts`, through
+  the real rules; writes land in memory).
+- Tests: `src/lib/__tests__/project-budget.test.ts` (30), `src/server/__tests__/projects.test.ts`
+  (8), the MCP parity block. Proved to discriminate by reading placements without the financials
+  gate (1 failure) and widening `BURN_SLACK` to 100% (1 failure).
+- **Verified:** tsc 0 errors, lint 0 errors, 10,828 tests passing, `audit:ui` 0 findings, `npx next build` clean (140 static pages). `/demo/portal` (card, project popup, edit popup under a temporary local grant) and `/demo/money` driven at 390 and 1440 (and 768 for the card and popup) in light and dark: 0 clipping findings from this work, 0 page overflow, 0 console errors. **Not verified against a real database**; post-deploy, add a project to a client with an accepted SOW and check the budget matches Money's figure for that document.
+
+## 151. Recent Changes (November 2026) — Needs you becomes an inbox
+
+HQ's "Needs you" card (§141.1) listed what every watcher found and linked away. Each source still
+had its own page to triage on, so people went to seven places. It is now one inbox: the card on HQ
+shows the top of it, and **`/app/inbox`** shows all of it. Rules in `src/lib/needs-you.ts` (pure),
+reader `src/server/needs-you.ts`, state `src/server/needs-you-state.ts`, actions
+`src/hooks/use-needs-you.ts`, UI `src/components/needs-you/`.
+
+- **Act in place, through the source's own route.** Every action calls the route the source's
+  own page calls, so its permission rule still applies, and an item only offers the actions that
+  person's own page would (`NeedsYouCaps`: the clients they can open, and Admin or above):
+  - Monitor incident: **Acknowledge** and **Post update** (`/api/clients/[slug]/wiki/monitors/incidents/[id]`),
+    for clients the person can open. Acknowledging changes the item's fingerprint.
+  - Foreman finding: Foreman's own **Dismiss** and **Mute** (`/api/foreman/findings`), admins only,
+    shared by the workspace as on Settings → Foreman. Undo clears it.
+  - **Commitments is a new source**: the person's own suggested commitments, never anyone else's,
+    and left out while "viewing as". **Add to my list** / **Dismiss** via
+    `/api/backstage/commitments/[id]`. A suggestion can't become a suggestion again, so Dismiss's
+    Undo adds it to the list, as on the Commitments page.
+  - Client request: now **one item per request** (oldest first, at most `MAX_REQUEST_ITEMS` = 60),
+    not one per client. **Mark dealt with** (anyone who can open the client; Undo sets it back to
+    New) and **Create task** (Admin or above too, as the promote route requires).
+  - Care, Docs and Pulse: Open, plus snooze and dismiss. Care's per-conversation snooze was not
+    added: the item is per client, so there is no one conversation to snooze.
+- **Snooze and dismiss are kept on the server, per person** (`NeedsYouState`, additive: workspaceId,
+  userId, itemKey, fingerprint, state, until; `@@index([userId, workspaceId])`, no unique, one row
+  per item enforced in code). `POST /api/hq/needs-you/state` { snooze | dismiss | clear }; the user
+  and workspace come from the session, never the body, and it is refused while "viewing as".
+  - Same rules as the old browser list: a snoozed or dismissed item comes back early when its
+    fingerprint changes, and ⚠️ **a critical item can't be held**, whatever is stored (`holdFor`
+    decides at read time, so the route needn't trust a severity sent to it).
+  - Snooze: 3 hours, tomorrow 08:00 or next Monday 08:00, in the browser's own time, at most 30
+    days. Dismiss lasts until the item changes. Neither is offered on an outage, and the person's
+    own Dismiss is left off where the source has one (Foreman, Commitments).
+  - Rows are pruned as the inbox is read (`staleHoldIds`): duplicates, ended snoozes, changed
+    items, and items gone from a source that was read. ⚠️ A source that failed to read keeps its
+    rows: "we couldn't look" is not "it's gone".
+  - The old `foundry.needsyou.hidden.v1` browser list is ignored and cleared once.
+- **Every row says why it's here** (`why`, one sentence per source rule, e.g. "A customer has
+  waited over 24 hours for a reply"), as well as the evidence (`detail`), the source, the
+  severity and the age.
+- **The inbox page** (`NeedsYouInbox`): Open / Snoozed / Dismissed with counts, filters by source
+  and severity, a "What was checked" card per source (a failed one says "Couldn't check"), and
+  the keyboard as in Care (§42.8): **j / k** move, **↵** open, **e** deal with it (the source's own
+  way, else your own dismiss; nothing on an outage), **s** snooze till tomorrow morning. Keys are
+  ignored in a field, a dialog or a menu. `/app/inbox` is in `INTERNAL_ONLY_PREFIXES` and has no
+  module of its own: every source in it is gated by `/api/hq/needs-you` as on its own page.
+- **Demo:** `/demo/hq` (the card) and `/demo/inbox`, through the real rules
+  (`src/lib/demo/demo-needs-you.ts`), with every source and every action working in memory. Demo
+  ids start `ny-`, so those handlers can't answer another demo's request. One item starts snoozed.
+- Tests: `src/lib/__tests__/needs-you-inbox.test.ts` (actions per permission, holds, pruning, the
+  inbox view), `src/server/__tests__/needs-you-state.test.ts` (one person's rows only, the route
+  refuses a user in the body and "view as"), `src/server/__tests__/needs-you-scope.test.ts`
+  (a developer's requests are their clients' only, no Create task, no Foreman, own commitments).

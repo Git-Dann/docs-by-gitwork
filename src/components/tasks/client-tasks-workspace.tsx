@@ -536,7 +536,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         />
       ) : null}
       {managingReleases && clientId ? (
-        <ReleasesModal clientId={clientId} onClose={() => setManagingReleases(false)} />
+        <ReleasesModal clientId={clientId} clientSlug={slug} onClose={() => setManagingReleases(false)} />
       ) : null}
       {managingColumns && clientId ? (
         <BoardColumnsModal clientId={clientId} columns={boardColumns} onClose={() => setManagingColumns(false)} />
