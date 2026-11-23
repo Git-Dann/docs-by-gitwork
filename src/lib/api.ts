@@ -3115,6 +3115,7 @@ export function createTask(input: TaskCardFieldsInput & {
   assigneeIds?: string[];
   featureBlockId?: string | null;
   releaseId?: string | null;
+  projectId?: string | null;
   parentId?: string | null;
   dueDate?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -3138,6 +3139,7 @@ export function updateTask(
     assigneeIds?: string[];
     featureBlockId?: string | null;
     releaseId?: string | null;
+    projectId?: string | null;
     dueDate?: string | null;
     metadata?: Record<string, unknown> | null;
     archived?: boolean;
@@ -3502,6 +3504,7 @@ export type ReleaseInput = {
   endDate?: string | null;
   docUrl?: string | null;
   orderKey?: number;
+  projectId?: string | null;
 };
 
 export function createRelease(input: ReleaseInput & { clientId: string; version: string }): Promise<ReleaseDTO> {
@@ -5848,4 +5851,62 @@ export async function draftWeeklyUpdateApi(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+// ── Projects (CLAUDE.md §150) ──────────────────────────────────────────────────
+
+type ProjectsResponse = {
+  projects: import("@/types/projects").ProjectDTO[];
+  documents: import("@/types/projects").LinkableDocument[] | null;
+  canSeeMoney: boolean;
+};
+
+export type ProjectBody = {
+  name?: string;
+  status?: import("@/lib/project-budget").ProjectStatus;
+  startDate?: string;
+  endDate?: string | null;
+  documentId?: string | null;
+  budgetAmount?: number | null;
+  budgetCurrency?: string | null;
+  featureBlockIds?: string[];
+};
+
+export async function getClientProjects(slug: string, opts: { documents?: boolean } = {}): Promise<ProjectsResponse> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/projects${opts.documents ? "?documents=1" : ""}`);
+}
+
+export async function getClientProject(slug: string, id: string): Promise<{ project: import("@/types/projects").ProjectDetailDTO }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/projects/${encodeURIComponent(id)}`);
+}
+
+export async function createClientProject(
+  slug: string,
+  body: ProjectBody & { name: string; startDate: string },
+): Promise<{ project: import("@/types/projects").ProjectDetailDTO }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateClientProject(
+  slug: string,
+  id: string,
+  body: ProjectBody,
+): Promise<{ project: import("@/types/projects").ProjectDetailDTO }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/projects/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function archiveClientProject(slug: string, id: string): Promise<{ ok: true }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function getMoneyProjects(): Promise<{ projects: import("@/types/projects").ProjectBudgetRow[] }> {
+  return apiFetch("/api/money/projects");
 }

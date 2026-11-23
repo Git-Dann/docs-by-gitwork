@@ -83,6 +83,8 @@ export type ReleaseDTO = {
   orderKey: number;
   /** The release document (http(s)), shown as "Release doc ↗" on the timeline. */
   docUrl: string | null;
+  /** The client's project this release belongs to (CLAUDE.md §150). */
+  projectId: string | null;
   taskCount: number;
   doneCount: number;
 };
@@ -145,6 +147,8 @@ export type TaskDTO = {
   /** The named list this card is in on the client's board (e.g. "QA review: 20 Oct 2026") —
    *  what replaced Sheets (CLAUDE.md §127). Optional so older DTO builders needn't send it. */
   boardList?: string | null;
+  /** The client's project this task belongs to directly (CLAUDE.md §150). Optional for older builders. */
+  projectId?: string | null;
   /** The card this dev task delivers, if linked. */
   productCard: TaskCardRef | null;
   /** On a card: progress of its linked dev tasks. Null on a dev task, or a card with none linked. */

@@ -9,6 +9,7 @@ import { MarkdownField } from "@/components/proposals/markdown-field";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
 import { useCreateTask, useUpdateTask, useFeatureBlocks, useReleases, useTasks } from "@/hooks/use-tasks";
+import { useClientProjects } from "@/hooks/use-projects";
 import { releaseLabel } from "@/lib/tasks/releases";
 import { matchPlannedTasks, suggestCategory } from "@/lib/tasks/plan-match";
 import { PlanMatchList } from "@/components/tasks/plan-matches";
@@ -110,6 +111,8 @@ export function TaskFormModal({
   );
   // The release it ships in: optional, "" = none.
   const [releaseId, setReleaseId] = useState(task?.release?.id ?? "");
+  // The client's project it belongs to directly (§150): optional, "" = none.
+  const [projectId, setProjectId] = useState(task?.projectId ?? "");
   // Product card fields (CLAUDE.md §124). A type makes the task a card the client plans; a
   // dev task names the card it delivers instead. "" = not set.
   const [itemType, setItemType] = useState(task?.itemType ?? "");
@@ -134,6 +137,10 @@ export function TaskFormModal({
   const blocks = useMemo(() => blocksQuery.data ?? [], [blocksQuery.data]);
   const releasesQuery = useReleases(clientId || null);
   const releases = releasesQuery.data ?? [];
+  // Projects are read by client slug; only this client's live ones are offered.
+  const clientSlug = task?.client.slug ?? clients.find((c) => c.id === clientId)?.slug ?? null;
+  const projectsQuery = useClientProjects(clientSlug);
+  const projects = projectsQuery.data?.projects ?? [];
 
   // ── Plan-first: is this already a task? Which category does it belong in? ──────────
   // The client's board (the same cached query the board uses). Only fetched on create.
@@ -247,6 +254,7 @@ export function TaskFormModal({
             assigneeIds,
             featureBlockId: blockId,
             releaseId: releaseId || null,
+            projectId: projectId || null,
             dueDate: dueDate || null,
             ...cardFields,
           },
@@ -264,6 +272,7 @@ export function TaskFormModal({
           assigneeIds,
           featureBlockId: blockId,
           releaseId: releaseId || null,
+          projectId: projectId || null,
           dueDate: dueDate || null,
           ...cardFields,
         });
@@ -446,6 +455,22 @@ export function TaskFormModal({
                 </select>
               </div>
             </div>
+
+            {projects.length > 0 ? (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">
+                  Project <span className="text-[var(--text-4)]">(optional)</span>
+                </label>
+                <select className="app-select w-full" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                  <option value="">No project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
 
             {releases.length > 0 ? (
               <div>

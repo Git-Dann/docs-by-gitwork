@@ -2017,3 +2017,77 @@ reader `src/server/needs-you.ts`, state `src/server/needs-you-state.ts`, actions
   inbox view), `src/server/__tests__/needs-you-state.test.ts` (one person's rows only, the route
   refuses a user in the body and "view as"), `src/server/__tests__/needs-you-scope.test.ts`
   (a developer's requests are their clients' only, no Create task, no Foreman, own commitments).
+
+## 150. Recent Changes (November 2026) — Projects, and budget vs actual
+
+A client used to be the only thing tying work together, so a piece of work (proposal → plan →
+board → releases → handover) had no record of its own, and nobody could say whether it was on
+budget. Dan approved a new table for it.
+
+- **Model `Project`** (additive): client, name, status (`PLANNED · ACTIVE · ON_HOLD · DONE`,
+  a string validated in code by `PROJECT_STATUSES`), start date, optional end date, optional
+  `documentId` (the accepted proposal or SOW), an optional typed budget (`budgetAmount` +
+  `budgetCurrency`), `archivedAt`. Relations to `Workspace` and `WorkspaceClient` (cascade).
+  Archived, never deleted.
+- **`projectId` on `Task`, `ClientRelease` and `FeatureBlock`**: nullable, indexed, **loose ids,
+  no FK**. A project is never hard-deleted, so there is nothing for a FK to clean up; three hot
+  tables each get one nullable column and an index; and the rule that matters (same client,
+  project still live) can't be a FK anyway. It is checked in code on every write
+  (`assertProjectInClient`, `src/server/projects.ts`): the task routes, the release routes and
+  the project's own category list. A link to an archived project just stops counting.
+- **Budget is derived, never stored, when a document is linked**: the document's cost lines
+  through Money's own `docTerms` (role lines are rate × months, the rest one-off, after
+  discount, without VAT). The document must be on the same client, not archived, and accepted
+  or signed. A typed budget is used only with no document, and saving a document clears it.
+  When the linked document stops giving a budget (archived, no costs) the page says why rather
+  than showing £0.
+- **Budget vs actual, derived every time** (`src/lib/project-budget.ts`, pure, tested):
+  - **Spent so far** = the developers placed on the client over the project's dates up to today,
+    at rate-card rates (the rate card is cost, as on Money and Portal: `normalizeToMonthly`,
+    pro-bono left out, an archived or missing rate = unpriced). Each monthly rate is spread over
+    that calendar month's weekdays, and the project is charged for the weekdays each developer
+    was placed inside its dates. One developer is never charged twice for a day.
+  - Unpriced developers are **counted and named**, never treated as free; when only unpriced
+    developers were placed, spend is "Unknown", not £0. Another currency is converted (ECB via
+    `loadFxRates`, base = the budget's currency); with no rate it is left out and listed.
+  - **Work done** = done share of the project's top-level live tasks. A task belongs directly
+    (`projectId`), else through its release, else through its category. No tasks = "—", never 0%.
+  - Estimate: the sum of the tasks' `estimateHours`, done and remaining, plus how many have none.
+  - **Verdict**: "No budget set" · "Not started yet" · "Over budget" · "Burning faster than
+    work is getting done" (burned more than 15 points ahead of work done, `BURN_SLACK`) ·
+    "Spending ahead of the dates" (no tasks: compared with time gone) · "On budget".
+  - ⚠️ **Known limits, stated on the page:** today's rate is used for the whole period (the rate
+    card keeps no history); allocation % is ignored, as Money and Portal ignore it; and
+    placements are per client, so two projects of one client running at once are both charged
+    for the same developers. The popup names the other project.
+- **Money figures are a server decision.** `buildProjects` only reads cost lines, placements
+  and rates when the route passes `financials: canViewClientFinancials(user)`; everyone else
+  gets `money: null` and a document read that selects its title only. A test fails if the
+  non-financial path ever touches a placement or a cost line.
+- **Routes:** `GET/POST /api/clients/[slug]/projects` (`?documents=1` adds the accepted
+  documents a project can link to), `GET/PATCH/DELETE /api/clients/[slug]/projects/[id]` (DELETE
+  archives). Reads need `assertClientReader`, writes 'Manage clients' plus `assertClientWriter`.
+  Another client's, or an archived, project is a 404. `GET /api/money/projects` has Money's gate.
+- **UI:**
+  - **Projects card** on the Portal client page (`client-projects-card.tsx`), after Timeline,
+    full width at its natural height so it can't leave a gap (§129.1), numbered in sequence by
+    `portalSectionNumbers` (`"projects"`). Each row: status, dates, work done, time gone and, for
+    money viewers, budget burned with "£x of £y" and the verdict.
+  - **New / Edit project** and the **project popup** (`project-dialogs.tsx`) are the house
+    fixed-height two-column popup. The popup shows work done, time gone, estimate, budget,
+    spent, burned, a burn chart (`burn-chart.tsx`, plain SVG on tokens: spent, an even pace to
+    the end date, the budget line; a screen-reader table of the same figures) and what's linked
+    (document, releases, categories, up to 60 tasks). Archive asks first.
+  - **Task form** and **Releases dialog** gain a Project select (this client's live projects only;
+    hidden when it has none). Categories are put in a project from the project's own editor.
+  - **Money** gains `04 // PROJECTS` (`projects-budget-table.tsx`); Deals moved to 05.
+- **MCP:** `list_projects` (money only for financial viewers) and `create_project` ('Manage
+  clients'). Catalogue, smoke script (60 tools) and the parity test updated.
+- **Demo:** `/demo/portal` shows "Platform build" with a budget from a document, two priced
+  developers and one unpriced, and "Support and hosting" not started yet;
+  `/demo/money` shows the same in the Projects table (`src/lib/demo/demo-projects.ts`, through
+  the real rules; writes land in memory).
+- Tests: `src/lib/__tests__/project-budget.test.ts` (30), `src/server/__tests__/projects.test.ts`
+  (8), the MCP parity block. Proved to discriminate by reading placements without the financials
+  gate (1 failure) and widening `BURN_SLACK` to 100% (1 failure).
+- **Verified:** tsc 0 errors, lint 0 errors, 10,828 tests passing, `audit:ui` 0 findings, `npx next build` clean (140 static pages). `/demo/portal` (card, project popup, edit popup under a temporary local grant) and `/demo/money` driven at 390 and 1440 (and 768 for the card and popup) in light and dark: 0 clipping findings from this work, 0 page overflow, 0 console errors. **Not verified against a real database**; post-deploy, add a project to a client with an accepted SOW and check the budget matches Money's figure for that document.

@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
 import { assertClientInScope } from "@/server/tasks";
+import { assertProjectInClient } from "@/server/projects";
 import { safeReleaseDocUrl, sortReleases } from "@/lib/tasks/releases";
 import type { ReleaseDTO } from "@/types/tasks";
 
@@ -26,6 +27,7 @@ function releaseRowToDTO(row: ReleaseRow): ReleaseDTO {
     endDate: row.endDate ? row.endDate.toISOString() : null,
     orderKey: row.orderKey,
     docUrl: safeReleaseDocUrl(row.docUrl),
+    projectId: row.projectId,
     taskCount: row.tasks.length,
     doneCount: row.tasks.filter((t) => t.status === "DONE").length,
   };
@@ -42,9 +44,10 @@ export async function listReleases(user: EffectiveUser, clientId: string): Promi
 
 export async function createRelease(
   user: EffectiveUser,
-  input: { clientId: string; version: string; name?: string | null; startDate?: string | null; endDate?: string | null; docUrl?: string | null },
+  input: { clientId: string; version: string; name?: string | null; startDate?: string | null; endDate?: string | null; docUrl?: string | null; projectId?: string | null },
 ): Promise<ReleaseDTO> {
   await assertClientInScope(user, input.clientId);
+  if (input.projectId) await assertProjectInClient(user.workspaceId, input.clientId, input.projectId);
   const top = await prisma.clientRelease.findFirst({
     where: { workspaceId: user.workspaceId, clientId: input.clientId },
     orderBy: { orderKey: "desc" },
@@ -59,6 +62,7 @@ export async function createRelease(
       startDate: input.startDate ? new Date(input.startDate) : null,
       endDate: input.endDate ? new Date(input.endDate) : null,
       docUrl: safeReleaseDocUrl(input.docUrl),
+      projectId: input.projectId || null,
       orderKey: (top?.orderKey ?? 0) + 1,
     },
     include: releaseInclude,
@@ -79,9 +83,9 @@ async function findOwnRelease(user: EffectiveUser, id: string) {
 export async function updateRelease(
   user: EffectiveUser,
   id: string,
-  input: { version?: string; name?: string | null; startDate?: string | null; endDate?: string | null; docUrl?: string | null; orderKey?: number },
+  input: { version?: string; name?: string | null; startDate?: string | null; endDate?: string | null; docUrl?: string | null; orderKey?: number; projectId?: string | null },
 ): Promise<ReleaseDTO> {
-  await findOwnRelease(user, id);
+  const own = await findOwnRelease(user, id);
   const data: Prisma.ClientReleaseUpdateInput = {};
   if (input.version !== undefined) data.version = input.version.trim();
   if (input.name !== undefined) data.name = input.name?.trim() || null;
@@ -89,6 +93,10 @@ export async function updateRelease(
   if (input.endDate !== undefined) data.endDate = input.endDate ? new Date(input.endDate) : null;
   if (input.docUrl !== undefined) data.docUrl = safeReleaseDocUrl(input.docUrl);
   if (input.orderKey !== undefined) data.orderKey = input.orderKey;
+  if (input.projectId !== undefined) {
+    if (input.projectId) await assertProjectInClient(user.workspaceId, own.clientId, input.projectId);
+    data.projectId = input.projectId || null;
+  }
   const row = await prisma.clientRelease.update({ where: { id }, data, include: releaseInclude });
   return releaseRowToDTO(row);
 }

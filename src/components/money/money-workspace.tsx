@@ -20,6 +20,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { TileHeader } from "@/components/dashboard/tile-header";
 import { formatMoney, monthLabel, type MoneySummary } from "@/lib/money";
 import { RecordDealDialog } from "@/components/money/record-deal-dialog";
+import { ProjectsBudgetTable } from "@/components/money/projects-budget-table";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 const SERIF = { fontFamily: "var(--font-display)" } as const;
@@ -59,7 +60,8 @@ export function MoneyView({ m }: { m: MoneySummary }) {
       <Headline m={m} index={1} />
       <RevenueChart m={m} index={2} />
       <ClientsTable m={m} index={3} />
-      <Deals m={m} index={4} />
+      <ProjectsBudgetTable index={4} />
+      <Deals m={m} index={5} />
       <HowWorkedOut m={m} />
     </div>
   );

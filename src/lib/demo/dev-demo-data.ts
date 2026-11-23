@@ -111,6 +111,8 @@ import {
 
 import { demoAchievements, demoDealDraft, demoMoney } from "@/lib/demo/demo-money";
 import { demoNeedsYouApi } from "@/lib/demo/demo-needs-you";
+
+import { demoProjectsApi } from "@/lib/demo/demo-projects";
 import { demoDeliveryTimeline, demoSearch, demoWeeklyUpdate } from "@/lib/demo/demo-delivery";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
@@ -2655,9 +2657,9 @@ function releaseCounts(id: string) {
   return { taskCount: ts.length, doneCount: ts.filter((t) => t.status === "DONE").length };
 }
 let demoReleases: ReleaseDTO[] = [
-  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, docUrl: "https://docs.example.com/northwind/v1.4.0", ...releaseCounts(REL.v140.id) },
-  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, docUrl: null, ...releaseCounts(REL.v150.id) },
-  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, docUrl: null, ...releaseCounts(REL.v200.id) },
+  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, docUrl: "https://docs.example.com/northwind/v1.4.0", projectId: "proj-platform", ...releaseCounts(REL.v140.id) },
+  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, docUrl: null, projectId: "proj-platform", ...releaseCounts(REL.v150.id) },
+  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, docUrl: null, projectId: null, ...releaseCounts(REL.v200.id) },
 ];
 
 function demoReleasesApi(pathname: string, init?: { method?: string; body?: unknown }): unknown {
@@ -2682,6 +2684,7 @@ function demoReleasesApi(pathname: string, init?: { method?: string; body?: unkn
       endDate: body.endDate ?? null,
       orderKey: demoReleases.length + 1,
       docUrl: body.docUrl ?? null,
+      projectId: body.projectId ?? null,
       taskCount: 0,
       doneCount: 0,
     };
@@ -5229,6 +5232,11 @@ export function resolveDemoApi(
   if (pathname === "/api/monitors/platform") return demoPlatformHealth();
   // The Money page, through the real rules (src/lib/demo/demo-money.ts).
   if (pathname === "/api/money") return demoMoney();
+  // Projects on the Portal client page and Money's per-project table (§150), through the real rules.
+  if (pathname === "/api/money/projects" || /^\/api\/clients\/[^/]+\/projects(\/[^/]+)?$/.test(pathname)) {
+    const result = demoProjectsApi(pathname, search ?? null, init as { method?: string; body?: unknown } | undefined);
+    if (result !== undefined) return result;
+  }
   if (pathname === "/api/search") return demoSearch(search?.get("q") ?? null);
   // The Portal client's Timeline card and its weekly update draft, through the real rules.
   {

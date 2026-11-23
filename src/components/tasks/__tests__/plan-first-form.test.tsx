@@ -51,6 +51,7 @@ const BOARD: TaskDTO[] = [
   mkTask({ id: "trial", title: "Backend: Add trial state model", featureBlock: { id: "build", name: "Build" } }),
 ];
 
+vi.mock("@/hooks/use-projects", () => ({ useClientProjects: () => ({ data: { projects: [], documents: null, canSeeMoney: false } }) }));
 vi.mock("@/hooks/use-backstage", () => ({ useBackstageTeam: () => ({ data: [] }) }));
 vi.mock("@/hooks/use-proposals", () => ({
   useClientList: () => ({ data: { clients: [{ id: "c1", name: "Fellas Loaded" }] } }),

@@ -472,6 +472,7 @@ model Workspace {
   dailyUpdates                DailyUpdate[]
   featureBlocks               FeatureBlock[]
   clientReleases              ClientRelease[]
+  projects                    Project[]
   milestones                  Milestone[]
   contentSnippets             ContentSnippet[]
   starters                    Starter[]
@@ -1241,6 +1242,7 @@ model WorkspaceClient {
   tasks                    Task[]
   featureBlocks            FeatureBlock[]
   clientReleases           ClientRelease[]
+  projects                 Project[]
   milestones               Milestone[]
   absenceCovers            Absence[]                @relation("AbsenceCoverClient")
   wikiLinkedInto           ClientWikiLink[]         @relation("WikiLinkedClient")
@@ -4870,6 +4872,8 @@ model Task {
   /// A named list of cards on the client's board, e.g. "QA review: 20 Oct 2026" — the
   /// generic-lists replacement for the retired Sheets (CLAUDE.md §127). Null = no list.
   boardList          String?
+  /// The Project this task belongs to (loose id, same client, checked in code). §150.
+  projectId          String?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
   /// Soft-archive: hidden from board/list/Gantt + dashboard scans, but never deleted (the
@@ -4902,6 +4906,7 @@ model Task {
   @@index([productCardId])
   @@index([clientId, externalRef])
   @@index([clientId, boardList])
+  @@index([projectId])
   // Cross-client dashboard reads: the existing [workspaceId, clientId, status]
   // can't serve a workspace-wide status/due query (clientId sits between the two
   // predicates). These match getTaskAttention's overdue/due-soon/doing scans and
@@ -5081,6 +5086,8 @@ model FeatureBlock {
   color       String?
   /// Source ClickUp list id (one-time migration). Indexed, NOT unique.
   clickupId   String?
+  /// The Project this category belongs to (loose id, same client, checked in code). §150.
+  projectId   String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -5090,6 +5097,7 @@ model FeatureBlock {
   @@index([workspaceId, clientId])
   @@index([clientId, startDate])
   @@index([clickupId])
+  @@index([projectId])
 }
 
 /// A release a client's tasks ship in ("v2.0.0 · Q4 Refinement Session"). Tasks are grouped by
@@ -5112,6 +5120,8 @@ model ClientRelease {
   externalRef String?
   /// The release document (http(s) only), e.g. Big Wedge's release doc. Client-safe.
   docUrl      String?
+  /// The Project this release belongs to (loose id, same client, checked in code). §150.
+  projectId   String?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -5121,6 +5131,37 @@ model ClientRelease {
   @@index([clientId])
   @@index([workspaceId, clientId])
   @@index([clientId, externalRef])
+  @@index([projectId])
+}
+
+/// A piece of work for a client: the proposal it came from, its dates and its budget (§150).
+/// The budget is DERIVED from the linked accepted document's cost lines (src/lib/money.ts rules)
+/// and only stored by hand when no document is linked. Spend is never stored: it is worked out
+/// from placements and rate-card rates each time (src/lib/project-budget.ts). Archived, never
+/// deleted, so tasks, releases and categories point at it with loose ids (`projectId`).
+model Project {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  clientId       String
+  name           String
+  /// PLANNED | ACTIVE | ON_HOLD | DONE, validated in code (PROJECT_STATUSES).
+  status         String          @default("PLANNED")
+  startDate      DateTime
+  endDate        DateTime?
+  /// The accepted proposal / SOW it came from (loose Document id, same client).
+  documentId     String?
+  /// A budget typed by hand. Only used when no document is linked.
+  budgetAmount   Decimal?        @db.Decimal(14, 2)
+  budgetCurrency String?
+  createdById    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  archivedAt     DateTime?
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client         WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, clientId])
+  @@index([clientId, archivedAt])
 }
 
 /// A dated event on a client's Board Schedule that isn't a card: a content drop, a launch, an

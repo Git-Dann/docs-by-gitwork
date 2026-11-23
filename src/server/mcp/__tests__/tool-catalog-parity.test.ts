@@ -187,3 +187,20 @@ describe("monitor tools are registered and gated", () => {
     expect(b).toContain("resolveClient(user, p.client)");
   });
 });
+
+describe("project tools are registered and the writer gated", () => {
+  it.each(["list_projects", "create_project"])("%s", (name) => {
+    expect(handler).toContain(name);
+  });
+
+  it("create_project needs 'Manage clients', and list_projects only shows money to financial viewers", () => {
+    const src = readFileSync(join(ROOT, "src/server/mcp/handler.ts"), "utf8");
+    const block = (name: string) => {
+      const start = src.indexOf(`name: "${name}",`);
+      const end = src.indexOf('    name: "', start + 20);
+      return src.slice(start, end === -1 ? undefined : end);
+    };
+    expect(block("create_project")).toContain("assertCan(user, canManageClients");
+    expect(block("list_projects")).toContain("financials: canViewClientFinancials(user)");
+  });
+});

@@ -64,7 +64,7 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 58 tools", tools.length === 58, `got ${tools.length}`);
+    check("returns 60 tools", tools.length === 60, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
@@ -106,6 +106,8 @@ console.log("tools/list");
       "create_task",
       "list_releases",
       "create_release",
+      "list_projects",
+      "create_project",
       "sheets_to_board_plan",
       "sheets_to_board_apply",
       "forge_import_plan",

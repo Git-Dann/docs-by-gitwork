@@ -1,6 +1,7 @@
 import { KEY_DATE_LIMITS, isRealDay } from "@/lib/wiki-board-key-dates";
 import { z } from "zod";
 import { RELEASE_LIMITS, safeReleaseDocUrl } from "@/lib/tasks/releases";
+import { PROJECT_LIMITS, PROJECT_STATUSES } from "@/lib/project-budget";
 import {
   HANDOVER_ITEM_KINDS,
   HANDOVER_ITEM_STATUSES,
@@ -1129,6 +1130,8 @@ export const taskInputSchema = z.object({
   assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
   releaseId: z.string().cuid().nullable().optional(),
+  /** The client's project this task belongs to (§150); null takes it out. */
+  projectId: z.string().cuid().nullable().optional(),
   parentId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -1145,6 +1148,7 @@ export const taskUpdateSchema = z.object({
   assigneeIds: z.array(z.string().cuid()).optional(),
   featureBlockId: z.string().cuid().nullable().optional(),
   releaseId: z.string().cuid().nullable().optional(),
+  projectId: z.string().cuid().nullable().optional(),
   dueDate: isoDateString.nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   // Soft-archive toggle: true archives (stamps archivedAt), false unarchives (clears it).
@@ -1366,6 +1370,7 @@ export const releaseInputSchema = z
     startDate: isoDateString.nullable().optional(),
     endDate: isoDateString.nullable().optional(),
     docUrl: releaseDocUrl,
+    projectId: z.string().cuid().nullable().optional(),
   })
   .refine((v) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate), {
     message: "The end date must be on or after the start date",
@@ -1380,11 +1385,53 @@ export const releaseUpdateSchema = z
     endDate: isoDateString.nullable().optional(),
     docUrl: releaseDocUrl,
     orderKey: z.number().finite().optional(),
+    projectId: z.string().cuid().nullable().optional(),
   })
   .refine((v) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate), {
     message: "The end date must be on or after the start date",
     path: ["endDate"],
   });
+
+// ── Projects (src/lib/project-budget.ts, CLAUDE.md §150) ─────────────────
+const projectFields = {
+  name: z.string().trim().min(1, "Give the project a name").max(PROJECT_LIMITS.name),
+  status: z.enum(PROJECT_STATUSES),
+  startDate: isoDateString,
+  endDate: isoDateString.nullable(),
+  /** The accepted proposal or SOW it came from; it sets the budget. */
+  documentId: z.string().cuid().nullable(),
+  /** Typed by hand. Only when no document is linked. */
+  budgetAmount: z.number().finite().positive().max(PROJECT_LIMITS.budget).nullable(),
+  budgetCurrency: z.string().regex(/^[A-Z]{3}$/, "Use a three-letter currency code, e.g. GBP").nullable(),
+  featureBlockIds: z.array(z.string().cuid()).max(200),
+};
+
+type ProjectShape = { startDate?: string; endDate?: string | null; documentId?: string | null; budgetAmount?: number | null };
+const datesInOrder = (v: ProjectShape) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate);
+const oneBudget = (v: ProjectShape) => !(v.documentId && v.budgetAmount != null);
+const DATES_MESSAGE = { message: "The end date must be on or after the start date", path: ["endDate"] };
+const BUDGET_MESSAGE = { message: "A linked document sets the budget. Remove the typed budget or the document.", path: ["budgetAmount"] };
+
+export const projectCreateSchema = z
+  .object({
+    ...projectFields,
+    status: projectFields.status.optional(),
+    endDate: projectFields.endDate.optional(),
+    documentId: projectFields.documentId.optional(),
+    budgetAmount: projectFields.budgetAmount.optional(),
+    budgetCurrency: projectFields.budgetCurrency.optional(),
+    featureBlockIds: projectFields.featureBlockIds.optional(),
+  })
+  .strict()
+  .refine(datesInOrder, DATES_MESSAGE)
+  .refine(oneBudget, BUDGET_MESSAGE);
+
+export const projectUpdateSchema = z
+  .object(projectFields)
+  .partial()
+  .strict()
+  .refine(datesInOrder, DATES_MESSAGE)
+  .refine(oneBudget, BUDGET_MESSAGE);
 
 export const timelineShareSchema = z.object({
   enabled: z.boolean(),

@@ -477,6 +477,7 @@ Core domains:
 | Docs sharing/tracking | `DocumentView` (+ `visitorId`/`sessionId`/geo/device/`durationMs`), `DocumentViewEvent` (per-section dwell), `DocumentComment`, `DocumentVersion`, `EditorPresence`, `DocumentAiSession`, `SignatureRequest`/`SignatureSigner`/`SignatureEvent`. `Document` carries `shareToken`/`isShared`/`sharedAt`/`firstViewedAt`/`acceptedAt`/`declinedAt`; `DocumentStatus` adds `ACCEPTED`/`DECLINED` |
 | Proof | `ProofDocument` |
 | Clients | `WorkspaceClient`, `ActivityLog` |
+| Projects | `Project` (a piece of work for a client: dates, the accepted document it came from, budget derived from it; §150). `Task` / `ClientRelease` / `FeatureBlock` carry a loose `projectId` |
 | CodeClear | `Candidate`, `Placement`, `Note`, `GitHubAnalysisRun`, `CodeClearScore`, `CodeClearScoreDraft` |
 | Pulse | `PulseScan`, `PulseScanCheck`, `PulseMonitor` |
 | Study | `Study`, `StudyResearchPlan`, `StudyPlanQuestion`, `StudySession`, `StudyReport` |
@@ -901,3 +902,4 @@ be resolved by reading. Do not renumber either one.
 - **§148** — Phase 0: restore test, staging, browser smoke tests
 - **§149** — Care has one UI
 - **§151** — Needs you becomes an inbox
+- **§150** — Projects, and budget vs actual

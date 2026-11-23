@@ -9,11 +9,11 @@ import { computeClientFinancials } from "@/server/client-metrics";
 import { loadFxRates } from "@/server/fx";
 import { docTerms, summariseMoney, type MoneySummary, type DocLine } from "@/lib/money";
 
-const LINE_SELECT = { itemName: true, quantity: true, unitCost: true, subtotal: true, costKind: true } as const satisfies Prisma.CostLineItemSelect;
+export const LINE_SELECT = { itemName: true, quantity: true, unitCost: true, subtotal: true, costKind: true } as const satisfies Prisma.CostLineItemSelect;
 
-type RawLine = { itemName: string; quantity: unknown; unitCost: unknown; subtotal: unknown; costKind: "ONE_OFF" | "RECURRING" };
+export type RawLine = { itemName: string; quantity: unknown; unitCost: unknown; subtotal: unknown; costKind: "ONE_OFF" | "RECURRING" };
 
-function lines(raw: RawLine[]): DocLine[] {
+export function lines(raw: RawLine[]): DocLine[] {
   return raw.map((l) => ({
     itemName: l.itemName,
     quantity: Number(l.quantity),
@@ -23,7 +23,7 @@ function lines(raw: RawLine[]): DocLine[] {
   }));
 }
 
-function costingOf(sections: Array<{ data: unknown }>): { currency?: unknown; discount?: unknown } | null {
+export function costingOf(sections: Array<{ data: unknown }>): { currency?: unknown; discount?: unknown } | null {
   const data = sections[0]?.data;
   return data && typeof data === "object" ? (data as { currency?: unknown; discount?: unknown }) : null;
 }

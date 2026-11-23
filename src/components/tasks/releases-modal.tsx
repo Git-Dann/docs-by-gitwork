@@ -7,10 +7,11 @@ import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/format";
 import { RELEASE_LIMITS, releaseLabel, safeReleaseDocUrl } from "@/lib/tasks/releases";
 import { useCreateRelease, useDeleteRelease, useReleases, useUpdateRelease } from "@/hooks/use-tasks";
+import { useClientProjects } from "@/hooks/use-projects";
 import type { ReleaseDTO } from "@/types/tasks";
 
-type Draft = { version: string; name: string; startDate: string; endDate: string; docUrl: string };
-const EMPTY: Draft = { version: "", name: "", startDate: "", endDate: "", docUrl: "" };
+type Draft = { version: string; name: string; startDate: string; endDate: string; docUrl: string; projectId: string };
+const EMPTY: Draft = { version: "", name: "", startDate: "", endDate: "", docUrl: "", projectId: "" };
 
 function toDraft(r: ReleaseDTO): Draft {
   return {
@@ -19,6 +20,7 @@ function toDraft(r: ReleaseDTO): Draft {
     startDate: r.startDate?.slice(0, 10) ?? "",
     endDate: r.endDate?.slice(0, 10) ?? "",
     docUrl: r.docUrl ?? "",
+    projectId: r.projectId ?? "",
   };
 }
 
@@ -26,8 +28,12 @@ function toDraft(r: ReleaseDTO): Draft {
  * A client's releases ("v2.0.0 · Q4 Refinement Session"): add, edit, delete. Each change saves
  * when it's made. Deleting a release keeps its tasks; they just leave the release.
  */
-export function ReleasesModal({ clientId, onClose }: { clientId: string; onClose: () => void }) {
+export function ReleasesModal({ clientId, clientSlug, onClose }: { clientId: string; clientSlug?: string | null; onClose: () => void }) {
   const releases = useReleases(clientId);
+  // The client's live projects (§150), so a release can be put in one. Hidden when there are none.
+  const projectsQuery = useClientProjects(clientSlug ?? null);
+  const projects = projectsQuery.data?.projects ?? [];
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
   const create = useCreateRelease();
   const update = useUpdateRelease();
   const del = useDeleteRelease();
@@ -62,6 +68,7 @@ export function ReleasesModal({ clientId, onClose }: { clientId: string; onClose
       startDate: draft.startDate || null,
       endDate: draft.endDate || null,
       docUrl: draft.docUrl.trim() || null,
+      ...(projects.length ? { projectId: draft.projectId || null } : {}),
     };
     try {
       if (editingId) await update.mutateAsync({ id: editingId, input });
@@ -109,6 +116,7 @@ export function ReleasesModal({ clientId, onClose }: { clientId: string; onClose
                   {r.startDate && r.endDate
                     ? ` · ${formatDate(r.startDate)} – ${formatDate(r.endDate)}`
                     : " · dates estimated from tasks"}
+                  {r.projectId && projectName.has(r.projectId) ? ` · ${projectName.get(r.projectId)}` : ""}
                 </p>
                 {r.docUrl ? (
                   <a
@@ -213,6 +221,21 @@ export function ReleasesModal({ clientId, onClose }: { clientId: string; onClose
           maxLength={RELEASE_LIMITS.docUrl}
           onChange={(e) => setDraft({ ...draft, docUrl: e.target.value })}
         />
+        {projects.length ? (
+          <select
+            aria-label="Project"
+            className="app-select w-full text-[16px] sm:text-[13px]"
+            value={draft.projectId}
+            onChange={(e) => setDraft({ ...draft, projectId: e.target.value })}
+          >
+            <option value="">No project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         {datesBackwards ? (
           <p className="text-[12px] text-[var(--danger-500)]">The end date is before the start date.</p>
         ) : null}
