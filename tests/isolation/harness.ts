@@ -162,6 +162,8 @@ const ID_BY_PARENT: Record<string, (v: SideIds) => string> = {
   "clients/*/wiki/course-requests": (v) => v.courseRequest,
   "clients/*/meetings": (v) => v.meeting,
   "clients/*/crm/actions": (v) => v.leadAction,
+  "clients/*/projects": (v) => v.project,
+  "clients/*/wiki/updates": (v) => v.weeklyUpdate,
   "platform/workspaces": (v) => v.workspace,
   templates: (v) => v.template,
 };
