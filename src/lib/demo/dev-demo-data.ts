@@ -5801,6 +5801,7 @@ function demoPlatformHealth(): import("@/lib/platform-health").PlatformHealth {
     database: { bytes: 2.4e9, weekAgoBytes: 2.3e9, growthShare: 0.043 },
     memory: { usedBytes: 705e6, limitBytes: 6 * 2 ** 30, peakBytes: 1.1e9, hostBytes: 24e9 },
     backups: { state: "off", reason: null, lastOk: null },
+    restore: { state: "off" },
     alerts: { slack: false },
   };
 }

@@ -112,6 +112,11 @@ prints the same without shell access.
 - **`member-purge`** (03:30) deletes memberships archived more than 30 days ago, never Users
   (§57.3). Fail-safe if it doesn't run.
 - **`crm-sync`** (hourly, working hours) covers leads nobody opens (§59.8).
+- **`db-backup`** (daily 03:45) and **`db-restore-test`** (monthly, the 2nd at 05:15) are off
+  until the `BACKUP_S3_*` and `BACKUP_ENCRYPTION_KEY` secrets are set (§144, §148). The restore
+  test answers `{ started: true }` at once and works after the answer, because a restore can take
+  longer than `run-cron.sh` waits: its result is the Platform popup on Monitors and, on a
+  failure, an ops alert. It only ever creates, restores into and drops `foundry_restore_test`.
 - The weekly **`db-backup.sh`** line (Sunday 01:30, its own log under
   `/opt/apps/foundry/backups/`) lives outside the managed block and is left alone by the install.
   The deploy warns if no such line exists.

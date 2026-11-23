@@ -155,9 +155,20 @@ export interface SignInput {
   secretAccessKey: string;
   /** `YYYYMMDDTHHMMSSZ` — must equal headers["x-amz-date"]. */
   amzDate: string;
+  /** Canonical query string (sorted, encoded: see `canonicalQueryOf`). Empty when there is none. */
+  canonicalQuery?: string;
 }
 
-/** The `Authorization` header value for one request (no query string). */
+/** A query string in SigV4's canonical form: each name and value encoded, sorted by name. */
+export function canonicalQueryOf(params: Record<string, string>): string {
+  return Object.entries(params)
+    .map(([k, v]) => [awsUriEncode(k, false), awsUriEncode(v, false)] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("&");
+}
+
+/** The `Authorization` header value for one request. */
 export function signS3Request(input: SignInput): { authorization: string; signature: string } {
   const lowered = Object.entries(input.headers).map(([k, v]) => [k.toLowerCase(), v.trim().replace(/\s+/g, " ")] as const);
   lowered.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -166,7 +177,7 @@ export function signS3Request(input: SignInput): { authorization: string; signat
   const canonicalRequest = [
     input.method,
     input.canonicalPath,
-    "",
+    input.canonicalQuery ?? "",
     canonicalHeaders,
     signedHeaders,
     input.payloadHash,
