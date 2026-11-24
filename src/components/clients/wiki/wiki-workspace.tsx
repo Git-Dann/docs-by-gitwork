@@ -2056,7 +2056,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             Light/Dark/System control as the rest of Foundry. */}
         <div className="flex shrink-0 items-center gap-2">
           <DashboardEditButton />
-          <ThemeToggle iconOnly />
+          <ThemeToggle />
         </div>
         </div>
       </div>

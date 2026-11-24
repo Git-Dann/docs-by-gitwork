@@ -86,6 +86,49 @@ SOFTWARE.
 
 ---
 
+## Dark Mode Switcher (Lucy Bichakhchyan, CodePen)
+
+- **Source:** https://codepen.io/editor/lucybichakhchyan/pen/01a1c70c-63e9-78e8-b555-ec4bb64c3d83
+  ("Dark Mode Switcher", `index.html`, `style.css`, `script.js`)
+- **Licence:** MIT. CodePen licenses every public Pen under MIT and the pen states nothing else.
+
+| Part | Foundry file |
+|---|---|
+| Switch markup and behaviour (`index.html`, `script.js`) | `src/components/ui/mode-switch/mode-switch.tsx` |
+| Styles (`style.css`) | the `.mode-switch*` block at the end of `src/app/globals.css` |
+| Sounds (`script.js`'s Web Audio library) | `src/lib/mode-switch-sounds.ts` |
+
+Changes: Foundry's modes (Light · System · Dark) instead of Light · Sunset · Dark, so the sunset
+artwork and its sounds are left out and the middle stop is System (the knob shows the sun or moon
+the device is using); colours read Foundry's brand tokens instead of the pen's plum palette;
+styles are scoped to the component (the pen styled `:root`); React state instead of DOM queries;
+a unique id per instance for the SVG gradients; the iPhone silent-loop audio workaround is left
+out (only `navigator.audioSession` is used); the sound toggle is a small speaker button.
+
+```
+MIT License
+
+Copyright (c) 2026 Lucy Bichakhchyan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Lottie player and animation files
 
 - **lottie-web** `5.13.0` (Airbnb, MIT). This is an npm dependency, not vendored. Only its light
