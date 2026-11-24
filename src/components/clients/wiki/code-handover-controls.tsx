@@ -197,34 +197,37 @@ const asVersion = (id: string, s: CodeSnapshot, label: string, createdAt: string
 /** The module's history, newest first. */
 export function CodeHistoryDialog({
   slug,
-  module,
+  modules,
   canRestore,
   onClose,
 }: {
   slug: string;
-  module: WikiCodeModuleRecord;
-  /** Gitwork and clients may put an edit back, unless the module is locked. */
+  /** Every module on the wiki: one history covers them all, with a filter. */
+  modules: WikiCodeModuleRecord[];
+  /** Gitwork and clients may put an edit back, unless its module is locked. */
   canRestore: boolean;
   onClose: () => void;
 }) {
-  const events = useCodeEvents(slug, module.id, true);
+  const events = useCodeEvents(slug, true);
   const restore = useRestoreCodeVersion(slug);
   const toast = useToast();
   const [diff, setDiff] = useState<WikiCodeEventRecord | null>(null);
-  const versionIds = useMemo(() => new Set(module.versions.map((v) => v.id)), [module.versions]);
-  const locked = Boolean(module.lockedAt);
+  const [moduleFilter, setModuleFilter] = useState<string>("all");
+  const versionIds = useMemo(() => new Set(modules.flatMap((m) => m.versions.map((v) => v.id))), [modules]);
+  const lockedModules = useMemo(() => new Set(modules.filter((m) => m.lockedAt).map((m) => m.id)), [modules]);
+  const shown = (events.data ?? []).filter((e) => moduleFilter === "all" || e.moduleId === moduleFilter);
 
   const diffVersions = diff && diff.before && diff.after
     ? [asVersion(`${diff.id}-b`, diff.before, `Before (${diff.before.label})`, new Date(Date.parse(diff.createdAt) - 1000).toISOString()), asVersion(`${diff.id}-a`, diff.after, `After (${diff.after.label})`, diff.createdAt)]
     : null;
 
   // The diff replaces the history while it's open (two dialogs stacked would both close on Escape).
-  if (diffVersions) {
+  if (diff && diffVersions) {
     return (
       <CodeCompareDialog
         open
         onClose={() => setDiff(null)}
-        moduleName={module.name}
+        moduleName={diff.moduleName}
         versions={diffVersions}
         initialFromId={diffVersions[0].id}
         initialToId={diffVersions[1].id}
@@ -233,18 +236,37 @@ export function CodeHistoryDialog({
   }
 
   return (
-    <Modal open onClose={onClose} title={`HISTORY · ${module.name.toUpperCase()}`} panelClassName="app-dialog-fixed w-full max-w-2xl">
+    <Modal open onClose={onClose} title="HISTORY · CODE HANDOVER" panelClassName="app-dialog-fixed w-full max-w-2xl">
+      {modules.length > 1 ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-[var(--border-1)] px-5 py-2.5" role="tablist" aria-label="Show history for">
+          {[{ id: "all", name: "All modules" }, ...modules].map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="tab"
+              aria-selected={moduleFilter === m.id}
+              onClick={() => setModuleFilter(m.id)}
+              className={cn(
+                "rounded-[6px] px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] transition",
+                moduleFilter === m.id ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+              )}
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         {events.isPending ? (
           <p className="text-sm text-[var(--text-3)]">Loading…</p>
         ) : events.isError ? (
           <p className="text-sm text-[var(--danger-500)]">{events.error instanceof Error ? events.error.message : "Couldn't load the history."}</p>
-        ) : !events.data?.length ? (
+        ) : !shown.length ? (
           <p className="text-sm text-[var(--text-3)]">Nothing has been recorded yet. Changes from now on appear here.</p>
         ) : (
           <ol className="relative space-y-4 border-l border-[var(--border-2)] pl-5" data-code-history>
-            {events.data.map((e) => {
-              const restorable = canRestore && !locked && e.kind === "version_edited" && e.before && e.versionId && versionIds.has(e.versionId);
+            {shown.map((e) => {
+              const restorable = canRestore && !lockedModules.has(e.moduleId) && e.kind === "version_edited" && e.before && e.versionId && versionIds.has(e.versionId);
               return (
                 <li key={e.id} className="relative">
                   <span
@@ -261,6 +283,9 @@ export function CodeHistoryDialog({
                     )}
                   />
                   <p className="text-[13px] leading-5 text-[var(--text-2)]">
+                    {modules.length > 1 && moduleFilter === "all" ? (
+                      <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">{e.moduleName}</span>
+                    ) : null}
                     <span className="font-semibold text-[var(--text-1)]">{e.actorName}</span>{" "}
                     <span
                       className={cn(

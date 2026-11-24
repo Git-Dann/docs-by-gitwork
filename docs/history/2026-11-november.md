@@ -2154,3 +2154,10 @@ change the code. Four things, all in `src/server/wiki-code.ts`, with the rules p
   reads "Master is now v1.2.0", and a client's edit that can be seen and put back; Sender starts
   locked.
 - Tests: `src/lib/__tests__/wiki-code-rules.test.ts`, `src/server/__tests__/wiki-code-lock.test.ts`.
+- **Layout follow-up (same day, Dan).** History is one button beside Add module in the section
+  header, covering every module (`GET …/wiki/code/events`, with an All / per-module filter), not a
+  button on each card. Both header buttons are the house `app-button app-button-secondary
+  app-button-xs`, as Monitors' "Add monitor" now is too; `wiki-header-buttons.test.ts` fails on a
+  hand-styled button in any wiki section header. Cards in a row are the same height, and every
+  card has the same header: the name on the left, the buttons far right on its line (wrapping
+  under the name on a phone), the description below.

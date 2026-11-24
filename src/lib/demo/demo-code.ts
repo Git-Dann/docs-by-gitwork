@@ -23,6 +23,8 @@ function log(mod: WikiCodeModuleRecord, kind: CodeEventKind, extra: Partial<Wiki
   const list = events.get(mod.id) ?? [];
   list.unshift({
     id: nextId("ev"),
+    moduleId: mod.id,
+    moduleName: mod.name,
     kind,
     actorName: actor.name,
     actorIsClient: actor.isClient,
@@ -94,6 +96,11 @@ export function resolveDemoCode(
 
   if (rest.length === 0) return method === "GET" ? section : undefined;
 
+  // Every module's history, newest first.
+  if (rest[0] === "events" && rest.length === 1 && method === "GET") {
+    return { events: [...events.values()].flat().sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
+  }
+
   // versions/{id}[/restore]
   if (rest[0] === "versions" && rest[1]) {
     const hit = findVersion(section, rest[1]);
@@ -147,7 +154,6 @@ export function resolveDemoCode(
   const mod = section.modules.find((x) => x.id === rest[0]);
   if (!mod) return err("Module not found", 404);
 
-  if (rest[1] === "events" && method === "GET") return { events: events.get(mod.id) ?? [] };
 
   if (rest[1] === "variants") {
     if (mod.lockedAt) return lockedError(mod);

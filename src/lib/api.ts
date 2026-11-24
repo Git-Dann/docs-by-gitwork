@@ -3761,8 +3761,8 @@ export async function deleteWikiCodeVariantApi(slug: string, moduleId: string, v
   return apiFetch(`/api/clients/${slug}/wiki/code/${moduleId}/variants/${variantId}`, { method: "DELETE" });
 }
 
-export async function listWikiCodeEventsApi(slug: string, moduleId: string): Promise<{ events: WikiCodeEventRecord[] }> {
-  return apiFetch(`/api/clients/${slug}/wiki/code/${moduleId}/events`);
+export async function listWikiCodeEventsApi(slug: string): Promise<{ events: WikiCodeEventRecord[] }> {
+  return apiFetch(`/api/clients/${slug}/wiki/code/events`);
 }
 
 export async function restoreWikiCodeVersionApi(slug: string, versionId: string, eventId: string): Promise<WikiCodeVersionRecord> {
