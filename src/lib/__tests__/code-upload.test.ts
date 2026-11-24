@@ -5,6 +5,8 @@
 import { describe, expect, it } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import {
+  MAX_CODE_FILE_CHARS,
+  MAX_CODE_VERSION_CHARS,
   MAX_FILES_PER_VERSION,
   decodeTextFile,
   describeUpload,
@@ -14,6 +16,7 @@ import {
   normalisePath,
   prepareUpload,
   stripCommonRoot,
+  versionFilesProblem,
   zipEntries,
 } from "../code-upload";
 
@@ -53,7 +56,9 @@ describe("paths", () => {
 describe("decodeTextFile", () => {
   it("refuses binary and over-long files with a reason", () => {
     expect(decodeTextFile(new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0, 1]))).toEqual({ ok: false, reason: "not a text file" });
-    expect(decodeTextFile(strToU8("x".repeat(500_001)))).toEqual({ ok: false, reason: "over 500,000 characters" });
+    expect(decodeTextFile(strToU8("x".repeat(MAX_CODE_FILE_CHARS + 1)))).toEqual({ ok: false, reason: "over 2,000,000 characters" });
+    // A sketch the size of PollenIQ's sensor.ino (~535,000 characters) is accepted.
+    expect(decodeTextFile(strToU8("x".repeat(535_000))).ok).toBe(true);
     expect(decodeTextFile(strToU8("void loop() {}\n"))).toEqual({ ok: true, content: "void loop() {}\n" });
   });
 });
@@ -109,5 +114,27 @@ describe("describeUpload", () => {
         "Left out 1 file over the 50-file limit for a version. Ignored 3 system or build files.",
     );
     expect(describeUpload(0, [], 0, [])).toBeNull();
+  });
+});
+
+describe("versionFilesProblem", () => {
+  const f = (filename: string, n: number) => ({ filename, content: "x".repeat(n) });
+  it("accepts a big sketch under the per-file limit", () => {
+    expect(versionFilesProblem([f("sensor.ino", 535_000)])).toBeNull();
+  });
+  it("names the file that is too big, and the limit", () => {
+    expect(versionFilesProblem([f("a.h", 10), f("sensor.ino", MAX_CODE_FILE_CHARS + 1)])).toBe(
+      "sensor.ino is 2,000,001 characters. A file can hold up to 2,000,000.",
+    );
+  });
+  it("refuses a version whose files together are too big", () => {
+    const each = MAX_CODE_FILE_CHARS;
+    const count = Math.floor(MAX_CODE_VERSION_CHARS / each) + 1;
+    const files = Array.from({ length: count }, (_, i) => f(`f${i}.c`, each));
+    expect(versionFilesProblem(files)).toMatch(/^These files come to .* A version can hold up to 10,000,000\.$/);
+  });
+  it("refuses too many files", () => {
+    const files = Array.from({ length: MAX_FILES_PER_VERSION + 1 }, (_, i) => f(`f${i}.c`, 1));
+    expect(versionFilesProblem(files)).toBe(`A version can hold up to ${MAX_FILES_PER_VERSION} files.`);
   });
 });

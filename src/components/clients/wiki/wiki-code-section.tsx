@@ -45,6 +45,7 @@ import {
   isZipName,
   mergeDraftFiles,
   prepareUpload,
+  versionFilesProblem,
   zipEntries,
   type DraftFile,
   type UploadEntry,
@@ -637,6 +638,8 @@ function AddVersionModal({
       .map((f) => ({ filename: f.filename.trim(), language: f.language.trim() || null, content: f.content }));
     if (!label.trim()) return setError("Add a version label (e.g. v1.0).");
     if (clean.length === 0) return setError("Add at least one file with a name and content.");
+    const problem = versionFilesProblem(clean);
+    if (problem) return setError(problem);
     try {
       if (editing) {
         await update.mutateAsync({

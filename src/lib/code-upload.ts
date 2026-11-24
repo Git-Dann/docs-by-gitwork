@@ -10,8 +10,11 @@
 
 import { unzipSync } from "fflate";
 
-/** Per-file limit, matching the server's `content: z.string().max(500_000)`. */
-export const MAX_CODE_FILE_CHARS = 500_000;
+/** Per-file limit, used by the server's `fileSchema` too. A big Arduino sketch (PollenIQ's
+ *  sensor.ino) runs past 500,000 characters, so the limit is 2,000,000. */
+export const MAX_CODE_FILE_CHARS = 2_000_000;
+/** All of a version's files together. Keeps a save well under nginx's 25 MB request limit. */
+export const MAX_CODE_VERSION_CHARS = 10_000_000;
 /** Files per version, matching the server's `files: z.array(...).max(50)`. */
 export const MAX_FILES_PER_VERSION = 50;
 /** Filename limit, matching the server's `filename: z.string().max(200)`. */
@@ -91,7 +94,7 @@ export function stripCommonRoot(paths: string[]): string[] {
 export function decodeTextFile(bytes: Uint8Array): { ok: true; content: string } | { ok: false; reason: string } {
   if (bytes.includes(0)) return { ok: false, reason: "not a text file" };
   const content = new TextDecoder("utf-8").decode(bytes);
-  if (content.length > MAX_CODE_FILE_CHARS) return { ok: false, reason: "over 500,000 characters" };
+  if (content.length > MAX_CODE_FILE_CHARS) return { ok: false, reason: `over ${MAX_CODE_FILE_CHARS.toLocaleString("en-GB")} characters` };
   return { ok: true, content };
 }
 
@@ -179,4 +182,21 @@ export function describeUpload(added: number, skipped: SkippedFile[], ignored: n
   }
   if (ignored) parts.push(`Ignored ${ignored} system or build file${ignored === 1 ? "" : "s"}.`);
   return parts.length ? parts.join(" ") : null;
+}
+
+/** Why a version's files can't be saved, as a sentence, or null when they can. Run before a
+ *  save, so a pasted file over the limit is explained rather than refused by the server. */
+export function versionFilesProblem(files: Array<{ filename: string; content: string }>): string | null {
+  const fmt = (n: number) => n.toLocaleString("en-GB");
+  for (const f of files) {
+    if (f.content.length > MAX_CODE_FILE_CHARS) {
+      return `${f.filename || "A file"} is ${fmt(f.content.length)} characters. A file can hold up to ${fmt(MAX_CODE_FILE_CHARS)}.`;
+    }
+  }
+  if (files.length > MAX_FILES_PER_VERSION) return `A version can hold up to ${MAX_FILES_PER_VERSION} files.`;
+  const total = files.reduce((n, f) => n + f.content.length, 0);
+  if (total > MAX_CODE_VERSION_CHARS) {
+    return `These files come to ${fmt(total)} characters. A version can hold up to ${fmt(MAX_CODE_VERSION_CHARS)}.`;
+  }
+  return null;
 }
