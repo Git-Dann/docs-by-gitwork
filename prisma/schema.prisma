@@ -1675,11 +1675,61 @@ model WikiCodeModule {
   description String?           @db.Text
   orderKey    Int               @default(0)
   versions    WikiCodeVersion[]
+  variants    WikiCodeVariant[]
+  events      WikiCodeEvent[]
+  /// Locked by a Gitwork person: nothing in the module can change until it is unlocked, and
+  /// unlocking means typing "Unlock Code" (src/lib/wiki-code-rules.ts).
+  lockedAt     DateTime?
+  lockedById   String?
+  lockedByName String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
   @@index([wikiId])
   @@map("WikiCodeModule")
+}
+
+/// A variant line of a module (e.g. one venue's tweaked code): a full copy of a Master
+/// version that then gets its own versions. `baseVersionId` is the Master version it was
+/// copied from (loose: the version may later be deleted, so its label is kept too).
+model WikiCodeVariant {
+  id             String            @id @default(cuid())
+  moduleId       String
+  module         WikiCodeModule    @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  name           String
+  notes          String?           @db.Text
+  baseVersionId  String?
+  baseLabel      String?
+  orderKey       Int               @default(0)
+  createdByName  String?
+  versions       WikiCodeVersion[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([moduleId])
+  @@map("WikiCodeVariant")
+}
+
+/// The module's audit trail: every upload, edit, marker change, lock, unlock, variant and
+/// deletion, with who did it and whether they were a client. An edit or a deletion keeps the
+/// version as it was (`before`), so a change can be seen and put back.
+model WikiCodeEvent {
+  id            String          @id @default(cuid())
+  moduleId      String
+  module        WikiCodeModule  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  variantId     String?
+  versionId     String?
+  kind          String
+  actorUserId   String?
+  actorName     String
+  actorIsClient Boolean         @default(false)
+  detail        String?         @db.Text
+  before        Json?
+  after         Json?
+  createdAt     DateTime        @default(now())
+
+  @@index([moduleId, createdAt])
+  @@map("WikiCodeEvent")
 }
 
 /// One version of a module's code (e.g. "v1.2.0"). The current version is shown
@@ -1690,7 +1740,16 @@ model WikiCodeVersion {
   module    WikiCodeModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   label     String
   notes     String?        @db.Text
+  /// LIVE: the version actually running. One per line (the Master line, or one variant).
   isCurrent Boolean        @default(false)
+  /// MASTER: the approved source of truth. One per module, on the Master line only.
+  isMaster  Boolean        @default(false)
+  /// Null = the Master line; set = a variant line.
+  variantId String?
+  variant   WikiCodeVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  createdByName   String?
+  createdByClient Boolean    @default(false)
+  updatedByName   String?
   files     WikiCodeFile[]
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt

@@ -95,6 +95,7 @@ import { LAUNCHPAD_FILE_MAX_PER_ITEM, sanitizeLaunchpadFilename } from "@/lib/la
 import { renderLegalDoc } from "@/lib/launchpad/legal/render";
 import { comparisonLimitError, parseComparisonContent } from "@/lib/wiki-comparisons";
 import type { WikiComparison } from "@/types/wiki-comparisons";
+import { resolveDemoCode } from "@/lib/demo/demo-code";
 import { resolveDemoDrive } from "@/lib/demo/demo-drive";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
@@ -1359,6 +1360,10 @@ const demoWiki: WikiDTO = {
       {
         id: "cm1",
         name: "Receiver",
+        lockedAt: null,
+        lockedByName: null,
+        // A venue variant copied from an older Master, so "Master has moved on" has something to show.
+        variants: [{ id: "cvar-ivy", name: "The Ivy", notes: "Channel 9 at The Ivy: the venue's own radios sit on 7.", baseVersionId: "cv1a", baseLabel: "v1.1.0", createdByName: "Tom Okafor", createdAt: atDays(-20) }],
         description: "Firmware for the receiver unit — flash via PlatformIO.",
         // Three versions with real edits between them (a changed function, a new file,
         // a constant moved into config.h), so Compare has something honest to show.
@@ -1366,7 +1371,7 @@ const demoWiki: WikiDTO = {
           {
             // Folder paths (src/…) and four files: the file list, a rename (radio.h moved
             // into src/ unchanged) and the folding of older versions all show in the demo.
-            id: "cv1d", label: "v1.3.0", notes: "Split the radio driver into src/.\nRetry a failed receive once before sleeping.", isCurrent: true, createdAt: atDays(-1),
+            id: "cv1d", label: "v1.3.0", notes: "Split the radio driver into src/.\nRetry a failed receive once before sleeping.", isCurrent: true, isMaster: false, variantId: null, createdAt: atDays(-1), updatedAt: atDays(-1), createdByName: "Waqar Ahmed", createdByClient: false, updatedByName: null,
             files: [
               { id: "f5a", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"config.h\"\n#include \"src/radio.h\"\n\nRadio radio(CHANNEL);\n\nvoid setup() {\n  Serial.begin(115200);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p) || radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  /* Sleep between polls to save battery.\n     One retry above covers a missed packet. */\n  esp_sleep_enable_timer_wakeup(SLEEP_MS * 1000ULL);\n  esp_light_sleep_start();\n}\n" },
               { id: "f5b", filename: "config.h", language: "cpp", content: "#pragma once\n\n#define CHANNEL 7\n#define SLEEP_MS 750\n" },
@@ -1375,7 +1380,7 @@ const demoWiki: WikiDTO = {
             ],
           },
           {
-            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.\nMove the radio channel into config.h.", isCurrent: false, createdAt: atDays(-3),
+            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.\nMove the radio channel into config.h.", isCurrent: false, isMaster: true, variantId: null, createdAt: atDays(-3), updatedAt: atDays(-3), createdByName: "Waqar Ahmed", createdByClient: false, updatedByName: null,
             files: [
               { id: "f1", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"config.h\"\n#include \"radio.h\"\n\nRadio radio(CHANNEL);\n\nvoid setup() {\n  Serial.begin(115200);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  // Sleep between polls to save battery.\n  esp_sleep_enable_timer_wakeup(SLEEP_MS * 1000ULL);\n  esp_light_sleep_start();\n}\n" },
               { id: "f2", filename: "config.h", language: "cpp", content: "#pragma once\n\n#define CHANNEL 7\n#define SLEEP_MS 500\n" },
@@ -1383,17 +1388,31 @@ const demoWiki: WikiDTO = {
             ],
           },
           {
-            id: "cv1a", label: "v1.1.0", notes: "Print each reading over serial.", isCurrent: false, createdAt: atDays(-30),
+            id: "cv1a", label: "v1.1.0", notes: "Print each reading over serial.", isCurrent: false, isMaster: false, variantId: null, createdAt: atDays(-30), updatedAt: atDays(-30), createdByName: "Tom Okafor", createdByClient: false, updatedByName: null,
             files: [
               { id: "f3", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"radio.h\"\n\nRadio radio(7);\n\nvoid setup() {\n  Serial.begin(9600);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  delay(500);\n}\n" },
               { id: "f3b", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
             ],
           },
           {
-            id: "cv1c", label: "v1.0.0", notes: "Initial handover.", isCurrent: false, createdAt: atDays(-60),
+            id: "cv1c", label: "v1.0.0", notes: "Initial handover.", isCurrent: false, isMaster: false, variantId: null, createdAt: atDays(-60), updatedAt: atDays(-60), createdByName: "Tom Okafor", createdByClient: false, updatedByName: null,
             files: [
               { id: "f3c", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"radio.h\"\n\nRadio radio(7);\n\nvoid setup() {\n  radio.begin();\n}\n\nvoid loop() {\n  Packet p;\n  radio.receive(p);\n  delay(500);\n}\n" },
               { id: "f3d", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+            ],
+          },
+          {
+            id: "cv-ivy-2", label: "v1.1.1-ivy", notes: "Radio on channel 9 for The Ivy.", isCurrent: true, isMaster: false, variantId: "cvar-ivy", createdAt: atDays(-12), updatedAt: atDays(-4), createdByName: "Priya Nair", createdByClient: true, updatedByName: "Priya Nair",
+            files: [
+              { id: "fiv3", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"radio.h\"\n\nRadio radio(9);\n\nvoid setup() {\n  Serial.begin(9600);\n  radio.begin();\n  Serial.println(\"receiver ready (The Ivy)\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  delay(500);\n}\n" },
+              { id: "fiv4", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+            ],
+          },
+          {
+            id: "cv-ivy-1", label: "v1.1.0", notes: "Copied from Master v1.1.0.", isCurrent: false, isMaster: false, variantId: "cvar-ivy", createdAt: atDays(-20), updatedAt: atDays(-20), createdByName: "Tom Okafor", createdByClient: false, updatedByName: null,
+            files: [
+              { id: "fiv1", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"radio.h\"\n\nRadio radio(7);\n\nvoid setup() {\n  Serial.begin(9600);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  delay(500);\n}\n" },
+              { id: "fiv2", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
             ],
           },
         ],
@@ -1401,10 +1420,13 @@ const demoWiki: WikiDTO = {
       {
         id: "cm2",
         name: "Sender",
+        lockedAt: atDays(-2),
+        lockedByName: "Dan Lindsay",
+        variants: [],
         description: "Firmware for the sender unit.",
         versions: [
           {
-            id: "cv2", label: "v1.0.0", notes: null, isCurrent: true, createdAt: atDays(-30),
+            id: "cv2", label: "v1.0.0", notes: null, isCurrent: true, isMaster: false, variantId: null, createdAt: atDays(-30), updatedAt: atDays(-30), createdByName: "Tom Okafor", createdByClient: false, updatedByName: null,
             files: [{ id: "f4", filename: "sender.ino", language: "cpp", content: "void setup() {}\nvoid loop() { /* transmit */ }\n" }],
           },
         ],
@@ -5364,6 +5386,11 @@ export function resolveDemoApi(
       }
       return comment;
     }
+  }
+  // Code Handover (§153): Live and Master, variants, the lock and the history, in memory.
+  {
+    const code = resolveDemoCode(demoWiki.codeHandover, pathname, init);
+    if (code !== undefined) return code;
   }
   // Comparisons — writes are applied to the fixture, so an edit survives the refetch that
   // follows it. A demo where saving changes nothing verifies the CSS and nothing else (§43.3).

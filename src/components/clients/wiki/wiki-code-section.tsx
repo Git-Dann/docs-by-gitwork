@@ -9,15 +9,19 @@ import {
   CheckIcon,
   ChevronRightIcon,
   ClipboardIcon,
+  ClockIcon,
+  CheckBadgeIcon,
+  RocketLaunchIcon,
+  ArrowPathRoundedSquareIcon,
   EllipsisHorizontalIcon,
   FolderIcon,
+  LockClosedIcon,
   PencilSquareIcon,
   PlusIcon,
   StarIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 import { Modal } from "@/components/ui/modal";
 import type {
   CodeFileInput,
@@ -29,6 +33,7 @@ import {
   useCreateCodeModule,
   useCreateCodeVersion,
   useDeleteCodeModule,
+  useDeleteCodeVariant,
   useDeleteCodeVersion,
   useUpdateCodeVersion,
 } from "@/hooks/use-wiki";
@@ -45,6 +50,9 @@ import {
   type UploadEntry,
 } from "@/lib/code-upload";
 import { COMPARE_PARAM, parseComparePair, withoutComparePair, type ComparePair } from "@/lib/code-compare-link";
+import { liveVersionOf, masterVersionOf, variantDrift } from "@/lib/wiki-code-rules";
+import { usePermissions } from "@/hooks/use-permissions";
+import { CodeHistoryDialog, LockButton, NewVariantDialog } from "./code-handover-controls";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -309,6 +317,8 @@ function VersionView({
   changes,
   onCompare,
   onEdit,
+  locked,
+  onNewVariant,
 }: {
   moduleName: string;
   version: WikiCodeVersionRecord;
@@ -319,13 +329,17 @@ function VersionView({
   changes: { since: string; comparison: VersionComparison } | null;
   onCompare: () => void;
   onEdit: () => void;
+  /** A locked module offers nothing that changes it. */
+  locked: boolean;
+  /** Master line only: make a variant from this version. */
+  onNewVariant?: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const setCurrent = useUpdateCodeVersion(slug);
   const deleteVersion = useDeleteCodeVersion(slug);
 
   return (
-    <div className={`rounded-[10px] border ${version.isCurrent ? "border-[var(--brand-500)]" : "border-[var(--border-1)]"}`}>
+    <div className={`rounded-[10px] border ${version.isCurrent ? "border-[var(--success-500)]" : version.isMaster ? "border-[var(--brand-500)]" : "border-[var(--border-1)]"}`}>
       <div className="flex flex-wrap items-center gap-2 px-3.5 py-2.5">
         <button
           type="button"
@@ -337,14 +351,27 @@ function VersionView({
         >
           <ChevronRightIcon className={`h-4 w-4 shrink-0 text-[var(--text-4)] transition-transform ${open ? "rotate-90" : ""}`} />
           <span className="text-[14px] font-semibold text-[var(--text-1)]" style={{ fontFamily: MONO }}>{version.label}</span>
+          {/* Two markers (§153): LIVE is what's running, MASTER is the approved code. */}
           {version.isCurrent && (
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[var(--success-50)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--success-500)]">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[var(--success-500)]" /> Live
+            </span>
+          )}
+          {version.isMaster && (
             <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--brand-700)]">
-              <StarSolid className="h-3 w-3" /> Current
+              <CheckBadgeIcon className="h-3 w-3" /> Master
             </span>
           )}
           <span className="whitespace-nowrap text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
             {version.files.length} file{version.files.length === 1 ? "" : "s"} · {fmtDate(version.createdAt)}
           </span>
+          {version.createdByName ? (
+            <span className="whitespace-nowrap text-[11px] text-[var(--text-4)]" title={version.updatedByName ? `Last changed by ${version.updatedByName}` : undefined}>
+              by {version.createdByName}
+              {version.createdByClient ? <span className="ml-1 rounded-[3px] bg-[var(--warning-50)] px-1 font-mono text-[9px] font-semibold uppercase text-[var(--warning-500)]">Client</span> : null}
+              {version.updatedByName ? ` · changed by ${version.updatedByName}` : ""}
+            </span>
+          ) : null}
         </button>
         <div className="flex shrink-0 items-center gap-2">
           {/* The current version is the one to take, so it alone gets the filled button;
@@ -360,31 +387,45 @@ function VersionView({
           >
             <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Download .zip
           </button>
-          {isInternal && (
+          {isInternal && (changes || !locked) && (
             <RowMenu
               label={`Version ${version.label} actions`}
               items={[
-                { label: "Edit version", icon: PencilSquareIcon, onClick: onEdit },
+                ...(locked ? [] : [{ label: "Edit version", icon: PencilSquareIcon, onClick: onEdit }]),
                 ...(changes
                   ? [{ label: `Compare with ${changes.since}`, icon: ArrowsRightLeftIcon, onClick: onCompare }]
                   : []),
-                ...(version.isCurrent
+                ...(locked || version.isCurrent
                   ? []
                   : [
                       {
-                        label: "Make current",
-                        icon: StarIcon,
+                        label: "Mark as Live",
+                        icon: RocketLaunchIcon,
                         onClick: () => void setCurrent.mutateAsync({ versionId: version.id, makeCurrent: true }),
                       },
                     ]),
-                {
-                  label: "Delete version",
-                  icon: TrashIcon,
-                  danger: true,
-                  onClick: () => {
-                    if (window.confirm(`Delete version ${version.label}?`)) void deleteVersion.mutateAsync(version.id);
-                  },
-                },
+                ...(locked || version.isMaster || version.variantId
+                  ? []
+                  : [
+                      {
+                        label: "Mark as Master",
+                        icon: StarIcon,
+                        onClick: () => void setCurrent.mutateAsync({ versionId: version.id, makeMaster: true }),
+                      },
+                    ]),
+                ...(!locked && onNewVariant ? [{ label: "New variant from this", icon: ArrowPathRoundedSquareIcon, onClick: onNewVariant }] : []),
+                ...(locked
+                  ? []
+                  : [
+                      {
+                        label: "Delete version",
+                        icon: TrashIcon,
+                        danger: true,
+                        onClick: () => {
+                          if (window.confirm(`Delete version ${version.label}? A copy is kept on the history.`)) void deleteVersion.mutateAsync(version.id);
+                        },
+                      },
+                    ]),
               ]}
             />
           )}
@@ -482,10 +523,16 @@ function AddVersionModal({
   editing = null,
   open,
   onClose,
+  variantId = null,
+  lineName = null,
 }: {
   slug: string;
   moduleId: string;
   moduleName: string;
+  /** The variant a new version goes on; null for the Master line. */
+  variantId?: string | null;
+  /** The variant's name, for the title. */
+  lineName?: string | null;
   /** The current version. A new version starts from its files, so only what changed is edited. */
   base: WikiCodeVersionRecord | null;
   /** Set to edit this version instead of adding one. Its files are replaced on save. */
@@ -600,7 +647,7 @@ function AddVersionModal({
           ...(makeCurrent ? { makeCurrent: true } : {}),
         });
       } else {
-        await create.mutateAsync({ moduleId, label: label.trim(), notes: notes.trim() || null, files: clean, makeCurrent });
+        await create.mutateAsync({ moduleId, label: label.trim(), notes: notes.trim() || null, files: clean, makeCurrent, variantId });
       }
       close();
     } catch (e) {
@@ -612,7 +659,7 @@ function AddVersionModal({
     <Modal
       open={open}
       onClose={close}
-      title={`${editing ? "EDIT VERSION" : "NEW VERSION"} · ${moduleName.toUpperCase()}`}
+      title={`${editing ? "EDIT VERSION" : "NEW VERSION"} · ${moduleName.toUpperCase()}${lineName ? ` · ${lineName.toUpperCase()}` : ""}`}
       panelClassName="app-dialog-fixed w-full max-w-3xl"
     >
       {/* Height lives on the PANEL (`app-dialog-fixed`), not on a `max-h-[46vh]` scroll
@@ -638,7 +685,7 @@ function AddVersionModal({
           {editing?.isCurrent ? null : (
             <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[var(--text-2)]">
               <input type="checkbox" checked={makeCurrent} onChange={(e) => setMakeCurrent(e.target.checked)} className="h-4 w-4 accent-[var(--brand-600)]" />
-              {editing ? "Make this the current version" : "Set as the current version"}
+              {editing ? "Mark this version as Live" : "Mark as Live (the version that's running)"}
             </label>
           )}
           {editing ? (
@@ -789,50 +836,95 @@ function ModuleView({
   linkedPair: ComparePair | null;
   onLinkedPairClosed: () => void;
 }) {
+  const { isExternal } = usePermissions();
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [history, setHistory] = useState(false);
+  const [variantFrom, setVariantFrom] = useState<WikiCodeVersionRecord | null>(null);
+  // Which line is showing: null is Master, else a variant's id.
+  const [lineId, setLineId] = useState<string | null>(null);
   const [comparing, setComparing] = useState<{ toId: string | null; fromId?: string | null } | null>(
     linkedPair ? { toId: linkedPair.toId, fromId: linkedPair.fromId } : null,
   );
   const deleteModule = useDeleteCodeModule(slug);
-  const current = module.versions.find((v) => v.isCurrent) ?? null;
+  const deleteVariant = useDeleteCodeVariant(slug);
+  const locked = Boolean(module.lockedAt);
 
-  // What each version changed since the one before it, for the line under each row.
+  const line = module.variants.find((v) => v.id === lineId) ?? null;
+  // A variant that was deleted (or another tab's) falls back to Master.
+  const activeLineId = line ? line.id : null;
+  const lineVersions = useMemo(() => module.versions.filter((v) => (v.variantId ?? null) === activeLineId), [module.versions, activeLineId]);
+  const live = liveVersionOf(module.versions, activeLineId);
+  const master = masterVersionOf(module.versions);
+  const drift = line ? variantDrift(line, module.versions) : null;
+  const variantName = useMemo(() => new Map(module.variants.map((v) => [v.id, v.name])), [module.variants]);
+
+  // Compare works across lines: a variant's versions carry its name so v1.1.0 on Master and on
+  // The Ivy can't be confused.
+  const compareVersions_ = useMemo(
+    () => module.versions.map((v) => (v.variantId ? { ...v, label: `${variantName.get(v.variantId) ?? "Variant"} · ${v.label}` } : v)),
+    [module.versions, variantName],
+  );
+
+  // What each version changed since the one before it on the same line.
   const changesById = useMemo(() => {
     const map = new Map<string, { since: string; comparison: VersionComparison }>();
-    for (const v of module.versions) {
-      const prev = previousVersionOf(module.versions, v.id);
+    for (const v of lineVersions) {
+      const prev = previousVersionOf(lineVersions, v.id);
       if (prev) map.set(v.id, { since: prev.label, comparison: compareVersions(prev.files, v.files) });
     }
     return map;
-  }, [module.versions]);
+  }, [lineVersions]);
+
+  const btn = "inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-0)]";
 
   return (
-    <div className="space-y-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
+    <div className="space-y-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4" data-code-module>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-[16px] font-semibold text-[var(--text-1)]">{module.name}</h3>
           {module.description && <p className="mt-0.5 text-[13px] leading-6 text-[var(--text-3)]">{module.description}</p>}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {isInternal ? <LockButton slug={slug} module={module} canLock={!isExternal} /> : locked ? (
+            <span title="Locked" className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-[var(--warning-500)] bg-[var(--warning-50)] text-[var(--warning-500)]">
+              <LockClosedIcon className="h-4 w-4" aria-label="Locked" />
+            </span>
+          ) : null}
+          {isInternal ? (
+            <button type="button" onClick={() => setHistory(true)} className={btn}>
+              <ClockIcon className="h-4 w-4" /> History
+            </button>
+          ) : null}
           {module.versions.length >= 2 && (
-            <button
-              type="button"
-              onClick={() => setComparing({ toId: null })}
-              className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-0)]"
-            >
+            <button type="button" onClick={() => setComparing({ toId: null })} className={btn}>
               <ArrowsRightLeftIcon className="h-4 w-4" /> Compare
             </button>
           )}
-        {isInternal && (
-          <>
-            <button type="button" onClick={() => setAdding(true)} className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-0)]">
+          {isInternal && !locked && (
+            <button type="button" onClick={() => setAdding(true)} className={btn}>
               <PlusIcon className="h-4 w-4" /> New version
             </button>
+          )}
+          {isInternal && !locked && (
             <RowMenu
               label={`${module.name} actions`}
               items={[
+                ...(master ? [{ label: "New variant (e.g. a venue)", icon: ArrowPathRoundedSquareIcon, onClick: () => setVariantFrom(master) }] : []),
+                ...(line
+                  ? [
+                      {
+                        label: `Delete the ${line.name} variant`,
+                        icon: TrashIcon,
+                        danger: true,
+                        onClick: () => {
+                          if (window.confirm(`Delete the ${line.name} variant and its versions? The history keeps a record.`))
+                            void deleteVariant.mutateAsync({ moduleId: module.id, variantId: line.id }).then(() => setLineId(null));
+                        },
+                      },
+                    ]
+                  : []),
                 {
                   label: "Delete module",
                   icon: TrashIcon,
@@ -843,17 +935,81 @@ function ModuleView({
                 },
               ]}
             />
-          </>
-        )}
+          )}
         </div>
       </div>
+
+      {locked ? (
+        <p className="flex items-start gap-2 rounded-[8px] border border-[var(--warning-500)] bg-[var(--warning-50)] px-3 py-2 text-[12px] leading-5 text-[var(--text-2)]" data-code-locked>
+          <LockClosedIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning-500)]" />
+          <span>
+            Locked by <span className="font-semibold text-[var(--text-1)]">{module.lockedByName ?? "Gitwork"}</span>
+            {module.lockedAt ? ` on ${fmtDate(module.lockedAt)}` : ""}. Nothing can be changed until it&apos;s unlocked.
+          </span>
+        </p>
+      ) : null}
+
+      {/* Master and its variants (e.g. venues). Only shown once there's a variant. */}
+      {module.variants.length ? (
+        <div className="flex flex-wrap items-center gap-1 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-0)] p-1" role="tablist" aria-label={`${module.name} lines`}>
+          {[{ id: null as string | null, name: "Master" }, ...module.variants].map((l) => (
+            <button
+              key={l.id ?? "master"}
+              type="button"
+              role="tab"
+              aria-selected={activeLineId === l.id}
+              onClick={() => {
+                setLineId(l.id);
+                setShowAll(false);
+              }}
+              className={`rounded-[6px] px-2.5 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.06em] transition ${
+                activeLineId === l.id ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-3)] hover:text-[var(--text-1)]"
+              }`}
+            >
+              {l.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {line && drift ? (
+        <div
+          className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] border px-3 py-2 text-[12px] leading-5 ${
+            drift.behind ? "border-[var(--warning-500)] bg-[var(--warning-50)]" : "border-[var(--border-1)] bg-[var(--surface-0)]"
+          }`}
+          data-code-drift
+        >
+          <span className="min-w-0 flex-1 text-[var(--text-2)]">
+            {line.notes ? <span className="text-[var(--text-1)]">{line.notes} </span> : null}
+            Copied from Master <span className="font-mono">{drift.baseLabel ?? "an earlier version"}</span>.{" "}
+            {drift.behind ? (
+              <span className="font-semibold text-[var(--text-1)]">
+                Master is now <span className="font-mono">{drift.masterLabel}</span>.
+              </span>
+            ) : (
+              "Up to date with Master."
+            )}
+          </span>
+          {live && drift.masterId ? (
+            <button
+              type="button"
+              onClick={() => setComparing({ fromId: drift.masterId, toId: live.id })}
+              className="inline-flex shrink-0 items-center gap-1 font-medium text-[var(--brand-700)] hover:underline"
+            >
+              <ArrowsRightLeftIcon className="h-3.5 w-3.5" /> Differences from Master
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {isInternal && (
         <AddVersionModal
           slug={slug}
           moduleId={module.id}
           moduleName={module.name}
-          base={current}
+          base={live}
+          variantId={activeLineId}
+          lineName={line?.name ?? null}
           editing={module.versions.find((v) => v.id === editingId) ?? null}
           open={adding || editingId !== null}
           onClose={() => {
@@ -862,6 +1018,10 @@ function ModuleView({
           }}
         />
       )}
+      {isInternal && history ? <CodeHistoryDialog slug={slug} module={module} canRestore onClose={() => setHistory(false)} /> : null}
+      {isInternal && variantFrom ? (
+        <NewVariantDialog slug={slug} module={module} base={variantFrom} onClose={() => setVariantFrom(null)} onCreated={(id) => setLineId(id)} />
+      ) : null}
       {module.versions.length >= 2 && (
         <CodeCompareDialog
           open={comparing !== null}
@@ -871,23 +1031,23 @@ function ModuleView({
           }}
           moduleId={module.id}
           moduleName={module.name}
-          versions={module.versions}
+          versions={compareVersions_}
           initialToId={comparing?.toId ?? null}
           initialFromId={comparing?.fromId ?? null}
           mode={isInternal ? "internal" : "public"}
         />
       )}
 
-      {module.versions.length === 0 ? (
+      {lineVersions.length === 0 ? (
         <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-[13px] text-[var(--text-4)]">
-          No versions yet.{isInternal ? " Use “New version” to add one." : ""}
+          No versions yet.{isInternal && !locked ? " Use “New version” to add one." : ""}
         </p>
       ) : (
         <div className="space-y-2.5">
-          {(showAll ? module.versions : module.versions.slice(0, VISIBLE_VERSIONS)).map((v) => (
+          {(showAll ? lineVersions : lineVersions.slice(0, VISIBLE_VERSIONS)).map((v) => (
             <VersionView
               key={v.id}
-              moduleName={module.name}
+              moduleName={line ? `${module.name} ${line.name}` : module.name}
               version={v}
               defaultOpen={false}
               isInternal={isInternal}
@@ -895,9 +1055,11 @@ function ModuleView({
               changes={changesById.get(v.id) ?? null}
               onCompare={() => setComparing({ toId: v.id })}
               onEdit={() => setEditingId(v.id)}
+              locked={locked}
+              onNewVariant={v.variantId ? undefined : () => setVariantFrom(v)}
             />
           ))}
-          {module.versions.length > VISIBLE_VERSIONS ? (
+          {lineVersions.length > VISIBLE_VERSIONS ? (
             <button
               type="button"
               onClick={() => setShowAll((x) => !x)}
@@ -905,7 +1067,7 @@ function ModuleView({
             >
               {showAll
                 ? "Show fewer versions"
-                : `Show ${module.versions.length - VISIBLE_VERSIONS} older version${module.versions.length - VISIBLE_VERSIONS === 1 ? "" : "s"}`}
+                : `Show ${lineVersions.length - VISIBLE_VERSIONS} older version${lineVersions.length - VISIBLE_VERSIONS === 1 ? "" : "s"}`}
             </button>
           ) : null}
         </div>
@@ -1024,8 +1186,9 @@ export function WikiCodeSection({
       <div className="space-y-6 p-6">
         {!isInternal && (
           <p className="max-w-2xl text-[13px] leading-6 text-[var(--text-3)]">
-            Source for your hardware, ready to copy or download and flash. The current version is shown first;
-            earlier versions are kept below. Use Compare to see exactly what changed between any two.
+            Source for your hardware, ready to copy or download and flash. <strong>Live</strong> is the version that&apos;s
+            running and <strong>Master</strong> is the approved code; earlier versions are kept below. Use Compare to see
+            exactly what changed between any two.
           </p>
         )}
 

@@ -23,8 +23,15 @@ vi.mock("@/hooks/use-wiki", () => {
     useDeleteCodeModule: m(),
     useDeleteCodeVersion: m(),
     useUpdateCodeVersion: m(calls.update),
+    useDeleteCodeVariant: m(),
+    useSetCodeLock: m(),
+    useCreateCodeVariant: m(),
+    useRestoreCodeVersion: m(),
+    useCodeEvents: () => ({ isPending: false, isError: false, data: [] }),
   };
 });
+vi.mock("@/hooks/use-permissions", () => ({ usePermissions: () => ({ isExternal: false }) }));
+vi.mock("@/components/ui/toast", () => ({ useToast: () => ({ success: () => {}, error: () => {} }) }));
 
 import { WikiCodeSection } from "../wiki-code-section";
 import type { WikiCodeHandoverSection, WikiCodeVersionRecord } from "@/lib/api";
@@ -45,7 +52,13 @@ const version = (id: string, label: string, day: number, files: WikiCodeVersionR
   label,
   notes: null,
   isCurrent,
+  isMaster: false,
+  variantId: null,
   createdAt: new Date(Date.UTC(2026, 6, day)).toISOString(),
+  updatedAt: new Date(Date.UTC(2026, 6, day)).toISOString(),
+  createdByName: null,
+  createdByClient: false,
+  updatedByName: null,
   files,
 });
 
@@ -57,7 +70,7 @@ const versions: WikiCodeVersionRecord[] = [
   version("v2", "v1.1", 10, [file("e", "main.cpp", "// v1.1\n")]),
   version("v1", "v1.0", 5, [file("f", "main.cpp", "// v1.0\n")]),
 ];
-const section: WikiCodeHandoverSection = { enabled: true, modules: [{ id: "m1", name: "Receiver", description: null, versions }] };
+const section: WikiCodeHandoverSection = { enabled: true, modules: [{ id: "m1", name: "Receiver", description: null, lockedAt: null, lockedByName: null, variants: [], versions }] };
 
 async function render(mode: "internal" | "public" = "internal") {
   const host = document.createElement("div");
@@ -97,7 +110,7 @@ describe("the file viewer", () => {
 describe("the file picker for a big version", () => {
   it("is a dropdown past 12 files, not a wall of chips", async () => {
     const many = Array.from({ length: 13 }, (_, i) => file(`m${i}`, `src/f${i}.c`, `int f${i};\n`));
-    const big: WikiCodeHandoverSection = { enabled: true, modules: [{ id: "m2", name: "Big", description: null, versions: [version("vb", "v2.0", 1, many, true)] }] };
+    const big: WikiCodeHandoverSection = { enabled: true, modules: [{ id: "m2", name: "Big", description: null, lockedAt: null, lockedByName: null, variants: [], versions: [version("vb", "v2.0", 1, many, true)] }] };
     const host = document.createElement("div");
     document.body.appendChild(host);
     await act(async () => createRoot(host).render(<WikiCodeSection slug="pollen" section={big} mode="public" />));

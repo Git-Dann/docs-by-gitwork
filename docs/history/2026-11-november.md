@@ -2117,3 +2117,40 @@ Switcher" (CodePen, MIT; licence and the list of changes in `docs/third-party-ui
   theme"), arrow keys and Home/End, roving tabindex. Reduced motion: no slide, squash or glyph
   animation. The saved mode appears without animating on load.
 - Tests: `src/components/ui/mode-switch/__tests__/mode-switch.test.tsx`.
+
+## 153. Recent Changes (November 2026) — Code Handover: Live and Master, venue variants, a lock, and a history
+
+Asked for by Dan for PollenIQ, whose firmware is tweaked per venue and whose own people can
+change the code. Four things, all in `src/server/wiki-code.ts`, with the rules pure in
+`src/lib/wiki-code-rules.ts` and the page in `wiki-code-section.tsx` +
+`code-handover-controls.tsx`.
+
+- **Two markers on versions (Dan's call).** **Live** is what's running (the old `isCurrent`,
+  now one per line) and **Master** is the approved code (`isMaster`, one per module, Master line
+  only). They can be the same version or different ones. "Current" is gone from the page.
+- **Variants** (`WikiCodeVariant`): a full copy of a Master-line version (e.g. a venue) that
+  gets its own versions and its own Live. It keeps watching Master: `variantDrift` says when
+  Master has moved on since the copy, and "Differences from Master" opens Compare on the
+  variant's Live against Master. Compare works across lines; a variant's versions carry its name
+  so `v1.1.0` on Master and on The Ivy can't be confused. A line switch appears once there's a
+  variant. Made from ⋯ on the module or on a Master version.
+- **The lock.** A padlock on each module. Only a Gitwork person (not a guest account) can lock;
+  locked, the server refuses every change with a 423 naming who locked it, and the page hides
+  everything that changes it. Anyone who can edit may unlock, by typing "Unlock Code"
+  (`isUnlockPhrase`, case-insensitive) in a popup, and the unlock is recorded by name and marked
+  Client or Gitwork (Dan's call).
+- **History** (`WikiCodeEvent`): uploads, edits, Live and Master, locks, unlocks, variants and
+  deletions, each with who and whether they were a client (a guest account is a client; the API
+  key is "Foundry API"). An edit or a deletion keeps the version as it was (`before`), so
+  "See what changed" shows the diff and "Put this back" restores it
+  (`POST …/versions/[versionId]/restore`, itself recorded). Each version also shows who made it
+  and who last changed it.
+- Routes: `PATCH …/code/[moduleId]` takes `{ locked, confirm }`; `POST …/[moduleId]/variants`,
+  `DELETE …/variants/[variantId]`, `GET …/[moduleId]/events`. Schema is additive (two tables,
+  nullable or defaulted columns). History is internal only; the client's share page shows the
+  markers, variants and the lock but not the history.
+- Demo: `/demo/wiki#code-handover` through the real rules (`src/lib/demo/demo-code.ts`):
+  Receiver has Live v1.3.0 and Master v1.2.0, a venue variant (The Ivy) copied from v1.1.0 so it
+  reads "Master is now v1.2.0", and a client's edit that can be seen and put back; Sender starts
+  locked.
+- Tests: `src/lib/__tests__/wiki-code-rules.test.ts`, `src/server/__tests__/wiki-code-lock.test.ts`.

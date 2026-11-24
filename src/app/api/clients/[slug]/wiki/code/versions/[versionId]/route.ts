@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { deleteCodeVersion, updateCodeVersion } from "@/server/wiki-code";
+import { codeActorFor } from "@/server/wiki-code-actor";
 import { clientIdForSlug } from "@/server/clients-scope";
 import { assertClientWriter } from "@/server/client-write-access";
 
@@ -16,6 +17,7 @@ const versionUpdateSchema = z.object({
   notes: z.string().trim().max(5000).optional().nullable(),
   files: z.array(fileSchema).min(1).max(50).optional(),
   makeCurrent: z.boolean().optional(),
+  makeMaster: z.boolean().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string; versionId: string }> }) {
@@ -24,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
-    const updated = await updateCodeVersion(clientId, versionId, versionUpdateSchema.parse(await req.json()));
+    const updated = await updateCodeVersion(clientId, versionId, versionUpdateSchema.parse(await req.json()), await codeActorFor(req));
     if (!updated) return apiError("Version not found", 404);
     return apiOk(updated);
   } catch (err) {
@@ -38,7 +40,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
     await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
-    const ok = await deleteCodeVersion(clientId, versionId);
+    const ok = await deleteCodeVersion(clientId, versionId, await codeActorFor(req));
     if (!ok) return apiError("Version not found", 404);
     return apiOk({ deleted: true });
   } catch (err) {

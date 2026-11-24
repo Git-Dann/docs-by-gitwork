@@ -121,6 +121,11 @@ import {
   type WikiCommentScope,
   getWikiMentionables,
   getPublicWikiMentionables,
+  setWikiCodeLockApi,
+  createWikiCodeVariantApi,
+  deleteWikiCodeVariantApi,
+  listWikiCodeEventsApi,
+  restoreWikiCodeVersionApi,
 } from "@/lib/api";
 import type { CourseImportInput, BigWedgeSyncResult, MonitorInput, WikiIntakeItemPayload } from "@/lib/api";
 
@@ -1166,7 +1171,7 @@ export function useDeleteCodeModule(slug: string) {
 export function useCreateCodeVersion(slug: string) {
   const invalidate = useWikiInvalidate(slug);
   return useMutation({
-    mutationFn: ({ moduleId, ...input }: { moduleId: string; label: string; notes?: string | null; files: CodeFileInput[]; makeCurrent?: boolean }) =>
+    mutationFn: ({ moduleId, ...input }: { moduleId: string; label: string; notes?: string | null; files: CodeFileInput[]; makeCurrent?: boolean; variantId?: string | null }) =>
       createWikiCodeVersionApi(slug, moduleId, input),
     onSuccess: invalidate,
   });
@@ -1175,7 +1180,7 @@ export function useCreateCodeVersion(slug: string) {
 export function useUpdateCodeVersion(slug: string) {
   const invalidate = useWikiInvalidate(slug);
   return useMutation({
-    mutationFn: ({ versionId, ...input }: { versionId: string; label?: string; notes?: string | null; files?: CodeFileInput[]; makeCurrent?: boolean }) =>
+    mutationFn: ({ versionId, ...input }: { versionId: string; label?: string; notes?: string | null; files?: CodeFileInput[]; makeCurrent?: boolean; makeMaster?: boolean }) =>
       updateWikiCodeVersionApi(slug, versionId, input),
     onSuccess: invalidate,
   });
@@ -1184,6 +1189,49 @@ export function useUpdateCodeVersion(slug: string) {
 export function useDeleteCodeVersion(slug: string) {
   const invalidate = useWikiInvalidate(slug);
   return useMutation({ mutationFn: (versionId: string) => deleteWikiCodeVersionApi(slug, versionId), onSuccess: invalidate });
+}
+
+/** Lock (Gitwork only) or unlock a code module. Unlocking needs `confirm: "Unlock Code"`. */
+export function useSetCodeLock(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({
+    mutationFn: ({ moduleId, ...input }: { moduleId: string; locked: boolean; confirm?: string }) => setWikiCodeLockApi(slug, moduleId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCreateCodeVariant(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({
+    mutationFn: ({ moduleId, ...input }: { moduleId: string; name: string; notes?: string | null; baseVersionId: string }) =>
+      createWikiCodeVariantApi(slug, moduleId, input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteCodeVariant(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({
+    mutationFn: ({ moduleId, variantId }: { moduleId: string; variantId: string }) => deleteWikiCodeVariantApi(slug, moduleId, variantId),
+    onSuccess: invalidate,
+  });
+}
+
+/** A code module's history. Keyed under the wiki, so any change to the wiki refreshes it. */
+export function useCodeEvents(slug: string, moduleId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "code-events", moduleId],
+    queryFn: () => listWikiCodeEventsApi(slug, moduleId).then((r) => r.events),
+    enabled,
+  });
+}
+
+export function useRestoreCodeVersion(slug: string) {
+  const invalidate = useWikiInvalidate(slug);
+  return useMutation({
+    mutationFn: ({ versionId, eventId }: { versionId: string; eventId: string }) => restoreWikiCodeVersionApi(slug, versionId, eventId),
+    onSuccess: invalidate,
+  });
 }
 
 // ─── Documents ────────────────────────────────────────────────────────────────
