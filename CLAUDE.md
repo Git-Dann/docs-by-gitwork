@@ -903,3 +903,4 @@ be resolved by reading. Do not renumber either one.
 - **§149** — Care has one UI
 - **§150** — Projects, and budget vs actual
 - **§151** — Needs you becomes an inbox
+- **§152** — One animated theme switch everywhere

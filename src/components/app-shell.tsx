@@ -42,7 +42,7 @@ import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
 import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { AiSpendCard } from "@/components/ai-spend-card";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeSoundToggle, ThemeToggle } from "@/components/theme-toggle";
 import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
@@ -1114,7 +1114,10 @@ function ProfileMenu({
             >
               Theme
             </span>
-            <ThemeToggle iconOnly />
+            <span className="flex items-center gap-1">
+              <ThemeSoundToggle />
+              <ThemeToggle />
+            </span>
           </div>
 
           {/* Account group, last: Settings and Sign out belong together, and both are

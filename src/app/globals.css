@@ -2243,3 +2243,163 @@ h2, h3, h4, h5 {
 @media (prefers-reduced-motion: reduce) {
   .halloween-drift { display: none; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Mode switch (src/components/ui/mode-switch/mode-switch.tsx): Light · System · Dark.
+   Adapted from Lucy Bichakhchyan's "Dark Mode Switcher" (CodePen, MIT;
+   docs/third-party-ui.md). The colours are registered custom properties scoped to
+   the switch, so the track, knob and glyph ease between themes instead of snapping,
+   and they read Foundry's brand tokens, so dark mode and the seasonal themes
+   recolour it. The pen styled :root; nothing here touches the page.
+   ───────────────────────────────────────────────────────────────────────────── */
+@property --ms-t1    { syntax: "<color>"; inherits: true; initial-value: #EFF6FF; }
+@property --ms-t2    { syntax: "<color>"; inherits: true; initial-value: #DBEAFE; }
+@property --ms-t3    { syntax: "<color>"; inherits: true; initial-value: #BFDBFE; }
+@property --ms-stop  { syntax: "<color>"; inherits: true; initial-value: #1D4ED8; }
+@property --ms-knob  { syntax: "<color>"; inherits: true; initial-value: #FFFFFF; }
+@property --ms-rim   { syntax: "<color>"; inherits: true; initial-value: #BFDBFE; }
+
+.mode-switch {
+  --ms-t1: var(--brand-50);
+  --ms-t2: var(--brand-100);
+  --ms-t3: var(--brand-300);
+  --ms-stop: var(--brand-700);
+  --ms-knob: var(--surface-0);
+  --ms-rim: var(--brand-300);
+  --ms-glyph: var(--brand-600);
+  --ms-heavy: cubic-bezier(0.65, 0, 0.35, 1);
+  --ms-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Size: the compact switch for headers and menus. */
+  --ms-w: 96px;
+  --ms-h: 32px;
+  --ms-pad: 3px;
+  --ms-knob-size: calc(var(--ms-h) - var(--ms-pad) * 2);
+  --ms-travel: calc((var(--ms-w) - var(--ms-pad) * 2 - var(--ms-knob-size)) / 2);
+  --i: 1;
+
+  position: relative;
+  display: inline-grid;
+  flex-shrink: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  width: var(--ms-w);
+  height: var(--ms-h);
+  padding: var(--ms-pad);
+  border-radius: 999px;
+  background: linear-gradient(120deg, var(--ms-t1) 0%, var(--ms-t2) 55%, var(--ms-t3) 100%);
+  box-shadow: inset 0 0 0 1px var(--ms-rim);
+  transition:
+    --ms-t1 700ms var(--ms-heavy), --ms-t2 700ms var(--ms-heavy), --ms-t3 700ms var(--ms-heavy),
+    --ms-stop 700ms var(--ms-heavy), --ms-knob 700ms var(--ms-heavy), --ms-rim 700ms var(--ms-heavy);
+}
+.mode-switch--lg { --ms-w: 232px; --ms-h: 88px; --ms-pad: 8px; }
+/* The saved mode appears without animating. */
+.mode-switch.is-instant, .mode-switch.is-instant * { transition: none !important; animation: none !important; }
+
+/* The three stops sit on the track; the knob covers the chosen one. */
+.mode-switch__stop {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  height: var(--ms-knob-size);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ms-stop);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 300ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.mode-switch__stop:hover { opacity: 1; }
+.mode-switch__stop[aria-checked="true"] { opacity: 0; }
+.mode-switch__stop:focus-visible { opacity: 1; outline: 2px solid var(--ms-glyph); outline-offset: 1px; }
+.mode-switch__stop svg {
+  width: calc(var(--ms-knob-size) * 0.52);
+  height: calc(var(--ms-knob-size) * 0.52);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 600ms var(--ms-settle);
+}
+.mode-switch--lg .mode-switch__stop svg { width: 22px; height: 22px; stroke-width: 1.6; }
+/* Small hover hints on the icons waiting on the track. */
+.mode-switch__stop[data-mode="light"]:hover svg { transform: rotate(45deg) scale(1.1); }
+.mode-switch__stop[data-mode="dark"]:hover svg { transform: rotate(-18deg) scale(1.1); }
+.mode-switch__stop[data-mode="system"]:hover svg { transform: translateY(-1px) scale(1.1); }
+
+/* Knob: slides with a heavy ease; the face inside squashes as it travels (in the component). */
+.mode-switch__knob {
+  position: absolute;
+  z-index: 2;
+  top: var(--ms-pad);
+  left: var(--ms-pad);
+  width: var(--ms-knob-size);
+  height: var(--ms-knob-size);
+  pointer-events: none;
+  transform: translateX(calc(var(--i) * var(--ms-travel)));
+  transition: transform 640ms var(--ms-heavy);
+}
+.mode-switch__face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ms-knob);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2), inset 0 0 0 1px var(--ms-rim);
+}
+.mode-switch--lg .mode-switch__face { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22), inset 0 0 0 1px var(--ms-rim); }
+
+/* Knob artwork */
+.mode-switch__glyph {
+  position: absolute;
+  width: calc(var(--ms-knob-size) * 0.72);
+  height: calc(var(--ms-knob-size) * 0.72);
+  overflow: visible;
+  opacity: 0;
+  transform: rotate(-70deg) scale(0.5);
+  transition: opacity 360ms ease, transform 760ms var(--ms-settle);
+}
+.mode-switch__ray, .mode-switch__core, .mode-switch__moon, .mode-switch__star {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.mode-switch[data-glyph="sun"] .mode-switch__glyph--sun,
+.mode-switch[data-glyph="moon"] .mode-switch__glyph--moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+  transition-delay: 160ms;
+}
+
+/* Sun: rays fan out one by one, then the ring turns slowly. */
+.mode-switch__ray { stroke: #E2A06E; stroke-width: 2.6; stroke-linecap: round; transform-origin: center bottom; }
+.mode-switch__rays { transform-origin: 24px 24px; transform-box: view-box; }
+.mode-switch[data-glyph="sun"] .mode-switch__ray { animation: ms-ray-in 520ms var(--ms-settle) calc(260ms + var(--n) * 55ms) backwards; }
+.mode-switch[data-glyph="sun"] .mode-switch__rays { animation: ms-spin 26s linear 900ms infinite; }
+.mode-switch[data-glyph="sun"] .mode-switch__core { animation: ms-core-in 700ms var(--ms-settle) 160ms backwards; }
+
+/* Moon: a lit crescent, then stars pop in and twinkle. */
+.mode-switch__star { fill: #F6F6F4; opacity: 0; }
+.mode-switch[data-glyph="moon"] .mode-switch__star {
+  animation:
+    ms-star-in 520ms var(--ms-settle) calc(420ms + var(--d) * 120ms) forwards,
+    ms-twinkle 2.6s ease-in-out calc(1100ms + var(--d) * 380ms) infinite;
+}
+.mode-switch[data-glyph="moon"] .mode-switch__moon { animation: ms-moon-in 800ms var(--ms-settle) 160ms backwards; }
+
+@keyframes ms-spin { to { transform: rotate(360deg); } }
+@keyframes ms-ray-in { from { transform: scaleY(0); opacity: 0; } }
+@keyframes ms-core-in { from { transform: scale(0.6); } }
+@keyframes ms-moon-in { from { transform: rotate(-35deg) scale(0.7); } }
+@keyframes ms-star-in { from { opacity: 0; transform: scale(0) rotate(-45deg); } to { opacity: 1; transform: scale(1) rotate(0deg); } }
+@keyframes ms-twinkle { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-switch, .mode-switch * { transition: none !important; animation: none !important; }
+  .mode-switch[data-glyph="moon"] .mode-switch__star { opacity: 1; }
+}

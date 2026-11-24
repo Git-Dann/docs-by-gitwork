@@ -2091,3 +2091,29 @@ reader `src/server/needs-you.ts`, state `src/server/needs-you-state.ts`, actions
   inbox view), `src/server/__tests__/needs-you-state.test.ts` (one person's rows only, the route
   refuses a user in the body and "view as"), `src/server/__tests__/needs-you-scope.test.ts`
   (a developer's requests are their clients' only, no Create task, no Foreman, own commitments).
+
+## 152. Recent Changes (November 2026) — One animated theme switch everywhere
+
+Every Light / System / Dark control in Foundry is now one animated switch: a pill track with a
+round knob that slides between three stops, squashes as it travels, and wears an animated sun
+(rays fan out, then turn) or moon (stars twinkle). Adapted from Lucy Bichakhchyan's "Dark Mode
+Switcher" (CodePen, MIT; licence and the list of changes in `docs/third-party-ui.md`).
+
+- **One component, four places.** `src/components/ui/mode-switch/mode-switch.tsx`, rendered by
+  the existing `ThemeToggle` (`src/components/theme-toggle.tsx`), so the app's profile menu, the
+  internal wiki header, the client's shared wiki page and the demo banner all changed together.
+  Styles are the `.mode-switch*` block at the end of `src/app/globals.css`, scoped to the switch.
+- **Light · System · Dark** (Dan's call). The pen's middle stop was Sunset; Foundry has no such
+  theme, so the middle is System, and on System the knob wears whichever of the sun or moon the
+  device is using (`knobGlyph`).
+- **Colours are Foundry's brand tokens** (blue track in light, navy in dark), registered as
+  `@property` colours so they ease when the theme changes; the seasonal themes recolour it too.
+  The sun and moon artwork keep their own colours.
+- **Sound, on by default** (Dan's call): a chime for Light, a warm hum for System, a deep bell
+  for Dark, made live with Web Audio (`src/lib/mode-switch-sounds.ts`, nothing to download). Per
+  browser (`foundry.mode-sound.v1`), muted with the speaker button beside the switch in the
+  profile menu. A browser with no audio, or blocked storage, stays silent.
+- Accessible as before: a `radiogroup` of three radios ("Light theme", "System theme", "Dark
+  theme"), arrow keys and Home/End, roving tabindex. Reduced motion: no slide, squash or glyph
+  animation. The saved mode appears without animating on load.
+- Tests: `src/components/ui/mode-switch/__tests__/mode-switch.test.tsx`.

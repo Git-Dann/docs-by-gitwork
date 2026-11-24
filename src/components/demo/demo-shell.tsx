@@ -134,7 +134,7 @@ export function DemoShell({
           </p>
           {/* The same Light / Dark / System control as the app's profile menu. Rendered once
               mounted: the chosen mode lives in localStorage, so the server can't know it. */}
-          {mounted ? <ThemeToggle iconOnly className="shrink-0" /> : <span className="h-[30px] w-[98px] shrink-0" aria-hidden />}
+          {mounted ? <ThemeToggle className="shrink-0" /> : <span className="h-8 w-24 shrink-0" aria-hidden />}
         </div>
         <div className="flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
           {/* ── Sidebar (mirrors the real app shell) ── */}
