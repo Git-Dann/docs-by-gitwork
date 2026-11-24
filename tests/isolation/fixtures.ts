@@ -78,6 +78,9 @@ export type SideIds = {
   leadAction: string;
   project: string;
   weeklyUpdate: string;
+  codeModule: string;
+  codeVersion: string;
+  codeVariant: string;
   invite: string;
   proof: string;
   template: string;
@@ -142,6 +145,9 @@ export function idsFor(side: Side): SideIds {
     leadAction: id(side, "lead-action"),
     project: id(side, "project"),
     weeklyUpdate: id(side, "weekly-update"),
+    codeModule: id(side, "code-module"),
+    codeVersion: id(side, "code-version"),
+    codeVariant: id(side, "code-variant"),
     invite: id(side, "invite"),
     proof: id(side, "proof"),
     template: id(side, "template"),
@@ -306,6 +312,13 @@ export async function seedSide(db: PrismaClient, side: Side) {
   await db.leadAction.create({ data: { id: i.leadAction, workspaceId: i.workspace, clientId: i.client, title: m(side, "lead-action") } });
   await db.project.create({ data: { id: i.project, workspaceId: i.workspace, clientId: i.client, name: m(side, "project"), status: "ACTIVE", startDate: now } });
   await db.wikiWeeklyUpdate.create({ data: { id: i.weeklyUpdate, wikiId: i.wiki, weekStart: new Date("2026-11-16T00:00:00Z"), subject: m(side, "weekly-update"), body: m(side, "weekly-update-body") } });
+  // Code Handover (§153): a module with a Master version, a variant and a history entry.
+  await db.wikiCodeModule.create({ data: { id: i.codeModule, wikiId: i.wiki, name: m(side, "code-module") } });
+  await db.wikiCodeVersion.create({
+    data: { id: i.codeVersion, moduleId: i.codeModule, label: m(side, "code-version"), isCurrent: true, isMaster: true, files: { create: [{ filename: "main.cpp", content: m(side, "code-file") }] } },
+  });
+  await db.wikiCodeVariant.create({ data: { id: i.codeVariant, moduleId: i.codeModule, name: m(side, "code-variant"), baseVersionId: i.codeVersion } });
+  await db.wikiCodeEvent.create({ data: { moduleId: i.codeModule, kind: "version_uploaded", actorName: m(side, "code-actor"), detail: m(side, "code-event") } });
   await db.workspaceInvite.create({ data: { id: i.invite, workspaceId: i.workspace, invitedById: i.user, label: m(side, "invite") } });
   await db.auditLog.create({ data: { workspaceId: i.workspace, action: m(side, "audit") } });
   await db.documentTemplate.create({
@@ -368,6 +381,15 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
     db.leadAction.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.project.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.wikiWeeklyUpdate.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
+    db.wikiCodeModule.findMany({
+      where: { wikiId: i.wiki },
+      orderBy: { id: "asc" },
+      include: {
+        versions: { orderBy: { id: "asc" }, include: { files: { orderBy: { id: "asc" } } } },
+        variants: { orderBy: { id: "asc" } },
+        events: { orderBy: { id: "asc" } },
+      },
+    }),
     db.workspaceInvite.findMany({ where: ws, orderBy: { id: "asc" } }),
   ]);
   return JSON.stringify(parts, (_k, v) => (typeof v === "bigint" ? v.toString() : v));

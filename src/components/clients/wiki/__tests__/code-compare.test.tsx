@@ -17,7 +17,14 @@ vi.mock("@/hooks/use-wiki", () => ({
   useDeleteCodeModule: mutation,
   useDeleteCodeVersion: mutation,
   useUpdateCodeVersion: mutation,
+  useDeleteCodeVariant: mutation,
+  useSetCodeLock: mutation,
+  useCreateCodeVariant: mutation,
+  useRestoreCodeVersion: mutation,
+  useCodeEvents: () => ({ isPending: false, isError: false, data: [] }),
 }));
+vi.mock("@/hooks/use-permissions", () => ({ usePermissions: () => ({ isExternal: false }) }));
+vi.mock("@/components/ui/toast", () => ({ useToast: () => ({ success: () => {}, error: () => {} }) }));
 
 import { WikiCodeSection } from "../wiki-code-section";
 import { mergeDraftFiles } from "@/lib/code-upload";
@@ -33,15 +40,15 @@ const file = (id: string, filename: string, content: string) => ({ id, filename,
 
 const versions: WikiCodeVersionRecord[] = [
   {
-    id: "v13", label: "v1.3", notes: "Sleep between polls.", isCurrent: true, createdAt: "2026-07-21T10:00:00Z",
+    id: "v13", label: "v1.3", notes: "Sleep between polls.", isCurrent: true, isMaster: false, variantId: null, createdAt: "2026-07-21T10:00:00Z", updatedAt: "2026-07-21T10:00:00Z", createdByName: null, createdByClient: false, updatedByName: null,
     files: [file("a", "main.cpp", "setup();\nloop();\nsleep(500);\n"), file("b", "config.h", "#define CH 7\n")],
   },
   {
-    id: "v12", label: "v1.2", notes: null, isCurrent: false, createdAt: "2026-07-14T10:00:00Z",
+    id: "v12", label: "v1.2", notes: null, isCurrent: false, isMaster: false, variantId: null, createdAt: "2026-07-14T10:00:00Z", updatedAt: "2026-07-14T10:00:00Z", createdByName: null, createdByClient: false, updatedByName: null,
     files: [file("c", "main.cpp", "setup();\nloop();\n")],
   },
   {
-    id: "v1", label: "v1", notes: null, isCurrent: false, createdAt: "2026-07-01T10:00:00Z",
+    id: "v1", label: "v1", notes: null, isCurrent: false, isMaster: false, variantId: null, createdAt: "2026-07-01T10:00:00Z", updatedAt: "2026-07-01T10:00:00Z", createdByName: null, createdByClient: false, updatedByName: null,
     files: [file("d", "main.cpp", "setup();\n")],
   },
 ];
@@ -49,8 +56,8 @@ const versions: WikiCodeVersionRecord[] = [
 const section: WikiCodeHandoverSection = {
   enabled: true,
   modules: [
-    { id: "m1", name: "Receiver", description: null, versions },
-    { id: "m2", name: "Sender", description: null, versions: [versions[2]] },
+    { id: "m1", name: "Receiver", description: null, lockedAt: null, lockedByName: null, variants: [], versions },
+    { id: "m2", name: "Sender", description: null, lockedAt: null, lockedByName: null, variants: [], versions: [versions[2]] },
   ],
 };
 

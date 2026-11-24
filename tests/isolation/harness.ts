@@ -122,7 +122,11 @@ function fill(param: string, before: string[], attacker: SideIds, victim: SideId
     case "commentId":
       return victim.documentComment;
     case "versionId":
-      return victim.documentVersion;
+      return before.includes("code") ? victim.codeVersion : victim.documentVersion;
+    case "moduleId":
+      return before.includes("code") ? victim.codeModule : null;
+    case "variantId":
+      return victim.codeVariant;
     case "id":
       return ID_BY_PARENT[stripParams(before)]?.(victim) ?? null;
     default:

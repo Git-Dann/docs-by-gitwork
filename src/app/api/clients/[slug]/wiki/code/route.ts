@@ -4,6 +4,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { createCodeModule, loadWikiCodeHandover, setWikiCodeHandoverEnabled } from "@/server/wiki-code";
 import { clientIdForSlug } from "@/server/clients-scope";
 import { assertClientReader, assertClientWriter } from "@/server/client-write-access";
+import { codeActorFor } from "@/server/wiki-code-actor";
 
 const toggleSchema = z.object({ enabled: z.boolean() });
 const moduleSchema = z.object({
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     await assertClientWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
-    return apiOk(await createCodeModule(clientId, moduleSchema.parse(await req.json())), { status: 201 });
+    return apiOk(await createCodeModule(clientId, moduleSchema.parse(await req.json()), await codeActorFor(req)), { status: 201 });
   } catch (err) {
     return fromError(err);
   }
