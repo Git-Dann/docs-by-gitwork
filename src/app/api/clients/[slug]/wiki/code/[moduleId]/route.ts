@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
+import { MAX_CODE_FILE_CHARS, MAX_CODE_VERSION_CHARS, MAX_FILES_PER_VERSION } from "@/lib/code-upload";
 import { createCodeVersion, deleteCodeModule, lockCodeModule, unlockCodeModule, updateCodeModule } from "@/server/wiki-code";
 import { codeActorFor } from "@/server/wiki-code-actor";
 import { clientIdForSlug } from "@/server/clients-scope";
@@ -17,13 +18,19 @@ const moduleUpdateSchema = z.object({
 const fileSchema = z.object({
   filename: z.string().trim().min(1).max(200),
   language: z.string().trim().max(40).optional().nullable(),
-  content: z.string().max(500_000),
+  content: z.string().max(MAX_CODE_FILE_CHARS),
 });
 
 const versionSchema = z.object({
   label: z.string().trim().min(1).max(60),
   notes: z.string().trim().max(5000).optional().nullable(),
-  files: z.array(fileSchema).min(1).max(50),
+  files: z
+    .array(fileSchema)
+    .min(1)
+    .max(MAX_FILES_PER_VERSION)
+    .refine((fs) => fs.reduce((n, f) => n + f.content.length, 0) <= MAX_CODE_VERSION_CHARS, {
+      message: `All of a version's files together can hold up to ${MAX_CODE_VERSION_CHARS.toLocaleString("en-GB")} characters`,
+    }),
   makeCurrent: z.boolean().optional(),
   /** Add it to a variant's line instead of the Master line. */
   variantId: z.string().trim().min(1).max(40).optional().nullable(),

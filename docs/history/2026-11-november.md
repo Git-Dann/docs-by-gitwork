@@ -295,7 +295,7 @@ A second pass on the wiki's Code Handover (§112).
   is accepted there) / **Upload folder**. Paths are kept (`src/radio.h`), and a single folder every
   path shares is dropped, so a zipped `receiver/` lines up with the previous version's names.
   The rules are pure, in `src/lib/code-upload.ts`, and mirror the server: text only (NUL bytes =
-  binary), 500,000 characters per file, 200-character paths, 50 files per version. Tooling,
+  binary), 2,000,000 characters per file (raised from 500,000 in Nov 2026; a PollenIQ sketch was ~535,000) and 10,000,000 per version, 200-character paths, 50 files per version. Tooling,
   dependency and build folders (`.git`, `node_modules`, `.pio`, `build`, `__MACOSX`) and OS files
   are ignored and counted. Everything else left out is listed with its reason.
 - **Version viewer**: several files get a picker above the code (chips, or a dropdown past
