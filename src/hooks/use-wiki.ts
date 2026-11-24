@@ -1217,11 +1217,11 @@ export function useDeleteCodeVariant(slug: string) {
   });
 }
 
-/** A code module's history. Keyed under the wiki, so any change to the wiki refreshes it. */
-export function useCodeEvents(slug: string, moduleId: string, enabled: boolean) {
+/** Code Handover's history, every module. Keyed under the wiki, so any change refreshes it. */
+export function useCodeEvents(slug: string, enabled: boolean) {
   return useQuery({
-    queryKey: ["client-wiki", slug, "code-events", moduleId],
-    queryFn: () => listWikiCodeEventsApi(slug, moduleId).then((r) => r.events),
+    queryKey: ["client-wiki", slug, "code-events"],
+    queryFn: () => listWikiCodeEventsApi(slug).then((r) => r.events),
     enabled,
   });
 }

@@ -840,7 +840,6 @@ function ModuleView({
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [history, setHistory] = useState(false);
   const [variantFrom, setVariantFrom] = useState<WikiCodeVersionRecord | null>(null);
   // Which line is showing: null is Master, else a variant's id.
   const [lineId, setLineId] = useState<string | null>(null);
@@ -880,22 +879,19 @@ function ModuleView({
   const btn = "inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-0)]";
 
   return (
-    <div className="space-y-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4" data-code-module>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="text-[16px] font-semibold text-[var(--text-1)]">{module.name}</h3>
-          {module.description && <p className="mt-0.5 text-[13px] leading-6 text-[var(--text-3)]">{module.description}</p>}
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+    // h-full: every card in a row is the same height (the grid stretches them).
+    <div className="h-full space-y-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4" data-code-module>
+      {/* The same header in every card: the name on the left, the actions far right on its line. */}
+      {/* On a phone the buttons wrap under the name but stay right-aligned. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h3 className="min-w-[120px] flex-1 truncate text-[16px] font-semibold leading-8 text-[var(--text-1)]" title={module.name}>
+          {module.name}
+        </h3>
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
           {isInternal ? <LockButton slug={slug} module={module} canLock={!isExternal} /> : locked ? (
             <span title="Locked" className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-[var(--warning-500)] bg-[var(--warning-50)] text-[var(--warning-500)]">
               <LockClosedIcon className="h-4 w-4" aria-label="Locked" />
             </span>
-          ) : null}
-          {isInternal ? (
-            <button type="button" onClick={() => setHistory(true)} className={btn}>
-              <ClockIcon className="h-4 w-4" /> History
-            </button>
           ) : null}
           {module.versions.length >= 2 && (
             <button type="button" onClick={() => setComparing({ toId: null })} className={btn}>
@@ -938,6 +934,8 @@ function ModuleView({
           )}
         </div>
       </div>
+
+      {module.description && <p className="-mt-1 text-[13px] leading-6 text-[var(--text-3)]">{module.description}</p>}
 
       {locked ? (
         <p className="flex items-start gap-2 rounded-[8px] border border-[var(--warning-500)] bg-[var(--warning-50)] px-3 py-2 text-[12px] leading-5 text-[var(--text-2)]" data-code-locked>
@@ -1018,7 +1016,6 @@ function ModuleView({
           }}
         />
       )}
-      {isInternal && history ? <CodeHistoryDialog slug={slug} module={module} canRestore onClose={() => setHistory(false)} /> : null}
       {isInternal && variantFrom ? (
         <NewVariantDialog slug={slug} module={module} base={variantFrom} onClose={() => setVariantFrom(null)} onCreated={(id) => setLineId(id)} />
       ) : null}
@@ -1148,6 +1145,7 @@ export function WikiCodeSection({
 }) {
   const isInternal = mode === "internal";
   const [addingModule, setAddingModule] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // A shared compare link (`?compare=`), read once on arrival. Ignored unless it names a
   // module and two versions that are actually here.
   const [linkedPair, setLinkedPair] = useState<ComparePair | null>(null);
@@ -1174,13 +1172,14 @@ export function WikiCodeSection({
           {" // CODE HANDOVER"}
         </span>
         {isInternal && (
-          <button
-            type="button"
-            onClick={() => setAddingModule(true)}
-            className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-600)] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
-          >
-            <PlusIcon className="h-3.5 w-3.5" /> Add module
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setHistoryOpen(true)} className="app-button app-button-secondary app-button-xs inline-flex items-center gap-1.5">
+              <ClockIcon className="h-3.5 w-3.5" /> History
+            </button>
+            <button type="button" onClick={() => setAddingModule(true)} className="app-button app-button-secondary app-button-xs inline-flex items-center gap-1.5">
+              <PlusIcon className="h-3.5 w-3.5" /> Add module
+            </button>
+          </div>
         )}
       </div>
       <div className="space-y-6 p-6">
@@ -1193,13 +1192,14 @@ export function WikiCodeSection({
         )}
 
         {isInternal && <AddModuleModal slug={slug} open={addingModule} onClose={() => setAddingModule(false)} />}
+        {isInternal && historyOpen ? <CodeHistoryDialog slug={slug} modules={section.modules} canRestore onClose={() => setHistoryOpen(false)} /> : null}
 
         {section.modules.length === 0 ? (
           <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-4 py-10 text-center text-sm text-[var(--text-4)]">
             No code modules yet.{isInternal ? " Add one (e.g. Receiver, Sender) to start." : ""}
           </p>
         ) : (
-          <div className="grid items-start gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr))]">
+          <div className="grid items-stretch gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr))]">
             {section.modules.map((m) => (
               <ModuleView
                 // Remount when a link arrives, so the module opens its compare view on it.

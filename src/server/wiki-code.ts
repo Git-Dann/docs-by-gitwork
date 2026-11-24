@@ -71,6 +71,9 @@ export interface WikiCodeHandoverSection {
 
 export interface WikiCodeEventRecord {
   id: string;
+  /** The module it happened on, so one history can cover every module. */
+  moduleId: string;
+  moduleName: string;
   kind: CodeEventKind;
   actorName: string;
   actorIsClient: boolean;
@@ -497,22 +500,29 @@ export async function deleteCodeVariant(clientId: string, moduleId: string, vari
   return true;
 }
 
-/** A module's history, newest first, with the version labels and variant names it mentions. */
-export async function listCodeEvents(clientId: string, moduleId: string): Promise<WikiCodeEventRecord[] | null> {
-  const mod = await findModule(clientId, moduleId, { allowLocked: true });
-  if (!mod) return null;
-  const [events, variants, versions] = await Promise.all([
-    prisma.wikiCodeEvent.findMany({ where: { moduleId }, orderBy: { createdAt: "desc" }, take: 300 }),
-    prisma.wikiCodeVariant.findMany({ where: { moduleId }, select: { id: true, name: true } }),
-    prisma.wikiCodeVersion.findMany({ where: { moduleId }, select: { id: true, label: true } }),
-  ]);
-  const variantName = new Map(variants.map((v) => [v.id, v.name]));
-  const versionLabel = new Map(versions.map((v) => [v.id, v.label]));
+/** Every module's history on this client's wiki, newest first, with the module, version and
+ *  variant each entry is about. */
+export async function listCodeEvents(clientId: string): Promise<WikiCodeEventRecord[]> {
+  const modules = await prisma.wikiCodeModule.findMany({
+    where: { wiki: { clientId } },
+    select: { id: true, name: true, variants: { select: { id: true, name: true } }, versions: { select: { id: true, label: true } } },
+  });
+  if (!modules.length) return [];
+  const moduleName = new Map(modules.map((m) => [m.id, m.name]));
+  const variantName = new Map(modules.flatMap((m) => m.variants.map((v) => [v.id, v.name] as const)));
+  const versionLabel = new Map(modules.flatMap((m) => m.versions.map((v) => [v.id, v.label] as const)));
+  const events = await prisma.wikiCodeEvent.findMany({
+    where: { moduleId: { in: modules.map((m) => m.id) } },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+  });
   return events.map((e) => {
     // A deleted version or variant isn't in the maps any more: the event's own detail names it.
     const [detailName, detailLabel] = e.kind.startsWith("variant_") && e.detail ? e.detail.split(" · ") : [null, e.detail];
     return {
       id: e.id,
+      moduleId: e.moduleId,
+      moduleName: moduleName.get(e.moduleId) ?? "Module",
       kind: e.kind as CodeEventKind,
       actorName: e.actorName,
       actorIsClient: e.actorIsClient,

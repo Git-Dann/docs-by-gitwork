@@ -336,7 +336,7 @@ export function MonitorsManager({
         <button
           type="button"
           onClick={openNew}
-          className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+          className="app-button app-button-secondary app-button-xs inline-flex items-center gap-1.5"
         >
           <PlusIcon className="h-3.5 w-3.5" /> Add monitor
         </button>
