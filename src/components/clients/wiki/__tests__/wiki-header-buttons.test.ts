@@ -18,7 +18,7 @@ describe("wiki section header buttons", () => {
       for (const m of s.matchAll(/<div className="widget-header[^"]*">/g)) {
         const seg = s.slice(m.index! + m[0].length, m.index! + m[0].length + 2500);
         const header = seg.slice(0, seg.indexOf("</div>\n"));
-        for (const b of header.matchAll(/<button[\s\S]*?className="([^"]+)"/g)) {
+        for (const b of header.matchAll(/<button[^>]*?className="([^"]+)"/g)) {
           if (!/\bapp-button\b/.test(b[1])) offenders.push(`${f}: ${b[1].slice(0, 80)}`);
         }
       }
