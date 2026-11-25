@@ -1102,6 +1102,9 @@ The pattern for any chat surface in Foundry. Source: `src/components/dispatch/di
   new line.
 - **Quick actions** are outlined `rounded-[6px]` chips on an empty chat, chosen by where the panel
   was opened (anywhere, a client, a task).
+- **Screenshots** attach with the paperclip beside the input, or by pasting. They show as 56px
+  thumbnails above the input with a round remove button, are shrunk in the browser before
+  sending, and the sent question carries a small "N pictures" line.
 
 ## Do's and Don'ts
 

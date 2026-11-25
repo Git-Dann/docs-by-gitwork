@@ -22,6 +22,7 @@ import {
   analyticsThStyle,
 } from "@/components/analytics/analytics-widgets";
 import { Skeleton } from "@/components/ui/motion/skeleton";
+import { DispatchUsageCards } from "@/components/analytics/dispatch-usage-cards";
 
 export function AiUsageSection({ days }: { days?: number }) {
   const { data, isPending, error } = useAiUsageAnalytics({ days });
@@ -184,6 +185,9 @@ export function AiUsageSection({ days }: { days?: number }) {
           <p className="p-4 text-sm text-[var(--text-4)]">No AI usage attributed yet.</p>
         )}
       </WidgetCard>
+
+      {/* 07 // DISPATCH · 08 // DISPATCH BY PERSON */}
+      <DispatchUsageCards days={days} firstNumber={7} />
     </div>
   );
 }

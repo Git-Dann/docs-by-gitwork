@@ -59,6 +59,7 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   "hr.weekly_digest": { icon: UserGroupIcon, label: "HR" },
   "team.message": { icon: ChatBubbleLeftEllipsisIcon, label: "Message" },
   "system.ops_alert": { icon: ExclamationTriangleIcon, label: "Platform" },
+  "ai.budget_alert": { icon: ExclamationTriangleIcon, label: "AI budget" },
 };
 
 export function eventMeta(event: NotificationEvent): EventMeta {

@@ -139,9 +139,15 @@ Behind `dispatchConfig.assistantEnabled` (default **off**; Super Admins can use 
 With it on, a person with `dispatch.use` gets the assistant both in the app (the right-hand panel)
 and in Slack; everyone else, and anything that isn't about one client, keeps the answer above.
 
+All of this is set in **Settings → Dispatch** (Super Admins), stored in `dispatchConfig`:
+
 | Key | Default | Meaning |
 |---|---|---|
 | `assistantEnabled` | `false` | Only a literal `true` switches it on. |
+| `budgetUsd` | `200` | The AI budget alerts are measured against (every AI feature on the Anthropic key). |
+| `budgetSince` | none | `YYYY-MM-DD` to count a one-off pot from; empty means each calendar month. |
+
+The Figma token is on the same page (stored encrypted in `Workspace.figmaToken`).
 
 **Switching it on:**
 
@@ -149,7 +155,31 @@ and in Slack; everyone else, and anything that isn't about one client, keeps the
    `channels:history` and `groups:history`) and re-save the bot token in Settings → Integrations.
 2. Check the workspace has an Anthropic key in Settings → Integrations. Dispatch uses
    `claude-sonnet-5-5` with that key, whatever the workspace's own model setting says.
-3. Set `"assistantEnabled": true` in `Workspace.dispatchConfig`.
+3. For code questions, the server's `GITHUB_TOKEN` must be able to read the clients' repos.
+   For design questions, add a Figma token in Settings → Dispatch from an account that can see
+   the clients' files.
+4. Switch it on in Settings → Dispatch.
+
+To try it as a particular developer first, use view-as (Super Admins): Dispatch works in the
+preview while the switch is off, with exactly that person's access. Chats made while previewing
+are saved as theirs, so delete test chats afterwards.
+
+**What it can read** (§156), always only for the client the chat is about:
+
+- Foundry's own records: tasks, releases, meetings, wiki, documents, the linked Drive folder
+  (with the asker's own Google account) and the internal Slack channel.
+- **Code:** the repositories on the client's platforms. Secret files are never opened.
+- **Designs:** the Figma files linked as the client's designs, and pictures of their frames.
+- **What was built:** screenshots of the client's own sites (production or staging), and
+  screenshots people attach or paste in the panel (at most four per question).
+
+**Budget alerts.** Hourly from the `jobs` worker. Super Admins are told once at 50%, 80% and 95%
+of the budget per period, in Foundry and on the ops Slack webhook. Nothing is switched off at
+100%. Spend is estimated from list prices (Analytics → AI usage shows it beside the provider's
+billed figure when an admin key is set).
+
+**Chats are deleted after 90 days unused**, nightly, with any proposal never carried out.
+Carried-out proposals stay as the record of what Dispatch changed.
 
 **Where a Slack answer goes.** A DM, or the client's own internal channel: in the thread. Anywhere
 else: to the asker by DM, with a note in the thread. An answer posted in a channel never shows

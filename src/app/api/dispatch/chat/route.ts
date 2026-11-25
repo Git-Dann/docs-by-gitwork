@@ -5,7 +5,8 @@ import { openScope } from "@/server/dispatch/assistant/scope";
 import { assertAssistantAvailable } from "@/server/dispatch/assistant/access-gate";
 import { runTurn } from "@/server/dispatch/assistant/loop";
 import { getOwnConversation } from "@/server/dispatch/assistant/store";
-import { MAX_QUESTION_CHARS } from "@/lib/dispatch/limits";
+import { MAX_ATTACHMENTS, MAX_QUESTION_CHARS } from "@/lib/dispatch/limits";
+import { checkAttachments, type CheckedImage } from "@/lib/dispatch/images";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -16,6 +17,8 @@ const bodySchema = z
     conversationId: z.string().min(1).max(40).optional(),
     clientSlug: z.string().min(1).max(120).optional(),
     focusTaskId: z.string().min(1).max(40).optional(),
+    /** Screenshots, shrunk in the browser; checked again here by their bytes. */
+    images: z.array(z.string().max(2_100_000)).max(MAX_ATTACHMENTS).optional(),
   })
   .strict();
 
@@ -29,10 +32,14 @@ export async function POST(req: Request) {
   let user;
   let scope;
   let body: z.infer<typeof bodySchema>;
+  let images: CheckedImage[] = [];
   try {
     user = await requireAuthedUser(req);
     await assertAssistantAvailable(user);
     body = bodySchema.parse(await req.json());
+    const checked = checkAttachments(body.images ?? []);
+    if (typeof checked === "string") return apiError(checked, 400);
+    images = checked;
     let clientId: string | undefined;
     if (body.conversationId) clientId = (await getOwnConversation(user, body.conversationId)).clientId;
     if (!clientId && !body.clientSlug) return apiError("Pick a client first.", 400);
@@ -52,6 +59,7 @@ export async function POST(req: Request) {
           question: body.question,
           conversationId: body.conversationId,
           focusTaskId: body.focusTaskId,
+          images,
           emit: {
             conversation: (id) => send("conversation", { id }),
             text: (delta) => send("text", { delta }),

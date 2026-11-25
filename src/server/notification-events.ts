@@ -72,6 +72,8 @@ export const NOTIFICATION_EVENTS = [
   // The platform needs a look: a scheduled job stopped, the disk is filling, a backup failed
   // (src/server/ops-alert.ts)
   "system.ops_alert",
+  // AI spend has crossed 50/80/95% of the budget in Settings → Dispatch (src/server/dispatch/assistant/budget.ts)
+  "ai.budget_alert",
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 
@@ -136,6 +138,8 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   // To admins only, once per problem and once when it clears. The Slack copy goes through
   // SLACK_OPS_WEBHOOK_URL (src/server/ops-alert.ts), not a channel route.
   "system.ops_alert": ["inApp", "push"],
+  // To Super Admins only (spend is theirs to see), once per level per budget period.
+  "ai.budget_alert": ["inApp", "push"],
   // Directed at one person, by name, in a conversation a client may be waiting on —
   // the same weight as being @mentioned on a task.
   "wiki.request_mention": ["inApp", "push"],

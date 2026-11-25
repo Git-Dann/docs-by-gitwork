@@ -32,11 +32,13 @@ import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import { taskRef } from "@/lib/format";
 import { finaliseToolText } from "./redact";
 import { assertStillAllowed, type DispatchScope } from "./scope";
+import { CODE_TOOLS } from "./tools-code";
+import { DESIGN_TOOLS } from "./tools-design";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface ToolSource {
-  kind: "task" | "meeting" | "wiki" | "document" | "drive" | "slack" | "release" | "overview";
+  kind: "task" | "meeting" | "wiki" | "document" | "drive" | "slack" | "release" | "overview" | "code" | "design" | "page";
   id: string;
   label: string;
   href?: string;
@@ -49,18 +51,28 @@ export interface ProposedActionCard {
   lines: string[];
 }
 
+export interface ToolImage {
+  mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  /** base64 */
+  data: string;
+}
+
 export interface ToolOutcome {
   text: string;
   sources?: ToolSource[];
   action?: ProposedActionCard;
+  /** Pictures for the model to look at (a Figma frame, a page screenshot). */
+  images?: ToolImage[];
   isError?: boolean;
 }
 
 export interface ToolContext {
   conversationId: string;
+  /** Pictures this question may still bring in; tools that return one take a slot first. */
+  imagesLeft: number;
 }
 
-interface DispatchTool<S extends z.ZodTypeAny = z.ZodTypeAny> {
+export interface DispatchTool<S extends z.ZodTypeAny = z.ZodTypeAny> {
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
@@ -881,6 +893,10 @@ export const DISPATCH_TOOLS: readonly DispatchTool[] = [
   proposeComment,
   proposeFlag,
   proposeSlackPost,
+  // Appended after the first release: the list is part of the cached prefix, so new tools go
+  // at the end and nothing above moves.
+  ...CODE_TOOLS,
+  ...DESIGN_TOOLS,
 ];
 
 const BY_NAME = new Map(DISPATCH_TOOLS.map((t) => [t.name, t]));

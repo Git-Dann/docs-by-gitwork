@@ -47,6 +47,10 @@ export interface DispatchConfig {
    * for testing. Only a literal `true` turns it on.
    */
   assistantEnabled: boolean;
+  /** The AI budget in US dollars, shared by every AI feature on the Anthropic key (§156). */
+  budgetUsd: number;
+  /** YYYY-MM-DD: count spend since this date (a one-off pot). Null: each calendar month. */
+  budgetSince: string | null;
   // There is deliberately no switch for Slack Connect (externally shared) channels. Those
   // channels contain the client, and Dispatch never answers in them (respond.ts). It used to be
   // an `allowExternalChannels` option; a stored value is now ignored.
@@ -58,6 +62,8 @@ export const DISPATCH_DEFAULTS: DispatchConfig = {
   maxEvidenceItems: 12,
   perChannelPerHour: 20,
   assistantEnabled: false,
+  budgetUsd: 200,
+  budgetSince: null,
 };
 
 // ─── Evidence ───────────────────────────────────────────────────────────────
