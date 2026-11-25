@@ -2537,21 +2537,21 @@ in from the right edge, and the client row should only show when there's a choic
 
 ---
 
-## 163. Recent Changes (November 2026) — The Portal Timeline card, readable; Studies off the client page
+## 163. Recent Changes (November 2026) — The Portal Timeline card, glanceable; Studies off the client page
 
-Dan, on the Portal client page's Timeline: "this is brutal". It listed every finished task as a
-full sentence, week after week ("Show all 49"), and "Up next" was five imported subtasks 244 days
-late.
+Dan, on the Portal client page's Timeline: "this is brutal", then of a first redesign, "still too
+much… something I can just glance at". It listed every finished task as a full sentence, week
+after week ("Show all 49"), and "Up next" was five imported subtasks 244 days late. Now
+(`client-delivery-card.tsx`):
 
-- **One line per week** (`client-delivery-card.tsx`): when, an activity bar scaled to the busiest
-  week, chips only for what a client would ask about (releases, outages, blockers, meetings,
-  requests), and "N done". This week starts open; the others open on click.
-- **An opened week** leads with its events (`weekHighlights`), then the finished work grouped by
-  release or category (`doneByGroup`), three per group with "+N more", one line per task (full text
-  on hover).
-- **Where things stand**: one line per task. Anything more than `LONG_OVERDUE_DAYS` (30) late is
-  counted as "N long overdue" rather than listed (`splitLongOverdue`).
+- **Eight weeks as small bars**, height = tasks done, a green dot for a release and a red dot for an
+  outage; click a bar to pick a week (this week by default).
+- **The picked week in one line** ("20 done · 2 releases · 2 outages · 1 meeting") and up to four
+  events (`weekHighlights`), one line each. Finished tasks are not listed; the board has them.
+- **Where things stand as numbers**: the next release with its progress, then In progress, Up next
+  and Long overdue (more than `LONG_OVERDUE_DAYS` = 30 days late, `splitLongOverdue`), each opening
+  the board, names in the tooltip.
 - **Studies is no longer on the client page** (Dan: research isn't client delivery; it stays in
   Pulse). `studies` left `PORTAL_SECTIONS`, so the numbers still run without a gap; the rendered
   order was checked against the numbering, and the lead layout's fixed 02–08 is unchanged.
-- Tests: `client-delivery-compact.test.ts`.
+- Tests: `client-delivery-compact.test.ts`. Rendered at 1440 and 390 with Wedge-like data.
