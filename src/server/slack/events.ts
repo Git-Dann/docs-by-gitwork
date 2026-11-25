@@ -28,10 +28,10 @@
 import { prisma } from "@/lib/prisma";
 import { answerQuestion } from "@/server/dispatch/respond";
 import { deliveryFor } from "@/server/dispatch/access";
-import type { EffectiveUser } from "@/server/auth/effective-user";
 import { stripBotMention } from "@/server/dispatch/resolve";
 import { buildDispatchAnswer, buildDispatchNotice } from "./blocks";
-import { conversationsInfo, openDirectMessage, postMessage, usersInfo } from "./client";
+import { conversationsInfo, openDirectMessage, postMessage } from "./client";
+import { resolveSlackAsker } from "./asker";
 
 // ─── Envelope types ─────────────────────────────────────────────────────────
 
@@ -137,8 +137,27 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
 
   try {
     const isExternal = await isExternalChannel(botToken, event.channel, event.channel_type);
-    const asker = await resolveAsker(botToken, workspaceId, event.user ?? null);
+    const asker = await resolveSlackAsker(botToken, workspaceId, event.user ?? null);
     const askerUserId = asker?.id ?? null;
+
+    // The assistant (tools, proposals, chats) when it's switched on for this person and the
+    // question is about one of their clients; otherwise the status answer below. External
+    // channels and unknown askers never reach the assistant: the answer below refuses them.
+    if (asker && !isExternal && event.user) {
+      const { answerInSlack } = await import("@/server/dispatch/assistant/slack");
+      const outcome = await answerInSlack({
+        workspaceId,
+        botToken,
+        asker,
+        askerSlackId: event.user,
+        channelId: event.channel,
+        channelType: event.channel_type,
+        threadTs,
+        question,
+        exchangeId,
+      });
+      if (outcome === "handled") return;
+    }
 
     const result = await answerQuestion({
       workspaceId,
@@ -257,38 +276,6 @@ async function isExternalChannel(
     return info.data.channel.is_ext_shared === true;
   } catch {
     return true;
-  }
-}
-
-/**
- * Slack user → the Foundry member asking, with their live role and permissions in THIS workspace.
- * Matched by the Slack profile email. An archived member, someone from another workspace, or a
- * failed lookup all come back null, and Dispatch then refuses rather than answering as nobody.
- */
-async function resolveAsker(
-  botToken: string,
-  workspaceId: string,
-  slackUserId: string | null,
-): Promise<EffectiveUser | null> {
-  if (!slackUserId) return null;
-  try {
-    const info = await usersInfo(botToken, slackUserId);
-    const email = info.data.user?.profile?.email;
-    if (!email) return null;
-    const user = await prisma.user.findFirst({
-      where: {
-        email: { equals: email, mode: "insensitive" },
-        memberships: { some: { workspaceId } },
-      },
-      select: { id: true },
-    });
-    if (!user) return null;
-    // Loaded here rather than at the top so the pure triage helpers in this file stay
-    // importable without the auth stack.
-    const { resolveEffectiveUserById } = await import("@/server/mcp/auth");
-    return await resolveEffectiveUserById(user.id, workspaceId, { onlyThisWorkspace: true });
-  } catch {
-    return null;
   }
 }
 

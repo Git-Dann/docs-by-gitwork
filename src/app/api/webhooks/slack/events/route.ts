@@ -26,7 +26,7 @@ import { handleSlackEvent, parseEventBody } from "@/server/slack/events";
 import { verifySlackSignature } from "@/server/slack/signature";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
  *  const DISABLES the excess-property check that would otherwise catch a field

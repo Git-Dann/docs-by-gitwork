@@ -104,6 +104,7 @@ import type {
   ClientPlatformRecord,
   ClientEngagementType,
 } from "@/types/client";
+import { AskDispatchIcon } from "@/components/dispatch/ask-dispatch";
 
 type EditFormState = {
   name: string;
@@ -523,6 +524,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                 Suggested
               </span>
             )}
+            <AskDispatchIcon clientSlug={client.slug} clientName={client.name} />
             {supportClient && (
               <Link
                 href="/app/care"

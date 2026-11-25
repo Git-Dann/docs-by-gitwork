@@ -174,7 +174,7 @@ async function withinRateLimit(
 }
 
 /** The clients this asker can open. Same rule as the task board (`assignedClientIds`). */
-async function askerScope(asker: EffectiveUser): Promise<AskerScope> {
+export async function askerScope(asker: EffectiveUser): Promise<AskerScope> {
   if (seesAllClients(asker)) return { seeAll: true, clientIds: new Set() };
   // Loaded lazily: the tasks module pulls in the notification and auth stacks, which the pure
   // Slack triage helpers (and their tests) shouldn't need just to be imported.
@@ -185,7 +185,7 @@ async function askerScope(asker: EffectiveUser): Promise<AskerScope> {
 /** Clients and teammates a question could be about. Archived clients stay in — "what happened
  *  with X?" about a wrapped-up project is a fair question. Only clients the asker can open are
  *  candidates: Dispatch must not confirm that a client it won't discuss exists. */
-async function loadCandidates(
+export async function loadCandidates(
   workspaceId: string,
   scope: AskerScope,
 ): Promise<{ clients: ClientCandidate[]; people: PersonCandidate[] }> {

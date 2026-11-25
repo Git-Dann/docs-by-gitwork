@@ -66,6 +66,13 @@ export const DEFAULT_MODELS: Record<AiProvider, string> = {
  * assistant fail. It fails loudly (the page shows the assistant as "couldn't ask" with the
  * provider's error), but it still needs a review. Reviewed 2 Nov 2026.
  */
+/**
+ * Dispatch, the team assistant (Nov 2026). Dan chose Sonnet 5.5 for it. Kept apart from
+ * DEFAULT_MODELS on purpose: changing the platform default would move every AI feature.
+ * Anthropic ids are complete as-is. Review when Anthropic retires it; reviewed 25 Nov 2026.
+ */
+export const DISPATCH_MODEL = "claude-sonnet-5-5";
+
 export const AI_ANSWER_MODELS = {
   chatgpt: "gpt-5",
   claude: "claude-opus-5-5",

@@ -391,6 +391,12 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
         description: "Let their own Claude act in Foundry, never with more access than they have.",
       },
       { id: "studio", category: "feature", label: "Studio", description: "Make branded social posts and store screenshots." },
+      {
+        id: "dispatch.use",
+        category: "feature",
+        label: "Dispatch",
+        description: "Ask Dispatch about their own clients. It never sees more than they can.",
+      },
     ],
   },
   // Starters has no entry: it is Super-Admin-only by a role check, not a grantable permission.
@@ -490,11 +496,12 @@ export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
     "docs.manage",
     "clients.manage",
     "support.manage",
+    "dispatch.use",
   ],
   // DEVELOPER also gets the Docs module + manage, but WITHOUT docs.viewAdminTypes — so they can
   // create/edit the lightweight docs (handover, status report, brief, blank) and never see or open
   // proposals/contracts. The type boundary is enforced server-side (allowedDocTypesForUser).
-  DEVELOPER: ["clients", "support", "pulse", "backstage", "proposals", "docs.manage"],
+  DEVELOPER: ["clients", "support", "pulse", "backstage", "proposals", "docs.manage", "dispatch.use"],
   // Deliberately empty. A guest sees nothing until a Super Admin grants it per person
   // in Settings → Team, which is what makes "give this person Pulse and nothing else"
   // a decision someone made rather than a default nobody checked.
