@@ -2593,3 +2593,29 @@ clients**:
 - Tests: `clients.test.ts`, `slack-conversation.test.ts`, `prompt-and-tools.test.ts` (only
   `switch_client` takes a client, it chooses from the asker's clients through `openScope`, and
   never in a channel).
+
+## 165. Recent Changes (November 2026) — Dispatch counts clients like Portal, and talks like a person
+
+Dan, 25 Nov, after "what clients have I got?" was answered "You have 28 clients": "28? looks
+more like 12 to me". And: "Dispatch NEEDS to be conversational, open discussions, feel friendly
+and be engaged... especially in Slack... I do not want anything to feel forced, or AI slop...
+maybe just take my tone or way of speaking... any issues etc explain them clearly and don't just
+give a baked set of responses."
+
+- **Client counts match Portal.** The 28 were every client Dan can open, leads, paused and
+  archived included. Portal lists ACTIVE clients by default, so those are now "your clients"
+  (`src/server/dispatch/assistant/own-clients.ts`: `ownClients`, `activeOnly`). `my_clients`
+  counts and lists the active ones and names the paused, archived and (Super Admin only) lead
+  clients separately, which can still be asked about by name. `switch_client` prefers an active
+  client when a name matches both. The chat context's client count and a Slack DM's starting
+  client use the active ones too; clients still awaiting review are left out.
+- **How Dispatch talks** (`DISPATCH_SYSTEM_PROMPT`, "How you talk"): like a colleague in Slack,
+  not a report. It mirrors the person's tone, energy and length; answers a greeting like a person
+  would; answers first; uses no stock phrases ("Great question", "I hope this helps", recaps of
+  the question) and doesn't force the same shape onto every reply; points out what matters and
+  offers the next step, asking a question back only when it helps; and when something goes wrong
+  says what happened, why, and what to do about it. The "keep most answers under 150 words" rule
+  became "most replies are short; go longer only when the question needs it".
+- **The fixed messages explain themselves**: the hourly limit says why it exists and when it lifts,
+  a long chat says why to start a new one and where the button is, a declined question says it
+  was the AI that turned it down and what to try, an empty message asks what they meant.

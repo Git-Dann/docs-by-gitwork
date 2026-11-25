@@ -921,3 +921,4 @@ be resolved by reading. Do not renumber either one.
 - **§162** — Releases numbered by the changelog (the same section as the second §158 above, renumbered in its own file)
 - **§163** — The Portal Timeline card, glanceable; Studies off the client page
 - **§164** — Dispatch talks to you, not to one client at a time
+- **§165** — Dispatch counts clients like Portal, and talks like a person

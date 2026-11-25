@@ -90,10 +90,12 @@ export async function runTurn(
   // after that works on the new one.
   let scope = input.scope;
   const question = input.question.trim().slice(0, MAX_QUESTION_CHARS);
-  if (!question) throw new DispatchLimitError("Ask me something first.");
+  if (!question) throw new DispatchLimitError("That came through empty. What did you want to ask?");
 
   if ((await questionsInLastHour(scope.user)) >= QUESTIONS_PER_HOUR) {
-    throw new DispatchLimitError(`That's ${QUESTIONS_PER_HOUR} questions in an hour. Give it a little while.`);
+    throw new DispatchLimitError(
+      `That's ${QUESTIONS_PER_HOUR} questions in the last hour, which is the most I take from one person (it keeps the AI bill sensible). Give it a few minutes and I'm all yours again.`,
+    );
   }
 
   // ── The conversation ──
@@ -116,7 +118,9 @@ export async function runTurn(
     model = conv.model ?? DISPATCH_MODELS.deep;
     history = await loadMessages(conv.id);
     if (history.length >= MAX_CHAT_MESSAGES || roughTokens(history) >= MAX_CHAT_TOKENS) {
-      throw new DispatchLimitError("This chat has got long. Start a new one to keep answers quick and cheap.");
+      throw new DispatchLimitError(
+        "This chat has got long, and from here every answer gets slower and dearer. Start a new chat (the pencil, top right) and carry on: I'll still have everything in Foundry to hand.",
+      );
     }
   } else {
     model = DISPATCH_MODELS[chooseDispatchTier({ question, pictures: input.images?.length ?? 0 })];
@@ -142,8 +146,8 @@ export async function runTurn(
           select: { id: true, title: true },
         })
       : null;
-    const { askerScope, loadCandidates } = await import("@/server/dispatch/respond");
-    const own = (await loadCandidates(scope.user.workspaceId, await askerScope(scope.user))).clients;
+    const { ownClients, activeOnly } = await import("./own-clients");
+    const own = activeOnly(await ownClients(scope.user));
     content.push({
       type: "text",
       text: chatContext({
@@ -263,7 +267,7 @@ export async function runTurn(
     messages.push({ role: "assistant", content: final.content as Block[] });
 
     if (final.stop_reason === "refusal") {
-      emit.text("\n\nI can't help with that one.");
+      emit.text("\n\nI can't answer that one: the AI I run on turned it down. Try asking it another way, or tell me more about what you're after.");
       break;
     }
     if (final.stop_reason !== "tool_use") break;
