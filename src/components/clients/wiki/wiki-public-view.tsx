@@ -255,7 +255,7 @@ export function WikiPublicView({
     }
 
     if (activeSection === "code-handover") {
-      return <WikiCodeSection slug={wiki.clientSlug} section={wiki.codeHandover} mode="public" />;
+      return <WikiCodeSection slug={wiki.clientSlug} section={wiki.codeHandover} mode="public" token={token} />;
     }
 
     if (activeSection === "design-system") {

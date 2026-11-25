@@ -79,8 +79,9 @@ export default async function PublicWikiPage({
 }) {
   const { slug, token } = await params;
   const { section } = await searchParams;
-  // Course requests and the Board's cards load on their own once the page is open (§140).
-  const resolved = await resolvePublicWiki(token, { courseRequests: false, board: false });
+  // Course requests, the Board's cards and the code's file contents load on their own once the
+  // page is open (§140).
+  const resolved = await resolvePublicWiki(token, { courseRequests: false, board: false, code: false });
   if (!resolved) notFound();
 
   // The token is the source of truth; canonicalise the readable slug in the URL

@@ -22,6 +22,7 @@ vi.mock("@/hooks/use-wiki", () => ({
   useCreateCodeVariant: mutation,
   useRestoreCodeVersion: mutation,
   useCodeEvents: () => ({ isPending: false, isError: false, data: [] }),
+  useWikiCodeFiles: () => ({ isPending: false, isError: false, data: undefined }),
 }));
 vi.mock("@/hooks/use-permissions", () => ({ usePermissions: () => ({ isExternal: false }) }));
 vi.mock("@/components/ui/toast", () => ({ useToast: () => ({ success: () => {}, error: () => {} }) }));
