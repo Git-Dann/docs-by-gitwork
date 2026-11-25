@@ -48,7 +48,11 @@ export function NeedsYouInbox() {
   const params = useSearchParams();
   const { run, dismiss, snooze } = useNeedsYouActions();
   const [view, setView] = useState<InboxView>(() => readView(params?.get("view") ?? null));
-  const [source, setSource] = useState<NeedsYouSource | "">("");
+  // `?source=pulse`: HQ's card links straight to one source's items.
+  const [source, setSource] = useState<NeedsYouSource | "">(() => {
+    const s = params?.get("source");
+    return s && (NEEDS_YOU_SOURCES as readonly string[]).includes(s) ? (s as NeedsYouSource) : "";
+  });
   const [severity, setSeverity] = useState<NeedsYouSeverity | "">("");
   const [cursor, setCursor] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);

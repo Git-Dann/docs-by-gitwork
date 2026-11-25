@@ -2311,6 +2311,15 @@ section loads the files itself (`useWikiCodeFiles`: `GET /api/clients/[slug]/wik
 actions on the team's Board now re-read the Board's cards only and mark the wiki stale, instead of
 reloading the whole wiki each time.
 
+**Follow-up (25 Nov): Needs you is one line per source.** Dan: "unwieldy, not easy to use". The
+card on HQ showed four lines per item and 33 items, 27 of them Pulse "needs a look" rows, so the one
+customer-reply backlog sat among them. Now (`needs-you-card.tsx`, rules `groupBySource`,
+`groupHeadline`, `groupNames` in `src/lib/needs-you.ts`, tested): one line per source, most serious
+first ("Pulse · 27 projects need a look · adam-beasley.com, Afterdesk Testing +25"), opening in place
+to one-line items (`NeedsYouLine`; the "why" moved into the tooltip), with **All →** opening the
+inbox filtered to that source (`/app/inbox?source=pulse`). A source with one item is that item's
+line. Urgent groups of up to three start open. The inbox page is unchanged.
+
 ---
 
 ## 157. Recent Changes (November 2026) — Dispatch answers with Haiku unless it needs Sonnet
