@@ -3510,11 +3510,11 @@ export type ReleaseInput = {
   docUrl?: string | null;
   orderKey?: number;
   projectId?: string | null;
-  /** Edit only: the changelog version this release ships as ("2.0.4"), §161. */
+  /** Edit only: the changelog version this release ships as ("2.0.4"), §162. */
   changelogVersion?: string | null;
 };
 
-/** Whether a client's releases are shown by their changelog version (§161). */
+/** Whether a client's releases are shown by their changelog version (§162). */
 export function getReleaseNumbering(clientId: string): Promise<{ useChangelog: boolean }> {
   return apiFetch(`/api/releases/numbering?clientId=${encodeURIComponent(clientId)}`);
 }

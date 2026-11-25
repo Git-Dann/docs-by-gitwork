@@ -115,7 +115,7 @@ export async function updateRelease(
 }
 
 /**
- * Whether this client's releases are shown by their changelog version (§161). The same access as
+ * Whether this client's releases are shown by their changelog version (§162). The same access as
  * changing a release: the caller's workspace, and this client in their scope.
  */
 export async function setReleasesUseChangelog(user: EffectiveUser, clientId: string, on: boolean): Promise<{ useChangelog: boolean }> {

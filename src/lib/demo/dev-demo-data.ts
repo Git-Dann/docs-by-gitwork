@@ -2686,7 +2686,7 @@ let demoReleases: ReleaseDTO[] = [
   { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, docUrl: null, projectId: "proj-platform", changelogVersion: null, displayVersion: REL.v150.version, ...releaseCounts(REL.v150.id) },
   { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, docUrl: null, projectId: null, changelogVersion: null, displayVersion: REL.v200.version, ...releaseCounts(REL.v200.id) },
 ];
-/** The demo client's "number releases by the changelog" setting (§161). */
+/** The demo client's "number releases by the changelog" setting (§162). */
 let demoUseChangelog = false;
 const withDisplay = (r: ReleaseDTO): ReleaseDTO => ({
   ...r,

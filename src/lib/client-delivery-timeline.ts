@@ -317,7 +317,7 @@ export function foldQuietWeeks(weeks: readonly DeliveryWeek[]): WeekRow[] {
   return rows;
 }
 
-/** A task more than this many days late is "long overdue": counted, not listed (§162). */
+/** A task more than this many days late is "long overdue": counted, not listed (§163). */
 export const LONG_OVERDUE_DAYS = 30;
 
 /**

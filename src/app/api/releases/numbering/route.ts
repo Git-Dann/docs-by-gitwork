@@ -1,5 +1,5 @@
 /**
- * Whether a client's releases are shown by their changelog version (§161).
+ * Whether a client's releases are shown by their changelog version (§162).
  *   GET ?clientId=  → { useChangelog }
  *   PUT { clientId, useChangelog } → { useChangelog }
  * Same access as changing a release: the caller's workspace, and this client in their scope.

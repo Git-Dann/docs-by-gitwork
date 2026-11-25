@@ -155,7 +155,16 @@ function resolveTheme(mode: ThemeMode, path: string | null | undefined, hallowee
 
 function applyTheme(resolved: "light" | "dark", halloween = false, christmas = false) {
   if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-theme", resolved);
+    const root = document.documentElement;
+    // Anything with a hover transition (`transition` animates colours) would otherwise fade
+    // from the old theme to the new over 150ms while the rest of the page flips at once: a
+    // dark card flashing on a white panel (Dan, 25 Nov). Transitions are paused for the
+    // switch (globals.css, `[data-theme-switching]`) and resume two frames later.
+    if (root.getAttribute("data-theme") !== resolved && typeof window !== "undefined" && "requestAnimationFrame" in window) {
+      root.setAttribute("data-theme-switching", "");
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => root.removeAttribute("data-theme-switching")));
+    }
+    root.setAttribute("data-theme", resolved);
     document.documentElement.toggleAttribute("data-halloween", halloween);
     document.documentElement.toggleAttribute("data-christmas", christmas);
   }

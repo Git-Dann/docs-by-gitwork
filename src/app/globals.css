@@ -2296,6 +2296,11 @@ h2, h3, h4, h5 {
 /* The saved mode appears without animating. */
 .mode-switch.is-instant, .mode-switch.is-instant * { transition: none !important; animation: none !important; }
 
+/* While the theme switches (theme-provider.tsx applyTheme), nothing fades from the old colours
+   to the new: a hover `transition` would otherwise show a dark card on a white panel for 150ms.
+   The animated mode switch keeps its own motion. */
+[data-theme-switching] *:not(.mode-switch, .mode-switch *) { transition: none !important; }
+
 /* The three stops sit on the track; the knob covers the chosen one. */
 .mode-switch__stop {
   position: relative;

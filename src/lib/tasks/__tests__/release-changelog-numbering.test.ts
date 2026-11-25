@@ -1,5 +1,5 @@
 /**
- * A client can number releases by their changelog (§161): Big Wedge's planning site reused
+ * A client can number releases by their changelog (§162): Big Wedge's planning site reused
  * "v2.0.0" for months while the app went 2.0.0 → 2.0.2 → 2.0.3 → 2.0.4.
  */
 import { describe, expect, it } from "vitest";

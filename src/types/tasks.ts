@@ -74,7 +74,7 @@ export type TaskReleaseRef = {
   id: string;
   version: string;
   name: string | null;
-  /** The number shown: the changelog version when the client numbers releases that way (§161). */
+  /** The number shown: the changelog version when the client numbers releases that way (§162). */
   displayVersion?: string;
 };
 
@@ -91,7 +91,7 @@ export type ReleaseDTO = {
   docUrl: string | null;
   /** The client's project this release belongs to (CLAUDE.md §150). */
   projectId: string | null;
-  /** The changelog version this release ships as ("2.0.4"), or null (§161). */
+  /** The changelog version this release ships as ("2.0.4"), or null (§162). */
   changelogVersion: string | null;
   /** The number shown: `changelogVersion` when the client numbers releases by it, else `version`. */
   displayVersion: string;
