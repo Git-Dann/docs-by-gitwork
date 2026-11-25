@@ -19,6 +19,7 @@ import {
   ChevronDownIcon,
   ArchiveBoxArrowDownIcon,
   ArchiveBoxXMarkIcon,
+  BookmarkIcon,
 } from "@heroicons/react/24/outline";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,86 @@ function MetaRow({ icon, label, children }: { icon: React.ReactNode; label: stri
         {label}
       </span>
       <div className="min-w-0 text-sm text-[var(--text-2)]">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Flag for follow-up (team-visible): who flagged it, when, and why. Anyone who can open the task
+ * can flag or clear it; it annotates the task without changing its work.
+ */
+function FollowUpRow({ task }: { task: TaskDTO }) {
+  const update = useUpdateTask();
+  const [editing, setEditing] = useState(false);
+  const [note, setNote] = useState(task.flag?.note ?? "");
+
+  async function save(next: { note: string } | null) {
+    await update.mutateAsync({ id: task.id, input: { flag: next } });
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          autoFocus
+          value={note}
+          maxLength={500}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save({ note });
+            if (e.key === "Escape") setEditing(false);
+          }}
+          placeholder="Why? (optional)"
+          aria-label="Follow-up note"
+          className="app-input min-w-0 flex-1 text-[16px] sm:text-sm"
+        />
+        <Button type="button" variant="primary" size="sm" loading={update.isPending} onClick={() => void save({ note })}>
+          {task.flag ? "Save" : "Flag"}
+        </Button>
+        <Button type="button" variant="tertiary" size="sm" onClick={() => setEditing(false)}>
+          Cancel
+        </Button>
+      </div>
+    );
+  }
+
+  if (!task.flag) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="text-sm font-medium text-[var(--brand-700)] transition hover:underline"
+      >
+        Flag for follow-up
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="inline-flex items-center rounded-[4px] bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">
+        Flagged
+      </span>
+      <span className="min-w-0 text-xs text-[var(--text-3)]">
+        {task.flag.by ? `${task.flag.by.name}, ` : ""}
+        {formatDate(task.flag.at)}
+        {task.flag.note ? ` · ${task.flag.note}` : ""}
+      </span>
+      <span className="ml-auto inline-flex gap-2">
+        <button type="button" onClick={() => setEditing(true)} className="text-xs font-medium text-[var(--text-4)] hover:text-[var(--text-2)]">
+          Edit note
+        </button>
+        <button
+          type="button"
+          disabled={update.isPending}
+          onClick={() => void save(null)}
+          className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-4)] hover:text-[var(--text-2)] disabled:opacity-50"
+        >
+          {update.isPending ? <Spinner size="xs" /> : null}
+          Clear
+        </button>
+      </span>
     </div>
   );
 }
@@ -551,6 +632,9 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                 </MetaRow>
                 <MetaRow icon={<FlagIcon className="h-3.5 w-3.5" />} label="Priority">
                   <TaskPriorityBadge priority={task.priority} />
+                </MetaRow>
+                <MetaRow icon={<BookmarkIcon className="h-3.5 w-3.5" />} label="Follow up">
+                  <FollowUpRow key={task.flag?.at ?? "none"} task={task} />
                 </MetaRow>
                 <MetaRow icon={<TagIcon className="h-3.5 w-3.5" />} label="Category">
                   {task.featureBlock?.name ?? <span className="text-[var(--text-4)]">—</span>}

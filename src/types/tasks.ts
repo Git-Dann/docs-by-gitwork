@@ -99,6 +99,13 @@ export type TaskScribeSourceRef = {
   actionText: string | null;
 };
 
+/** A team-visible "flag for follow-up" on a task (who, when, an optional note). */
+export type TaskFlagDTO = {
+  at: string;
+  by: TaskUserRef | null;
+  note: string | null;
+};
+
 export type TaskDTO = {
   id: string;
   workspaceId: string;
@@ -131,6 +138,8 @@ export type TaskDTO = {
   /** The client's reply from the public wiki (null until they respond). */
   blockedResponse: string | null;
   blockedResponseAt: string | null;
+  /** Flagged for follow-up, or null. Optional so older DTO builders needn't send it. */
+  flag?: TaskFlagDTO | null;
   commentCount: number;
   subtaskCount: number;
   subtaskDoneCount: number;

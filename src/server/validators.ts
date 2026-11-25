@@ -1155,6 +1155,8 @@ export const taskUpdateSchema = z.object({
   archived: z.boolean().optional(),
   // Blocked flag: a non-empty string blocks (the client-facing ask); "" or null clears it.
   blockedReason: z.string().max(2000).nullable().optional(),
+  /** Flag for follow-up: `{ note? }` flags it, null clears it. */
+  flag: z.object({ note: z.string().max(500).nullable().optional() }).nullable().optional(),
   ...cardFields,
 });
 

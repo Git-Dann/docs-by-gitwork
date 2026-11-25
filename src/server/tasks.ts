@@ -47,6 +47,7 @@ const taskInclude = {
   assignee: userSelect, // legacy single assignee (fallback for pre-v3 rows)
   assignees: userSelect,
   createdBy: userSelect,
+  flaggedBy: userSelect,
   featureBlock: { select: { id: true, name: true } },
   release: { select: { id: true, version: true, name: true } },
   // Screenshots taken off a card on the client's Board (`removedAt`) don't count: they're kept
@@ -119,6 +120,9 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     blockedAt: row.blockedAt ? row.blockedAt.toISOString() : null,
     blockedResponse: row.blockedResponse,
     blockedResponseAt: row.blockedResponseAt ? row.blockedResponseAt.toISOString() : null,
+    flag: row.flaggedAt
+      ? { at: row.flaggedAt.toISOString(), by: userRef(row.flaggedBy), note: row.flagNote }
+      : null,
     commentCount: row._count.comments,
     subtaskCount: row._count.subtasks,
     subtaskDoneCount: 0,
@@ -174,6 +178,7 @@ function taskListDTO(task: TaskDTO): TaskDTO {
     blockedAt: null,
     blockedResponse: null,
     blockedResponseAt: null,
+    flag: task.flag ?? null,
     commentCount: task.commentCount,
     subtaskCount: task.subtaskCount,
     subtaskDoneCount: task.subtaskDoneCount,
@@ -1123,6 +1128,8 @@ export async function updateTask(
     archived?: boolean;
     /** Set/clear the blocked flag. Empty/null clears the block (and its client response). */
     blockedReason?: string | null;
+    /** Flag for follow-up: an object flags it (with an optional note), null clears the flag. */
+    flag?: { note?: string | null } | null;
     itemType?: string | null;
     tier?: string | null;
     area?: string | null;
@@ -1144,6 +1151,7 @@ export async function updateTask(
       assignees: { select: { id: true } },
       itemType: true,
       productCardId: true,
+      flaggedAt: true,
     },
   });
   if (!existing) throw new ForbiddenError("Task not found");
@@ -1207,6 +1215,20 @@ export async function updateTask(
   Object.assign(data, cardFieldsData(input));
   if (input.productCardId !== undefined) data.productCardId = input.productCardId || null;
   if (input.archived !== undefined) data.archivedAt = input.archived ? new Date() : null;
+  if (input.flag !== undefined) {
+    if (input.flag === null) {
+      data.flaggedAt = null;
+      data.flagNote = null;
+      data.flaggedBy = { disconnect: true };
+    } else {
+      // Re-flagging keeps the original time and who flagged it; only the note changes.
+      if (!existing.flaggedAt) {
+        data.flaggedAt = new Date();
+        data.flaggedBy = { connect: { id: user.id } };
+      }
+      data.flagNote = input.flag.note?.trim().slice(0, 500) || null;
+    }
+  }
   if (input.blockedReason !== undefined) {
     const reason = input.blockedReason?.trim() || null;
     data.blockedReason = reason;

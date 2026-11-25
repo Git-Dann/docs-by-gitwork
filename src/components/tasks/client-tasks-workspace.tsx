@@ -64,6 +64,7 @@ import { PasteTaskListModal } from "@/components/tasks/paste-task-list-modal";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import { tasksToCsv } from "@/lib/tasks/task-csv";
+import { isStuck } from "@/lib/tasks/stuck";
 import { ProjectUpdateComposer } from "@/components/tasks/project-update-composer";
 import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
 import { PlanHealthStrip, type PlanFilter } from "@/components/tasks/plan-health-strip";
@@ -193,6 +194,8 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       if (pri.size && !pri.has(t.priority)) return false;
       if (lbl.size && !(t.label && lbl.has(t.label))) return false;
       if (src.size && (!t.scribeSource || !src.has(t.scribeSource.meetingId))) return false;
+      if (filters.flagged && !t.flag) return false;
+      if (filters.stuck && !isStuck(t)) return false;
       return true;
     });
   }, [tasks, filters, planFilter]);

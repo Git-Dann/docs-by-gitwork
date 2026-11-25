@@ -10,6 +10,7 @@ import {
 import { cn, formatDate } from "@/lib/format";
 import { TASK_LABELS, TASK_LABEL_LABELS } from "@/types/tasks";
 import type { TaskDTO, TaskPriority, TaskLabel } from "@/types/tasks";
+import { isStuck } from "@/lib/tasks/stuck";
 
 export type TaskFilters = {
   q: string;
@@ -18,9 +19,42 @@ export type TaskFilters = {
   priorities: TaskPriority[];
   labels: TaskLabel[];
   sourceMeetingIds: string[];
+  /** Only tasks flagged for follow-up. */
+  flagged: boolean;
+  /** Only tasks stuck in progress (src/lib/tasks/stuck.ts). */
+  stuck: boolean;
 };
 
-export const EMPTY_FILTERS: TaskFilters = { q: "", categoryIds: [], assigneeIds: [], priorities: [], labels: [], sourceMeetingIds: [] };
+export const EMPTY_FILTERS: TaskFilters = {
+  q: "",
+  categoryIds: [],
+  assigneeIds: [],
+  priorities: [],
+  labels: [],
+  sourceMeetingIds: [],
+  flagged: false,
+  stuck: false,
+};
+
+/** A one-click on/off filter, styled like the dropdowns beside it. */
+function ToggleChip({ on, label, count, onClick }: { on: boolean; label: string; count: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-[7px] border px-2.5 py-1.5 text-xs font-medium transition",
+        on
+          ? "border-[var(--brand-400)] bg-[var(--surface-brand)] text-[var(--brand-800)]"
+          : "border-[var(--border-2)] bg-white text-[var(--text-2)] hover:bg-[var(--surface-1)]",
+      )}
+    >
+      {label}
+      <span className="text-[var(--text-4)]">{count}</span>
+    </button>
+  );
+}
 
 const PRIORITY_OPTS: { id: TaskPriority; label: string }[] = [
   { id: "HIGH", label: "High" },
@@ -141,7 +175,11 @@ export function TaskFilterBar({
     value.priorities.length +
     value.labels.length +
     value.sourceMeetingIds.length +
+    (value.flagged ? 1 : 0) +
+    (value.stuck ? 1 : 0) +
     (value.q.trim() ? 1 : 0);
+  const flaggedCount = tasks.filter((t) => t.flag).length;
+  const stuckCount = tasks.filter((t) => isStuck(t)).length;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -242,6 +280,18 @@ export function TaskFilterBar({
             />
           ))}
         </Dropdown>
+      ) : null}
+
+      {flaggedCount > 0 || value.flagged ? (
+        <ToggleChip
+          on={value.flagged}
+          label="Flagged"
+          count={flaggedCount}
+          onClick={() => onChange({ ...value, flagged: !value.flagged })}
+        />
+      ) : null}
+      {stuckCount > 0 || value.stuck ? (
+        <ToggleChip on={value.stuck} label="Stuck" count={stuckCount} onClick={() => onChange({ ...value, stuck: !value.stuck })} />
       ) : null}
 
       {active > 0 ? (
