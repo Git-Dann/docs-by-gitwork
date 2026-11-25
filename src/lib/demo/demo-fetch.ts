@@ -38,7 +38,7 @@ if (typeof window !== "undefined" && !globalThis.__foundryDemoFetchPatched) {
     // Dispatch answers as a stream; the demo streams canned answers the same way.
     if (pathname === "/api/dispatch/chat") return demoDispatchStream(typeof init?.body === "string" ? init.body : null);
     if (pathname.startsWith("/api/dispatch/")) {
-      return new Response(JSON.stringify(resolveDemoDispatch(pathname) ?? {}), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify(resolveDemoDispatch(pathname, search) ?? {}), { headers: { "Content-Type": "application/json" } });
     }
 
     if (pathname.startsWith("/api/")) {

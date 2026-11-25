@@ -2490,3 +2490,38 @@ which client" reply, and a long chat hit "start a new one". Now (`decideSlackCha
   (`askWhichClientText`), then keeps that client for the rest of the chat. Someone on one client
   gets that client. A question about a person or everything still gets the status answer.
 - In channels a thread is still the chat, and a DM chat never carries into a channel.
+## 161. Recent Changes (November 2026) — Dispatch opens on a brief, not an empty chat
+
+Dan, 25 Nov, on the panel: "seems very basic... I didn't want a chat bot, I wanted something
+more, something smarter". Also: the input box looked off, the client dropdown's chevron floated
+in from the right edge, and the client row should only show when there's a choice to make.
+
+- **The brief** (`src/lib/dispatch/brief.ts`, pure and tested; `GET /api/dispatch/brief`). The
+  panel opens on what it found, worked out from Foundry's data with **no AI call**, so opening it
+  costs nothing:
+  - a greeting with the date and one line on the last 7 days ("2 done, 4 new");
+  - four numbers: yours open, this week, need a look (overdue, stuck or blocked), and the next
+    release with how long until it ships. Each one asks Dispatch about itself when picked;
+  - **01 Needs you**: up to six of the person's own tasks, most urgent first, each with its
+    reason (Overdue 2 days, Waiting on the client, In progress 8 days, Due Fri 27 Nov, Flagged).
+    A row asks about that task; the arrow opens it on the board. Nothing assigned: an admin sees
+    whose the open work is, anyone else how much has nobody on it (the §160 rule);
+  - **02 Suggested**: at most three things to do next, **each because of something the brief
+    found**, with the reason underneath ("Get “Saved searches” moving · In progress for 8 days",
+    "Release notes for v1.5.0 · Ships Tue 1 Dec · 9 of 14 done"). Opened from a task, the
+    suggestions fit where the task is up to (not started: subtasks and impact; in review: PR
+    description and tests);
+  - **03 More it can do**: every other quick action, folded, grouped Find out / Write / Check
+    (`SkillGroup` on each skill).
+- **Answers show their working**: each step Dispatch takes ("Looking at your tasks") is listed
+  live, then folds into "Looked at 3 things", which opens again on a click.
+- **The input** is one box: the text on top, growing to about seven lines, with Screenshot, the
+  keyboard hint and the send button on a row underneath.
+- **The client switcher** only shows when the person has more than one client, has its chevron at
+  the right edge (it no longer borrows `app-select-compact`, whose 32px right padding was meant for
+  a background chevron), and shows the client's initial. With one client, that client is chosen;
+  with none picked, the panel asks which, as a list. The last client used is remembered on this
+  device (`localStorage`, a convenience only).
+- The demo (`/demo/tasks` → Ask Dispatch) serves the real `buildBrief` over sample tasks.
+- Tests: `src/lib/dispatch/__tests__/brief.test.ts` (who sees whose work, ranking, suggestions
+  and their reasons, the task view).

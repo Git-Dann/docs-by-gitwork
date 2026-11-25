@@ -917,3 +917,4 @@ be resolved by reading. Do not renumber either one.
 - **§158** — Releases numbered by the changelog ⚠️ *(one of two §158)*
 - **§159** — The AI budget reads Anthropic's own billing, and sits in the sidebar
 - **§160** — Dispatch names tasks by title, says when nothing is yours, and where it works in Slack
+- **§161** — Dispatch opens on a brief, not an empty chat
