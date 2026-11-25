@@ -16,6 +16,7 @@ import {
   CheckIcon,
   ClipboardDocumentIcon,
   PaperAirplaneIcon,
+  PaperClipIcon,
   PlusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -28,9 +29,11 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/motion/spinner";
 import { skillsFor, type DispatchSkill } from "@/lib/dispatch/skills";
 import { DISPATCH_OPEN_EVENT, openDispatch, type OpenDispatchDetail } from "@/lib/dispatch/open";
+import { shrinkPicture } from "@/lib/dispatch/shrink-picture";
+import { MAX_ATTACHMENTS } from "@/lib/dispatch/limits";
 
 type Item =
-  | { type: "question"; text: string; key: string }
+  | { type: "question"; text: string; key: string; pictures?: number }
   | { type: "answer"; text: string; key: string }
   | { type: "action"; key: string; id: string; title: string; lines: string[]; status: string; message: string | null }
   | { type: "notice"; text: string; key: string };
@@ -63,6 +66,10 @@ export function DispatchPanel() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState("");
+  /** Screenshots attached to the next question, already shrunk (data: URLs). */
+  const [pictures, setPictures] = useState<{ key: string; url: string }[]>([]);
+  const [pictureError, setPictureError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [history, setHistory] = useState<Availability["conversations"]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -134,7 +141,7 @@ export function DispatchPanel() {
       id: string;
       client: { slug: string } | null;
       timeline: (
-        | { type: "question" | "answer"; text: string }
+        | { type: "question" | "answer"; text: string; pictures?: number }
         | { type: "action"; id: string; title: string; lines: string[]; status: string; message: string | null }
       )[];
     }>(`/api/dispatch/conversations/${id}`);
@@ -144,14 +151,36 @@ export function DispatchPanel() {
     setItems(res.timeline.map((t) => (t.type === "action" ? { ...t, key: nextKey() } : { ...t, key: nextKey() })));
   }
 
+  async function attach(files: Iterable<File>) {
+    setPictureError(null);
+    const list = [...files].filter((f) => f.type.startsWith("image/"));
+    const room = MAX_ATTACHMENTS - pictures.length;
+    if (list.length > room) setPictureError(`Up to ${MAX_ATTACHMENTS} pictures per question.`);
+    for (const f of list.slice(0, Math.max(0, room))) {
+      try {
+        const url = await shrinkPicture(f);
+        setPictures((prev) => (prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { key: nextKey(), url }]));
+      } catch {
+        setPictureError("That picture couldn't be read.");
+      }
+    }
+  }
+
   async function ask(question: string) {
     const q = question.trim();
     if (!q || busy || !clientSlug) return;
+    const sending = pictures;
     setDraft("");
+    setPictures([]);
+    setPictureError(null);
     setBusy(true);
     setStatus("Thinking");
     const answerKey = nextKey();
-    setItems((prev) => [...prev, { type: "question", text: q, key: nextKey() }, { type: "answer", text: "", key: answerKey }]);
+    setItems((prev) => [
+      ...prev,
+      { type: "question", text: q, key: nextKey(), ...(sending.length ? { pictures: sending.length } : {}) },
+      { type: "answer", text: "", key: answerKey },
+    ]);
     try {
       const res = await fetch("/api/dispatch/chat", {
         method: "POST",
@@ -160,6 +189,7 @@ export function DispatchPanel() {
           question: q,
           ...(conversationId ? { conversationId } : { clientSlug }),
           ...(focusTaskId && !conversationId ? { focusTaskId } : {}),
+          ...(sending.length ? { images: sending.map((p) => p.url) } : {}),
         }),
       });
       if (!res.ok || !res.body) {
@@ -409,13 +439,60 @@ export function DispatchPanel() {
               void ask(draft);
             }}
           >
+            {pictures.length ? (
+              <div className="mb-2 flex flex-wrap gap-2" aria-label="Attached pictures">
+                {pictures.map((p, i) => (
+                  <span key={p.key} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a local data: URL the person just attached */}
+                    <img src={p.url} alt={`Attached picture ${i + 1}`} className="h-14 w-14 rounded-[6px] border border-[var(--border-2)] object-cover" />
+                    <button
+                      type="button"
+                      aria-label={`Remove picture ${i + 1}`}
+                      onClick={() => setPictures((prev) => prev.filter((x) => x.key !== p.key))}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-3)] hover:text-[var(--text-1)]"
+                    >
+                      <XMarkIcon className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {pictureError ? <p className="mb-2 text-xs text-amber-700">{pictureError}</p> : null}
             <div className="flex items-end gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-2 focus-within:border-[var(--brand-400)]">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) void attach(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Attach screenshots"
+                title="Attach screenshots (or paste them)"
+                disabled={!clientSlug || busy || pictures.length >= MAX_ATTACHMENTS}
+                onClick={() => fileRef.current?.click()}
+                className="mb-1 shrink-0 rounded-[6px] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-40"
+              >
+                <PaperClipIcon className="h-4 w-4" />
+              </button>
               <textarea
                 ref={inputRef}
                 value={draft}
                 rows={2}
                 disabled={!clientSlug}
                 onChange={(e) => setDraft(e.target.value)}
+                onPaste={(e) => {
+                  const files = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+                  if (files.length) {
+                    e.preventDefault();
+                    void attach(files);
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -432,7 +509,7 @@ export function DispatchPanel() {
               </Button>
             </div>
             <p className="mt-1.5 text-[10.5px] text-[var(--text-4)]">
-              Only sees what you can. Changes wait for your click. Enter to send, Shift+Enter for a new line.
+              Only sees what you can. Changes wait for your click. Paste or attach screenshots to compare with the design.
             </p>
           </form>
         ) : null}
@@ -445,7 +522,15 @@ function ChatItem({ item, onDecide }: { item: Item; onDecide: (id: string, d: "c
   const [copied, setCopied] = useState(false);
   if (item.type === "question") {
     return (
-      <div className="ml-8 rounded-[10px] bg-[var(--surface-1)] px-3 py-2 text-sm whitespace-pre-wrap text-[var(--text-1)]">{item.text}</div>
+      <div className="ml-8 rounded-[10px] bg-[var(--surface-1)] px-3 py-2 text-sm whitespace-pre-wrap text-[var(--text-1)]">
+        {item.text}
+        {item.pictures ? (
+          <span className="mt-1 flex items-center gap-1 text-xs text-[var(--text-3)]">
+            <PaperClipIcon className="h-3 w-3" />
+            {item.pictures} picture{item.pictures === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </div>
     );
   }
   if (item.type === "notice") {

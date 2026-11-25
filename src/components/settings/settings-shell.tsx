@@ -44,6 +44,7 @@ export type SettingsSectionId =
   | "checks"
   | "curator"
   | "foreman"
+  | "dispatch"
   | "appearance"
   | "mcp"
   | "agents-checks" // legacy — redirects to "agents"
@@ -164,13 +165,14 @@ const GROUPS: SectionGroup[] = [
       {
         id: "automation",
         label: "Automation",
-        description: "Agents, checks, Curator, Foreman.",
+        description: "Agents, checks, Curator, Foreman, Dispatch.",
         icon: CpuChipIcon,
         sections: [
           { id: "agents", label: "AI agents", permission: "settings.agents" },
           { id: "checks", label: "Pulse checks", permission: "settings.agents", module: "pulse" },
           { id: "curator", label: "Curator", superAdminOnly: true, module: "starters" },
           { id: "foreman", label: "Foreman", adminOnly: true },
+          { id: "dispatch", label: "Dispatch", superAdminOnly: true },
         ],
       },
     ],
