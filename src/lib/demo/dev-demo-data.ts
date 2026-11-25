@@ -569,11 +569,12 @@ const demoSlack: DeskSlackResult = {
 
 // ─── Clients list ────────────────────────────────────────────────────────────────
 
-// Deliberately a subset: the demo's client picker reads id/name/slug and nothing else, so the
-// fixture is `Partial<ClientListItem>` rather than 30 invented fields. TypeScript's
-// excess-property check still fires on a `Partial<T>` literal, so a misspelt key is an error.
+// Deliberately a subset: the demo's client pickers read id/name/slug (and Dispatch the logo)
+// and nothing else, so the fixture is `Partial<ClientListItem>` rather than 30 invented fields.
+// TypeScript's excess-property check still fires on a `Partial<T>` literal, so a misspelt key is
+// an error. Northwind has a logo so the logo path shows; the others show their initial.
 const demoClients: { clients: Partial<ClientListItem>[] } = {
-  clients: CLIENTS.map((c) => ({ id: c.id, name: c.name, slug: c.slug })),
+  clients: CLIENTS.map((c) => ({ id: c.id, name: c.name, slug: c.slug, ...(c.slug === "northwind" ? { logoUrl: "/foundry-icon.png" } : {}) })),
 };
 
 // ─── Gantt (project timeline) ────────────────────────────────────────────────────

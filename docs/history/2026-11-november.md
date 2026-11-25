@@ -2526,6 +2526,9 @@ in from the right edge, and the client row should only show when there's a choic
   with none picked, the panel asks which, as a list. The last client used is remembered on this
   device (`localStorage`, a convenience only).
 - The demo (`/demo/tasks` → Ask Dispatch) serves the real `buildBrief` over sample tasks.
+- **Follow-up: client logos.** The switcher and its menu show each client's logo (`logoUrl`, as on
+  its Portal card; the initial when there's none or it fails to load). Someone with one client
+  gets a client card at the top instead of a switcher: logo, name and an "Open" link to Portal.
 - **No colour fade when the theme switches (app-wide).** Anything with a hover `transition` faded
   from the old theme's colours to the new over 150ms while the page around it flipped at once, so
   for a moment the brief's cards were black on a white panel (Dan spotted it in a screenshot).
