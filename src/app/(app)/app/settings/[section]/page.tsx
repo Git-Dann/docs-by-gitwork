@@ -59,6 +59,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "checks",
   "curator",
   "foreman",
+  "dispatch",
   "appearance",
   "mcp",
   "agents-checks", // legacy — redirects to "agents"
@@ -73,7 +74,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
 // Sections only Super Admins may open (the role matrix editor). MCP is no longer
 // here — the page itself is permission-gated (mcp.connect) and self-gates its
 // workspace-toggle section to Super Admins internally.
-const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles", "curator", "labs"]);
+const SUPER_ADMIN_SECTIONS = new Set<SettingsSectionId>(["roles", "curator", "labs", "dispatch"]);
 
 // Admin-or-above sections that are NOT per-role toggles (member management + legacy).
 // "people" (Members + the Roles tab) is admin-or-above; the Roles tab self-gates to Super Admin.
