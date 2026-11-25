@@ -2544,13 +2544,13 @@ much… something I can just glance at". It listed every finished task as a full
 after week ("Show all 49"), and "Up next" was five imported subtasks 244 days late. Now
 (`client-delivery-card.tsx`):
 
-- **Eight weeks as small bars**, height = tasks done, a green dot for a release and a red dot for an
-  outage; click a bar to pick a week (this week by default).
-- **The picked week in one line** ("20 done · 2 releases · 2 outages · 1 meeting") and up to four
-  events (`weekHighlights`), one line each. Finished tasks are not listed; the board has them.
-- **Where things stand as numbers**: the next release with its progress, then In progress, Up next
-  and Long overdue (more than `LONG_OVERDUE_DAYS` = 30 days late, `splitLongOverdue`), each opening
-  the board, names in the tooltip.
+- **One strip, about 150px tall**: the picked week's done count with an eight-week sparkline
+  (a green dot for a release, red for an outage; click a bar to pick that week), the next release
+  with a thin progress bar, and In progress, Up next and Overdue as figures (Overdue = more than
+  `LONG_OVERDUE_DAYS` = 30 days late, `splitLongOverdue`), each opening the board with the names in
+  the tooltip.
+- **Under it, one line**: the picked week's events inline (`weekHighlights`), up to four with "+N",
+  and "waiting on the client" when there is any. Finished tasks aren't listed; the board has them.
 - **Studies is no longer on the client page** (Dan: research isn't client delivery; it stays in
   Pulse). `studies` left `PORTAL_SECTIONS`, so the numbers still run without a gap; the rendered
   order was checked against the numbering, and the lead layout's fixed 02–08 is unchanged.
