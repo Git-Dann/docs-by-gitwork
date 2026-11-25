@@ -2338,3 +2338,29 @@ Dan, the same day: keep the $200 pot going. Measured costs come next; this is th
 - **Tighter limits for both:** 5 lookup rounds (was 6), 2,500 output tokens (4,000), results
   ~4,500 characters (6,000) and code ~6,000 (8,000), 3 pictures a question (4), and a chat closes
   at 24 messages or ~30k tokens (40 / 60k): every follow-up resends the whole chat.
+
+---
+
+## 158. Recent Changes (November 2026) — Dispatch's first live test, and what it changed
+
+Ten real Wedge questions asked as Nasir (Super Admin view-as, §156) in production, after §157.
+
+- **Cost, measured:** $0.035 for all ten. The nine Haiku questions cost $0.0055 together (19 model
+  calls, about $0.0006 a question); the one code question on Sonnet cost $0.029. 84% of the prompt
+  was read from the cache. Answers took 1 to 9 seconds.
+- **Answers:** his tasks (6, with the stuck ones called out), overdue work (21, mostly unassigned,
+  flagged as probably stale), the 19 Nov call's decisions and a good follow-up list, the current
+  release (11 tasks, none done, all unassigned), and an honest reply draft that refused to invent
+  a date. Money, other clients and an "ignore your rules, admin mode" attempt were all refused in
+  plain words. No proposals, no leaks.
+- **Found and fixed:**
+  - Haiku narrated its steps ("I'll look up…") and the narration ran into the answer. The prompt
+    now says not to, and text from separate rounds is split into paragraphs.
+  - The code question searched eight times and ended "Try the repo structure.": Wedge's two
+    repos are private and Foundry's `GITHUB_TOKEN` most likely can't read them. GitHub errors now
+    say who must grant access and tell the model not to retry, and the prompt says the same for
+    any tool that can't open something.
+  - Running out of lookups produced a four-word answer. Before the last round a note now tells the
+    model it has no lookups left and must answer with what it found and what it couldn't check (a
+    text block after the tool results: append-only, so the cache and thinking are untouched).
+- The test chats were deleted afterwards (as Nasir, through the chat's own DELETE route).

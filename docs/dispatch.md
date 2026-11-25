@@ -223,6 +223,10 @@ One `DispatchExchange` row per question, written **before** the answer is compos
 | Everything else: tasks, calls, plans, stand-ups, replies, release notes, subtasks | Claude Haiku 5.5, thinking off | $0.10 / $0.50 |
 | Code (repo, PRs, commits, impact analysis), design against build, or with screenshots attached | Claude Sonnet 5.5, brief thinking | $2 / $10 |
 
+**Measured (25 Nov 2026, §158):** ten real Wedge questions cost $0.035 in all. A Haiku question
+costs well under a tenth of a cent; a Sonnet code question about 3 cents. 84% of the prompt came
+from the cache.
+
 Other limits (`src/lib/dispatch/limits.ts`): 5 rounds of lookups, 2,500 output tokens, results cut
 at ~1,100 tokens (code ~1,500), 3 pictures a question, and a chat closes for new questions at 24
 messages or ~30k tokens. The last one matters most after the model: every follow-up resends the

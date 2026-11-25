@@ -177,8 +177,12 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
   // Shared by every tool call in this question: attached pictures already used some slots.
   const toolCtx = { conversationId, imagesLeft: MAX_IMAGES_PER_QUESTION - attached.length };
 
+  // Text from an earlier round (before a lookup) and the next round's are separate paragraphs.
+  let wroteText = false;
+
   for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
     const lastRound = round === MAX_TOOL_ROUNDS;
+    let roundStarted = false;
     const started = Date.now();
     let final: Anthropic.Beta.BetaMessage;
     try {
@@ -195,7 +199,12 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
         // Automatic caching for the growing conversation.
         cache_control: { type: "ephemeral" },
       });
-      stream.on("text", (delta) => emit.text(delta));
+      stream.on("text", (delta) => {
+        if (!roundStarted && wroteText) emit.text("\n\n");
+        roundStarted = true;
+        wroteText = true;
+        emit.text(delta);
+      });
       final = await stream.finalMessage();
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
@@ -259,6 +268,15 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
         : o.text,
       ...(o.isError ? { is_error: true } : {}),
     }));
+    // Next is the last round, where no more lookups are allowed. Say so, or the model answers
+    // as if mid-search (the live test got "Try the repo structure." and nothing else). A text
+    // block after the tool results is append-only, so the cache and thinking are untouched.
+    if (round + 1 === MAX_TOOL_ROUNDS) {
+      results.push({
+        type: "text",
+        text: "That was your last lookup for this question. Answer now with what you found. Say plainly what you couldn't find or open and why, and what the person could do next.",
+      });
+    }
     for (const o of outcomes) {
       if (o.action) emit.action(o.action);
       if (o.sources?.length) emit.sources(o.sources);

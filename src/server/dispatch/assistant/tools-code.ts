@@ -57,9 +57,22 @@ async function repoFor(scope: DispatchScope, wanted: string | undefined): Promis
 
 function githubProblem(err: unknown, r: RepoChoice): ToolOutcome {
   if (err instanceof GitHubRequestError) {
-    if (err.code === "GITHUB_NOT_FOUND") return { text: `GitHub says that doesn't exist in ${repoLabel(r)}, or Foundry's GitHub access can't open it.`, isError: true };
+    if (err.code === "GITHUB_NOT_FOUND") {
+      return {
+        text: `GitHub says that doesn't exist in ${repoLabel(r)}, or Foundry's GitHub access can't open that repository. If repo_files at the top level also fails, Foundry can't read this repository: a Super Admin needs to give Gitwork's GitHub account access to ${repoLabel(r)}. Don't retry with other searches.`,
+        isError: true,
+      };
+    }
+    // Code search answers 422 "Validation Failed" for a repository it can't search, usually
+    // one Foundry's GitHub access can't read.
+    if (err.code === "GITHUB_REQUEST_FAILED" && /validation failed|cannot be searched/i.test(err.message)) {
+      return {
+        text: `GitHub can't search ${repoLabel(r)} with Foundry's access, most likely because Gitwork's GitHub account can't read it. A Super Admin needs to give it access. Don't retry with other searches.`,
+        isError: true,
+      };
+    }
     if (err.code === "GITHUB_RATE_LIMITED") return { text: "GitHub is limiting requests right now. Try again in a minute.", isError: true };
-    if (err.code === "GITHUB_FORBIDDEN") return { text: `Foundry's GitHub access can't open ${repoLabel(r)}.`, isError: true };
+    if (err.code === "GITHUB_FORBIDDEN") return { text: `Foundry's GitHub access can't open ${repoLabel(r)}: a Super Admin needs to give Gitwork's GitHub account access to it. Don't retry.`, isError: true };
   }
   return { text: "GitHub didn't answer just now.", isError: true };
 }
