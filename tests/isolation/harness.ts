@@ -170,6 +170,8 @@ const ID_BY_PARENT: Record<string, (v: SideIds) => string> = {
   "clients/*/wiki/updates": (v) => v.weeklyUpdate,
   "platform/workspaces": (v) => v.workspace,
   templates: (v) => v.template,
+  "dispatch/conversations": (v) => v.dispatchConversation,
+  "dispatch/actions": (v) => v.dispatchAction,
 };
 
 export type Planned = {

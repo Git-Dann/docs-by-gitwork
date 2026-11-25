@@ -84,6 +84,8 @@ export type SideIds = {
   invite: string;
   proof: string;
   template: string;
+  dispatchConversation: string;
+  dispatchAction: string;
 };
 
 export function idsFor(side: Side): SideIds {
@@ -151,6 +153,8 @@ export function idsFor(side: Side): SideIds {
     invite: id(side, "invite"),
     proof: id(side, "proof"),
     template: id(side, "template"),
+    dispatchConversation: id(side, "dispatch-conv"),
+    dispatchAction: id(side, "dispatch-action"),
   };
 }
 
@@ -324,6 +328,24 @@ export async function seedSide(db: PrismaClient, side: Side) {
   await db.documentTemplate.create({
     data: { id: i.template, workspaceId: i.workspace, name: m(side, "template"), slug: `iso-${side}-template`, sections: json([]) },
   });
+  // Dispatch (§154): a private chat with one message, and a change it proposed, still pending.
+  await db.dispatchConversation.create({
+    data: { id: i.dispatchConversation, workspaceId: i.workspace, userId: i.user, clientId: i.client, title: m(side, "dispatch-chat") },
+  });
+  await db.dispatchMessage.create({
+    data: { conversationId: i.dispatchConversation, role: "user", content: json([{ type: "text", text: m(side, "dispatch-question") }]) },
+  });
+  await db.dispatchAction.create({
+    data: {
+      id: i.dispatchAction,
+      workspaceId: i.workspace,
+      conversationId: i.dispatchConversation,
+      userId: i.user,
+      clientId: i.client,
+      kind: "comment",
+      payload: json({ taskId: i.task, body: m(side, "dispatch-comment"), card: { title: m(side, "dispatch-card"), lines: [] } }),
+    },
+  });
 }
 
 /** Everything a write could change, read back as one string. A difference means a route wrote. */
@@ -391,6 +413,9 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
       },
     }),
     db.workspaceInvite.findMany({ where: ws, orderBy: { id: "asc" } }),
+    db.dispatchConversation.findMany({ where: ws, orderBy: { id: "asc" } }),
+    db.dispatchMessage.findMany({ where: { conversationId: i.dispatchConversation }, orderBy: { id: "asc" } }),
+    db.dispatchAction.findMany({ where: ws, orderBy: { id: "asc" } }),
   ]);
   return JSON.stringify(parts, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
 }

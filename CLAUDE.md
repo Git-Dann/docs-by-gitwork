@@ -390,6 +390,8 @@ src/
       answer.ts                   ← Pure no-AI floor + ONE cached light-tier phrasing call
       respond.ts                  ← Orchestrator: gates → resolve → gather → answer
       config.ts / types.ts        ← resolveDispatchConfig + DISPATCH_DEFAULTS
+      assistant/                  ← The assistant (§154): loop.ts (Sonnet 5.5 tool loop, cached prefix), scope.ts (permission wall),
+                                     tools.ts (read + propose_* tools), actions.ts (confirm executor), slack.ts, redact.ts
     slack/
       events.ts                   ← Events API handler (loop guard, dedupe, Slack Connect refused, asker → Foundry member)
     support.ts                    ← Care/Support CRUD (clients, tickets, convos, workflow rules)
@@ -906,3 +908,4 @@ be resolved by reading. Do not renumber either one.
 - **§151** — Needs you becomes an inbox
 - **§152** — One animated theme switch everywhere
 - **§153** — Code Handover: Live and Master, venue variants, a lock, and a history
+- **§154** — Dispatch becomes an assistant

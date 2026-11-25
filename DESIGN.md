@@ -1077,6 +1077,32 @@ The exception covers Canvas's own shell only. Don't carry the orange back into F
 
 The full token and component reference lives with its source, in `Git-Dann/canvas` `docs/BRAND.md`.
 
+## Dispatch panel (the assistant, `CLAUDE.md` §154)
+
+The pattern for any chat surface in Foundry. Source: `src/components/dispatch/dispatch-panel.tsx`.
+
+- **A right-hand sheet, mounted once** in the app shell and opened from anywhere with
+  `openDispatch({ clientSlug?, taskId?, prompt? })`. Full width below `sm`, `max-w-[460px]` above,
+  `motion-sheet-right`, `--surface-0` with a `--border-2` left hairline. The backdrop dims on a
+  phone and is transparent from `lg`, so the page stays readable beside it.
+- **Header** is a `widget-header` with a mono label, then a row with the client picker
+  (`app-select-compact`, only the person's own clients) and past chats.
+- **The person's message** is a `--surface-1` bubble, `rounded-[10px]`, inset `ml-8`. **Dispatch's
+  answer is not a bubble**: plain text at full width, because answers are long and are read, not
+  glanced at. Tool progress ("Reading the board…") is a quiet `--text-3` line while it works.
+- **Sources** are small hairline chips under the answer, truncated with a `title`, linking to the
+  record when there is one.
+- **A proposed change** is a card in `--surface-brand` with a `--brand-300` border: a title, the
+  lines it will create or change, then Confirm (primary) and Cancel. After the click the buttons
+  become the outcome in words ("Done: Created 2 tasks."). Nothing Dispatch proposes runs without it.
+- **Problems** (no key, a limit reached) are an amber note in plain words, never a red error.
+- **The input** is one framed box (`rounded-[10px]`, `--border-2`, brand border on focus) holding
+  a two-line textarea at 16px on phones (iOS zooms on anything smaller) with the inline
+  `outline: none` a framed input needs (§69), and the send button. Enter sends; Shift+Enter is a
+  new line.
+- **Quick actions** are outlined `rounded-[6px]` chips on an empty chat, chosen by where the panel
+  was opened (anywhere, a client, a task).
+
 ## Do's and Don'ts
 
 ### Do

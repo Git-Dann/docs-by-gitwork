@@ -133,6 +133,43 @@ Slack could ask about any client.
 
 ---
 
+## The assistant (November 2026, §154)
+
+Behind `dispatchConfig.assistantEnabled` (default **off**; Super Admins can use it before that).
+With it on, a person with `dispatch.use` gets the assistant both in the app (the right-hand panel)
+and in Slack; everyone else, and anything that isn't about one client, keeps the answer above.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `assistantEnabled` | `false` | Only a literal `true` switches it on. |
+
+**Switching it on:**
+
+1. Reinstall the Slack app from `docs/slack-app-manifest.json` (it now asks for
+   `channels:history` and `groups:history`) and re-save the bot token in Settings → Integrations.
+2. Check the workspace has an Anthropic key in Settings → Integrations. Dispatch uses
+   `claude-sonnet-5-5` with that key, whatever the workspace's own model setting says.
+3. Set `"assistantEnabled": true` in `Workspace.dispatchConfig`.
+
+**Where a Slack answer goes.** A DM, or the client's own internal channel: in the thread. Anywhere
+else: to the asker by DM, with a note in the thread. An answer posted in a channel never shows
+figures or admin-only document types, whoever asked (`forChannel` in `assistant/scope.ts`).
+
+**Confirm and Cancel.** Proposed changes arrive with buttons. A press is honoured only for the
+Foundry member the pressing Slack account resolves to, and only if the proposal was theirs; anyone
+else gets a private "only the person who asked" note. The work runs after Slack's 3-second ack.
+
+**What is stored.** The chat (`DispatchConversation`, `DispatchMessage`) is private to its owner.
+Proposals and what happened to them are `DispatchAction` rows: the audit trail of every change
+Dispatch made. The Slack row (`DispatchExchange`) records who, which client and the outcome, not
+the text.
+
+**Cost.** Every model call is in Analytics → AI usage under module `DISPATCH`, with cache reads.
+Expect a few cents a question; the second question within five minutes is cheaper because the
+system prompt and tools are read from the cache.
+
+---
+
 ## What gets recorded
 
 One `DispatchExchange` row per question, written **before** the answer is composed:

@@ -26,6 +26,7 @@ import {
 } from "@/components/shell-header";
 import { DeskDrawer } from "@/components/desk/desk-drawer";
 import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
+import { DispatchButton, DispatchPanel } from "@/components/dispatch/dispatch-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import "@/lib/demo/demo-fetch";
@@ -227,6 +228,7 @@ export function DemoShell({
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <CommandMenuButton className="mr-1" />
+                <DispatchButton className="mr-1" />
               </div>
             </header>
 
@@ -246,6 +248,7 @@ export function DemoShell({
         {mounted ? (
           <DemoErrorBoundary fallback={null}>
             <DeskDrawer />
+            <DispatchPanel />
           </DemoErrorBoundary>
         ) : null}
         {mounted ? <HalloweenFogFront /> : null}

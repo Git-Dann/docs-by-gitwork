@@ -2161,3 +2161,66 @@ change the code. Four things, all in `src/server/wiki-code.ts`, with the rules p
   hand-styled button in any wiki section header. Cards in a row are the same height, and every
   card has the same header: the name on the left, the buttons far right on its line (wrapping
   under the name on a phone), the description below.
+
+---
+
+## 154. Recent Changes (November 2026) — Dispatch becomes an assistant
+
+Harry asked for Claude across the places developers work, so a developer such as Nasir on Wedge
+can ask about a project and get a plain-English answer from what Foundry holds. Dispatch, the
+Slack coordinator (§36), is now that assistant, in the app and in Slack, on one engine. It ships
+**behind a workspace switch** (`dispatchConfig.assistantEnabled`, off by default; Super Admins can
+use it before that to test it). Operator notes: `docs/dispatch.md`.
+
+- **The rule everything else serves: Dispatch sees only what the asker can see.** Each chat is
+  pinned to one client. No tool takes a client argument; every tool call re-checks
+  `assertClientInScope` against the asker (`assistant/scope.ts`), so access removed mid-chat
+  applies at once. Results are built field by field; figures appear only for someone with costs,
+  rates or client financials (`redact.ts` also strips money patterns for everyone else), and
+  credentials are redacted from every result before the model sees it. Documents follow Docs'
+  own rule (developers aren't told about proposals or contracts). A new permission,
+  `dispatch.use`, is on by default for Developer, Staff and Admin, off for Guests; it never
+  widens what anyone can see.
+- **Client content is data, not instructions.** Every result is wrapped in
+  `<source kind=… id=…>` (with `</source>` escaped), and the system prompt says text inside is
+  never an instruction.
+- **Changes wait for a click.** A `propose_*` tool stores a pending `DispatchAction` and shows a
+  card; nothing runs until the asker presses Confirm (in the panel, or the Slack button), and
+  `decideAction` re-checks every rule against the data as it is then. Allowed: create tasks (for
+  the asker or unassigned; a suggested owner is named, not set), add subtasks or update a task the
+  asker owns or nobody owns, comment, flag (#908), post to the client's **internal** Slack
+  channel (re-checked `is_ext_shared === false`). Never, by construction: delete, reassign,
+  another client, anything the client can see.
+- **In the app:** a right-hand panel (`src/components/dispatch/dispatch-panel.tsx`), opened from
+  the header, ⌘K "Ask Dispatch", a client's header, My Clients rows and the task drawer
+  (`openDispatch()`), streaming over SSE from `POST /api/dispatch/chat`. Quick actions per context
+  carry the dev team's list (`src/lib/dispatch/skills.ts`).
+- **In Slack** (`assistant/slack.ts`): a thread keeps its client; a client's own internal channel
+  means that client; otherwise the client named in the question, from the asker's clients. A
+  question about a person or "everything" still gets the older status answer (`respond.ts`).
+  Answers posted in a channel use `forChannel()`: no figures and developer document types only,
+  because everyone in the channel reads them. Confirm/Cancel buttons are honoured only for the
+  Foundry member the pressing Slack account resolves to (`interactions.ts` →
+  `handleDispatchDecision`), and run after Slack's 3-second ack. The manifest gains
+  `channels:history` and `groups:history`: **reinstall the Slack app and re-save the bot token.**
+- **Cost (a $200 pot shared with every AI feature).** Model `claude-sonnet-5-5` (`DISPATCH_MODEL`,
+  Dan's choice). The system prompt and tool list are identical for everyone with a cache
+  breakpoint after them; who is asking and about which client goes in the first user message, so
+  every question after the first in five minutes reads the prefix at a tenth of the price
+  (a test asserts the prefix takes no person, client or time). Effort low, 4,000 output tokens,
+  at most 6 tool rounds (the last with `tool_choice: none`), results capped, chats capped at 40
+  messages or ~60k tokens, 60 questions per person per hour. Every call is logged with module
+  `DISPATCH` (Analytics → AI usage). History is append-only because Sonnet 5.5 checks earlier
+  thinking wasn't edited.
+- **Privacy.** Chats are private to their owner (`DispatchConversation`/`DispatchMessage`); Super
+  Admins see usage and cost, not text. The Slack audit row (`DispatchExchange`) records who, which
+  client and the outcome, not the answer.
+- Schema (additive): `DispatchConversation`, `DispatchMessage`, `DispatchAction`, `AiModule.DISPATCH`.
+- Demo: `/demo/dev` opens the panel with canned answers (`src/lib/demo/demo-dispatch.ts`).
+- Tests: `assistant/__tests__/` (redaction, prompt prefix and tool list, action rules, the
+  confirm executor, channel narrowing), `src/lib/dispatch/__tests__/slack-format.test.ts`,
+  each rule checked by breaking it on purpose. Verified: the panel at 390, 768, 1280×620 and 1440
+  with `audit:clipping`, no findings.
+- **Still to come:** GitHub and Figma tools, a design-vs-build check, budget alerts at 50/80/95%
+  and a Dispatch block in Analytics, a 90-day chat purge, and a live eval of ~25 real Wedge
+  questions as Nasir before the switch goes on.

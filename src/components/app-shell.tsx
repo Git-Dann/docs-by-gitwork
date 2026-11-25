@@ -45,6 +45,7 @@ import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeSoundToggle, ThemeToggle } from "@/components/theme-toggle";
 import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { DispatchButton, DispatchPanel } from "@/components/dispatch/dispatch-panel";
 import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
 import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenSpiderSlot } from "@/components/seasonal/halloween";
 import { ChristmasLogoBadge, ChristmasSnow } from "@/components/seasonal/christmas";
@@ -344,6 +345,7 @@ export function AppShell({
         </span>
         <div className="flex items-center gap-1">
           <CommandMenuButton className="border-0 bg-transparent p-2" />
+          <DispatchButton className="border-0 bg-transparent p-2" />
           <NotificationBell />
           <button
             type="button"
@@ -503,6 +505,7 @@ export function AppShell({
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <CommandMenuButton className="mr-1" />
+                  <DispatchButton className="mr-1" />
                   <NotificationBell />
                 </div>
               </div>
@@ -538,6 +541,8 @@ export function AppShell({
       <ChristmasSnow />
       {/* Hangs in the header band's right gutter, so only where there is a band. */}
       {hideContentHeader ? null : <HalloweenSpiderSlot />}
+      {/* Dispatch: Claude for the team, about one client at a time, as far as this person can see. */}
+      <DispatchPanel />
       {/* ⌘K. The pages are this viewer's own nav, so it never offers a product the sidebar hides. */}
       <CommandMenu
         pages={primaryNav}

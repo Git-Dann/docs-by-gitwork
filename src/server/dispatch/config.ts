@@ -19,5 +19,6 @@ export function resolveDispatchConfig(raw: unknown): DispatchConfig {
     recentDays: numOr(c.recentDays, DISPATCH_DEFAULTS.recentDays, 1, 90),
     maxEvidenceItems: numOr(c.maxEvidenceItems, DISPATCH_DEFAULTS.maxEvidenceItems, 3, 40),
     perChannelPerHour: numOr(c.perChannelPerHour, DISPATCH_DEFAULTS.perChannelPerHour, 1, 200),
+    assistantEnabled: c.assistantEnabled === true,
   };
 }

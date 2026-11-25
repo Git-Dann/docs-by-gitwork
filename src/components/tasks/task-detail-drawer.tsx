@@ -24,6 +24,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/motion/spinner";
+import { AskDispatchAboutTask } from "@/components/dispatch/ask-dispatch";
 import { Markdown } from "@/lib/markdown";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import {
@@ -580,14 +581,17 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                   {task.title}
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-1)]"
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <AskDispatchAboutTask clientSlug={task.client.slug} taskId={task.id} />
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="shrink-0 text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+                >
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">

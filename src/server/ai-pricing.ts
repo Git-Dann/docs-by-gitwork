@@ -38,6 +38,12 @@ const PRICES: Record<string, ModelPrice> = {
   "claude-opus": { input: 15.0, output: 75.0, cachedInput: 1.5, cacheWrite: 18.75 }, // 4.1/4.0/3 fallback
   "claude-sonnet": { input: 3.0, output: 15.0, cachedInput: 0.3, cacheWrite: 3.75 }, // Sonnet 5/4.6/4.5
   "claude-haiku": { input: 1.0, output: 5.0, cachedInput: 0.1, cacheWrite: 1.25 }, // Haiku 4.5
+  // Claude 5 generation (claude-api skill catalog, cached 2026-11-03). Longest prefix wins, so
+  // these override the family rows above for the newer models only.
+  "claude-sonnet-5": { input: 2.0, output: 10.0, cachedInput: 0.2, cacheWrite: 2.5 },
+  "claude-sonnet-5-5": { input: 2.0, output: 10.0, cachedInput: 0.1, cacheWrite: 2.5 }, // Dispatch
+  "claude-opus-5-5": { input: 4.0, output: 20.0, cachedInput: 0.2, cacheWrite: 5.0 },
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cachedInput: 0.01, cacheWrite: 0.125 },
   "claude-fable": { input: 10.0, output: 50.0, cachedInput: 1.0, cacheWrite: 12.5 },
   // OpenAI
   "gpt-4o-mini": { input: 0.15, output: 0.6, cachedInput: 0.075 },

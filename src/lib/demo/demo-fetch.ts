@@ -6,6 +6,7 @@
  */
 
 import { resolveDemoApi } from "@/lib/demo/dev-demo-data";
+import { demoDispatchStream, resolveDemoDispatch } from "@/lib/demo/demo-dispatch";
 
 declare global {
   var __foundryDemoFetchPatched: boolean | undefined;
@@ -32,6 +33,12 @@ if (typeof window !== "undefined" && !globalThis.__foundryDemoFetchPatched) {
       search = u.searchParams;
     } catch {
       pathname = rawUrl.split("?")[0];
+    }
+
+    // Dispatch answers as a stream; the demo streams canned answers the same way.
+    if (pathname === "/api/dispatch/chat") return demoDispatchStream(typeof init?.body === "string" ? init.body : null);
+    if (pathname.startsWith("/api/dispatch/")) {
+      return new Response(JSON.stringify(resolveDemoDispatch(pathname) ?? {}), { headers: { "Content-Type": "application/json" } });
     }
 
     if (pathname.startsWith("/api/")) {

@@ -4470,6 +4470,7 @@ enum AiModule {
   EMBEDDING
   CRM
   COMMITMENTS
+  DISPATCH
   OTHER
 }
 
@@ -6630,4 +6631,61 @@ model NeedsYouState {
   updatedAt   DateTime  @updatedAt
 
   @@index([userId, workspaceId])
+}
+
+/// Dispatch, Claude for the team (Nov 2026). One conversation is one person talking about ONE
+/// client; every tool call is re-checked against that person's live access to that client.
+/// Private to its owner: no route reads another person's conversation. Loose ids (no FKs), like
+/// the rest of the AI logs, so deleting a client or member never cascades into history here.
+model DispatchConversation {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  userId         String
+  clientId       String
+  /// "web" (the in-app panel) or "slack" (a Slack thread).
+  surface        String   @default("web")
+  slackChannelId String?
+  slackThreadTs  String?
+  title          String   @default("New chat")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([workspaceId, userId, updatedAt])
+  @@index([slackChannelId, slackThreadTs])
+}
+
+/// One message in a Dispatch conversation, stored exactly as sent to / received from the model
+/// (content blocks, including thinking and tool blocks) so the history replays unchanged.
+model DispatchMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  /// "user" | "assistant".
+  role           String
+  content        Json
+  /// Token usage for an assistant turn (input, output, cache read, cache write).
+  usage          Json?
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+/// Something Dispatch proposed that waits for the asker's click (create tasks, update a task,
+/// comment, flag, post to the internal Slack channel). Re-checked in full when confirmed.
+/// Also the audit trail of everything Dispatch did.
+model DispatchAction {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  conversationId String
+  userId         String
+  clientId       String
+  kind           String
+  payload        Json
+  /// "pending" | "done" | "cancelled" | "failed".
+  status         String    @default("pending")
+  result         Json?
+  createdAt      DateTime  @default(now())
+  executedAt     DateTime?
+
+  @@index([conversationId])
+  @@index([workspaceId, userId, status])
 }
