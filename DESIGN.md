@@ -1114,6 +1114,8 @@ blank box with a wall of prompt chips reads as "a chat bot"; that was the compla
   text at full width, because answers are read, not glanced at. **Above it, the steps it took**
   ("Looking at your tasks"): live with a spinner on the current one, then folded into a quiet
   "Looked at N things" line that opens on a click.
+- **Under an answer**, quiet 11px text actions: Copy, and on the latest answer **Simpler** (asks for it
+  again in plain words).
 - **Sources** are small hairline chips under the answer, truncated with a `title`, linking to the
   record when there is one.
 - **A proposed change** is a card in `--surface-brand` with a `--brand-300` border: a title, the

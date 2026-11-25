@@ -28,7 +28,7 @@ export interface SlackChatContext {
   recentDmChat: { id: string; clientId: string; updatedAt: Date; messages: number } | null;
   /** The client named in this message, among the person's own clients. */
   namedClientId: string | null;
-  /** The message is about a person or "everything" (no client): the status answer handles it. */
+  /** The message is about a teammate or "everything" rather than one client. */
   aboutPersonOrAll: boolean;
   /** The client whose own internal channel this is (channels only). */
   channelClientId: string | null;
@@ -45,7 +45,6 @@ export interface SlackChatContext {
 export type SlackChatDecision =
   | { action: "continue"; conversationId: string; clientId: string }
   | { action: "new"; clientId: string }
-  | { action: "legacy" }
   | { action: "ask_which" };
 
 export function decideSlackChat(c: SlackChatContext): SlackChatDecision {
@@ -66,9 +65,12 @@ export function decideSlackChat(c: SlackChatContext): SlackChatDecision {
 
   const clientId = c.namedClientId ?? c.channelClientId;
   if (clientId) return { action: "new", clientId };
-  if (c.aboutPersonOrAll) return { action: "legacy" };
   if (c.onlyClientId) return { action: "new", clientId: c.onlyClientId };
-  if (c.isDm && c.fallbackClientId) return { action: "new", clientId: c.fallbackClientId };
+  // No client named: start on their usual client and let Dispatch look across them (my_clients,
+  // person_work, all_clients_overview). A DM talks; in a channel that isn't a client's own, the
+  // answer goes to the person by DM (slack.ts), so it's only a question about a teammate or
+  // everything that gets that far; anything else there is asked which client (§166).
+  if (c.fallbackClientId && (c.isDm || c.aboutPersonOrAll)) return { action: "new", clientId: c.fallbackClientId };
   return { action: "ask_which" };
 }
 
