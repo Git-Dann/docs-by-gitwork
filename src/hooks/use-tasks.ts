@@ -322,8 +322,15 @@ export function useBatchCreateTasks() {
 export function useImportTasks() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ slug, tasks }: { slug: string; tasks: Parameters<typeof importTasks>[1] }) =>
-      importTasks(slug, tasks),
+    mutationFn: ({
+      slug,
+      tasks,
+      updateExisting,
+    }: {
+      slug: string;
+      tasks: Parameters<typeof importTasks>[1];
+      updateExisting?: boolean;
+    }) => importTasks(slug, tasks, { updateExisting }),
     onSuccess: () => invalidateAll(qc),
   });
 }

@@ -9,6 +9,7 @@ import { cn } from "@/lib/format";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useImportTasks } from "@/hooks/use-tasks";
 import { findRosterByName } from "@/lib/team-roster-aliases";
+import { splitAssigneeCell } from "@/lib/tasks/task-csv";
 import {
   TASK_STATUS_LABELS,
   TASK_PRIORITY_LABELS,
@@ -17,9 +18,11 @@ import {
 } from "@/types/tasks";
 
 // ── The fields a CSV can map onto ─────────────────────────────────────────────
-type FieldKey = "title" | "status" | "priority" | "assignee" | "dueDate" | "category" | "release" | "description";
+type FieldKey = "id" | "title" | "status" | "priority" | "assignee" | "dueDate" | "category" | "release" | "description";
 
 const FIELDS: { key: FieldKey; label: string; required?: boolean; aliases: string[] }[] = [
+  // From a Foundry export. With "Update tasks that match", a row with a Task ID changes that task.
+  { key: "id", label: "Task ID", aliases: ["task id", "foundry id", "id", "task ref"] },
   { key: "title", label: "Title", required: true, aliases: ["title", "name", "task", "task name", "summary", "subject"] },
   { key: "status", label: "Status", aliases: ["status", "state", "task status", "column", "stage"] },
   { key: "priority", label: "Priority", aliases: ["priority", "urgency", "importance"] },
@@ -35,6 +38,7 @@ const STATUS_ALIASES: Record<string, TaskStatus> = {
   todo: "TODO", "to do": "TODO", "to-do": "TODO", open: "TODO", new: "TODO", "not started": "TODO",
   doing: "DOING", "in progress": "DOING", "in-progress": "DOING", wip: "DOING", active: "DOING", started: "DOING",
   review: "IN_REVIEW", "in review": "IN_REVIEW", "in-review": "IN_REVIEW", qa: "IN_REVIEW", testing: "IN_REVIEW",
+  "ui done": "UI_DONE",
   done: "DONE", complete: "DONE", completed: "DONE", closed: "DONE", shipped: "DONE", live: "DONE", merged: "DONE",
 };
 const PRIORITY_ALIASES: Record<string, TaskPriority> = {
@@ -150,6 +154,7 @@ export function TaskImportModal({
   blocks,
   releases = [],
   existingTitles = [],
+  existingTasks = [],
   onClose,
   onDone,
 }: {
@@ -159,8 +164,10 @@ export function TaskImportModal({
   releases?: { id: string; version: string }[];
   /** Titles already on this client's board — used to flag duplicate rows. */
   existingTitles?: string[];
+  /** This client's tasks (active and archived): a Task ID column is matched against these. */
+  existingTasks?: { id: string; title: string }[];
   onClose: () => void;
-  onDone: (created: number) => void;
+  onDone: (result: { created: number; updated: number }) => void;
 }) {
   const team = useBackstageTeam();
   const members = useMemo(
@@ -172,8 +179,10 @@ export function TaskImportModal({
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsed, setParsed] = useState<{ headers: string[]; rows: string[][] } | null>(null);
   const [mapping, setMapping] = useState<Record<FieldKey, number | null>>({
-    title: null, status: null, priority: null, assignee: null, dueDate: null, category: null, release: null, description: null,
+    id: null, title: null, status: null, priority: null, assignee: null, dueDate: null, category: null, release: null, description: null,
   });
+  // Off by default: an import never changes existing tasks unless asked to.
+  const [updateExisting, setUpdateExisting] = useState(false);
   // Distinct unmatched value → chosen id ("" = leave unset).
   const [assigneeFix, setAssigneeFix] = useState<Record<string, string>>({});
   const [categoryFix, setCategoryFix] = useState<Record<string, string>>({});
@@ -182,6 +191,8 @@ export function TaskImportModal({
   const [importDupes, setImportDupes] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const existingById = useMemo(() => new Map(existingTasks.map((t) => [t.id, t.title])), [existingTasks]);
 
   // Titles already on the board (normalised) — for duplicate detection.
   const existingTitleSet = useMemo(
@@ -218,7 +229,7 @@ export function TaskImportModal({
         const norm = (s: string) => s.trim().toLowerCase();
         const used = new Set<number>();
         const next: Record<FieldKey, number | null> = {
-          title: null, status: null, priority: null, assignee: null, dueDate: null, category: null, release: null, description: null,
+          id: null, title: null, status: null, priority: null, assignee: null, dueDate: null, category: null, release: null, description: null,
         };
         for (const f of FIELDS) {
           const idx = p.headers.findIndex((h, i) => !used.has(i) && f.aliases.includes(norm(h)));
@@ -256,24 +267,38 @@ export function TaskImportModal({
     const seenTitles = new Set<string>(); // titles seen earlier in this CSV
 
     const rows = parsed.rows.map((r, idx) => {
+      const taskId = cell(r, "id");
+      // "update": the row changes that existing task; "unknown": it names a task that isn't on
+      // this client, so it is skipped rather than created as a copy.
+      const action: "create" | "update" | "unknown" =
+        updateExisting && taskId ? (existingById.has(taskId) ? "update" : "unknown") : "create";
       const title = cell(r, "title");
-      const st = mapStatus(cell(r, "status"));
-      const pr = mapPriority(cell(r, "priority"));
+      const statusRaw = cell(r, "status");
+      const priorityRaw = cell(r, "priority");
+      const st = mapStatus(statusRaw);
+      const pr = mapPriority(priorityRaw);
       const dueRaw = cell(r, "dueDate");
       const dueIso = parseDate(dueRaw);
-      const aName = cell(r, "assignee");
-      // 1) exact match against a live member (name or email)
-      let aId: string | null = aName ? memberByKey.get(aName.toLowerCase()) ?? null : null;
-      // 2) ClickUp custom-dropdown name → roster alias → canonical email → member
-      if (!aId && aName) {
-        const rosterEmail = findRosterByName(aName)?.email;
-        if (rosterEmail) aId = memberByKey.get(rosterEmail.toLowerCase()) ?? null;
-      }
-      // 3) manual reconciliation fix, else flag as unmatched
-      if (!aId && aName) {
-        const fix = assigneeFix[aName.toLowerCase()];
-        if (fix) aId = fix;
-        else unmatchedAssignees.add(aName);
+      const aNames = splitAssigneeCell(cell(r, "assignee"));
+      const aIds: string[] = [];
+      let aFlagged = false;
+      for (const aName of aNames) {
+        // 1) exact match against a live member (name or email)
+        let aId: string | null = memberByKey.get(aName.toLowerCase()) ?? null;
+        // 2) ClickUp custom-dropdown name → roster alias → canonical email → member
+        if (!aId) {
+          const rosterEmail = findRosterByName(aName)?.email;
+          if (rosterEmail) aId = memberByKey.get(rosterEmail.toLowerCase()) ?? null;
+        }
+        // 3) manual reconciliation fix, else flag as unmatched
+        if (!aId) {
+          const fix = assigneeFix[aName.toLowerCase()];
+          if (fix) aId = fix;
+          else unmatchedAssignees.add(aName);
+        }
+        if (aId) {
+          if (!aIds.includes(aId)) aIds.push(aId);
+        } else aFlagged = true;
       }
       const cName = cell(r, "category");
       let cId: string | null = cName ? blockByName.get(cName.toLowerCase()) ?? null : null;
@@ -286,27 +311,31 @@ export function TaskImportModal({
       const rName = cell(r, "release");
       const rId = rName ? findReleaseByVersion(releases, rName)?.id ?? null : null;
       // Duplicate detection (title-based, per client): already on the board, or
-      // repeated earlier in this same CSV.
+      // repeated earlier in this same CSV. An update is meant to match, so it's never one.
       const key = normTitle(title);
       let duplicate: "existing" | "csv" | null = null;
-      if (key) {
+      if (key && action === "create") {
         if (existingTitleSet.has(key)) duplicate = "existing";
         else if (seenTitles.has(key)) duplicate = "csv";
         seenTitles.add(key);
       }
       // A duplicate is skipped unless the user ticked it to import anyway.
-      const skipped = Boolean(duplicate) && !importDupes.has(idx);
+      const skipped = action === "unknown" || (Boolean(duplicate) && !importDupes.has(idx));
       return {
         idx,
+        action,
+        taskId,
+        statusRaw,
+        priorityRaw,
         title,
         description: cell(r, "description"),
         status: st.value,
         statusFlagged: st.flagged,
         priority: pr.value,
         priorityFlagged: pr.flagged,
-        assigneeName: aName,
-        assigneeId: aId,
-        assigneeFlagged: Boolean(aName) && !aId,
+        assigneeNames: aNames,
+        assigneeIds: aIds,
+        assigneeFlagged: aFlagged,
         dueRaw,
         dueIso,
         dueFlagged: Boolean(dueRaw) && !dueIso,
@@ -318,13 +347,17 @@ export function TaskImportModal({
         releaseFlagged: Boolean(rName) && !rId,
         duplicate,
         skipped,
-        valid: title.length > 0,
+        // An update may leave the title blank (it keeps its own); a new task needs one.
+        valid: action === "update" || title.length > 0,
       };
     });
     const willImport = (r: (typeof rows)[number]) => r.valid && !r.skipped;
     const dupes = rows.filter((r) => r.valid && r.duplicate);
     return {
       rows,
+      newCount: rows.filter((r) => r.action === "create" && willImport(r)).length,
+      updateCount: rows.filter((r) => r.action === "update").length,
+      unknownCount: rows.filter((r) => r.action === "unknown").length,
       unmatchedAssignees: [...unmatchedAssignees],
       unmatchedCategories: [...unmatchedCategories],
       dupes,
@@ -334,7 +367,7 @@ export function TaskImportModal({
       keptDupeCount: dupes.filter((r) => importDupes.has(r.idx)).length,
       willImport,
     };
-  }, [parsed, mapping, memberByKey, blockByName, releases, assigneeFix, categoryFix, existingTitleSet, importDupes]);
+  }, [parsed, mapping, memberByKey, blockByName, releases, assigneeFix, categoryFix, existingTitleSet, existingById, importDupes, updateExisting]);
 
   // Toggle one duplicate row in/out of the import.
   function toggleDupe(idx: number) {
@@ -351,25 +384,38 @@ export function TaskImportModal({
   async function runImport() {
     if (!resolved) return;
     setError(null);
-    const tasks = resolved.rows
-      .filter(resolved.willImport)
-      .map((r) => ({
-        title: r.title,
-        description: r.description || undefined,
-        status: r.status,
-        priority: r.priority,
-        assigneeIds: r.assigneeId ? [r.assigneeId] : undefined,
-        featureBlockId: r.categoryId ?? undefined,
-        releaseId: r.releaseId ?? undefined,
-        dueDate: r.dueIso ?? undefined,
-      }));
+    const tasks = resolved.rows.filter(resolved.willImport).map((r) =>
+      r.action === "update"
+        ? {
+            // Only what the row carries changes; a blank cell leaves that field as it is.
+            id: r.taskId,
+            title: r.title || existingById.get(r.taskId) || "Untitled",
+            description: r.description || undefined,
+            status: r.statusRaw && !r.statusFlagged ? r.status : undefined,
+            priority: r.priorityRaw && !r.priorityFlagged ? r.priority : undefined,
+            assigneeIds: r.assigneeIds.length ? r.assigneeIds : undefined,
+            featureBlockId: r.categoryId ?? undefined,
+            releaseId: r.releaseId ?? undefined,
+            dueDate: r.dueIso ?? undefined,
+          }
+        : {
+            title: r.title,
+            description: r.description || undefined,
+            status: r.status,
+            priority: r.priority,
+            assigneeIds: r.assigneeIds.length ? r.assigneeIds : undefined,
+            featureBlockId: r.categoryId ?? undefined,
+            releaseId: r.releaseId ?? undefined,
+            dueDate: r.dueIso ?? undefined,
+          },
+    );
     if (tasks.length === 0) {
       setError("No rows with a Title to import.");
       return;
     }
     try {
-      const res = await importMut.mutateAsync({ slug, tasks });
-      onDone(res.created);
+      const res = await importMut.mutateAsync({ slug, tasks, updateExisting });
+      onDone({ created: res.created, updated: res.updated ?? 0 });
     } catch {
       setError("Import failed. Please check the file and try again.");
     }
@@ -501,6 +547,25 @@ export function TaskImportModal({
                 </div>
               </div>
 
+              {/* Update existing tasks — only offered once a Task ID column is mapped. */}
+              {mapping.id != null ? (
+                <label className="flex items-start gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={updateExisting}
+                    onChange={(e) => setUpdateExisting(e.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-[var(--brand-700)]"
+                  />
+                  <span className="text-xs text-[var(--text-2)]">
+                    <span className="font-medium">Update tasks that match</span>
+                    <span className="block text-[11px] text-[var(--text-4)]">
+                      A row with a Task ID from this board changes that task instead of adding a copy. Blank
+                      cells leave a field as it is. Nothing is deleted.
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+
               {/* Duplicates — select one / all, dismiss (skip) */}
               {resolved && resolved.dupes.length > 0 ? (
                 <div className="overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
@@ -631,7 +696,18 @@ export function TaskImportModal({
                             )}
                           >
                             <td className={cn("px-2 py-1.5", !r.valid && "text-rose-600")}>
-                              {r.title || <span className="italic">missing title — skipped</span>}
+                              {r.title || (r.action === "update" ? existingById.get(r.taskId) : null) || (
+                                <span className="italic">missing title — skipped</span>
+                              )}
+                              {r.action === "update" ? (
+                                <span className="ml-1.5 rounded-[4px] bg-[var(--surface-brand)] px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.5px] text-[var(--brand-700)]">
+                                  update
+                                </span>
+                              ) : r.action === "unknown" ? (
+                                <span className="ml-1.5 rounded-[4px] bg-rose-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.5px] text-rose-700">
+                                  not on this client
+                                </span>
+                              ) : null}
                               {r.duplicate ? (
                                 <span className="ml-1.5 rounded-[4px] bg-amber-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.5px] text-amber-700">
                                   {r.duplicate === "existing" ? "on board" : "dup in file"}
@@ -641,7 +717,9 @@ export function TaskImportModal({
                             <td className={cn("px-2 py-1.5", r.statusFlagged && flag)}>{TASK_STATUS_LABELS[r.status]}</td>
                             <td className={cn("px-2 py-1.5", r.priorityFlagged && flag)}>{TASK_PRIORITY_LABELS[r.priority]}</td>
                             <td className={cn("px-2 py-1.5", r.assigneeFlagged && flag)}>
-                              {r.assigneeId ? (members.find((m) => m.id === r.assigneeId)?.name ?? "—") : r.assigneeName ? `${r.assigneeName} (unmatched)` : "—"}
+                              {r.assigneeNames.length === 0
+                                ? "—"
+                                : r.assigneeNames.join(", ") + (r.assigneeFlagged ? " (some unmatched)" : "")}
                             </td>
                             <td className={cn("px-2 py-1.5", r.dueFlagged && flag)}>
                               {r.dueIso ?? (r.dueRaw ? `${r.dueRaw} (?)` : "—")}
@@ -676,7 +754,14 @@ export function TaskImportModal({
                 <span className="font-medium text-rose-600">{error}</span>
               ) : resolved ? (
                 <span className="text-[var(--text-3)]">
-                  <strong>{resolved.importCount}</strong> task{resolved.importCount === 1 ? "" : "s"} will be imported
+                  <strong>{resolved.newCount}</strong> new
+                  {updateExisting ? (
+                    <>
+                      {" · "}
+                      <strong>{resolved.updateCount}</strong> will be updated
+                      {resolved.unknownCount > 0 ? ` · ${resolved.unknownCount} not on this client, skipped` : ""}
+                    </>
+                  ) : null}
                 </span>
               ) : null}
             </span>
@@ -686,7 +771,8 @@ export function TaskImportModal({
                 type="button"
                 variant="primary"
                 onClick={runImport}
-                disabled={!titleMapped || !resolved || resolved.importCount === 0 || importMut.isPending}
+                loading={importMut.isPending}
+                disabled={!titleMapped || !resolved || resolved.importCount === 0}
               >
                 {importMut.isPending ? "Importing…" : `Import ${resolved?.importCount ?? 0} tasks`}
               </Button>

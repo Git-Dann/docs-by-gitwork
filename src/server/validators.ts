@@ -1263,9 +1263,12 @@ export const taskBatchCreateSchema = z.object({
 
 /** CSV import — bulk-create tasks for one client. Names are resolved to ids client-side. */
 export const taskImportSchema = z.object({
+  /** Rows with an `id` update that task (on this client only) instead of creating one. */
+  updateExisting: z.boolean().optional(),
   tasks: z
     .array(
       z.object({
+        id: z.string().cuid().optional(),
         title: z.string().min(1).max(200),
         description: z.string().max(10000).nullable().optional(),
         status: taskStatusSchema.optional(),

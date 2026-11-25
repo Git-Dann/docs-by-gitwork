@@ -26,6 +26,9 @@ import {
   PencilSquareIcon,
   TrashIcon,
   RocketLaunchIcon,
+  ChevronDownIcon,
+  ArrowDownTrayIcon,
+  ClipboardDocumentListIcon,
 } from "@heroicons/react/24/outline";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -57,6 +60,10 @@ import { Segmented } from "@/components/ui/segmented";
 import { releaseLabel, releaseSpan } from "@/lib/tasks/releases";
 import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
 import { TaskImportModal } from "@/components/tasks/task-import-modal";
+import { PasteTaskListModal } from "@/components/tasks/paste-task-list-modal";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { menuItem, menuPanel } from "@/components/ui/menu-styles";
+import { tasksToCsv } from "@/lib/tasks/task-csv";
 import { ProjectUpdateComposer } from "@/components/tasks/project-update-composer";
 import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
 import { PlanHealthStrip, type PlanFilter } from "@/components/tasks/plan-health-strip";
@@ -99,6 +106,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creatingTask, setCreatingTask] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [pastingList, setPastingList] = useState(false);
   const [managingCategories, setManagingCategories] = useState(false);
   const [managingColumns, setManagingColumns] = useState(false);
   const [managingReleases, setManagingReleases] = useState(false);
@@ -334,14 +342,37 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           >
             Push to Slack
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            leadingIcon={<ArrowUpTrayIcon className="h-4 w-4" />}
-            onClick={() => setImporting(true)}
-          >
-            Import
-          </Button>
+          <Menu as="div" className="relative">
+            <MenuButton className="app-button app-button-secondary app-button-sm inline-flex items-center gap-1.5">
+              <ArrowUpTrayIcon className="h-4 w-4" />
+              Import / export
+              <ChevronDownIcon className="h-3.5 w-3.5 text-[var(--text-4)]" />
+            </MenuButton>
+            <MenuItems anchor="bottom end" className={cn(menuPanel, "min-w-[220px]")}>
+              <MenuItem>
+                <button type="button" className={cn(menuItem, "gap-2")} onClick={() => setPastingList(true)}>
+                  <ClipboardDocumentListIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  Paste a list of tasks
+                </button>
+              </MenuItem>
+              <MenuItem>
+                <button type="button" className={cn(menuItem, "gap-2")} onClick={() => setImporting(true)}>
+                  <ArrowUpTrayIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  Import CSV…
+                </button>
+              </MenuItem>
+              <MenuItem>
+                <button
+                  type="button"
+                  className={cn(menuItem, "gap-2")}
+                  onClick={() => downloadTasksCsv(slug, view === "archived" ? archivedTasks : filtered)}
+                >
+                  <ArrowDownTrayIcon className="h-4 w-4 text-[var(--text-4)]" />
+                  Export CSV ({(view === "archived" ? archivedTasks : filtered).length})
+                </button>
+              </MenuItem>
+            </MenuItems>
+          </Menu>
           <Button
             type="button"
             variant="primary"
@@ -522,8 +553,19 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           blocks={blocks}
           releases={releases}
           existingTitles={[...tasks, ...archivedTasks].map((t) => t.title)}
+          existingTasks={[...tasks, ...archivedTasks].map((t) => ({ id: t.id, title: t.title }))}
           onClose={() => setImporting(false)}
           onDone={() => setImporting(false)}
+        />
+      ) : null}
+      {pastingList && clientId ? (
+        <PasteTaskListModal
+          slug={slug}
+          clientId={clientId}
+          blocks={blocks}
+          releases={releases}
+          onClose={() => setPastingList(false)}
+          onDone={() => setPastingList(false)}
         />
       ) : null}
       {pushingToSlack && clientId ? (
@@ -957,4 +999,15 @@ function TimelineShareControl({ slug }: { slug: string }) {
       ) : null}
     </div>
   );
+}
+
+/** Download the tasks in view as a CSV the import dialog reads back (with Task IDs). */
+function downloadTasksCsv(slug: string, tasks: TaskDTO[]) {
+  const blob = new Blob(["\uFEFF" + tasksToCsv(tasks)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${slug}-tasks-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }

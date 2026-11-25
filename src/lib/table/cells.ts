@@ -675,6 +675,12 @@ function escapeField(value: string, delimiter: string): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
+/** One CSV field, quoted when needed and safe from formula injection. Shared with the task
+ *  export so there is one rule for both. */
+export function csvField(value: string): string {
+  return escapeField(value, ",");
+}
+
 /** CSV (for download) or TSV (for paste into Google Sheets), header row first. */
 export function exportSheet(
   columns: readonly SheetColumn[],
