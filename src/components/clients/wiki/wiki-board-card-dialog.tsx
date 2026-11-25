@@ -23,6 +23,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefOb
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import {
   ArrowTopRightOnSquareIcon,
+  CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   LinkIcon,
@@ -50,6 +51,7 @@ import {
   clientMayActOn,
   feedbackRefusal,
   type FeedbackKind,
+  type SignOff,
 } from "@/lib/wiki-board";
 import {
   CARD_IMAGE_TYPES,
@@ -883,7 +885,20 @@ function CardDialogBody(props: BodyProps) {
               </Block>
             ) : null}
           </div>
-          {!isAdd && local ? <Composer target={target} cardId={local.id} audience={audience} /> : null}
+          {!isAdd && local ? (
+            <Composer
+              target={target}
+              cardId={local.id}
+              audience={audience}
+              signOff={local.signOff}
+              onSent={(kind) => {
+                // Show the sign-off on the card now; the board's re-read brings the same back.
+                const next = { ...local, feedbackCount: local.feedbackCount + 1, ...(kind === "comment" ? {} : { signOff: kind }) };
+                setLocal(next);
+                props.onSaved(next);
+              }}
+            />
+          ) : null}
         </div>
 
         <aside className="hidden min-h-0 overflow-y-auto border-l border-[var(--border-2)] px-3 py-4 md:block" data-card-rail>
@@ -1530,22 +1545,44 @@ function DependsPicker({ initial, choices, onCommit }: { initial: string[]; choi
   );
 }
 
-/** Reply, comment, approve or ask for changes: pinned under the card's activity. */
-function Composer({ target, cardId, audience }: { target: BoardTarget; cardId: string; audience: "client" | "team" }) {
+/**
+ * Approve or ask for changes (the client), or reply (the team): pinned under the card's activity.
+ * The client gets no separate Comment button: a note goes with Approve or Changes needed. Sending
+ * updates the card in place (`onSent`), so Approve turns into "Approved" at once, with no reload.
+ */
+function Composer({
+  target,
+  cardId,
+  audience,
+  signOff,
+  onSent,
+}: {
+  target: BoardTarget;
+  cardId: string;
+  audience: "client" | "team";
+  signOff: SignOff;
+  onSent: (kind: FeedbackKind) => void;
+}) {
   const send = useSendBoardFeedback(target, cardId);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState<FeedbackKind | null>(null);
   async function submit(kind: FeedbackKind) {
     const refusal = feedbackRefusal(kind, body);
     if (refusal) return setError(refusal);
     setError(null);
+    setSending(kind);
     try {
       await send.mutateAsync({ kind, body });
       setBody("");
+      onSent(kind);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't send. Please try again.");
+    } finally {
+      setSending(null);
     }
   }
+  const approved = signOff === "approved";
   return (
     <div className="shrink-0 border-t border-[var(--border-2)] px-5 py-3" data-card-composer>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -1554,25 +1591,48 @@ function Composer({ target, cardId, audience }: { target: BoardTarget; cardId: s
           onChange={(e) => setBody(e.target.value)}
           rows={1}
           maxLength={BOARD_LIMITS.feedback}
-          placeholder={audience === "client" ? "Feedback, or what needs changing…" : "Reply to the client…"}
-          aria-label="Feedback"
+          placeholder={audience === "client" ? "Add a note, or say what needs changing…" : "Reply to the client…"}
+          aria-label={audience === "client" ? "Note" : "Reply"}
           // Grows with what's typed, up to a few lines, so an empty composer takes one line.
           className="app-input max-h-[120px] min-h-[36px] w-full flex-1 resize-none px-3 py-2 text-[16px] [field-sizing:content] sm:text-sm"
         />
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
           {audience === "client" ? (
             <>
-              <button type="button" className="app-button app-button-secondary app-button-sm h-9" disabled={send.isPending} onClick={() => void submit("changes_requested")}>
-                Changes needed
+              <button
+                type="button"
+                className="app-button app-button-secondary app-button-sm h-9"
+                disabled={send.isPending}
+                onClick={() => void submit("changes_requested")}
+                data-sign-off-changes
+              >
+                {sending === "changes_requested" ? "Sending…" : "Changes needed"}
               </button>
-              <button type="button" className="app-button app-button-secondary app-button-sm h-9" disabled={send.isPending} onClick={() => void submit("approved")}>
-                Approve
-              </button>
+              {approved && !body.trim() ? (
+                <span
+                  className="app-button app-button-sm pointer-events-none h-9 border border-emerald-200 bg-emerald-50 text-emerald-700"
+                  role="status"
+                  data-sign-off-approved
+                >
+                  <CheckIcon className="h-4 w-4" /> Approved
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="app-button app-button-primary app-button-sm h-9"
+                  disabled={send.isPending}
+                  onClick={() => void submit("approved")}
+                  data-sign-off-approve
+                >
+                  {sending === "approved" ? "Approving…" : approved ? "Approve again" : "Approve"}
+                </button>
+              )}
             </>
-          ) : null}
-          <button type="button" className="app-button app-button-primary app-button-sm h-9" disabled={send.isPending} onClick={() => void submit("comment")}>
-            {audience === "client" ? "Comment" : "Reply"}
-          </button>
+          ) : (
+            <button type="button" className="app-button app-button-primary app-button-sm h-9" disabled={send.isPending} onClick={() => void submit("comment")}>
+              {sending ? "Sending…" : "Reply"}
+            </button>
+          )}
         </div>
       </div>
       {error ? <p className="mt-1.5 text-[12px] text-red-700">{error}</p> : null}

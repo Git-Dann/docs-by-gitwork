@@ -2161,3 +2161,22 @@ change the code. Four things, all in `src/server/wiki-code.ts`, with the rules p
   hand-styled button in any wiki section header. Cards in a row are the same height, and every
   card has the same header: the name on the left, the buttons far right on its line (wrapping
   under the name on a phone), the description below.
+
+## 154. Recent Changes (November 2026) — Board: sign-off without a reload, and a Timeline that shows what's late
+
+- **No more page reload on the client's Board.** `useBoardRefresh` called `router.refresh()` on
+  the client's page, which re-rendered the whole server page on every approve or move. The cards
+  have their own query since §140, so it now invalidates only `["public-wiki", token, "board"]`.
+- **Approve turns into "Approved" at once** (`Composer` in `wiki-board-card-dialog.tsx`, `onSent`
+  updates the card and tells the board). The client gets Approve and Changes needed only; the
+  separate Comment button is gone, and a typed note goes with either. The team keeps Reply.
+- **Timeline** (`src/lib/wiki-board-timeline.ts`, pure, tested):
+  - `releaseState`: complete (cards > 0, all done), behind (end date passed, cards open), open.
+  - `cardBehind`: not done, and its due date (else its release's end date) has passed.
+  - Completed releases (and done cards with no release) are hidden by default; **Show completed**
+    brings them back. **N behind schedule** filters to late cards only.
+  - Behind releases draw red with "Behind · N open"; late cards get a red ring and dot; approved
+    cards show a green tick and an Approved chip in the rail.
+  - The calendar spans only the releases shown, and opens on today: it scrolls the first time the
+    scroller has a width (ResizeObserver), which fixes it opening at the earliest release when the
+    view mounted before it was laid out.

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  cardBehind,
   dayOf,
   initialScrollLeft,
   mondayOnOrBefore,
   PX_PER_DAY,
   quarterBands,
   releasePercent,
+  releaseState,
   spanX,
+  timelineCounts,
   timelineColumns,
   timelineGroups,
   timelineRange,
@@ -141,5 +144,72 @@ describe("row order", () => {
   it("keeps the board's order within a release", () => {
     const groups = timelineGroups([card("b", "r", { orderKey: 2 }), card("a", "r", { orderKey: 1 })], [rel("r", "2026-11-01", "2026-11-08")]);
     expect(groups[0].cards.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("completed and behind schedule", () => {
+  const today = day("2026-11-25");
+
+  it("a release is complete when every card is done, behind when it ended with work open", () => {
+    expect(releaseState(rel("r", "2026-05-24", "2026-07-09", 6, 6), today)).toBe("complete");
+    expect(releaseState(rel("r", "2026-05-24", "2026-07-09", 6, 2), today)).toBe("behind");
+    expect(releaseState(rel("r", "2026-11-01", "2026-12-20", 6, 2), today)).toBe("open");
+    // Ending today isn't late yet, and a release with no end date can't be.
+    expect(releaseState(rel("r", "2026-11-01", "2026-11-25", 6, 2), today)).toBe("open");
+    expect(releaseState(rel("r", null, null, 6, 2), today)).toBe("open");
+    // No cards is never "complete" (0 of 0 is not finished work).
+    expect(releaseState(rel("r", "2026-05-24", "2026-07-09", 0, 0), today)).toBe("open");
+  });
+
+  it("a card is behind when it's open past its due date, or past its release's end with no due date", () => {
+    const ended = rel("r", "2026-05-24", "2026-07-09");
+    expect(cardBehind(card("a", "r"), ended, today)).toBe(true);
+    expect(cardBehind(card("a", "r", { status: "DONE" }), ended, today)).toBe(false);
+    // Its own due date wins over the release's.
+    expect(cardBehind(card("a", "r", { dueDate: "2026-12-01T00:00:00.000Z" }), ended, today)).toBe(false);
+    expect(cardBehind(card("a", null, { dueDate: "2026-11-20T00:00:00.000Z" }), null, today)).toBe(true);
+    expect(cardBehind(card("a", null), null, today)).toBe(false);
+  });
+
+  const releases = [
+    rel("done", "2026-05-24", "2026-07-09", 2, 2),
+    rel("late", "2026-08-01", "2026-09-01", 2, 1),
+    rel("now", "2026-11-01", "2026-12-20", 1, 0),
+  ];
+  const cards = [
+    card("d1", "done", { status: "DONE" }),
+    card("d2", "done", { status: "DONE" }),
+    card("l1", "late", { status: "DONE" }),
+    card("l2", "late"),
+    card("n1", "now"),
+    card("loose-done", null, { status: "DONE" }),
+    card("loose-open", null),
+  ];
+  const ids = (g: ReturnType<typeof timelineGroups>) => g.map((x) => `${x.release?.id ?? "none"}:${x.cards.map((c) => c.id).join(",")}`);
+
+  it("hides completed releases and done loose cards by default", () => {
+    expect(ids(timelineGroups(cards, releases, { today, showCompleted: false, onlyBehind: false }))).toEqual([
+      "late:l1,l2",
+      "now:n1",
+      "none:loose-open",
+    ]);
+  });
+
+  it("shows them again when asked", () => {
+    expect(ids(timelineGroups(cards, releases, { today, showCompleted: true, onlyBehind: false }))).toEqual([
+      "done:d1,d2",
+      "late:l1,l2",
+      "now:n1",
+      "none:loose-done,loose-open",
+    ]);
+  });
+
+  it("Behind only keeps just the late cards", () => {
+    expect(ids(timelineGroups(cards, releases, { today, showCompleted: false, onlyBehind: true }))).toEqual(["late:l2"]);
+  });
+
+  it("counts completed and behind releases among the cards in view", () => {
+    expect(timelineCounts(cards, releases, today)).toEqual({ completed: 1, behind: 1 });
+    expect(timelineCounts([card("n1", "now")], releases, today)).toEqual({ completed: 0, behind: 0 });
   });
 });
