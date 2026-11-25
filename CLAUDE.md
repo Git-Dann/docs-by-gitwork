@@ -918,3 +918,6 @@ be resolved by reading. Do not renumber either one.
 - **§159** — The AI budget reads Anthropic's own billing, and sits in the sidebar
 - **§160** — Dispatch names tasks by title, says when nothing is yours, and where it works in Slack
 - **§161** — Dispatch opens on a brief, not an empty chat
+- **§162** — Releases numbered by the changelog (the same section as the second §158 above, renumbered in its own file)
+- **§163** — The Portal Timeline card, glanceable; Studies off the client page
+- **§164** — Dispatch talks to you, not to one client at a time

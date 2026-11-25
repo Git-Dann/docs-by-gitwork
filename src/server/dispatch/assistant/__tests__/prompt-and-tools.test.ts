@@ -34,11 +34,20 @@ describe("the cached prefix", () => {
 });
 
 describe("the permission wall in the tools", () => {
-  it("no tool takes a client: every tool works on the chat's own client", () => {
+  it("only switch_client takes a client; every other tool works on the chat's current client", () => {
     for (const t of toolDefinitions()) {
+      if (t.name === "switch_client") continue;
       const props = Object.keys((t.input_schema as { properties?: object }).properties ?? {});
       for (const p of props) expect(p.toLowerCase()).not.toMatch(/client|workspace/);
     }
+  });
+
+  it("switch_client only opens the asker's own clients, through openScope, and never in a channel", () => {
+    const src = readFileSync(join(process.cwd(), "src/server/dispatch/assistant/tools.ts"), "utf8");
+    const body = src.slice(src.indexOf('name: "switch_client"'), src.indexOf("// ─── Read tools"));
+    expect(body).toContain("pickOwnClient(client, await ownClients(scope))");
+    expect(body).toContain("openScope(scope.user, { id: pick.client.id }, scope.surface)");
+    expect(body).toContain("scope.inChannel");
   });
 
   it("nothing can delete, reassign or write where the client can see", () => {

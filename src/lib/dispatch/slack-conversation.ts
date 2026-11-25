@@ -4,11 +4,15 @@
  *
  * - A direct message to Foundry is one running chat, threaded or not: a message carries on the
  *   person's latest DM chat (if it was active in the last few hours), so "and next week?"
- *   follows on from the question before. It moves to a new chat when they name a different
- *   client, or when the chat has grown long (silently: no "start a new chat" wall).
- * - In a channel, a thread is the chat.
+ *   follows on from the question before. Naming another of their clients carries on in the
+ *   same chat, now about that client (§164: "Can the Slack conversation not talk to me
+ *   directly?"). A long chat carries on in a fresh one, silently.
+ * - In a channel, a thread is the chat, and naming another client starts a new one (its answer
+ *   goes by DM: a channel only ever hears about its own client).
  * - In a client's own channel, that client.
- * - With no client to go on, the person is asked which client, by name, rather than refused.
+ * - With no client to go on, the chat starts on the person's usual client (the one they last
+ *   asked about) and Dispatch can list or move between their clients itself. Only someone with
+ *   no clients at all gets a fixed reply.
  */
 
 /** How long a DM chat stays "the one we're in" without a message. */
@@ -30,6 +34,9 @@ export interface SlackChatContext {
   channelClientId: string | null;
   /** The person's only client, when they have exactly one. */
   onlyClientId: string | null;
+  /** Where a DM starts with nothing else to go on: the client they last asked about, or their
+   *  first. Null when they have no clients. */
+  fallbackClientId?: string | null;
   /** Messages a chat may hold before a new one starts (MAX_CHAT_MESSAGES, less room for a turn). */
   maxMessages: number;
   now: Date;
@@ -43,9 +50,12 @@ export type SlackChatDecision =
 
 export function decideSlackChat(c: SlackChatContext): SlackChatDecision {
   const carryOn = (chat: { id: string; clientId: string }, messages: number) => {
-    if (c.namedClientId && c.namedClientId !== chat.clientId) return { action: "new", clientId: c.namedClientId } as const;
-    if (messages >= c.maxMessages) return { action: "new", clientId: chat.clientId } as const;
-    return { action: "continue", conversationId: chat.id, clientId: chat.clientId } as const;
+    const clientId = c.namedClientId ?? chat.clientId;
+    if (messages >= c.maxMessages) return { action: "new", clientId } as const;
+    // In a DM the chat follows the person to another of their clients; a channel thread stays
+    // on its client.
+    if (clientId !== chat.clientId && !c.isDm) return { action: "new", clientId } as const;
+    return { action: "continue", conversationId: chat.id, clientId } as const;
   };
 
   if (!c.isDm && c.inThread && c.threadChat) return carryOn(c.threadChat, 0);
@@ -58,6 +68,7 @@ export function decideSlackChat(c: SlackChatContext): SlackChatDecision {
   if (clientId) return { action: "new", clientId };
   if (c.aboutPersonOrAll) return { action: "legacy" };
   if (c.onlyClientId) return { action: "new", clientId: c.onlyClientId };
+  if (c.isDm && c.fallbackClientId) return { action: "new", clientId: c.fallbackClientId };
   return { action: "ask_which" };
 }
 

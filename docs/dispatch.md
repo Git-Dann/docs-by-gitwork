@@ -215,6 +215,14 @@ system prompt and tools are read from the cache.
 
 ---
 
+### One chat, any of your clients (§164)
+
+A chat isn't pinned to one client. It starts on one (the one the panel was opened on, or in a
+Slack DM the one named, else the client the person last asked about) and moves with
+`switch_client` to any other client **the asker can open**; `my_clients` lists them with their
+open and overdue work. Access is checked on the switch (`openScope`) and on every tool call. In a
+Slack channel the chat never leaves the channel's client.
+
 ### The brief (§161)
 
 The panel opens on a brief, not an empty chat: the person's own tasks that need them and why,

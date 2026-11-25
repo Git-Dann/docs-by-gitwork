@@ -2555,3 +2555,38 @@ after week ("Show all 49"), and "Up next" was five imported subtasks 244 days la
   Pulse). `studies` left `PORTAL_SECTIONS`, so the numbers still run without a gap; the rendered
   order was checked against the numbering, and the lead layout's fixed 02–08 is unchanged.
 - Tests: `client-delivery-compact.test.ts`. Rendered at 1440 and 390 with Wedge-like data.
+
+## 164. Recent Changes (November 2026) — Dispatch talks to you, not to one client at a time
+
+Dan, 25 Nov, in a DM with Foundry: "Okay so what clients have I got?" got "I can only see
+YourGroop in this chat… start a chat about that client in Foundry". "Can the Slack conversation
+not talk to me directly? Does it HAVE to break things down into client groups?"
+
+It doesn't. Pinning a chat to one client was a safety shortcut; the same safety holds with every
+lookup checked against the asker's own access, so a chat now moves between **the asker's own
+clients**:
+
+- **Two new tools** (appended, so the cached prefix only grows): `my_clients` lists the person's
+  clients with their open and overdue tasks on each (for an admin, each client's totals too);
+  `switch_client` moves the chat to another of their clients by name (`pickOwnClient`,
+  `src/lib/dispatch/clients.ts`, ignores case, spaces and punctuation; ambiguous names are
+  asked about). Every tool after the switch works on the new client.
+- **The wall is the same.** The list `switch_client` chooses from is only the clients the asker
+  can open (`loadCandidates`), and the switch goes through `openScope`, which checks access
+  again, as does every tool call (`assertStillAllowed`). A client they can't see reads like a name
+  that doesn't exist. Proposals keep their own client (`DispatchAction.clientId`) and the executor
+  checks it on confirm, as before. In a Slack **channel** the chat never switches: a channel only
+  ever hears about its own client (`scope.inChannel`, set by `forChannel`).
+- **The prompt** no longer says "ONE client at a time" or "start another chat"; the chat context
+  says the current client and how many the person works on. A chat that moves carries a
+  "Now on client: X" note in that question.
+- **Slack DMs:** naming another client carries on in the same chat (it used to start a new one),
+  and a DM with nothing to go on starts on the client the person last asked about, or their
+  first, and just answers, instead of asking which client. Only someone with no clients at all
+  gets the fixed reply. Channel threads still start a new chat when another client is named, and
+  that answer still goes by DM. The reply footer names the client the answer ended on.
+- **In the app** the panel's client switcher follows when Dispatch moves the chat (a `client`
+  stream event).
+- Tests: `clients.test.ts`, `slack-conversation.test.ts`, `prompt-and-tools.test.ts` (only
+  `switch_client` takes a client, it chooses from the asker's clients through `openScope`, and
+  never in a channel).

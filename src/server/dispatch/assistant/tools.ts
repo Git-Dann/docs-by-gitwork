@@ -31,7 +31,7 @@ import { isStuck } from "@/lib/tasks/stuck";
 import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import { taskRef } from "@/lib/format";
 import { finaliseToolText } from "./redact";
-import { assertStillAllowed, type DispatchScope } from "./scope";
+import { assertStillAllowed, openScope, type DispatchScope } from "./scope";
 import { CODE_TOOLS } from "./tools-code";
 import { DESIGN_TOOLS } from "./tools-design";
 
@@ -64,6 +64,8 @@ export interface ToolOutcome {
   /** Pictures for the model to look at (a Figma frame, a page screenshot). */
   images?: ToolImage[];
   isError?: boolean;
+  /** switch_client: the chat carries on about this client (already access-checked). */
+  switchTo?: DispatchScope;
 }
 
 export interface ToolContext {
@@ -220,6 +222,82 @@ async function proposeAction(
     action: { id: row.id, kind, title: card.title, lines: card.lines },
   };
 }
+
+// ─── Across the person's clients (§164) ─────────────────────────────────────
+// A chat isn't locked to one client: these two let it move between the ASKER'S OWN clients.
+// The list is built from the clients the asker can open (respond.ts loadCandidates), and the
+// switch goes through openScope, which checks access again; so a client they can't see reads
+// like a name that doesn't exist.
+
+async function ownClients(scope: DispatchScope) {
+  const { askerScope, loadCandidates } = await import("@/server/dispatch/respond");
+  const { clients } = await loadCandidates(scope.user.workspaceId, await askerScope(scope.user));
+  return clients;
+}
+
+const myClients = tool({
+  name: "my_clients",
+  description:
+    "The clients the person asking works on (only theirs), with how many open and overdue tasks they have on each, and for an admin the client's totals. Use for 'what clients have I got', 'where am I busiest', or questions across clients.",
+  input_schema: obj({}),
+  schema: z.object({}).strict(),
+  status: "Looking at your clients",
+  async run(scope) {
+    const clients = await ownClients(scope);
+    if (!clients.length) return { text: "This person isn't on any clients." };
+    const ids = clients.map((c) => c.id);
+    const statuses = await prisma.workspaceClient.findMany({ where: { id: { in: ids }, workspaceId: scope.user.workspaceId }, select: { id: true, status: true } });
+    const statusOf = new Map(statuses.map((r) => [r.id, r.status]));
+    const { listTasks } = await import("@/server/tasks");
+    const open = await listTasks(scope.user, { clientIds: ids, openOnly: true, limit: 5000 });
+    const today = Date.now();
+    const per = new Map<string, { mine: number; mineOverdue: number; open: number; overdue: number; nobody: number }>();
+    for (const t of open) {
+      const row = per.get(t.client.id) ?? { mine: 0, mineOverdue: 0, open: 0, overdue: 0, nobody: 0 };
+      const overdue = t.dueDate !== null && new Date(t.dueDate).getTime() < today - DAY_MS;
+      const mine = t.assignees.some((a) => a.id === scope.user.id);
+      row.open += 1;
+      if (overdue) row.overdue += 1;
+      if (!t.assignees.length) row.nobody += 1;
+      if (mine) row.mine += 1;
+      if (mine && overdue) row.mineOverdue += 1;
+      per.set(t.client.id, row);
+    }
+    const lines = clients
+      .map((c) => ({ c, r: per.get(c.id) ?? { mine: 0, mineOverdue: 0, open: 0, overdue: 0, nobody: 0 }, status: statusOf.get(c.id) ?? "ACTIVE" }))
+      .sort((a, b) => b.r.mine - a.r.mine || b.r.open - a.r.open || a.c.name.localeCompare(b.c.name))
+      .slice(0, 40)
+      .map(({ c, r, status }) => {
+        const bits = [`yours: ${r.mine} open${r.mineOverdue ? `, ${r.mineOverdue} overdue` : ""}`];
+        if (scope.isAdmin) bits.push(`client: ${r.open} open, ${r.overdue} overdue, ${r.nobody} with nobody`);
+        if (status !== "ACTIVE") bits.push(String(status).toLowerCase().replace(/_/g, " "));
+        return `- ${c.name}${c.id === scope.client.id ? " (current)" : ""}: ${bits.join(" · ")}`;
+      });
+    const more = clients.length > 40 ? `\n…and ${clients.length - 40} more.` : "";
+    return { text: asSource("clients", "mine", `${clients.length} client${clients.length === 1 ? "" : "s"}:\n${lines.join("\n")}${more}`) };
+  },
+});
+
+const switchClient = tool({
+  name: "switch_client",
+  description:
+    "Move this chat to another of the person's own clients, by name. Call it on its own, before looking anything up about that client; every tool after it works on the new client.",
+  input_schema: obj({ client: { type: "string", description: "The client's name, as the person said it." } }, ["client"]),
+  schema: z.object({ client: z.string().min(1).max(120) }).strict(),
+  status: "Switching client",
+  async run(scope, { client }) {
+    if (scope.inChannel) {
+      return { text: `In a channel I stay on ${scope.client.name}, so nobody here sees another client's work. Ask about other clients in a direct message to Foundry.`, isError: true };
+    }
+    const { pickOwnClient } = await import("@/lib/dispatch/clients");
+    const pick = pickOwnClient(client, await ownClients(scope));
+    if (pick.kind === "none") return { text: `"${client}" isn't one of this person's clients. Don't guess: say you can't see a client by that name.`, isError: true };
+    if (pick.kind === "several") return { text: `"${client}" could be ${pick.names.join(", ")}. Ask which one.`, isError: true };
+    if (pick.client.id === scope.client.id) return { text: `Already on ${scope.client.name}.` };
+    const next = await openScope(scope.user, { id: pick.client.id }, scope.surface);
+    return { text: `Now on ${next.client.name}. Every tool from here works on ${next.client.name}.`, switchTo: next };
+  },
+});
 
 // ─── Read tools ─────────────────────────────────────────────────────────────
 
@@ -938,6 +1016,9 @@ export const DISPATCH_TOOLS: readonly DispatchTool[] = [
   // at the end and nothing above moves.
   ...CODE_TOOLS,
   ...DESIGN_TOOLS,
+  // §164: chats move between the asker's own clients.
+  myClients,
+  switchClient,
 ];
 
 const BY_NAME = new Map(DISPATCH_TOOLS.map((t) => [t.name, t]));
