@@ -42,6 +42,7 @@ import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import { cn } from "@/lib/format";
 import { fuzzySearch } from "@/lib/fuzzy-search";
 import { Segmented } from "@/components/ui/segmented";
+import { apiFetch } from "@/lib/api";
 import { WikiBoardTimeline } from "@/components/clients/wiki/wiki-board-timeline";
 import { WikiBoardSchedule } from "@/components/clients/wiki/wiki-board-schedule";
 import { useToast } from "@/components/ui/toast";
@@ -370,7 +371,26 @@ export function WikiBoardSectionView({
           </div>
         ) : null}
         {view === "timeline" ? (
-          <WikiBoardTimeline cards={visible} releases={section.releases} readOnly={readOnly} onOpen={setOpenId} />
+          <WikiBoardTimeline
+            cards={visible}
+            releases={section.releases}
+            readOnly={readOnly}
+            onOpen={setOpenId}
+            onEditDates={
+              // The team, on its own wiki, can move a release's dates (the releases route checks access).
+              audience === "team" && target.mode === "internal"
+                ? async (r, dates) => {
+                    await apiFetch(`/api/releases/${encodeURIComponent(r.id)}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(dates),
+                    });
+                    toast.success("Dates saved", r.label);
+                    refresh();
+                  }
+                : undefined
+            }
+          />
         ) : null}
         {view === "schedule" ? (
           <WikiBoardSchedule

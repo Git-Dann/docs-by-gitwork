@@ -223,34 +223,38 @@ describe("sub-items in the card dialog", () => {
 
 describe("signing a card off", () => {
   const composer = () => document.querySelector("[data-card-composer]")!;
-  const labels = () => Array.from(composer().querySelectorAll("button")).map((b) => b.textContent?.trim());
+  const signOff = () => document.querySelector("[data-card-sign-off]")!;
+  const labels = (el: Element) => Array.from(el.querySelectorAll("button")).map((b) => b.textContent?.trim());
 
-  it("gives the client Approve and Changes needed, and no separate Comment button", () => {
+  it("puts Changes needed and Approve in the bottom bar, and no Comment button for the client", () => {
     open(CARD, "client");
-    expect(labels()).toEqual(["Changes needed", "Approve"]);
+    expect(document.querySelector("[data-card-dialog-footer] [data-card-sign-off]")).not.toBeNull();
+    expect(labels(signOff())).toEqual(["Changes needed", "Approve"]);
+    expect(labels(composer())).toEqual([]);
   });
 
   it("turns Approve into Approved at once, and tells the board, with no reload", async () => {
     const saved: WikiBoardCard[] = [];
     open(CARD, "client", false, (c) => saved.push(c));
-    await act(async () => (composer().querySelector("[data-sign-off-approve]") as HTMLButtonElement).click());
+    await act(async () => (signOff().querySelector("[data-sign-off-approve]") as HTMLButtonElement).click());
     expect(calls.some((c) => c.init?.method === "POST" && c.url.endsWith("/board/tasks/c1/feedback"))).toBe(true);
-    expect(composer().querySelector("[data-sign-off-approved]")?.textContent).toContain("Approved");
-    expect(composer().querySelector("[data-sign-off-approve]")).toBeNull();
+    expect(signOff().querySelector("[data-sign-off-approved]")?.textContent).toContain("Approved");
+    expect(signOff().querySelector("[data-sign-off-approve]")).toBeNull();
     expect(saved.at(-1)).toMatchObject({ id: "c1", signOff: "approved", feedbackCount: 1 });
   });
 
   it("opens an approved card already showing Approved", () => {
     open({ ...CARD, signOff: "approved" }, "client");
-    expect(composer().querySelector("[data-sign-off-approved]")).not.toBeNull();
+    expect(signOff().querySelector("[data-sign-off-approved]")).not.toBeNull();
   });
 
-  it("lets the team approve and ask for changes as well as reply", async () => {
+  it("gives the team Reply beside the note box, and sign-off in the bottom bar", async () => {
     open(CARD, "team");
-    expect(labels()).toEqual(["Changes needed", "Approve", "Reply"]);
-    await act(async () => (composer().querySelector("[data-sign-off-approve]") as HTMLButtonElement).click());
+    expect(labels(composer())).toEqual(["Reply"]);
+    expect(labels(signOff())).toEqual(["Changes needed", "Approve"]);
+    await act(async () => (signOff().querySelector("[data-sign-off-approve]") as HTMLButtonElement).click());
     const post = calls.find((c) => c.init?.method === "POST" && c.url.endsWith("/tasks/c1/client-feedback"));
     expect(JSON.parse(String(post?.init?.body))).toMatchObject({ kind: "approved" });
-    expect(composer().querySelector("[data-sign-off-approved]")).not.toBeNull();
+    expect(signOff().querySelector("[data-sign-off-approved]")).not.toBeNull();
   });
 });

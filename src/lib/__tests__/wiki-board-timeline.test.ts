@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvedOpenByRelease,
   cardBehind,
   dayOf,
   initialScrollLeft,
@@ -161,14 +162,21 @@ describe("completed and behind schedule", () => {
     expect(releaseState(rel("r", "2026-05-24", "2026-07-09", 0, 0), today)).toBe("open");
   });
 
-  it("a card is behind when it's open past its due date, or past its release's end with no due date", () => {
+  it("a card is flagged only for its own late due date, never just for being in a late release", () => {
     const ended = rel("r", "2026-05-24", "2026-07-09");
-    expect(cardBehind(card("a", "r"), ended, today)).toBe(true);
-    expect(cardBehind(card("a", "r", { status: "DONE" }), ended, today)).toBe(false);
-    // Its own due date wins over the release's.
-    expect(cardBehind(card("a", "r", { dueDate: "2026-12-01T00:00:00.000Z" }), ended, today)).toBe(false);
+    expect(cardBehind(card("a", "r"), ended, today)).toBe(false);
     expect(cardBehind(card("a", null, { dueDate: "2026-11-20T00:00:00.000Z" }), null, today)).toBe(true);
-    expect(cardBehind(card("a", null), null, today)).toBe(false);
+    expect(cardBehind(card("a", "r", { dueDate: "2026-12-01T00:00:00.000Z" }), ended, today)).toBe(false);
+    expect(cardBehind(card("a", null, { dueDate: "2026-11-20T00:00:00.000Z", status: "DONE" }), null, today)).toBe(false);
+    expect(cardBehind(card("a", null, { dueDate: "2026-11-20T00:00:00.000Z", signOff: "approved" }), null, today)).toBe(false);
+  });
+
+  it("approved cards don't make a release late", () => {
+    const r = rel("r", "2026-10-17", "2026-10-30", 5, 1);
+    expect(releaseState(r, today)).toBe("behind");
+    expect(releaseState(r, today, 3)).toBe("behind");
+    expect(releaseState(r, today, 4)).toBe("open");
+    expect(approvedOpenByRelease([card("a", "r", { signOff: "approved" }), card("b", "r", { signOff: "approved", status: "DONE" }), card("c", "r")])).toEqual(new Map([["r", 1]]));
   });
 
   const releases = [
@@ -209,7 +217,23 @@ describe("completed and behind schedule", () => {
   });
 
   it("counts completed and behind releases among the cards in view", () => {
-    expect(timelineCounts(cards, releases, today)).toEqual({ completed: 1, behind: 1 });
-    expect(timelineCounts([card("n1", "now")], releases, today)).toEqual({ completed: 0, behind: 0 });
+    expect(timelineCounts(cards, releases, today)).toEqual({ completed: 1, behind: 1, approved: 0 });
+    expect(timelineCounts([card("n1", "now")], releases, today)).toEqual({ completed: 0, behind: 0, approved: 0 });
+  });
+});
+
+describe("approved cards on the timeline", () => {
+  const today = day("2026-11-25");
+  const releases = [rel("r", "2026-11-01", "2026-12-20", 3, 0)];
+  const cards = [card("a", "r", { signOff: "approved" }), card("b", "r"), card("c", "r", { signOff: "changes_requested" })];
+  const ids = (g: ReturnType<typeof timelineGroups>) => g.flatMap((x) => x.cards.map((c) => c.id));
+
+  it("are hidden by default and shown when asked", () => {
+    expect(ids(timelineGroups(cards, releases, { today, showCompleted: false, onlyBehind: false }))).toEqual(["b", "c"]);
+    expect(ids(timelineGroups(cards, releases, { today, showCompleted: false, showApproved: true, onlyBehind: false }))).toEqual(["a", "b", "c"]);
+  });
+
+  it("are counted for the toggle", () => {
+    expect(timelineCounts(cards, releases, today).approved).toBe(1);
   });
 });
