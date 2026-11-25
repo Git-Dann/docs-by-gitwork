@@ -575,7 +575,7 @@ export function useReleases(clientId: string | null) {
   });
 }
 
-/** The client's "number releases by the changelog" setting (§158). Changing it relabels everything. */
+/** The client's "number releases by the changelog" setting (§161). Changing it relabels everything. */
 export function useReleaseNumbering(clientId: string | null) {
   const qc = useQueryClient();
   const query = useQuery({

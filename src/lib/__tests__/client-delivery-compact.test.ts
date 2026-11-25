@@ -1,5 +1,5 @@
 /**
- * The Portal Timeline card, made readable (§159): long overdue tasks are counted, not listed;
+ * The Portal Timeline card, made readable (§162): long overdue tasks are counted, not listed;
  * a week opens to its events, then its finished work grouped by release or category.
  */
 import { describe, expect, it } from "vitest";

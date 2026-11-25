@@ -2415,7 +2415,7 @@ one shared "saving" flag, so pressing Save token spun every button on the page.
 
 ---
 
-## 158. Recent Changes (November 2026) — Releases numbered by the changelog
+## 161. Recent Changes (November 2026) — Releases numbered by the changelog
 
 Big Wedge's planning site numbered its releases loosely ("v2.0.0" four times, a "v1.0.0" in
 November) while the app's changelog went 2.0.0 → 2.0.2 → 2.0.3 → 2.0.4. A client can now be shown
@@ -2476,9 +2476,24 @@ read code or Figma designs, so they're answered by Sonnet 5.5 (`model.test.ts` p
 request on Syed's list now has a button except outdated libraries (No. 14), which waits on
 Dispatch reading Pulse's findings.
 
+**Follow-up (25 Nov): talking to Foundry in Slack is a conversation.** Dan: "I need to be able to
+converse with Foundry, and not be locked to stale replies". Three things made it feel stuck: every
+DM message started a new chat (Foundry replied in a thread under each one, so a top-level
+follow-up lost the context), a message with no client named got the old fixed "I couldn't tell
+which client" reply, and a long chat hit "start a new one". Now (`decideSlackChat`,
+`src/lib/dispatch/slack-conversation.ts`, tested):
+- **A DM is one running chat**: a message, threaded or not, carries on the person's latest DM chat
+  if it was active in the last 3 hours, and Foundry replies at the top level of the DM (or in the
+  thread they used). Naming another client moves to a new chat about it; a long chat carries on in
+  a fresh one about the same client without saying so.
+- **No client to go on**: Foundry greets back if greeted, names the person's clients and asks which
+  (`askWhichClientText`), then keeps that client for the rest of the chat. Someone on one client
+  gets that client. A question about a person or everything still gets the status answer.
+- In channels a thread is still the chat, and a DM chat never carries into a channel.
+
 ---
 
-## 159. Recent Changes (November 2026) — The Portal Timeline card, readable; Studies off the client page
+## 162. Recent Changes (November 2026) — The Portal Timeline card, readable; Studies off the client page
 
 Dan, on the Portal client page's Timeline: "this is brutal". It listed every finished task as a
 full sentence, week after week ("Show all 49"), and "Up next" was five imported subtasks 244 days

@@ -188,6 +188,10 @@ billed figure when an admin key is set).
 **Chats are deleted after 90 days unused**, nightly, with any proposal never carried out.
 Carried-out proposals stay as the record of what Dispatch changed.
 
+**A DM to Foundry is a conversation.** Follow-ups carry on from the last question for 3 hours,
+until you name another client. If Foundry doesn't know which client you mean, it names yours and
+asks. Replies come at the top level of the DM, not in a thread under each message.
+
 **Where you can ask in Slack.** @Foundry in a channel Foundry is a member of (invite it with
 `/invite @Foundry`), or a direct message to Foundry itself (App Home → Messages tab, switched on
 in the manifest). Slack never shows an app a DM between people, so @Foundry there goes nowhere.

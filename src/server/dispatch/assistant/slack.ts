@@ -27,6 +27,8 @@ import { askerScope, loadCandidates } from "@/server/dispatch/respond";
 import { assistantAvailable } from "./access-gate";
 import { DispatchAccessError, forChannel, openScope, type DispatchScope } from "./scope";
 import { DispatchLimitError, runTurn } from "./loop";
+import { askWhichClientText, decideSlackChat, DM_CHAT_IDLE_MS } from "@/lib/dispatch/slack-conversation";
+import { MAX_CHAT_MESSAGES } from "@/lib/dispatch/limits";
 
 const APP_BASE_URL = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://foundry.gitwork.co.uk";
 
@@ -38,6 +40,8 @@ export interface SlackQuestion {
   channelId: string;
   channelType: string | undefined;
   threadTs: string;
+  /** The message was posted inside a thread (Slack sent thread_ts). */
+  inThread: boolean;
   question: string;
   /** The audit row created by events.ts for this delivery. */
   exchangeId: string;
@@ -49,12 +53,27 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
   const startedAt = Date.now();
   const isDm = q.channelType === "im";
 
-  const [existing, channelClient] = await Promise.all([
-    prisma.dispatchConversation.findFirst({
-      where: { workspaceId: q.workspaceId, userId: q.asker.id, slackChannelId: q.channelId, slackThreadTs: q.threadTs },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, clientId: true },
-    }),
+  const [threadChat, recentDm, channelClient, candidates] = await Promise.all([
+    !isDm && q.inThread
+      ? prisma.dispatchConversation.findFirst({
+          where: { workspaceId: q.workspaceId, userId: q.asker.id, slackChannelId: q.channelId, slackThreadTs: q.threadTs },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, clientId: true },
+        })
+      : null,
+    // A DM is one running chat: the person's latest one in this DM.
+    isDm
+      ? prisma.dispatchConversation.findFirst({
+          where: {
+            workspaceId: q.workspaceId,
+            userId: q.asker.id,
+            slackChannelId: q.channelId,
+            updatedAt: { gte: new Date(Date.now() - DM_CHAT_IDLE_MS) },
+          },
+          orderBy: { updatedAt: "desc" },
+          select: { id: true, clientId: true, updatedAt: true },
+        })
+      : null,
     isDm
       ? null
       : prisma.workspaceClient.findFirst({
@@ -64,22 +83,60 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
           },
           select: { id: true, slackExternalChannelId: true },
         }),
+    // Only clients this person can open are candidates, so a client they can't open reads
+    // exactly like an unknown name.
+    loadCandidates(q.workspaceId, await askerScope(q.asker)),
   ]);
   // A client's shared channel is never "its own" channel, even if it was saved in both fields.
   const ownChannelClient = channelClient && channelClient.slackExternalChannelId !== q.channelId ? channelClient : null;
+  const resolved = resolveSubject(q.question, candidates);
+  const recentDmChat = recentDm
+    ? { ...recentDm, messages: await prisma.dispatchMessage.count({ where: { conversationId: recentDm.id } }) }
+    : null;
 
-  let clientId = existing?.clientId ?? ownChannelClient?.id ?? null;
-  if (!clientId) {
-    // Only clients this person can open are candidates, so a client they can't open reads
-    // exactly like an unknown name.
-    const resolved = resolveSubject(q.question, await loadCandidates(q.workspaceId, await askerScope(q.asker)));
-    if (resolved.subject?.kind !== "client") return "legacy";
-    clientId = resolved.subject.id;
+  const decision = decideSlackChat({
+    isDm,
+    inThread: q.inThread,
+    threadChat,
+    recentDmChat,
+    namedClientId: resolved.subject?.kind === "client" ? resolved.subject.id : null,
+    aboutPersonOrAll: resolved.subject !== null && resolved.subject.kind !== "client",
+    channelClientId: ownChannelClient?.id ?? null,
+    onlyClientId: candidates.clients.length === 1 ? candidates.clients[0].id : null,
+    // Room for this turn's question, tool calls and answer before the cap.
+    maxMessages: MAX_CHAT_MESSAGES - 6,
+    now: new Date(),
+  });
+  if (decision.action === "legacy") return "legacy";
+
+  // In a DM, answer where they wrote: at the top level, or in the thread they used. In a
+  // channel, always in the thread, so the channel stays quiet.
+  const replyThreadTs = isDm && !q.inThread ? undefined : q.threadTs;
+
+  if (decision.action === "ask_which") {
+    const text = askWhichClientText({
+      firstName: q.asker.name?.split(" ")[0] ?? null,
+      question: q.question,
+      clients: candidates.clients.map((c) => c.name).sort((a, b) => a.localeCompare(b)),
+    });
+    const notice = buildDispatchNotice(text);
+    await postMessage(q.botToken, { channel: q.channelId, ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}), text: notice.text, blocks: notice.blocks });
+    await prisma.dispatchExchange
+      .update({ where: { id: q.exchangeId }, data: { askerUserId: q.asker.id, status: "no_subject", latencyMs: Date.now() - startedAt, answeredAt: new Date() } })
+      .catch(() => undefined);
+    return "handled";
   }
+  const clientId = decision.clientId;
+  const existing = decision.action === "continue" ? { id: decision.conversationId } : null;
 
   const post = async (payload: { text: string; blocks: unknown[] }, where: "thread" | "dm") => {
     if (where === "thread") {
-      return postMessage(q.botToken, { channel: q.channelId, thread_ts: q.threadTs, text: payload.text, blocks: payload.blocks });
+      return postMessage(q.botToken, {
+        channel: q.channelId,
+        ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}),
+        text: payload.text,
+        blocks: payload.blocks,
+      });
     }
     const dm = await openDirectMessage(q.botToken, q.askerSlackId);
     const channel = dm.data.channel?.id;
@@ -116,11 +173,10 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
   const notices: string[] = [];
   let outcome = "failed";
   let usedModel: string | null = null;
-  try {
-    ({ outcome, model: usedModel } = await runTurn({
+  const ask = (conversationId: string | null) => runTurn({
       scope,
       question: q.question,
-      conversationId: existing?.id ?? null,
+      conversationId,
       slack: { channelId: q.channelId, threadTs: q.threadTs },
       emit: {
         conversation: () => undefined,
@@ -141,7 +197,16 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
         },
         notice: (n) => notices.push(n),
       },
-    }));
+    });
+  try {
+    try {
+      ({ outcome, model: usedModel } = await ask(existing?.id ?? null));
+    } catch (err) {
+      // A chat that has grown long carries on in a fresh one, rather than telling the person to
+      // start again themselves.
+      if (!(existing && err instanceof DispatchLimitError && /got long/.test(err.message))) throw err;
+      ({ outcome, model: usedModel } = await ask(null));
+    }
   } catch (err) {
     const message = err instanceof DispatchLimitError || err instanceof DispatchAccessError ? err.message : "Something went wrong answering that. It's logged in Foundry.";
     await post(buildDispatchNotice(message), "thread");
