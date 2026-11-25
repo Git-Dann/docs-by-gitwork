@@ -392,7 +392,7 @@ src/
       config.ts / types.ts        ← resolveDispatchConfig + DISPATCH_DEFAULTS
       assistant/                  ← The assistant (§154): loop.ts (Sonnet 5.5 tool loop, cached prefix), scope.ts (permission wall),
                                      tools.ts (read + propose_* tools), tools-code.ts (GitHub), tools-design.ts (Figma + page
-                                     screenshots), actions.ts (confirm executor), slack.ts, redact.ts, budget.ts, purge.ts (§155)
+                                     screenshots), actions.ts (confirm executor), slack.ts, redact.ts, budget.ts, purge.ts (§156)
     slack/
       events.ts                   ← Events API handler (loop guard, dedupe, Slack Connect refused, asker → Foundry member)
     support.ts                    ← Care/Support CRUD (clients, tickets, convos, workflow rules)
@@ -910,4 +910,5 @@ be resolved by reading. Do not renumber either one.
 - **§152** — One animated theme switch everywhere
 - **§153** — Code Handover: Live and Master, venue variants, a lock, and a history
 - **§154** — Dispatch becomes an assistant
-- **§155** — Dispatch reads code and designs, watches the budget
+- **§155** — Board: sign-off without a reload, and a Timeline that shows what's late
+- **§156** — Dispatch reads code and designs, watches the budget

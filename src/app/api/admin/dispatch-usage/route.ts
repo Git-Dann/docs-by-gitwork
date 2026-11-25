@@ -1,6 +1,6 @@
 /**
  * GET /api/admin/dispatch-usage?days=90 → Dispatch's questions, cost, cache hit rate, people and
- * the AI budget, for Analytics → AI usage (§155). Super Admins only; counts and costs, no text.
+ * the AI budget, for Analytics → AI usage (§156). Super Admins only; counts and costs, no text.
  */
 
 import type { NextRequest } from "next/server";

@@ -1,5 +1,5 @@
 /**
- * Dispatch chats are deleted 90 days after they were last used (§155). Run nightly from the
+ * Dispatch chats are deleted 90 days after they were last used (§156). Run nightly from the
  * RETENTION_SWEEP job.
  *
  * What goes: the chat, every message in it (questions, answers, pictures) and any proposal that

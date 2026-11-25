@@ -1,6 +1,6 @@
 "use client";
 
-// Dispatch in Analytics → AI usage (§155): questions, cost per question, the cache doing its job,
+// Dispatch in Analytics → AI usage (§156): questions, cost per question, the cache doing its job,
 // the budget, and who asks. Counts and costs only; chats are private.
 
 import { useQuery } from "@tanstack/react-query";

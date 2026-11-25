@@ -1,5 +1,5 @@
 /**
- * GET / PATCH /api/dispatch/settings — Settings → Dispatch (§155). Super Admins only.
+ * GET / PATCH /api/dispatch/settings — Settings → Dispatch (§156). Super Admins only.
  *
  *   assistantEnabled  the release switch for the assistant (app panel + Slack)
  *   budgetUsd         the AI budget the hourly check alerts against (50/80/95%)

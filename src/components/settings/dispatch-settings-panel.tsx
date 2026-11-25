@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Settings → Dispatch (Super Admins, §155): the switch that releases the assistant to the team,
+ * Settings → Dispatch (Super Admins, §156): the switch that releases the assistant to the team,
  * the AI budget the hourly check alerts against, and the Figma token Dispatch reads designs with.
  */
 

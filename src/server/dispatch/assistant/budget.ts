@@ -1,5 +1,5 @@
 /**
- * The AI budget: how much of it is spent, and telling Super Admins as it fills (§155).
+ * The AI budget: how much of it is spent, and telling Super Admins as it fills (§156).
  *
  * Spend is the estimated cost of every logged call on the Anthropic key this period (AiUsageLog,
  * from list prices: src/server/ai-pricing.ts), across every AI feature, because the $200 pot is

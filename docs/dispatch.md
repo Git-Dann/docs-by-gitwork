@@ -164,7 +164,7 @@ To try it as a particular developer first, use view-as (Super Admins): Dispatch 
 preview while the switch is off, with exactly that person's access. Chats made while previewing
 are saved as theirs, so delete test chats afterwards.
 
-**What it can read** (§155), always only for the client the chat is about:
+**What it can read** (§156), always only for the client the chat is about:
 
 - Foundry's own records: tasks, releases, meetings, wiki, documents, the linked Drive folder
   (with the asker's own Google account) and the internal Slack channel.

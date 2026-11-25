@@ -517,7 +517,7 @@ model Workspace {
   /// Settings → Appearance. Off by default; `seasonalTheme` keeps the choice while it's off.
   seasonalThemeEnabled        Boolean                    @default(false)
   seasonalTheme               String                     @default("halloween")
-  /// Figma personal access token Dispatch reads the clients' designs with (§155). Written with
+  /// Figma personal access token Dispatch reads the clients' designs with (§156). Written with
   /// storeSecret, read with readSecret; never sent to the browser.
   figmaToken String? @db.Text
 }

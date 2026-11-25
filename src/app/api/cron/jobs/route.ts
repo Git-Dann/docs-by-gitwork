@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
       return null;
     });
 
-    // ── AI budget ── (hourly; tells Super Admins once at 50/80/95% of the budget, §155)
+    // ── AI budget ── (hourly; tells Super Admins once at 50/80/95% of the budget, §156)
     const aiBudget = await checkAiBudgets().catch((err) => {
       console.error("[jobs] AI budget check failed", err);
       return null;

@@ -10,7 +10,6 @@
  */
 
 import { useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { FeedbackKind } from "@/lib/wiki-board";
@@ -63,10 +62,9 @@ export function useBoardCards(target: BoardTarget) {
   });
 }
 
-/** Re-read the board after a write: the internal wiki is a query, the public page is server-rendered. */
+/** Re-read the board after a write. Both pages read the cards through a query; nothing reloads the page. */
 export function useBoardRefresh(target: BoardTarget): () => void {
   const queryClient = useQueryClient();
-  const router = useRouter();
   const key = target.mode === "internal" ? target.slug : target.token;
   const mode = target.mode;
   return useCallback(() => {
@@ -75,10 +73,12 @@ export function useBoardRefresh(target: BoardTarget): () => void {
       // The team's own board shows the client's sign-off too.
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
     } else {
-      void queryClient.invalidateQueries({ queryKey: ["public-wiki", key] });
-      router.refresh();
+      // Only the Board's own query. The cards are loaded on their own (§140), so re-rendering the
+      // whole server page (router.refresh) redrew everything and read as the page reloading every
+      // time a client approved or moved a card.
+      void queryClient.invalidateQueries({ queryKey: ["public-wiki", key, "board"] });
     }
-  }, [mode, key, queryClient, router]);
+  }, [mode, key, queryClient]);
 }
 
 export function useBoardFeedback(target: BoardTarget, taskId: string | null) {

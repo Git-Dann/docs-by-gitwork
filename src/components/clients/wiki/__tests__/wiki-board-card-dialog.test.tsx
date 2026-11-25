@@ -90,7 +90,7 @@ beforeEach(() => {
 });
 afterEach(() => act(() => root.unmount()));
 
-function open(card: WikiBoardCard, audience: "client" | "team", previewing = false) {
+function open(card: WikiBoardCard, audience: "client" | "team", previewing = false, onSaved: (c: WikiBoardCard) => void = () => undefined) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   act(() =>
     root.render(
@@ -107,7 +107,7 @@ function open(card: WikiBoardCard, audience: "client" | "team", previewing = fal
           canDelete
           onMove={() => undefined}
           onOpenCard={() => undefined}
-          onSaved={() => undefined}
+          onSaved={onSaved}
           onAdded={() => undefined}
           onDeleted={() => undefined}
           onClose={() => undefined}
@@ -218,5 +218,35 @@ describe("sub-items in the card dialog", () => {
     const post = calls.find((c) => c.init?.method === "POST" && c.url.endsWith("/board/tasks"));
     expect(JSON.parse(String(post?.init?.body))).toMatchObject({ title: "Brand new", itemType: "subitem", parentId: "c1" });
     expect(calls.some((c) => !c.init?.method && c.url === "/api/wiki/tok/board/tasks/s2")).toBe(true);
+  });
+});
+
+describe("signing a card off", () => {
+  const composer = () => document.querySelector("[data-card-composer]")!;
+  const labels = () => Array.from(composer().querySelectorAll("button")).map((b) => b.textContent?.trim());
+
+  it("gives the client Approve and Changes needed, and no separate Comment button", () => {
+    open(CARD, "client");
+    expect(labels()).toEqual(["Changes needed", "Approve"]);
+  });
+
+  it("turns Approve into Approved at once, and tells the board, with no reload", async () => {
+    const saved: WikiBoardCard[] = [];
+    open(CARD, "client", false, (c) => saved.push(c));
+    await act(async () => (composer().querySelector("[data-sign-off-approve]") as HTMLButtonElement).click());
+    expect(calls.some((c) => c.init?.method === "POST" && c.url.endsWith("/board/tasks/c1/feedback"))).toBe(true);
+    expect(composer().querySelector("[data-sign-off-approved]")?.textContent).toContain("Approved");
+    expect(composer().querySelector("[data-sign-off-approve]")).toBeNull();
+    expect(saved.at(-1)).toMatchObject({ id: "c1", signOff: "approved", feedbackCount: 1 });
+  });
+
+  it("opens an approved card already showing Approved", () => {
+    open({ ...CARD, signOff: "approved" }, "client");
+    expect(composer().querySelector("[data-sign-off-approved]")).not.toBeNull();
+  });
+
+  it("keeps a plain Reply for the team", () => {
+    open(CARD, "team");
+    expect(labels()).toEqual(["Reply"]);
   });
 });

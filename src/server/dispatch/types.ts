@@ -47,7 +47,7 @@ export interface DispatchConfig {
    * for testing. Only a literal `true` turns it on.
    */
   assistantEnabled: boolean;
-  /** The AI budget in US dollars, shared by every AI feature on the Anthropic key (§155). */
+  /** The AI budget in US dollars, shared by every AI feature on the Anthropic key (§156). */
   budgetUsd: number;
   /** YYYY-MM-DD: count spend since this date (a one-off pot). Null: each calendar month. */
   budgetSince: string | null;

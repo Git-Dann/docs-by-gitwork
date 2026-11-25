@@ -151,23 +151,71 @@ export function releasePercent(r: Pick<WikiBoardRelease, "cards" | "done">): num
   return r.cards > 0 ? Math.round((r.done / r.cards) * 100) : null;
 }
 
+/**
+ * Where a release stands, for the Timeline's filters and markers:
+ * - "complete": it has cards and every one is done.
+ * - "behind": its end date has passed and cards are still open.
+ * - "open": anything else (not finished, not late, or no end date).
+ * Counted from the release's own totals (every client card, before a Done column is capped).
+ */
+export type ReleaseState = "complete" | "behind" | "open";
+
+export function releaseState(r: Pick<WikiBoardRelease, "cards" | "done" | "endDate">, today: number): ReleaseState {
+  if (r.cards > 0 && r.done >= r.cards) return "complete";
+  if (r.endDate && dayOf(r.endDate) < today && r.done < r.cards) return "behind";
+  return "open";
+}
+
+/**
+ * A card that's late: not done, and its own due date has passed, or (with no due date) the
+ * release it's in has ended. A done card is never late.
+ */
+export function cardBehind(
+  card: Pick<WikiBoardCard, "status" | "dueDate">,
+  release: Pick<WikiBoardRelease, "endDate"> | null,
+  today: number,
+): boolean {
+  if (card.status === "DONE") return false;
+  if (card.dueDate) return dayOf(card.dueDate) < today;
+  return Boolean(release?.endDate && dayOf(release.endDate) < today);
+}
+
 export interface TimelineGroup {
   /** Null = cards with no release. */
   release: WikiBoardRelease | null;
   cards: WikiBoardCard[];
 }
 
+export interface TimelineFilter {
+  today: number;
+  /** Show releases whose cards are all done, and done cards with no release. Off by default. */
+  showCompleted: boolean;
+  /** Only what's late: behind releases, and late cards. */
+  onlyBehind: boolean;
+}
+
 /**
  * Rows, in order: dated releases by start date, then releases with no dates, then cards with no
  * release. Only releases with a card in view are shown, so a filter narrows the timeline as it
  * narrows the board. Cards within a release keep the board's order.
+ *
+ * With a filter: completed releases (and done cards with no release) are left out unless
+ * `showCompleted`; `onlyBehind` keeps only late cards and the releases that hold them.
  */
-export function timelineGroups(cards: readonly WikiBoardCard[], releases: readonly WikiBoardRelease[]): TimelineGroup[] {
+export function timelineGroups(
+  cards: readonly WikiBoardCard[],
+  releases: readonly WikiBoardRelease[],
+  filter?: TimelineFilter,
+): TimelineGroup[] {
   const known = new Map(releases.map((r) => [r.id, r]));
   const byRelease = new Map<string, WikiBoardCard[]>();
   const loose: WikiBoardCard[] = [];
   for (const c of cards) {
     const r = c.release ? known.get(c.release.id) : undefined;
+    if (filter) {
+      if (filter.onlyBehind && !cardBehind(c, r ?? null, filter.today)) continue;
+      if (!filter.showCompleted && (r ? releaseState(r, filter.today) === "complete" : c.status === "DONE")) continue;
+    }
     if (!r) loose.push(c);
     else byRelease.set(r.id, [...(byRelease.get(r.id) ?? []), c]);
   }
@@ -179,4 +227,22 @@ export function timelineGroups(cards: readonly WikiBoardCard[], releases: readon
     .map(({ r }) => ({ release: r, cards: [...(byRelease.get(r.id) ?? [])].sort((a, b) => a.orderKey - b.orderKey) }));
   if (loose.length) ordered.push({ release: null, cards: [...loose].sort((a, b) => a.orderKey - b.orderKey) });
   return ordered;
+}
+
+/** How many of the releases holding these cards are complete, and how many are behind. */
+export function timelineCounts(
+  cards: readonly WikiBoardCard[],
+  releases: readonly WikiBoardRelease[],
+  today: number,
+): { completed: number; behind: number } {
+  const inView = new Set(cards.map((c) => c.release?.id).filter(Boolean) as string[]);
+  let completed = 0;
+  let behind = 0;
+  for (const r of releases) {
+    if (!inView.has(r.id)) continue;
+    const st = releaseState(r, today);
+    if (st === "complete") completed++;
+    else if (st === "behind") behind++;
+  }
+  return { completed, behind };
 }
