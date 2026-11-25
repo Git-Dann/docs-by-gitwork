@@ -160,6 +160,10 @@ The Figma token is on the same page (stored encrypted in `Workspace.figmaToken`)
    the clients' files.
 4. Switch it on in Settings → Dispatch.
 
+To try it as a particular developer first, use view-as (Super Admins): Dispatch works in the
+preview while the switch is off, with exactly that person's access. Chats made while previewing
+are saved as theirs, so delete test chats afterwards.
+
 **What it can read** (§155), always only for the client the chat is about:
 
 - Foundry's own records: tasks, releases, meetings, wiki, documents, the linked Drive folder

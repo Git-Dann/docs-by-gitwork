@@ -2269,6 +2269,10 @@ which now lives in **Settings → Dispatch** (Super Admins) rather than raw JSON
 - **Settings → Dispatch** (`dispatch-settings-panel.tsx`, `/api/dispatch/settings`): the switch,
   the budget and its start date, and the Figma token. Changes are audited
   (`settings.dispatch.updated`, never the token).
+- **Trying it as a teammate before the switch:** a Super Admin previewing as someone ("view as")
+  can use Dispatch while it's off, gated exactly as that person. `applyViewAs` now records the
+  Super Admin on the effective user (`previewedBy`), and `assistantAvailable` accepts it. It never
+  widens access: the preview is still refused without the teammate's own `dispatch.use`.
 - Tool list order: the new tools are appended after the original nineteen, so nothing in the
   cached prefix moves except the additions.
 - Tests: `src/lib/dispatch/__tests__/code-and-design.test.ts`, `budget.test.ts`,

@@ -25,6 +25,9 @@ export type EffectiveUser = {
   permissions: string[];
   workspaceId: string;
   membershipId: string;
+  /** Set only while a Super Admin previews as this person ("view as"): the Super Admin's id.
+   *  Everything is still gated as the previewed person; this only records who is looking. */
+  previewedBy?: string;
 };
 
 export class UnauthorizedError extends Error {
@@ -226,6 +229,7 @@ async function applyViewAs(req: Request, real: EffectiveUser): Promise<Effective
     permissions,
     workspaceId: member.workspaceId,
     membershipId: member.id,
+    previewedBy: real.id,
   };
 }
 
