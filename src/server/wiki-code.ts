@@ -67,6 +67,24 @@ export interface WikiCodeModuleRecord {
 export interface WikiCodeHandoverSection {
   enabled: boolean;
   modules: WikiCodeModuleRecord[];
+  /**
+   * The files' contents were left out (every other field is there): the wiki sends this light copy
+   * and the Code Handover section loads the full one on its own. PollenIQ's code alone was 1 MB on
+   * every wiki load, and each version keeps a full copy of its files.
+   */
+  lite?: boolean;
+}
+
+/** The same section without file contents, for the wiki's own load (see `lite`). */
+export function liteCodeHandover(section: WikiCodeHandoverSection): WikiCodeHandoverSection {
+  return {
+    ...section,
+    lite: true,
+    modules: section.modules.map((m) => ({
+      ...m,
+      versions: m.versions.map((v) => ({ ...v, files: v.files.map((f) => ({ ...f, content: "" })) })),
+    })),
+  };
 }
 
 export interface WikiCodeEventRecord {

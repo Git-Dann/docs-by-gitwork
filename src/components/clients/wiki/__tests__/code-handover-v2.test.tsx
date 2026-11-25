@@ -28,6 +28,7 @@ vi.mock("@/hooks/use-wiki", () => {
     useCreateCodeVariant: m(),
     useRestoreCodeVersion: m(),
     useCodeEvents: () => ({ isPending: false, isError: false, data: [] }),
+    useWikiCodeFiles: () => ({ isPending: false, isError: false, data: undefined }),
   };
 });
 vi.mock("@/hooks/use-permissions", () => ({ usePermissions: () => ({ isExternal: false }) }));
