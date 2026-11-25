@@ -1,8 +1,10 @@
 "use client";
 
 /**
- * The Portal client page's Timeline card: what happened on the client's work, week by week, and
- * where things stand now. "Weekly update" drafts the Friday email from it. Rules in
+ * The Portal client page's Timeline card, made to be glanced at (§163): eight weeks as small
+ * bars (how much got done, a dot for a release or an outage), the picked week in one line and its
+ * few events, and where things stand as a handful of numbers. Finished tasks aren't listed here;
+ * the board has them. "Weekly update" drafts the Friday email. Rules in
  * src/lib/client-delivery-timeline.ts; data from /api/clients/[slug]/delivery-timeline.
  */
 
@@ -11,8 +13,9 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import type { ComponentType } from "react";
 import {
-  CheckCircleIcon,
+  ArrowRightIcon,
   ChatBubbleLeftRightIcon,
+  CheckCircleIcon,
   DocumentTextIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
@@ -27,10 +30,10 @@ import { getDeliveryTimeline } from "@/lib/api";
 import { Skeleton } from "@/components/ui/motion/skeleton";
 import { WeeklyUpdateDialog } from "@/components/clients/weekly-update-dialog";
 import {
-  DELIVERY_KIND_LABEL,
-  dueWords,
-  foldQuietWeeks,
+  LONG_OVERDUE_DAYS,
   shortDay,
+  splitLongOverdue,
+  weekHighlights,
   weekSummary,
   type DeliveryItem,
   type DeliveryKind,
@@ -39,10 +42,10 @@ import {
 } from "@/lib/client-delivery-timeline";
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
-/** Weeks shown before "Show earlier weeks". */
-const FIRST_WEEKS = 3;
-/** Items shown per week before "Show all". */
-const FIRST_ITEMS = 6;
+/** Weeks drawn as bars. */
+const BAR_WEEKS = 8;
+/** Events listed for the picked week before "+N more". */
+const FIRST_EVENTS = 4;
 
 const KIND_ICON: Record<DeliveryKind, ComponentType<{ className?: string }>> = {
   done: CheckCircleIcon,
@@ -64,7 +67,6 @@ const KIND_TONE: Partial<Record<DeliveryKind, string>> = {
 };
 
 export function ClientDeliveryCard({ number, slug }: { number: string; slug: string }) {
-  const [showAllWeeks, setShowAllWeeks] = useState(false);
   const [writing, setWriting] = useState(false);
   const query = useQuery({
     queryKey: ["client-delivery-timeline", slug],
@@ -72,7 +74,6 @@ export function ClientDeliveryCard({ number, slug }: { number: string; slug: str
     staleTime: 60_000,
   });
   const t = query.data;
-  const weeks = t ? (showAllWeeks ? t.weeks : t.weeks.slice(0, FIRST_WEEKS)) : [];
 
   return (
     <section className="widget-card flex flex-col" data-delivery-timeline>
@@ -88,14 +89,8 @@ export function ClientDeliveryCard({ number, slug }: { number: string; slug: str
       </div>
 
       {query.isPending ? (
-        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-2/3" />
-          </div>
-          <Skeleton className="h-40 w-full" />
+        <div className="p-4">
+          <Skeleton className="h-24 w-full" />
         </div>
       ) : query.isError || !t ? (
         <p className="px-4 py-6 text-sm text-[var(--text-3)]">
@@ -105,26 +100,7 @@ export function ClientDeliveryCard({ number, slug }: { number: string; slug: str
           </button>
         </p>
       ) : (
-        <div className="grid min-h-0 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 border-[var(--border-1)] lg:border-r">
-            {foldQuietWeeks(weeks).map((row) =>
-              row.kind === "week" ? <WeekBlock key={row.week.start} week={row.week} /> : <QuietWeeks key={row.weeks[0].start} weeks={row.weeks} />,
-            )}
-            {t.weeks.length > FIRST_WEEKS ? (
-              <div className="border-t border-[var(--border-1)] px-4 py-2.5">
-                <button type="button" onClick={() => setShowAllWeeks((v) => !v)} className="app-button app-button-hyperlink text-xs">
-                  {showAllWeeks ? "Show fewer weeks" : `Show ${t.weeks.length - FIRST_WEEKS} earlier weeks`}
-                </button>
-              </div>
-            ) : null}
-            {t.failed.length > 0 ? (
-              <p className="border-t border-[var(--border-1)] px-4 py-2.5 text-xs text-[var(--text-2)]">
-                Couldn&apos;t read {t.failed.join(", ")} just now, so this may be missing some of it.
-              </p>
-            ) : null}
-          </div>
-          <NowPanel state={t.state} slug={slug} />
-        </div>
+        <Strip weeks={t.weeks.slice(0, BAR_WEEKS)} state={t.state} slug={slug} failed={t.failed} />
       )}
 
       {t ? <WeeklyUpdateDialog open={writing} onClose={() => setWriting(false)} slug={slug} clientName={t.clientName} /> : null}
@@ -132,187 +108,189 @@ export function ClientDeliveryCard({ number, slug }: { number: string; slug: str
   );
 }
 
-/** A run of quiet weeks as one row; the dates are of the oldest and newest week in it. */
-function QuietWeeks({ weeks }: { weeks: DeliveryWeek[] }) {
-  const newest = new Date(`${weeks[0].start}T00:00:00Z`);
-  const oldest = new Date(`${weeks[weeks.length - 1].start}T00:00:00Z`);
+const SERIF = { fontFamily: "var(--font-display), 'DM Serif Display', Georgia, serif" } as const;
+
+function Label({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-[var(--border-1)] px-4 py-3 last:border-b-0" data-delivery-week>
-      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-3)]" style={MONO}>
-        {weeks.length} quiet weeks
-      </span>
-      <span className="text-xs text-[var(--text-4)]">
-        Weeks of {shortDay(oldest)} to {shortDay(newest)}: nothing finished, released or raised
-      </span>
-    </div>
+    <p className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]" style={MONO}>
+      {children}
+    </p>
   );
 }
 
-function WeekBlock({ week }: { week: DeliveryWeek }) {
-  const [all, setAll] = useState(false);
-  const items = all ? week.items : week.items.slice(0, FIRST_ITEMS);
-  const start = new Date(`${week.start}T00:00:00Z`);
+/**
+ * Everything in one strip: the picked week (its done count and an 8-week sparkline to pick
+ * another), the next release, and three numbers; then that week's events on one line.
+ */
+function Strip({ weeks, state, slug, failed }: { weeks: DeliveryWeek[]; state: DeliveryState; slug: string; failed: string[] }) {
+  // Newest first from the server; the sparkline reads left to right, oldest to newest.
+  const bars = [...weeks].reverse();
+  const [picked, setPicked] = useState(bars.length - 1);
+  const [allEvents, setAllEvents] = useState(false);
+  const week = bars[picked];
+  const most = Math.max(1, ...bars.map((w) => w.counts.done ?? 0));
+  const now = new Date();
+  const inProgress = splitLongOverdue(state.inProgress, now);
+  const upNext = splitLongOverdue(state.upNext, now);
+  const overdue = [...inProgress.longOverdue, ...upNext.longOverdue];
+  const r = state.nextRelease;
+  const pct = r ? Math.round((r.done / Math.max(1, r.total)) * 100) : 0;
+  const board = `/app/portal/${slug}/tasks`;
+  const names = (list: Array<{ title: string }>) => list.slice(0, 6).map((x) => `• ${x.title}`).join("\n");
+  const events = week ? weekHighlights(week) : [];
+  const shown = allEvents ? events : events.slice(0, FIRST_EVENTS);
+  const weekName = (w: DeliveryWeek) =>
+    w.label === "This week" || w.label === "Last week" ? w.label : `Week of ${shortDay(new Date(`${w.start}T00:00:00Z`))}`;
+
   return (
-    <div className="border-b border-[var(--border-1)] last:border-b-0" data-delivery-week>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 pb-1.5 pt-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-2)]" style={MONO}>
-          {week.label}
-          {week.label.startsWith("Week of") ? "" : <span className="font-normal text-[var(--text-4)]">{` · ${shortDay(start)}`}</span>}
-        </span>
-        <span className="text-xs text-[var(--text-3)]">{weekSummary(week.counts)}</span>
+    <div data-delivery-strip>
+      <div className="grid grid-cols-3 divide-[var(--border-1)] lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.6fr)_repeat(3,minmax(0,0.7fr))] lg:divide-x">
+        {/* The week: its done count, and the sparkline to pick another. */}
+        <div className="col-span-3 flex items-end justify-between gap-4 border-b border-[var(--border-1)] px-4 py-3 lg:col-span-1 lg:border-b-0">
+          <div className="min-w-0">
+            <Label>{week ? weekName(week) : "This week"}</Label>
+            <p className="mt-1 flex items-baseline gap-1.5">
+              <span className="text-[28px] leading-none text-[var(--text-1)]" style={SERIF}>
+                {week?.counts.done ?? 0}
+              </span>
+              <span className="text-xs text-[var(--text-3)]">done</span>
+            </p>
+          </div>
+          <div className="flex h-9 items-end gap-[3px]" role="radiogroup" aria-label="Week" data-delivery-bars>
+            {bars.map((w, i) => {
+              const done = w.counts.done ?? 0;
+              const on = i === picked;
+              const outage = (w.counts.incident ?? 0) > 0;
+              const release = (w.counts.shipped ?? 0) > 0;
+              return (
+                <button
+                  key={w.start}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  aria-label={`${weekName(w)}: ${weekSummary(w.counts)}`}
+                  title={`${weekName(w)}: ${weekSummary(w.counts)}`}
+                  onClick={() => {
+                    setPicked(i);
+                    setAllEvents(false);
+                  }}
+                  className="group relative flex h-full w-2.5 flex-col justify-end outline-none"
+                  data-delivery-bar
+                >
+                  {outage || release ? (
+                    <span
+                      aria-hidden
+                      className={cn("absolute -top-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full", outage ? "bg-[var(--danger-500)]" : "bg-[var(--success-500)]")}
+                    />
+                  ) : null}
+                  <span
+                    className={cn("w-full rounded-[2px] transition-colors", on ? "bg-[var(--brand-600)]" : "bg-[var(--brand-200)] group-hover:bg-[var(--brand-600)]/50")}
+                    style={{ height: `${Math.max(3, Math.round((done / most) * 32))}px` }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* The next release. */}
+        <div className="col-span-3 min-w-0 border-b border-[var(--border-1)] px-4 py-3 lg:col-span-1 lg:border-b-0">
+          <Label>{r?.endDate ? `Next release · due ${shortDay(new Date(r.endDate))}` : "Next release"}</Label>
+          {r ? (
+            <>
+              <p className="mt-1 truncate text-sm font-medium text-[var(--text-1)]" title={r.label}>
+                {r.label}
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <div className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--surface-2)]" aria-hidden>
+                  <div className="h-full rounded-full bg-[var(--brand-600)]" style={{ width: `${pct}%` }} />
+                </div>
+                <span className="shrink-0 text-[11px] tabular-nums text-[var(--text-3)]" style={MONO}>
+                  {r.done}/{r.total}
+                </span>
+              </div>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-[var(--text-4)]">None scheduled</p>
+          )}
+        </div>
+
+        <Figure label="In progress" n={inProgress.current.length} href={board} tip={names(inProgress.current)} />
+        <Figure label="Up next" n={upNext.current.length} href={board} tip={names(upNext.current)} />
+        <Figure
+          label="Overdue"
+          n={overdue.length}
+          href={board}
+          muted
+          tip={overdue.length ? `More than ${LONG_OVERDUE_DAYS} days past due:\n${names(overdue)}` : `Nothing more than ${LONG_OVERDUE_DAYS} days past due`}
+        />
       </div>
-      {week.items.length === 0 ? (
-        <p className="px-4 pb-3 text-sm text-[var(--text-4)]">A quiet week: nothing finished, released or raised.</p>
-      ) : (
-        <ul className="pb-2">
-          {items.map((i) => (
-            <ItemRow key={i.id} item={i} />
-          ))}
-          {week.items.length > FIRST_ITEMS ? (
-            <li className="px-4 pt-1">
-              <button type="button" onClick={() => setAll((v) => !v)} className="app-button app-button-hyperlink text-xs">
-                {all ? "Show less" : `Show all ${week.items.length}`}
-              </button>
-            </li>
-          ) : null}
-        </ul>
-      )}
+
+      {/* The picked week's events, inline. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-[var(--border-1)] px-4 py-2.5" data-delivery-events>
+        {state.waitingOnClient.length ? (
+          <Link href={board} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-amber-700" title={names(state.waitingOnClient)}>
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[var(--warning-500)]" />
+            {state.waitingOnClient.length} waiting on the client
+          </Link>
+        ) : null}
+        {shown.length ? (
+          shown.map((i) => <EventChip key={i.id} item={i} />)
+        ) : (
+          <span className="text-[13px] text-[var(--text-4)]">{week ? `${weekName(week)}: no releases, outages or meetings.` : "Nothing recorded yet."}</span>
+        )}
+        {events.length > FIRST_EVENTS ? (
+          <button type="button" onClick={() => setAllEvents((v) => !v)} className="app-button app-button-hyperlink text-xs">
+            {allEvents ? "Less" : `+${events.length - FIRST_EVENTS}`}
+          </button>
+        ) : null}
+        <Link href={board} className="app-button app-button-hyperlink ml-auto text-xs">
+          Board
+          <ArrowRightIcon className="h-3 w-3" aria-hidden />
+        </Link>
+      </div>
+      {failed.length > 0 ? (
+        <p className="border-t border-[var(--border-1)] px-4 py-2 text-xs text-[var(--text-3)]">Couldn&apos;t read {failed.join(", ")} just now.</p>
+      ) : null}
     </div>
   );
 }
 
-function ItemRow({ item }: { item: DeliveryItem }) {
+/** A number that opens the board; the names are in the tooltip. */
+function Figure({ label, n, href, tip, muted }: { label: string; n: number; href: string; tip: string; muted?: boolean }) {
+  return (
+    <Link href={href} title={tip || label} className="group min-w-0 px-4 py-3 transition-colors hover:bg-[var(--surface-1)]" data-delivery-figure>
+      <Label>{label}</Label>
+      <p className={cn("mt-1 text-[28px] leading-none", muted && n > 0 ? "text-[var(--text-3)]" : "text-[var(--text-1)]", n === 0 && "text-[var(--text-4)]")} style={SERIF}>
+        {n}
+      </p>
+    </Link>
+  );
+}
+
+/** One event, inline: icon, a short title (full text on hover), the day. */
+function EventChip({ item }: { item: DeliveryItem }) {
   const Icon = KIND_ICON[item.kind];
-  const day = new Date(item.at);
+  const day = new Date(item.at).toLocaleDateString("en-GB", { weekday: "short" });
+  const tip = [item.title, item.detail, new Date(item.at).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" })]
+    .filter(Boolean)
+    .join(" · ");
   const body = (
     <>
-      <Icon aria-hidden className={cn("mt-0.5 h-4 w-4 shrink-0", KIND_TONE[item.kind] ?? "text-[var(--text-4)]")} />
-      <span className="min-w-0 flex-1">
-        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <span className="text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={MONO}>
-            {DELIVERY_KIND_LABEL[item.kind]}
-          </span>
-          <span className="text-sm text-[var(--text-1)] group-hover:text-[var(--brand-700)]">{item.title}</span>
-        </span>
-        {item.detail || item.group || item.people.length ? (
-          <span className="mt-0.5 block text-xs text-[var(--text-3)]">
-            {[item.group, item.detail, item.people.length ? item.people.join(", ") : null].filter(Boolean).join(" · ")}
-          </span>
-        ) : null}
-      </span>
-      <span className="shrink-0 text-[11px] tabular-nums text-[var(--text-4)]" style={MONO}>
-        {day.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}
+      <Icon aria-hidden className={cn("h-3.5 w-3.5 shrink-0", KIND_TONE[item.kind] ?? "text-[var(--text-4)]")} />
+      <span className="max-w-[240px] truncate text-[13px] text-[var(--text-1)]">{item.title}</span>
+      <span className="shrink-0 text-[11px] text-[var(--text-4)]" style={MONO}>
+        {day}
       </span>
     </>
   );
-  return (
-    <li>
-      {item.href ? (
-        <Link href={item.href} className="group flex items-start gap-3 px-4 py-1.5 transition-colors hover:bg-[var(--surface-1)]">
-          {body}
-        </Link>
-      ) : (
-        <div className="flex items-start gap-3 px-4 py-1.5">{body}</div>
-      )}
-    </li>
-  );
-}
-
-function NowPanel({ state, slug }: { state: DeliveryState; slug: string }) {
-  return (
-    <aside className="flex flex-col gap-4 border-t border-[var(--border-1)] p-4 lg:border-t-0" aria-label="Where things stand">
-      {state.waitingOnClient.length > 0 ? (
-        <NowList title="Waiting on the client" tone="warning">
-          {state.waitingOnClient.slice(0, 5).map((w) => (
-            <li key={w.id} className="text-sm">
-              {w.href ? (
-                <Link href={w.href} className="text-[var(--text-1)] hover:text-[var(--brand-700)]">
-                  {w.title}
-                </Link>
-              ) : (
-                <span className="text-[var(--text-1)]">{w.title}</span>
-              )}
-              {w.need ? <span className="block text-xs text-[var(--text-3)]">{w.need}</span> : null}
-            </li>
-          ))}
-        </NowList>
-      ) : null}
-
-      {state.nextRelease ? (
-        <div>
-          <NowHeading>Next release</NowHeading>
-          <p className="mt-1.5 text-sm text-[var(--text-1)]">{state.nextRelease.label}</p>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-[3px] bg-[var(--surface-2)]" aria-hidden>
-            <div
-              className="h-full bg-[var(--brand-600)] transition-[width] duration-700"
-              style={{ width: `${Math.round((state.nextRelease.done / Math.max(1, state.nextRelease.total)) * 100)}%` }}
-            />
-          </div>
-          <p className="mt-1 text-xs text-[var(--text-3)]">
-            {state.nextRelease.done} of {state.nextRelease.total} done
-            {state.nextRelease.endDate ? ` · due ${shortDay(new Date(state.nextRelease.endDate))}` : ""}
-          </p>
-        </div>
-      ) : null}
-
-      <NowList title="In progress" empty="Nothing in progress.">
-        {state.inProgress.slice(0, 6).map((o) => (
-          <li key={o.id} className="text-sm">
-            <Link href={`/app/portal/${slug}/tasks?task=${o.id}`} className="text-[var(--text-1)] hover:text-[var(--brand-700)]">
-              {o.title}
-            </Link>
-            <TaskMeta people={o.people} dueDate={o.dueDate} />
-          </li>
-        ))}
-      </NowList>
-
-      <NowList title="Up next" empty="Nothing queued in To do.">
-        {state.upNext.slice(0, 5).map((o) => (
-          <li key={o.id} className="text-sm">
-            <Link href={`/app/portal/${slug}/tasks?task=${o.id}`} className="text-[var(--text-1)] hover:text-[var(--brand-700)]">
-              {o.title}
-            </Link>
-            <TaskMeta people={o.people} dueDate={o.dueDate} />
-          </li>
-        ))}
-      </NowList>
-
-      <Link href={`/app/portal/${slug}/tasks`} className="app-button app-button-hyperlink self-start text-xs">
-        Open the board
-      </Link>
-    </aside>
-  );
-}
-
-/** Who's on it and when it's due; a late task says so in red, because that's the line to act on. */
-function TaskMeta({ people, dueDate }: { people: string[]; dueDate: string | null }) {
-  const due = dueWords(dueDate, new Date());
-  if (!people.length && !due) return null;
-  return (
-    <span className="ml-1.5 text-xs text-[var(--text-3)]">
-      {people.join(", ")}
-      {people.length && due ? " · " : ""}
-      {due ? <span className={cn("whitespace-nowrap", due.late && "font-medium text-red-700")}>{due.text}</span> : null}
+  return item.href ? (
+    <Link href={item.href} title={tip} className="inline-flex min-w-0 items-center gap-1.5 hover:text-[var(--brand-700)]">
+      {body}
+    </Link>
+  ) : (
+    <span title={tip} className="inline-flex min-w-0 items-center gap-1.5">
+      {body}
     </span>
-  );
-}
-
-function NowHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-4)]" style={MONO}>
-      {children}
-    </h3>
-  );
-}
-
-function NowList({ title, empty, tone, children }: { title: string; empty?: string; tone?: "warning"; children: React.ReactNode[] }) {
-  return (
-    <div>
-      <NowHeading>
-        {tone === "warning" ? <span aria-hidden className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-[var(--warning-500)] align-middle" /> : null}
-        {title}
-      </NowHeading>
-      {children.length ? <ul className="mt-1.5 space-y-1.5">{children}</ul> : <p className="mt-1.5 text-sm text-[var(--text-4)]">{empty}</p>}
-    </div>
-  );
+  )
 }

@@ -15,7 +15,7 @@ export interface ReleaseLike {
   version: string;
   name: string | null;
   /**
-   * The number to show, when it isn't `version`: the client's changelog number (§158). Set on
+   * The number to show, when it isn't `version`: the client's changelog number (§162). Set on
    * the DTOs the server sends; computed from `changelogVersion` + the client's setting on rows.
    */
   displayVersion?: string | null;

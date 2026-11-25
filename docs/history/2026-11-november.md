@@ -2415,7 +2415,7 @@ one shared "saving" flag, so pressing Save token spun every button on the page.
 
 ---
 
-## 158. Recent Changes (November 2026) — Releases numbered by the changelog
+## 162. Recent Changes (November 2026) — Releases numbered by the changelog
 
 Big Wedge's planning site numbered its releases loosely ("v2.0.0" four times, a "v1.0.0" in
 November) while the app's changelog went 2.0.0 → 2.0.2 → 2.0.3 → 2.0.4. A client can now be shown
@@ -2491,6 +2491,8 @@ which client" reply, and a long chat hit "start a new one". Now (`decideSlackCha
   gets that client. A question about a person or everything still gets the status answer.
 - In channels a thread is still the chat, and a DM chat never carries into a channel.
 
+---
+
 ## 161. Recent Changes (November 2026) — Dispatch opens on a brief, not an empty chat
 
 Dan, 25 Nov, on the panel: "seems very basic... I didn't want a chat bot, I wanted something
@@ -2532,3 +2534,24 @@ in from the right edge, and the client row should only show when there's a choic
   the demo: the card was dark, grey, then white across 150ms; now it's white from the first frame.
 - Tests: `src/lib/dispatch/__tests__/brief.test.ts` (who sees whose work, ranking, suggestions
   and their reasons, the task view).
+
+---
+
+## 163. Recent Changes (November 2026) — The Portal Timeline card, glanceable; Studies off the client page
+
+Dan, on the Portal client page's Timeline: "this is brutal", then of a first redesign, "still too
+much… something I can just glance at". It listed every finished task as a full sentence, week
+after week ("Show all 49"), and "Up next" was five imported subtasks 244 days late. Now
+(`client-delivery-card.tsx`):
+
+- **One strip, about 150px tall**: the picked week's done count with an eight-week sparkline
+  (a green dot for a release, red for an outage; click a bar to pick that week), the next release
+  with a thin progress bar, and In progress, Up next and Overdue as figures (Overdue = more than
+  `LONG_OVERDUE_DAYS` = 30 days late, `splitLongOverdue`), each opening the board with the names in
+  the tooltip.
+- **Under it, one line**: the picked week's events inline (`weekHighlights`), up to four with "+N",
+  and "waiting on the client" when there is any. Finished tasks aren't listed; the board has them.
+- **Studies is no longer on the client page** (Dan: research isn't client delivery; it stays in
+  Pulse). `studies` left `PORTAL_SECTIONS`, so the numbers still run without a gap; the rendered
+  order was checked against the numbering, and the lead layout's fixed 02–08 is unchanged.
+- Tests: `client-delivery-compact.test.ts`. Rendered at 1440 and 390 with Wedge-like data.

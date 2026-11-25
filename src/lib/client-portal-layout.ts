@@ -24,7 +24,6 @@ export const PORTAL_SECTIONS = [
   "proof",
   // The bottom row of small cards, in this order (they don't need full-width priority).
   "pulse",
-  "studies",
   "notes",
   "lifecycle",
 ] as const;
