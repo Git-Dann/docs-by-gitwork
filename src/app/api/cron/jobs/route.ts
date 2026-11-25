@@ -14,6 +14,7 @@ import { syncDueCommitments } from "@/server/commitments";
 import { startDueRechecks } from "@/server/provenance/recheck";
 import { checkCronWatchdog } from "@/server/cron-watchdog";
 import { checkDiskAndDatabase } from "@/server/disk-watch";
+import { checkAiBudgets } from "@/server/dispatch/assistant/budget";
 
 export const dynamic = "force-dynamic";
 // No serverless cap on the VPS, but keep runs bounded so host cron ticks stay short.
@@ -133,10 +134,17 @@ export async function GET(request: NextRequest) {
       return null;
     });
 
+    // ── AI budget ── (hourly; tells Super Admins once at 50/80/95% of the budget, §155)
+    const aiBudget = await checkAiBudgets().catch((err) => {
+      console.error("[jobs] AI budget check failed", err);
+      return null;
+    });
+
     return apiOk({
       reconciled,
       cronWatch,
       disk,
+      aiBudget,
       ...drain,
       staleMonitors: monitors.stale,
       monitorExpiries: expiries,

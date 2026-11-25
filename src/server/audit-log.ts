@@ -22,6 +22,7 @@ export type AuditAction =
   | "settings.defaults.updated"
   | "settings.pulse_pricing.updated"
   | "settings.pulse_embed.updated"
+  | "settings.dispatch.updated"
   // Platform console (src/server/platform) — Gitwork acting on a business
   | "platform.workspace.settings_changed"
   | "platform.workspace.created"

@@ -21,6 +21,7 @@ import { DISPATCH_SYSTEM_PROMPT, chatContext } from "@/lib/dispatch/prompt";
 import {
   MAX_CHAT_MESSAGES,
   MAX_CHAT_TOKENS,
+  MAX_IMAGES_PER_QUESTION,
   MAX_OUTPUT_TOKENS,
   MAX_QUESTION_CHARS,
   MAX_TOOL_ROUNDS,
@@ -34,7 +35,7 @@ import { describeAiError } from "@/lib/ai-error-words";
 import { taskRef } from "@/lib/format";
 import { ROLES } from "@/types/auth";
 import type { DispatchScope } from "./scope";
-import { runTool, toolDefinitions, toolStatus, type ProposedActionCard, type ToolSource } from "./tools";
+import { runTool, toolDefinitions, toolStatus, type ProposedActionCard, type ToolImage, type ToolSource } from "./tools";
 import {
   appendMessage,
   createConversation,
@@ -61,6 +62,8 @@ export interface TurnInput {
   /** The task the panel was opened from, if any (named in the chat context). */
   focusTaskId?: string | null;
   slack?: { channelId: string; threadTs: string };
+  /** Pictures the person attached (already checked: src/lib/dispatch/images.ts). */
+  images?: { mediaType: ToolImage["mediaType"]; data: string }[];
   emit: TurnEmitter;
 }
 
@@ -129,6 +132,10 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
       }),
     });
   }
+  const attached = (input.images ?? []).slice(0, MAX_IMAGES_PER_QUESTION);
+  for (const img of attached) {
+    content.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } });
+  }
   content.push({ type: "text", text: question });
   await appendMessage(conversationId, "user", content, { question: true });
   const messages: Param[] = [...(history as Param[]), { role: "user", content }];
@@ -145,6 +152,9 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
   }
   const client = new Anthropic({ apiKey, maxRetries: 2 });
   const tools = toolDefinitions() as Anthropic.Beta.BetaToolUnion[];
+
+  // Shared by every tool call in this question: attached pictures already used some slots.
+  const toolCtx = { conversationId, imagesLeft: MAX_IMAGES_PER_QUESTION - attached.length };
 
   for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
     const lastRound = round === MAX_TOOL_ROUNDS;
@@ -219,11 +229,17 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
     // ── Run every tool the model asked for, together, as the asker ──
     const calls = final.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
     for (const c of calls) emit.status(toolStatus(c.name));
-    const outcomes = await Promise.all(calls.map((c) => runTool(scope, c.name, c.input, { conversationId })));
+    const outcomes = await Promise.all(calls.map((c) => runTool(scope, c.name, c.input, toolCtx)));
     const results: Block[] = outcomes.map((o, i) => ({
       type: "tool_result",
       tool_use_id: calls[i].id,
-      content: o.text,
+      // A picture goes back with its text, for the model to look at.
+      content: o.images?.length
+        ? [
+            { type: "text" as const, text: o.text },
+            ...o.images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data } })),
+          ]
+        : o.text,
       ...(o.isError ? { is_error: true } : {}),
     }));
     for (const o of outcomes) {

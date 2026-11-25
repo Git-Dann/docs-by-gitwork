@@ -29,7 +29,30 @@ export const MAX_PROPOSED_TASKS = 20;
 /** A question's maximum length. */
 export const MAX_QUESTION_CHARS = 8000;
 
-/** Rough token count of stored content, for the chat-length cap. Chars/4 is close enough. */
+/** Pictures one question may bring in: attached by the person plus Figma frames and page
+ *  screenshots. Each costs about as much as a page of text (~1,600 tokens at 1200px). */
+export const MAX_IMAGES_PER_QUESTION = 4;
+
+/** Pictures a person may attach to one question, and the largest one after it is shrunk. */
+export const MAX_ATTACHMENTS = 4;
+export const MAX_ATTACHMENT_BYTES = 1_500_000;
+
+/** What one picture counts as against the chat-length cap. */
+export const IMAGE_TOKENS = 1600;
+
+/**
+ * Rough token count of stored content, for the chat-length cap. Chars/4 is close enough for
+ * text; a picture's base64 data would be counted as tens of thousands, so it counts as
+ * IMAGE_TOKENS instead.
+ */
 export function roughTokens(value: unknown): number {
-  return Math.ceil(JSON.stringify(value ?? "").length / 4);
+  let images = 0;
+  const json = JSON.stringify(value ?? "", (key, v) => {
+    if (key === "source" && v && typeof v === "object" && (v as { type?: string }).type === "base64") {
+      images += 1;
+      return "[image]";
+    }
+    return v;
+  });
+  return Math.ceil(json.length / 4) + images * IMAGE_TOKENS;
 }

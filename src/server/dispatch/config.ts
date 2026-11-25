@@ -20,5 +20,10 @@ export function resolveDispatchConfig(raw: unknown): DispatchConfig {
     maxEvidenceItems: numOr(c.maxEvidenceItems, DISPATCH_DEFAULTS.maxEvidenceItems, 3, 40),
     perChannelPerHour: numOr(c.perChannelPerHour, DISPATCH_DEFAULTS.perChannelPerHour, 1, 200),
     assistantEnabled: c.assistantEnabled === true,
+    budgetUsd:
+      typeof c.budgetUsd === "number" && Number.isFinite(c.budgetUsd)
+        ? Math.min(100_000, Math.max(1, c.budgetUsd))
+        : DISPATCH_DEFAULTS.budgetUsd,
+    budgetSince: typeof c.budgetSince === "string" && /^\d{4}-\d{2}-\d{2}$/.test(c.budgetSince) ? c.budgetSince : null,
   };
 }

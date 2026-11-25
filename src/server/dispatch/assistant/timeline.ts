@@ -5,7 +5,7 @@
  */
 
 export type TimelineItem =
-  | { type: "question"; text: string; at: string }
+  | { type: "question"; text: string; at: string; pictures?: number }
   | { type: "answer"; text: string; at: string }
   | {
       type: "action";
@@ -47,7 +47,9 @@ export function chatTimeline(messages: MessageRow[], actions: ActionRow[]): Time
     const at = m.createdAt.toISOString();
     if (m.role === "user") {
       const own = texts(m.content).filter((t) => !t.startsWith("<chat_context>"));
-      if (own.length) items.push({ type: "question", text: own.join("\n"), at });
+      // Pictures the person attached (a tool's pictures sit inside tool_result blocks instead).
+      const pictures = Array.isArray(m.content) ? (m.content as { type?: string }[]).filter((b) => b?.type === "image").length : 0;
+      if (own.length) items.push({ type: "question", text: own.join("\n"), at, ...(pictures ? { pictures } : {}) });
     } else {
       const text = texts(m.content).join("").trim();
       if (text) items.push({ type: "answer", text, at });

@@ -24,6 +24,7 @@ const ChecksPanel = dynamic(() => import("@/components/settings/checks-panel").t
 const CuratorPanel = dynamic(() => import("@/components/settings/curator/curator-panel").then((m) => ({ default: m.CuratorPanel })));
 const AppearancePanel = dynamic(() => import("@/components/settings/appearance-panel").then((m) => ({ default: m.AppearancePanel })));
 const ForemanPanel = dynamic(() => import("@/components/settings/foreman/foreman-panel").then((m) => ({ default: m.ForemanPanel })));
+const DispatchSettingsPanel = dynamic(() => import("@/components/settings/dispatch-settings-panel").then((m) => ({ default: m.DispatchSettingsPanel })));
 const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
   import("@/components/settings-panel").then((m) => ({ default: m.DeveloperTab })),
 );
@@ -201,6 +202,10 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
     title: "Curator",
     subtitle: "Weekly background maintenance for the Starters library and Pulse checks.",
   },
+  dispatch: {
+    title: "Dispatch",
+    subtitle: "The assistant for the team: switch it on, set the AI budget it alerts against, and connect Figma.",
+  },
   foreman: {
     title: "Foreman",
     subtitle: "The daily delivery-risk watchdog — overdue and at-risk projects and developers, pushed to your Desk at 09:00.",
@@ -344,6 +349,7 @@ export default async function SettingsSectionPage({
         {sectionId === "checks" ? <ChecksPanel /> : null}
         {sectionId === "curator" ? <CuratorPanel /> : null}
         {sectionId === "foreman" ? <ForemanPanel /> : null}
+        {sectionId === "dispatch" ? <DispatchSettingsPanel /> : null}
         {sectionId === "appearance" ? <AppearancePanel /> : null}
         {sectionId === "labs" ? <LabsPanel /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}

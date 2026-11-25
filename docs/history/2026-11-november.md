@@ -2224,3 +2224,52 @@ use it before that to test it). Operator notes: `docs/dispatch.md`.
 - **Still to come:** GitHub and Figma tools, a design-vs-build check, budget alerts at 50/80/95%
   and a Dispatch block in Analytics, a 90-day chat purge, and a live eval of ~25 real Wedge
   questions as Nasir before the switch goes on.
+
+---
+
+## 155. Recent Changes (November 2026) — Dispatch reads code and designs, watches the budget
+
+The rest of the Dispatch plan (§154), asked for by Dan the same day. Still behind the switch,
+which now lives in **Settings → Dispatch** (Super Admins) rather than raw JSON.
+
+- **The client's code** (`assistant/tools-code.ts`, rules in `src/lib/dispatch/code.ts`):
+  `repo_files`, `read_code` (line numbers, ranges), `search_code`, `recent_commits` and
+  `compare_code` (a pull request number, or base and head) — for impact analysis, PR descriptions,
+  release notes and setup docs. Only the repositories on the pinned client's platforms
+  (`ClientPlatform.repoUrl`); a repo named in the question that isn't one of them is refused.
+  Read with the server's `GITHUB_TOKEN` through the ETag-cached `githubRequest`. Secret files
+  (`.env*`, keys, certificates, `google-services.json`, Terraform state…) are never opened, and
+  everything still goes through the credential redaction. Read-only: nothing writes to GitHub.
+- **Designs** (`assistant/tools-design.ts`, rules in `src/lib/dispatch/figma.ts`):
+  `figma_frames` (pages and frames, or one frame's words; hidden layers left out) and
+  `figma_image` (a picture of a frame, rendered at most 1200px). Only files linked as the
+  client's designs in Portal. The Figma token is set in Settings → Dispatch: checked with Figma
+  before it is saved, stored with `storeSecret`, never sent back (`Workspace.figmaToken`).
+- **What was built:** `capture_page` screenshots a page on the client's own sites (production or
+  staging URLs on its platforms only) at phone or desktop width. `assertScannableUrl` refuses
+  private addresses, and the browser aborts any navigation that leaves those hosts. For apps,
+  people **attach or paste screenshots** in the panel: shrunk in the browser to 1568px JPEG
+  (`shrink-picture.ts`), checked again on the server by their bytes (`images.ts`), at most four.
+  Pictures in one question (attached plus tool) are capped at four; a stored picture counts as
+  1,600 tokens against the chat-length cap, not its base64 length. The system prompt asks for a
+  visual comparison stated as one: matches, missing, different.
+- **Budget alerts** (`assistant/budget.ts`, rules in `src/lib/dispatch/budget.ts`): the budget
+  (default $200) is every AI feature on the Anthropic key, not just Dispatch. A period is the
+  calendar month, or everything since a set date for a one-off pot. Checked hourly from the
+  `jobs` worker; Super Admins get `ai.budget_alert` (in-app + push) once at 50%, 80% and 95% per
+  period (only the highest when several are crossed at once), and the ops Slack webhook gets the
+  same line. Nothing is switched off at 100%.
+- **Analytics → AI usage** gains `07 // Dispatch` (questions, cost per question, share of the
+  prompt from the cache, the budget, app vs Slack) and `08 // Dispatch by person`, from
+  `GET /api/admin/dispatch-usage` (Super Admins). Counts and costs only, never chat text.
+- **Chats are deleted 90 days after they were last used**, nightly in the `RETENTION_SWEEP` job
+  (`assistant/purge.ts`), with their messages and any proposal never carried out. Proposals that
+  were carried out stay, as the record of what Dispatch changed. Runs whether or not the
+  workspace has a cold store.
+- **Settings → Dispatch** (`dispatch-settings-panel.tsx`, `/api/dispatch/settings`): the switch,
+  the budget and its start date, and the Figma token. Changes are audited
+  (`settings.dispatch.updated`, never the token).
+- Tool list order: the new tools are appended after the original nineteen, so nothing in the
+  cached prefix moves except the additions.
+- Tests: `src/lib/dispatch/__tests__/code-and-design.test.ts`, `budget.test.ts`,
+  `assistant/__tests__/purge.test.ts`, each rule broken on purpose to prove it.
