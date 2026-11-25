@@ -2490,6 +2490,7 @@ which client" reply, and a long chat hit "start a new one". Now (`decideSlackCha
   (`askWhichClientText`), then keeps that client for the rest of the chat. Someone on one client
   gets that client. A question about a person or everything still gets the status answer.
 - In channels a thread is still the chat, and a DM chat never carries into a channel.
+
 ## 161. Recent Changes (November 2026) — Dispatch opens on a brief, not an empty chat
 
 Dan, 25 Nov, on the panel: "seems very basic... I didn't want a chat bot, I wanted something
