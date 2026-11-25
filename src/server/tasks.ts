@@ -37,6 +37,7 @@ import { BOARD_LIST_MAX, cardProgress, isProductCard, linkProblem } from "@/lib/
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import { importRowPatch, planImportRows } from "@/lib/tasks/task-csv";
 import { assertProjectInClient } from "@/server/projects";
+import { shownVersion } from "@/lib/tasks/releases";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ const taskInclude = {
   createdBy: userSelect,
   flaggedBy: userSelect,
   featureBlock: { select: { id: true, name: true } },
-  release: { select: { id: true, version: true, name: true } },
+  release: { select: { id: true, version: true, name: true, changelogVersion: true, client: { select: { releasesUseChangelog: true } } } },
   // Screenshots taken off a card on the client's Board (`removedAt`) don't count: they're kept
   // only so the team can put them back.
   _count: { select: { comments: true, subtasks: true, attachments: { where: { removedAt: null } } } },
@@ -97,7 +98,9 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     assignees,
     createdBy: userRef(row.createdBy),
     featureBlock: row.featureBlock ? { id: row.featureBlock.id, name: row.featureBlock.name } : null,
-    release: row.release ? { id: row.release.id, version: row.release.version, name: row.release.name } : null,
+    release: row.release
+      ? { id: row.release.id, version: row.release.version, name: row.release.name, displayVersion: shownVersion(row.release) }
+      : null,
     parentId: row.parentId,
     title: row.title,
     description: row.description,

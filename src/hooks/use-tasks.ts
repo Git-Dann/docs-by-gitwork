@@ -40,6 +40,8 @@ import {
   listReleases,
   createRelease,
   updateRelease,
+  getReleaseNumbering,
+  setReleaseNumbering,
   deleteRelease,
   getBoardColumns,
   saveBoardColumns,
@@ -571,6 +573,24 @@ export function useReleases(clientId: string | null) {
     staleTime: 15_000,
     refetchOnWindowFocus: true,
   });
+}
+
+/** The client's "number releases by the changelog" setting (§158). Changing it relabels everything. */
+export function useReleaseNumbering(clientId: string | null) {
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: ["tasks", "release-numbering", clientId ?? ""],
+    queryFn: () => getReleaseNumbering(clientId as string),
+    enabled: Boolean(clientId),
+  });
+  const set = useMutation({
+    mutationFn: (on: boolean) => setReleaseNumbering(clientId as string, on),
+    onSuccess: () => {
+      invalidateAll(qc);
+      void qc.invalidateQueries({ queryKey: ["client-wiki"] });
+    },
+  });
+  return { on: Boolean(query.data?.useChangelog), loading: query.isPending, set };
 }
 
 export function useCreateRelease() {

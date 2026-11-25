@@ -929,6 +929,8 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
   const releaseRows = await prisma.clientRelease.findMany({
     where: { clientId },
     include: {
+      // Shown by changelog version when the client asks (§158).
+      client: { select: { releasesUseChangelog: true } },
       tasks: {
         where: { parentId: null, archivedAt: null },
         select: { title: true, status: true, dueDate: true, completedAt: true, startedAt: true },

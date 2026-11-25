@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/format";
 import { RELEASE_LIMITS, releaseLabel, safeReleaseDocUrl } from "@/lib/tasks/releases";
-import { useCreateRelease, useDeleteRelease, useReleases, useUpdateRelease } from "@/hooks/use-tasks";
+import { useCreateRelease, useDeleteRelease, useReleaseNumbering, useReleases, useUpdateRelease } from "@/hooks/use-tasks";
 import { useClientProjects } from "@/hooks/use-projects";
 import type { ReleaseDTO } from "@/types/tasks";
 
-type Draft = { version: string; name: string; startDate: string; endDate: string; docUrl: string; projectId: string };
-const EMPTY: Draft = { version: "", name: "", startDate: "", endDate: "", docUrl: "", projectId: "" };
+type Draft = { version: string; name: string; startDate: string; endDate: string; docUrl: string; projectId: string; changelogVersion: string };
+const EMPTY: Draft = { version: "", name: "", startDate: "", endDate: "", docUrl: "", projectId: "", changelogVersion: "" };
 
 function toDraft(r: ReleaseDTO): Draft {
   return {
@@ -21,6 +21,7 @@ function toDraft(r: ReleaseDTO): Draft {
     endDate: r.endDate?.slice(0, 10) ?? "",
     docUrl: r.docUrl ?? "",
     projectId: r.projectId ?? "",
+    changelogVersion: r.changelogVersion ?? "",
   };
 }
 
@@ -37,6 +38,7 @@ export function ReleasesModal({ clientId, clientSlug, onClose }: { clientId: str
   const create = useCreateRelease();
   const update = useUpdateRelease();
   const del = useDeleteRelease();
+  const numbering = useReleaseNumbering(clientId);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -71,7 +73,7 @@ export function ReleasesModal({ clientId, clientSlug, onClose }: { clientId: str
       ...(projects.length ? { projectId: draft.projectId || null } : {}),
     };
     try {
-      if (editingId) await update.mutateAsync({ id: editingId, input });
+      if (editingId) await update.mutateAsync({ id: editingId, input: { ...input, changelogVersion: draft.changelogVersion.trim() || null } });
       else await create.mutateAsync({ clientId, ...input });
       reset();
     } catch (e) {
@@ -96,6 +98,23 @@ export function ReleasesModal({ clientId, clientSlug, onClose }: { clientId: str
         The version a task ships in. The board, the timeline and the client&apos;s wiki can group tasks by
         release. Without dates, a release&apos;s bar is estimated from its tasks&apos; due dates.
       </p>
+      <label className="flex shrink-0 cursor-pointer items-start gap-2.5 border-b border-[var(--border-2)] px-5 py-3 text-[13px] text-[var(--text-2)]">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={numbering.on}
+          disabled={numbering.loading || numbering.set.isPending}
+          onChange={(e) => numbering.set.mutate(e.target.checked)}
+          data-release-numbering
+        />
+        <span>
+          <span className="font-medium text-[var(--text-1)]">Number releases by the changelog</span>
+          <span className="block text-[12px] text-[var(--text-4)]">
+            Shows each release&apos;s changelog version (set it when editing a release) instead of its own number,
+            here, on the board, the timeline and the client&apos;s wiki.
+          </span>
+        </span>
+      </label>
 
       <ul className="min-h-0 flex-1 divide-y divide-[var(--border-2)] overflow-y-auto">
         {releases.isLoading ? (
@@ -221,6 +240,16 @@ export function ReleasesModal({ clientId, clientSlug, onClose }: { clientId: str
           maxLength={RELEASE_LIMITS.docUrl}
           onChange={(e) => setDraft({ ...draft, docUrl: e.target.value })}
         />
+        {editingId ? (
+          <input
+            aria-label="Changelog version"
+            placeholder="Changelog version, optional (e.g. 2.0.4)"
+            className="app-input w-full text-[16px] sm:text-[13px]"
+            value={draft.changelogVersion}
+            maxLength={RELEASE_LIMITS.version}
+            onChange={(e) => setDraft({ ...draft, changelogVersion: e.target.value })}
+          />
+        ) : null}
         {projects.length ? (
           <select
             aria-label="Project"

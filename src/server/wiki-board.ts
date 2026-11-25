@@ -253,13 +253,15 @@ async function cardContext(
   clientId: string,
   columns: CardContext["columns"],
   rows: TaskRow[],
-): Promise<CardContext & { releases: Array<{ id: string; label: string; startDate: Date | null; endDate: Date | null }> }> {
+): Promise<
+  CardContext & { releases: Array<{ id: string; label: string; startDate: Date | null; endDate: Date | null; changelogVersion: string | null }> }
+> {
   const ids = rows.map((r) => r.id);
   const cardIds = rows.filter((r) => isProductCard(r)).map((r) => r.id);
   const [releaseRows, feedbackRows, linked, descriptions, images] = await Promise.all([
     prisma.clientRelease.findMany({
       where: { clientId },
-      select: { id: true, version: true, name: true, startDate: true, endDate: true, orderKey: true },
+      select: { id: true, version: true, name: true, startDate: true, endDate: true, orderKey: true, changelogVersion: true, client: { select: { releasesUseChangelog: true } } },
     }),
     ids.length
       ? prisma.taskClientFeedback.findMany({
@@ -292,6 +294,7 @@ async function cardContext(
     label: releaseLabel(r),
     startDate: r.startDate,
     endDate: r.endDate,
+    changelogVersion: r.changelogVersion,
   }));
   const feedback = new Map<string, Array<{ kind: string; createdAt: Date }>>();
   for (const f of feedbackRows) {
@@ -364,6 +367,7 @@ async function boardCards(clientId: string) {
       label: r.label,
       startDate: r.startDate?.toISOString() ?? null,
       endDate: r.endDate?.toISOString() ?? null,
+      changelogVersion: r.changelogVersion,
     })),
   };
 }
@@ -1054,7 +1058,7 @@ export async function updateBoardCard(writer: BoardWriter, taskId: string, patch
   };
   if (!after.title) throw new BoardError("Give the card a title.", 400);
   const releases = after.releaseId
-    ? await prisma.clientRelease.findMany({ where: { id: after.releaseId, clientId: writer.clientId }, select: { id: true, version: true, name: true } })
+    ? await prisma.clientRelease.findMany({ where: { id: after.releaseId, clientId: writer.clientId }, select: { id: true, version: true, name: true, changelogVersion: true, client: { select: { releasesUseChangelog: true } } } })
     : [];
   const phrases = describeCardChanges(before, after, (id) => {
     const r = releases.find((x) => x.id === id);

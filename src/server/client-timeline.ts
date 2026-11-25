@@ -133,6 +133,7 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
   const releaseRows = await prisma.clientRelease.findMany({
     where: { clientId: client.id },
     include: {
+      client: { select: { releasesUseChangelog: true } },
       tasks: {
         where: { parentId: null, archivedAt: null },
         select: { title: true, status: true, dueDate: true },

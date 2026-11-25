@@ -7,12 +7,13 @@ import { prisma } from "@/lib/prisma";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
 import { assertClientInScope } from "@/server/tasks";
 import { assertProjectInClient } from "@/server/projects";
-import { safeReleaseDocUrl, sortReleases } from "@/lib/tasks/releases";
+import { safeReleaseDocUrl, shownVersion, sortReleases } from "@/lib/tasks/releases";
 import type { ReleaseDTO } from "@/types/tasks";
 
 const releaseInclude = {
   // Top-level, live tasks only: the same set the timeline and the categories count.
   tasks: { where: { parentId: null, archivedAt: null }, select: { status: true } },
+  client: { select: { releasesUseChangelog: true } },
 } satisfies Prisma.ClientReleaseInclude;
 
 type ReleaseRow = Prisma.ClientReleaseGetPayload<{ include: typeof releaseInclude }>;
@@ -28,6 +29,8 @@ function releaseRowToDTO(row: ReleaseRow): ReleaseDTO {
     orderKey: row.orderKey,
     docUrl: safeReleaseDocUrl(row.docUrl),
     projectId: row.projectId,
+    changelogVersion: row.changelogVersion,
+    displayVersion: shownVersion(row),
     taskCount: row.tasks.length,
     doneCount: row.tasks.filter((t) => t.status === "DONE").length,
   };
@@ -83,7 +86,16 @@ async function findOwnRelease(user: EffectiveUser, id: string) {
 export async function updateRelease(
   user: EffectiveUser,
   id: string,
-  input: { version?: string; name?: string | null; startDate?: string | null; endDate?: string | null; docUrl?: string | null; orderKey?: number; projectId?: string | null },
+  input: {
+    version?: string;
+    name?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    docUrl?: string | null;
+    orderKey?: number;
+    projectId?: string | null;
+    changelogVersion?: string | null;
+  },
 ): Promise<ReleaseDTO> {
   const own = await findOwnRelease(user, id);
   const data: Prisma.ClientReleaseUpdateInput = {};
@@ -93,12 +105,33 @@ export async function updateRelease(
   if (input.endDate !== undefined) data.endDate = input.endDate ? new Date(input.endDate) : null;
   if (input.docUrl !== undefined) data.docUrl = safeReleaseDocUrl(input.docUrl);
   if (input.orderKey !== undefined) data.orderKey = input.orderKey;
+  if (input.changelogVersion !== undefined) data.changelogVersion = input.changelogVersion?.trim() || null;
   if (input.projectId !== undefined) {
     if (input.projectId) await assertProjectInClient(user.workspaceId, own.clientId, input.projectId);
     data.projectId = input.projectId || null;
   }
   const row = await prisma.clientRelease.update({ where: { id }, data, include: releaseInclude });
   return releaseRowToDTO(row);
+}
+
+/**
+ * Whether this client's releases are shown by their changelog version (§158). The same access as
+ * changing a release: the caller's workspace, and this client in their scope.
+ */
+export async function setReleasesUseChangelog(user: EffectiveUser, clientId: string, on: boolean): Promise<{ useChangelog: boolean }> {
+  await assertClientInScope(user, clientId);
+  const updated = await prisma.workspaceClient.updateMany({
+    where: { id: clientId, workspaceId: user.workspaceId },
+    data: { releasesUseChangelog: on },
+  });
+  if (!updated.count) throw new ForbiddenError("Client not found");
+  return { useChangelog: on };
+}
+
+export async function getReleasesUseChangelog(user: EffectiveUser, clientId: string): Promise<boolean> {
+  await assertClientInScope(user, clientId);
+  const c = await prisma.workspaceClient.findFirst({ where: { id: clientId, workspaceId: user.workspaceId }, select: { releasesUseChangelog: true } });
+  return Boolean(c?.releasesUseChangelog);
 }
 
 /** Deletes the release only. Its tasks stay where they are, out of any release (SetNull). */

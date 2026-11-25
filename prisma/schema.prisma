@@ -1147,6 +1147,9 @@ model WorkspaceClient {
   /// Extra task-board columns for this client: [{ id, name, stage }]. Each is a lane inside
   /// one of the five statuses (src/lib/tasks/board-columns.ts), so no status is ever added.
   taskBoardColumns         Json?
+  /// Show releases by their changelog version (`ClientRelease.changelogVersion`) instead of the
+  /// planning tool's own number, wherever a release is labelled (§158). Off by default.
+  releasesUseChangelog     Boolean                   @default(false)
   website                  String?
   addressLine1             String?
   addressLine2             String?
@@ -5190,6 +5193,9 @@ model ClientRelease {
   externalRef String?
   /// The release document (http(s) only), e.g. Big Wedge's release doc. Client-safe.
   docUrl      String?
+  /// The changelog version this release ships as ("2.0.4"): shown instead of `version` when the
+  /// client's `releasesUseChangelog` is on (§158).
+  changelogVersion String?
   /// The Project this release belongs to (loose id, same client, checked in code). §150.
   projectId   String?
   createdAt   DateTime        @default(now())

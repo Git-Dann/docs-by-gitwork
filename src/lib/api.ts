@@ -3510,7 +3510,22 @@ export type ReleaseInput = {
   docUrl?: string | null;
   orderKey?: number;
   projectId?: string | null;
+  /** Edit only: the changelog version this release ships as ("2.0.4"), §158. */
+  changelogVersion?: string | null;
 };
+
+/** Whether a client's releases are shown by their changelog version (§158). */
+export function getReleaseNumbering(clientId: string): Promise<{ useChangelog: boolean }> {
+  return apiFetch(`/api/releases/numbering?clientId=${encodeURIComponent(clientId)}`);
+}
+
+export function setReleaseNumbering(clientId: string, useChangelog: boolean): Promise<{ useChangelog: boolean }> {
+  return apiFetch("/api/releases/numbering", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId, useChangelog }),
+  });
+}
 
 export function createRelease(input: ReleaseInput & { clientId: string; version: string }): Promise<ReleaseDTO> {
   return apiFetch("/api/releases", {

@@ -14,6 +14,32 @@ type DateLike = Date | string | null | undefined;
 export interface ReleaseLike {
   version: string;
   name: string | null;
+  /**
+   * The number to show, when it isn't `version`: the client's changelog number (§158). Set on
+   * the DTOs the server sends; computed from `changelogVersion` + the client's setting on rows.
+   */
+  displayVersion?: string | null;
+  /** The changelog version this release ships as ("2.0.4"), when someone has said. */
+  changelogVersion?: string | null;
+  /** Rows read with the client's setting: number releases by the changelog. */
+  client?: { releasesUseChangelog: boolean } | null;
+}
+
+/** "2.0.4" → "v2.0.4"; a value that already starts with v (or V) is left as it is. */
+export function changelogLabel(v: string): string {
+  const s = v.trim();
+  return /^v/i.test(s) ? s : `v${s}`;
+}
+
+/**
+ * The version a release is shown as. When the client numbers releases by their changelog (Big
+ * Wedge's planning site reused "v2.0.0" for months) and this release has a changelog version,
+ * that; otherwise its own version.
+ */
+export function shownVersion(r: ReleaseLike): string {
+  if (r.displayVersion) return r.displayVersion;
+  const cv = r.changelogVersion?.trim();
+  return r.client?.releasesUseChangelog && cv ? changelogLabel(cv) : r.version;
 }
 
 /** Version limits, shared by the validator and the form. */
@@ -37,7 +63,8 @@ export function safeReleaseDocUrl(v: string | null | undefined): string | null {
 /** "v2.0.0 · Q4 Refinement Session", or just the version when there's no name. */
 export function releaseLabel(r: ReleaseLike): string {
   const name = r.name?.trim();
-  return name ? `${r.version} · ${name}` : r.version;
+  const v = shownVersion(r);
+  return name ? `${v} · ${name}` : v;
 }
 
 /**
@@ -82,7 +109,7 @@ export function compareReleases(
     if (sb === null) return -1;
     return sa - sb;
   }
-  const v = compareVersions(a.version, b.version);
+  const v = compareVersions(shownVersion(a), shownVersion(b));
   if (v !== 0) return v;
   return a.orderKey - b.orderKey;
 }
