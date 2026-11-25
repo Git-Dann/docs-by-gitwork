@@ -25,8 +25,12 @@ describe("decideSlackChat: a DM is one running conversation", () => {
     expect(decideSlackChat({ ...base, inThread: true, recentDmChat: wedgeChat })).toMatchObject({ action: "continue", conversationId: "chat1" });
   });
 
-  it("naming another client moves to a new chat about that client", () => {
-    expect(decideSlackChat({ ...base, recentDmChat: wedgeChat, namedClientId: "campfire" })).toEqual({ action: "new", clientId: "campfire" });
+  it("naming another of their clients carries on in the same chat, about that client (§164)", () => {
+    expect(decideSlackChat({ ...base, recentDmChat: wedgeChat, namedClientId: "campfire" })).toEqual({
+      action: "continue",
+      conversationId: "chat1",
+      clientId: "campfire",
+    });
   });
 
   it("naming the same client carries on", () => {
@@ -40,11 +44,20 @@ describe("decideSlackChat: a DM is one running conversation", () => {
   it("after hours of quiet, the old chat is left behind", () => {
     const stale = { ...wedgeChat, updatedAt: new Date(now.getTime() - DM_CHAT_IDLE_MS - 1) };
     expect(decideSlackChat({ ...base, recentDmChat: stale })).toEqual({ action: "ask_which" });
+    expect(decideSlackChat({ ...base, recentDmChat: stale, fallbackClientId: "wedge" })).toEqual({ action: "new", clientId: "wedge" });
+  });
+
+  it("a long chat naming another client starts fresh on that client", () => {
+    expect(decideSlackChat({ ...base, recentDmChat: { ...wedgeChat, messages: 18 }, namedClientId: "campfire" })).toEqual({ action: "new", clientId: "campfire" });
   });
 });
 
 describe("decideSlackChat: with nothing to go on", () => {
-  it("asks which client instead of refusing", () => {
+  it("a DM starts on their usual client and talks, rather than asking which (§164)", () => {
+    expect(decideSlackChat({ ...base, fallbackClientId: "wedge" })).toEqual({ action: "new", clientId: "wedge" });
+  });
+
+  it("only someone with no clients at all gets the fixed reply", () => {
     expect(decideSlackChat(base)).toEqual({ action: "ask_which" });
   });
 
@@ -65,6 +78,14 @@ describe("decideSlackChat: channels", () => {
 
   it("a client's own channel means that client", () => {
     expect(decideSlackChat({ ...channel, channelClientId: "wedge" })).toEqual({ action: "new", clientId: "wedge" });
+  });
+
+  it("a channel thread stays on its client: naming another starts a new chat", () => {
+    expect(decideSlackChat({ ...channel, inThread: true, threadChat: { id: "t1", clientId: "wedge" }, namedClientId: "campfire" })).toEqual({ action: "new", clientId: "campfire" });
+  });
+
+  it("never starts a channel on a fallback client", () => {
+    expect(decideSlackChat({ ...channel, fallbackClientId: "wedge" })).toEqual({ action: "ask_which" });
   });
 
   it("never carries a DM chat into a channel", () => {

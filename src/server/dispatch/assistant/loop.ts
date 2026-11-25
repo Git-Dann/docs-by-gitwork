@@ -56,6 +56,8 @@ export interface TurnEmitter {
   sources(list: ToolSource[]): void;
   /** A problem worth showing the person, in plain words. */
   notice(text: string): void;
+  /** The chat moved to another of the person's clients (switch_client, §164). */
+  client?(c: { slug: string; name: string }): void;
 }
 
 export interface TurnInput {
@@ -80,8 +82,13 @@ type Param = Anthropic.Beta.BetaMessageParam;
 /** "failed" = the model call failed (the person was told why); "no_key" = no Anthropic key. */
 export type TurnOutcome = "answered" | "failed" | "no_key";
 
-export async function runTurn(input: TurnInput): Promise<{ conversationId: string; outcome: TurnOutcome; model: string }> {
-  const { scope, emit } = input;
+export async function runTurn(
+  input: TurnInput,
+): Promise<{ conversationId: string; outcome: TurnOutcome; model: string; clientName: string }> {
+  const { emit } = input;
+  // The client the chat is on. It can change mid-question (switch_client, §164), and every tool
+  // after that works on the new one.
+  let scope = input.scope;
   const question = input.question.trim().slice(0, MAX_QUESTION_CHARS);
   if (!question) throw new DispatchLimitError("Ask me something first.");
 
@@ -91,13 +98,18 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
 
   // ── The conversation ──
   let conversationId: string;
+  /** Set when this question moves an existing chat to another client. */
+  let movedTo: string | null = null;
   let history: { role: "user" | "assistant"; content: unknown }[] = [];
   // The model is chosen from the chat's first question and kept for the chat (model.ts).
   let model: string;
   if (input.conversationId) {
     const conv = await getOwnConversation(scope.user, input.conversationId);
+    // A chat isn't locked to one client (§164): asked about another of the person's clients
+    // (the caller opened a scope for it, so access is already checked), it carries on there.
     if (conv.clientId !== scope.client.id) {
-      throw new DispatchLimitError("This chat is about a different client. Start a new one.");
+      await prisma.dispatchConversation.update({ where: { id: conv.id }, data: { clientId: scope.client.id } });
+      movedTo = scope.client.name;
     }
     conversationId = conv.id;
     // Chats from before the Haiku switch carry on with the model they started with.
@@ -130,17 +142,21 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
           select: { id: true, title: true },
         })
       : null;
+    const { askerScope, loadCandidates } = await import("@/server/dispatch/respond");
+    const own = (await loadCandidates(scope.user.workspaceId, await askerScope(scope.user))).clients;
     content.push({
       type: "text",
       text: chatContext({
         askerName: scope.user.name ?? scope.user.email,
         roleLabel: ROLES.find((r) => r.id === scope.user.role)?.label ?? scope.user.role,
         clientName: scope.client.name,
+        clientCount: own.length,
         today: new Date().toISOString().slice(0, 10),
         focusTask: focus ? { ref: taskRef(focus.id), title: focus.title } : null,
       }),
     });
   }
+  if (movedTo) content.push({ type: "text", text: `<chat_context>\nNow on client: ${movedTo}\n</chat_context>` });
   const attached = (input.images ?? []).slice(0, MAX_IMAGES_PER_QUESTION);
   for (const img of attached) {
     content.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } });
@@ -157,7 +173,7 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
   const apiKey = aiKeyFor("ANTHROPIC", ws, "workspace");
   if (!apiKey) {
     emit.notice("Dispatch needs an Anthropic key in Settings → Integrations before it can answer.");
-    return { conversationId, outcome: "no_key", model };
+    return { conversationId, outcome: "no_key", model, clientName: scope.client.name };
   }
   const client = new Anthropic({ apiKey, maxRetries: 2 });
   // Haiku answers without thinking (cheapest; it isn't needed to look things up). Sonnet thinks
@@ -221,7 +237,7 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
         errorKind: raw.slice(0, 120),
       });
       emit.notice(describeAiError(raw));
-      return { conversationId, outcome: "failed", model };
+      return { conversationId, outcome: "failed", model, clientName: scope.client.name };
     }
 
     const usage = usageFromAnthropic(final.usage);
@@ -281,13 +297,20 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
       if (o.action) emit.action(o.action);
       if (o.sources?.length) emit.sources(o.sources);
     }
+    // switch_client: the rest of this question, and the chat from now on, is about that client.
+    const switched = outcomes.find((o) => o.switchTo)?.switchTo;
+    if (switched && switched.client.id !== scope.client.id) {
+      scope = switched;
+      await prisma.dispatchConversation.update({ where: { id: conversationId }, data: { clientId: scope.client.id } });
+      emit.client?.({ slug: scope.client.slug, name: scope.client.name });
+    }
     // All results in ONE user message (splitting them teaches the model to stop calling tools
     // in parallel).
     await appendMessage(conversationId, "user", results);
     messages.push({ role: "user", content: results });
   }
 
-  return { conversationId, outcome: "answered", model };
+  return { conversationId, outcome: "answered", model, clientName: scope.client.name };
 }
 
 /** Plain text of the latest assistant reply in stored content blocks (for Slack). */

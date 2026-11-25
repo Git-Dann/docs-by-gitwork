@@ -27,6 +27,8 @@ export interface DispatchScope {
   /** Admins see Foreman's delivery findings; everyone else sees the work itself. */
   isAdmin: boolean;
   documentTypes: ReturnType<typeof documentTypesFor>;
+  /** Answering in a Slack channel (forChannel): the chat stays on the channel's client. */
+  inChannel?: boolean;
 }
 
 export class DispatchAccessError extends ForbiddenError {}
@@ -65,7 +67,7 @@ export async function openScope(
  * view: no figures, and only the document types every developer may see.
  */
 export function forChannel(scope: DispatchScope): DispatchScope {
-  return { ...scope, canSeeMoney: false, documentTypes: allowedDocTypes(false) };
+  return { ...scope, canSeeMoney: false, documentTypes: allowedDocTypes(false), inChannel: true };
 }
 
 /** Throws unless this person can still open this client. Called before every tool runs. */

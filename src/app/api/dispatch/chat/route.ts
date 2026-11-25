@@ -24,7 +24,8 @@ const bodySchema = z
 
 /**
  * POST /api/dispatch/chat — ask Dispatch one question. Answers as a stream of server-sent
- * events: `conversation`, `text`, `status`, `action`, `sources`, `notice`, then `done`.
+ * events: `conversation`, `text`, `status`, `action`, `sources`, `notice`, `client` (the chat moved
+ * to another of the person's clients, §164), then `done`.
  * The chat is about one client: a new chat names it (`clientSlug`); a follow-up uses the client
  * its conversation already belongs to.
  */
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
             action: (card) => send("action", card),
             sources: (list) => send("sources", list),
             notice: (text) => send("notice", { text }),
+            client: (c) => send("client", c),
           },
         });
       } catch (err) {

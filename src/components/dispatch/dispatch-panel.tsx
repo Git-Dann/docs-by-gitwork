@@ -335,6 +335,12 @@ export function DispatchPanel() {
               return [...prev, ...(data as unknown as Source[]).filter((s) => !seen.has(`${s.kind}:${s.id}`))].slice(-12);
             });
           else if (event === "notice") setItems((prev) => [...prev, { type: "notice", text: String(data.text), key: nextKey() }]);
+          // Dispatch moved the chat to another of the person's clients (§164): the switcher follows.
+          else if (event === "client" && typeof data.slug === "string") {
+            setClientSlug(data.slug);
+            setFocusTaskId(null);
+            rememberClient(data.slug);
+          }
         }
       }
     } catch (err) {

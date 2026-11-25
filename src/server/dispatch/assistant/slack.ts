@@ -94,6 +94,16 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
     ? { ...recentDm, messages: await prisma.dispatchMessage.count({ where: { conversationId: recentDm.id } }) }
     : null;
 
+  // A DM with nothing to go on starts on the client the person last asked Dispatch about, or
+  // their first, and Dispatch moves between their clients from there (§164).
+  const sortedClients = [...candidates.clients].sort((a, b) => a.name.localeCompare(b.name));
+  const lastChat = isDm
+    ? await prisma.dispatchConversation.findFirst({
+        where: { workspaceId: q.workspaceId, userId: q.asker.id, clientId: { in: sortedClients.map((c) => c.id) } },
+        orderBy: { updatedAt: "desc" },
+        select: { clientId: true },
+      })
+    : null;
   const decision = decideSlackChat({
     isDm,
     inThread: q.inThread,
@@ -103,6 +113,7 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
     aboutPersonOrAll: resolved.subject !== null && resolved.subject.kind !== "client",
     channelClientId: ownChannelClient?.id ?? null,
     onlyClientId: candidates.clients.length === 1 ? candidates.clients[0].id : null,
+    fallbackClientId: lastChat?.clientId ?? sortedClients[0]?.id ?? null,
     // Room for this turn's question, tool calls and answer before the cap.
     maxMessages: MAX_CHAT_MESSAGES - 6,
     now: new Date(),
@@ -173,6 +184,7 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
   const notices: string[] = [];
   let outcome = "failed";
   let usedModel: string | null = null;
+  let endedOn = "";
   const ask = (conversationId: string | null) => runTurn({
       scope,
       question: q.question,
@@ -200,12 +212,12 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
     });
   try {
     try {
-      ({ outcome, model: usedModel } = await ask(existing?.id ?? null));
+      ({ outcome, model: usedModel, clientName: endedOn } = await ask(existing?.id ?? null));
     } catch (err) {
       // A chat that has grown long carries on in a fresh one, rather than telling the person to
       // start again themselves.
       if (!(existing && err instanceof DispatchLimitError && /got long/.test(err.message))) throw err;
-      ({ outcome, model: usedModel } = await ask(null));
+      ({ outcome, model: usedModel, clientName: endedOn } = await ask(null));
     }
   } catch (err) {
     const message = err instanceof DispatchLimitError || err instanceof DispatchAccessError ? err.message : "Something went wrong answering that. It's logged in Foundry.";
@@ -219,7 +231,7 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
         text,
         actions,
         sources: [...sources.values()],
-        clientName: scope.client.name,
+        clientName: endedOn || scope.client.name,
         askerSlackId: q.askerSlackId,
         notice: notices.join(" ") || null,
       })
