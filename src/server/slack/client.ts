@@ -236,6 +236,18 @@ export function conversationsInfo(
   return call<{ channel?: SlackChannel }>(token, "conversations.info", { channel });
 }
 
+/**
+ * conversations.open with one user — the bot's DM channel with them (created if needed).
+ * Used by Dispatch to answer privately when a question was asked in a channel whose members
+ * may not share the asker's access. Needs `im:write`, which the manifest already grants.
+ */
+export function openDirectMessage(
+  token: string,
+  user: string,
+): Promise<SlackResponse<{ channel?: { id?: string } }>> {
+  return call<{ channel?: { id?: string } }>(token, "conversations.open", { users: user });
+}
+
 export interface CreateConversationInput {
   name: string;
   is_private?: boolean;

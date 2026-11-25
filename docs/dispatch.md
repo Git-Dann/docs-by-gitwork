@@ -101,18 +101,35 @@ No Settings UI yet (deferred); flip the JSON directly.
 | `recentDays` | `7` | Window: reaches **back** for completed work, **forward** for due dates. |
 | `maxEvidenceItems` | `12` | Cap per evidence list. Exceeded → the answer says "capped". |
 | `perChannelPerHour` | `20` | Question budget per channel per rolling hour. |
-| `allowExternalChannels` | `false` | **See below. Leave off.** |
 
-### `allowExternalChannels` is a disclosure decision
+A stored `allowExternalChannels` is ignored. It used to open Slack Connect channels; there is no
+longer any switch for that (below).
 
-Per-client Slack Connect channels contain **the client**. Foundry's internal delivery state —
-overdue counts, developer workload, unassigned work, Foreman risk flags — is not client-facing.
+### Who Dispatch answers, and where (November 2026)
 
-Default is `false`, and Dispatch **fails closed**: if `conversations.info` errors or the channel
-can't be classified, it treats the channel as external and declines. `resolveDispatchConfig`
-only accepts a literal boolean `true`, so a stray `"yes"` or `1` in the JSON cannot open it.
+Dispatch answers **as the person asking**, never as the workspace. The rules are pure, in
+`src/server/dispatch/access.ts`, and tested in `__tests__/access.test.ts`.
 
-Turning this on is a considered disclosure choice, not a convenience toggle.
+- **The asker must be a Foundry member.** Their Slack profile email is matched to an active
+  membership in this workspace and resolved with their live role and permissions
+  (`resolveEffectiveUserById`). No match, an archived member, or a failed lookup → Dispatch
+  declines and says why.
+- **They need Portal** (`clients`). Dispatch's evidence is Portal data.
+- **Only their clients.** Someone without "Every client" can ask only about clients they can open
+  (`assignedClientIds`, the same rule as the task board). Clients they can't open aren't even
+  candidates for matching, so a question about one reads like an unknown name: Dispatch never
+  confirms a client it won't discuss exists. Questions about a person, or across every client,
+  are refused to them, because both span every client.
+- **Documents follow Docs' rule.** A developer isn't told that a proposal or contract exists.
+- **Where the answer goes.** In a DM, or in the client's own internal channel
+  (`slackInternalChannelId` / legacy `slackChannelId`), the answer is posted in the thread.
+  Anywhere else the people reading may not share the asker's access, so the answer goes to the
+  asker by DM and the thread gets a one-line note.
+- **Slack Connect channels are never answered.** They contain the client. Dispatch fails closed:
+  if `conversations.info` errors or the channel can't be classified, it is treated as external.
+
+Before November 2026 Dispatch matched the asker only for the audit row, so anyone in Gitwork's
+Slack could ask about any client.
 
 ---
 

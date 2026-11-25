@@ -18,7 +18,7 @@
  * question "where are we?" implicitly means.
  */
 
-import { Prisma, type TaskStatus } from "@prisma/client";
+import { Prisma, type DocumentType, type TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { ForemanFinding } from "@/server/foreman/types";
 import type {
@@ -99,6 +99,9 @@ export interface GatherArgs {
   personFilter: { id: string; label: string; email: string } | null;
   config: DispatchConfig;
   now?: Date;
+  /** Document types the asker may see (`allowedDocTypesForUser`). A developer is not shown that a
+   *  proposal or contract exists. Omitted = every type (server callers only). */
+  documentTypes?: DocumentType[];
 }
 
 export async function gatherEvidence(args: GatherArgs): Promise<DispatchEvidence> {
@@ -219,7 +222,11 @@ export async function gatherEvidence(args: GatherArgs): Promise<DispatchEvidence
         },
       }),
       prisma.document.findMany({
-        where: { workspaceId, clientId: subject.id },
+        where: {
+          workspaceId,
+          clientId: subject.id,
+          ...(args.documentTypes ? { documentType: { in: args.documentTypes } } : {}),
+        },
         orderBy: { updatedAt: "desc" },
         take: 5,
         select: {

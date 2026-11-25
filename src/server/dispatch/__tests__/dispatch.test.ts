@@ -130,16 +130,9 @@ describe("resolveDispatchConfig", () => {
     expect(resolveDispatchConfig({ maxEvidenceItems: 1 }).maxEvidenceItems).toBe(3);
   });
 
-  it("only opens external channels on an explicit boolean true", () => {
-    expect(resolveDispatchConfig({}).allowExternalChannels).toBe(false);
-    expect(resolveDispatchConfig({ allowExternalChannels: true }).allowExternalChannels).toBe(true);
-    // A truthy non-boolean must NOT open internal state to a client-facing channel.
-    expect(
-      resolveDispatchConfig({ allowExternalChannels: "yes" as unknown as boolean }).allowExternalChannels,
-    ).toBe(false);
-    expect(
-      resolveDispatchConfig({ allowExternalChannels: 1 as unknown as boolean }).allowExternalChannels,
-    ).toBe(false);
+  it("ignores the retired Slack Connect switch, whatever is stored", () => {
+    const stored = { allowExternalChannels: true } as unknown as Record<string, unknown>;
+    expect("allowExternalChannels" in resolveDispatchConfig(stored)).toBe(false);
   });
 });
 

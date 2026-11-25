@@ -384,13 +384,14 @@ src/
       synthesizer.ts              ← Turn/session/final report synthesis
       types.ts                    ← Shared agent types (AiConfig etc.)
     dispatch/                     ← Dispatch: the Slack-resident coordinator (§36)
+      access.ts                   ← PURE who may ask, about which client, and where it's posted (answers AS THE ASKER; docs/dispatch.md)
       resolve.ts                  ← PURE question → subject (client/person/workspace) resolution
       evidence.ts                 ← Deterministic bounded evidence pack + deriveBlindSpots (no AI)
       answer.ts                   ← Pure no-AI floor + ONE cached light-tier phrasing call
       respond.ts                  ← Orchestrator: gates → resolve → gather → answer
       config.ts / types.ts        ← resolveDispatchConfig + DISPATCH_DEFAULTS
     slack/
-      events.ts                   ← Events API handler (loop guard, dedupe, external-channel gate)
+      events.ts                   ← Events API handler (loop guard, dedupe, Slack Connect refused, asker → Foundry member)
     support.ts                    ← Care/Support CRUD (clients, tickets, convos, workflow rules)
     codeclear.ts                  ← Candidate management + default payloads
     codeclear-analysis.ts         ← GitHub code analysis runner
