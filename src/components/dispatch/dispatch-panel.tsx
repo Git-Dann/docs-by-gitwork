@@ -15,12 +15,16 @@ import {
   ChatBubbleLeftRightIcon,
   CheckIcon,
   ClipboardDocumentIcon,
+  ChevronUpDownIcon,
+  ClockIcon,
   PaperAirplaneIcon,
   PaperClipIcon,
   PlusIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
 import { Markdown } from "@/lib/markdown";
+import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import { cn } from "@/lib/format";
 import { viewAsHeaders, apiFetch } from "@/lib/api";
 import { useClientList } from "@/hooks/use-proposals";
@@ -325,41 +329,63 @@ export function DispatchPanel() {
 
         {/* Which client this chat is about */}
         <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-2)] px-4 py-2.5">
-          <label htmlFor="dispatch-client" className="text-[11px] font-medium uppercase tracking-[0.8px] text-[var(--text-4)]" style={MONO}>
+          <span aria-hidden className="text-[11px] font-medium uppercase tracking-[0.8px] text-[var(--text-4)]" style={MONO}>
             Client
-          </label>
-          <select
-            id="dispatch-client"
-            className="app-select-compact min-w-0 flex-1 text-[16px] sm:text-sm"
+          </span>
+          {/* Foundry's own dropdown, not a native <select>: macOS opens a native menu with the
+              chosen row over the box, so a long client list ran off the top of the window. This
+              one always opens below, inside the window (anchor + portal). */}
+          <Listbox
             value={clientSlug}
             disabled={busy}
-            onChange={(e) => {
-              setClientSlug(e.target.value);
+            onChange={(slug: string) => {
+              setClientSlug(slug);
               setFocusTaskId(null);
               reset();
             }}
           >
-            <option value="">Pick a client…</option>
-            {clientOptions.map((c) => (
-              <option key={c.id} value={c.slug}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          {history.length > 0 ? (
-            <select
-              aria-label="Earlier chats"
-              className="app-select-compact w-[130px] text-[16px] sm:text-sm"
-              value=""
-              onChange={(e) => e.target.value && void loadConversation(e.target.value)}
+            <ListboxButton
+              aria-label={`Client: ${clientName ?? "none picked"}`}
+              className="app-select-compact flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-[16px] sm:text-sm"
+              style={{ backgroundImage: "none" }}
             >
-              <option value="">Earlier chats</option>
-              {history.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.title}
-                </option>
+              <span className={cn("truncate", !clientName && "text-[var(--text-4)]")}>{clientName ?? "Pick a client…"}</span>
+              <ChevronUpDownIcon className="h-4 w-4 shrink-0 text-[var(--text-4)]" aria-hidden />
+            </ListboxButton>
+            <ListboxOptions
+              anchor={{ to: "bottom start", gap: 4 }}
+              className={cn(menuPanel, "z-[70] max-h-[min(60vh,360px)] w-[var(--button-width)] overflow-y-auto")}
+            >
+              {clientOptions.map((c) => (
+                <ListboxOption key={c.id} value={c.slug} className={cn(menuItem, "justify-between gap-2 data-[selected]:font-medium data-[selected]:text-[var(--text-1)]")}>
+                  {({ selected }) => (
+                    <>
+                      <span className="truncate">{c.name}</span>
+                      {selected ? <CheckIcon className="h-4 w-4 shrink-0 text-[var(--brand-700)]" aria-hidden /> : null}
+                    </>
+                  )}
+                </ListboxOption>
               ))}
-            </select>
+            </ListboxOptions>
+          </Listbox>
+          {history.length > 0 ? (
+            <Listbox value="" onChange={(id: string) => id && void loadConversation(id)}>
+              <ListboxButton
+                aria-label="Earlier chats"
+                title="Earlier chats"
+                className="flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2 py-1.5 text-xs text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+              >
+                <ClockIcon className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">Earlier</span>
+              </ListboxButton>
+              <ListboxOptions anchor={{ to: "bottom end", gap: 4 }} className={cn(menuPanel, "z-[70] max-h-[min(60vh,360px)] w-72 overflow-y-auto")}>
+                {history.map((h) => (
+                  <ListboxOption key={h.id} value={h.id} className={menuItem}>
+                    <span className="truncate">{h.title}</span>
+                  </ListboxOption>
+                ))}
+              </ListboxOptions>
+            </Listbox>
           ) : null}
         </div>
 
