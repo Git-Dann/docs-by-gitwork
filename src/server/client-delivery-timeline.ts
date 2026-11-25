@@ -51,7 +51,7 @@ const TASK_SELECT = {
   createdAt: true,
   assignees: { select: { name: true } },
   assignee: { select: { name: true } },
-  release: { select: { version: true, name: true } },
+  release: { select: { version: true, name: true, changelogVersion: true, client: { select: { releasesUseChangelog: true } } } },
   featureBlock: { select: { name: true } },
 } as const satisfies Prisma.TaskSelect;
 
@@ -165,6 +165,7 @@ export async function loadDeliveryTimeline(
         select: {
           version: true,
           name: true,
+          changelogVersion: true, client: { select: { releasesUseChangelog: true } },
           endDate: true,
           tasks: { where: { archivedAt: null, parentId: null }, select: { status: true } },
         },

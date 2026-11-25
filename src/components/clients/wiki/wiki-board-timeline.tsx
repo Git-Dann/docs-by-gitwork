@@ -77,7 +77,7 @@ export function WikiBoardTimeline({
   readOnly: (card: WikiBoardCard) => boolean;
   onOpen: (id: string) => void;
   /** The team can move a release's dates from here. Absent for the client. Dates are YYYY-MM-DD. */
-  onEditDates?: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null }) => Promise<void>;
+  onEditDates?: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null; changelogVersion?: string | null }) => Promise<void>;
 }) {
   const [scale, setScale] = useState<TimelineScale>("weeks");
   const today = useMemo(() => dayOf(new Date()), []);
@@ -503,13 +503,13 @@ function EditDates({
   onSave,
 }: {
   release: WikiBoardRelease;
-  onSave: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null }) => Promise<void>;
+  onSave: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null; changelogVersion?: string | null }) => Promise<void>;
 }) {
   return (
     <Popover className="shrink-0">
       <PopoverButton
         className="app-button app-button-tertiary app-button-icon-sm text-[var(--text-3)] opacity-60 group-hover/rel:opacity-100 data-[open]:opacity-100"
-        title="Change this release's dates"
+        title="Change this release's dates or changelog version"
         aria-label={`Change the dates of ${release.label}`}
         data-timeline-edit-dates
       >
@@ -528,11 +528,12 @@ function EditDatesForm({
   close,
 }: {
   release: WikiBoardRelease;
-  onSave: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null }) => Promise<void>;
+  onSave: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null; changelogVersion?: string | null }) => Promise<void>;
   close: () => void;
 }) {
   const [start, setStart] = useState(inputDate(release.startDate));
   const [end, setEnd] = useState(inputDate(release.endDate));
+  const [cv, setCv] = useState(release.changelogVersion ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   async function save() {
@@ -540,7 +541,7 @@ function EditDatesForm({
     setError(null);
     setSaving(true);
     try {
-      await onSave(release, { startDate: start || null, endDate: end || null });
+      await onSave(release, { startDate: start || null, endDate: end || null, changelogVersion: cv.trim() || null });
       close();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't save the dates.");
@@ -560,6 +561,17 @@ function EditDatesForm({
       <label className="block">
         <span className="widget-data-label text-[var(--text-4)]">Ends</span>
         <input type="date" className="app-input mt-1 h-9 w-full px-2 text-[16px] sm:text-sm" value={end} onChange={(e) => setEnd(e.target.value)} />
+      </label>
+      <label className="block">
+        <span className="widget-data-label text-[var(--text-4)]">Changelog version</span>
+        <input
+          className="app-input mt-1 h-9 w-full px-2 text-[16px] sm:text-sm"
+          value={cv}
+          maxLength={40}
+          placeholder="e.g. 2.0.4"
+          onChange={(e) => setCv(e.target.value)}
+        />
+        <span className="mt-1 block text-[11px] text-[var(--text-4)]">Shown instead of the release&rsquo;s own number when the client numbers releases by the changelog.</span>
       </label>
       {error ? <p className="text-[12px] text-red-700">{error}</p> : null}
       <div className="flex justify-end gap-2">

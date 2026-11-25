@@ -134,7 +134,7 @@ async function buildProjects(
   const [releases, blocks] = await Promise.all([
     prisma.clientRelease.findMany({
       where: { workspaceId, clientId: { in: clientIds }, projectId: { in: [...liveIds] } },
-      select: { id: true, version: true, name: true, projectId: true, orderKey: true },
+      select: { id: true, version: true, name: true, projectId: true, orderKey: true, changelogVersion: true, client: { select: { releasesUseChangelog: true } } },
       orderBy: { orderKey: "asc" },
     }),
     prisma.featureBlock.findMany({

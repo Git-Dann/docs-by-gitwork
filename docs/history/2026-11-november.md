@@ -2412,3 +2412,24 @@ Anthropic Admin key now shows only **Disconnect** (no field or Save beside it; t
 disconnect and add the new one), and saving one thing spins only its own button: the card used
 one shared "saving" flag, so pressing Save token spun every button on the page.
 `dispatch-settings-panel.test.tsx` covers both.
+
+---
+
+## 158. Recent Changes (November 2026) — Releases numbered by the changelog
+
+Big Wedge's planning site numbered its releases loosely ("v2.0.0" four times, a "v1.0.0" in
+November) while the app's changelog went 2.0.0 → 2.0.2 → 2.0.3 → 2.0.4. A client can now be shown
+by the changelog instead (Dan, Nov 2026: a toggle for every client, on for Wedge).
+
+- **Data (additive):** `ClientRelease.changelogVersion` ("2.0.4") and
+  `WorkspaceClient.releasesUseChangelog` (default false).
+- **One rule, `shownVersion` (`src/lib/tasks/releases.ts`):** the changelog version (with a "v")
+  when the client's switch is on and one is set, else the release's own version. `releaseLabel`
+  and `compareReleases` use it, so labels and order follow everywhere: the task board, the board's
+  Timeline, the client's wiki, the public timeline link, Delivery and Projects. Rows are read with
+  `changelogVersion` + `client.releasesUseChangelog`; DTOs carry the decided `displayVersion`.
+- **Where it's set:** the **Releases** dialog has "Number releases by the changelog"
+  (`GET`/`PUT /api/releases/numbering`, same access as changing a release) and a Changelog version
+  field when editing a release; the Timeline's date editor has the field too.
+- With the switch on and no changelog version set, a release shows its own number, so turning it on
+  changes nothing until versions are filled in.

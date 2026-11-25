@@ -739,7 +739,7 @@ Every `§N` in this codebase resolves here. The bodies live under `docs/history/
 month, numbers unchanged: a section is cited from the code that it explains, so renumbering
 would break the one thing an index exists to preserve.
 
-⚠️ **Seven numbers are used twice** (§38, §39, §58, §60, §61, §62, §116), from the months they were written in.
+⚠️ **Eight numbers are used twice** (§38, §39, §58, §60, §61, §62, §116, §158), from the months they were written in.
 Both are listed below, with their titles, so a citation that is already ambiguous can at least
 be resolved by reading. Do not renumber either one.
 
@@ -913,5 +913,6 @@ be resolved by reading. Do not renumber either one.
 - **§155** — Board: sign-off without a reload, and a Timeline that shows what's late
 - **§156** — Dispatch reads code and designs, watches the budget
 - **§157** — Dispatch answers with Haiku unless it needs Sonnet
-- **§158** — Dispatch's first live test, and what it changed
+- **§158** — Dispatch's first live test, and what it changed ⚠️ *(one of two §158)*
+- **§158** — Releases numbered by the changelog ⚠️ *(one of two §158)*
 - **§159** — The AI budget reads Anthropic's own billing, and sits in the sidebar

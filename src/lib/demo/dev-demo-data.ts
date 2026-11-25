@@ -14,7 +14,7 @@
  */
 
 import { countCourseRequests } from "@/lib/course-request-counts";
-import { releaseLabel, sortReleases } from "@/lib/tasks/releases";
+import { releaseLabel, shownVersion, sortReleases } from "@/lib/tasks/releases";
 import { boardLanes, laneKeyFor, parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
 import { cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
 import { doneLanePage, layoutBoard } from "@/lib/wiki-board-layout";
@@ -2682,13 +2682,26 @@ function releaseCounts(id: string) {
   return { taskCount: ts.length, doneCount: ts.filter((t) => t.status === "DONE").length };
 }
 let demoReleases: ReleaseDTO[] = [
-  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, docUrl: "https://docs.example.com/northwind/v1.4.0", projectId: "proj-platform", ...releaseCounts(REL.v140.id) },
-  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, docUrl: null, projectId: "proj-platform", ...releaseCounts(REL.v150.id) },
-  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, docUrl: null, projectId: null, ...releaseCounts(REL.v200.id) },
+  { ...REL.v140, clientId: WIKI_CLIENT.id, startDate: atDays(-21), endDate: atDays(6), orderKey: 1, docUrl: "https://docs.example.com/northwind/v1.4.0", projectId: "proj-platform", changelogVersion: null, displayVersion: REL.v140.version, ...releaseCounts(REL.v140.id) },
+  { ...REL.v150, clientId: WIKI_CLIENT.id, startDate: atDays(3), endDate: atDays(20), orderKey: 2, docUrl: null, projectId: "proj-platform", changelogVersion: null, displayVersion: REL.v150.version, ...releaseCounts(REL.v150.id) },
+  { ...REL.v200, clientId: WIKI_CLIENT.id, startDate: null, endDate: null, orderKey: 3, docUrl: null, projectId: null, changelogVersion: null, displayVersion: REL.v200.version, ...releaseCounts(REL.v200.id) },
 ];
+/** The demo client's "number releases by the changelog" setting (§158). */
+let demoUseChangelog = false;
+const withDisplay = (r: ReleaseDTO): ReleaseDTO => ({
+  ...r,
+  displayVersion: shownVersion({ ...r, displayVersion: null, client: { releasesUseChangelog: demoUseChangelog } }),
+});
 
 function demoReleasesApi(pathname: string, init?: { method?: string; body?: unknown }): unknown {
   const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Partial<ReleaseDTO>) : {};
+  if (pathname.startsWith("/api/releases/numbering")) {
+    if (init?.method === "PUT") {
+      demoUseChangelog = Boolean((body as { useChangelog?: boolean }).useChangelog);
+      demoReleases = demoReleases.map(withDisplay);
+    }
+    return { useChangelog: demoUseChangelog };
+  }
   const one = pathname.match(/^\/api\/releases\/([^/?#]+)$/);
   if (one) {
     const id = decodeURIComponent(one[1]);
@@ -2696,7 +2709,7 @@ function demoReleasesApi(pathname: string, init?: { method?: string; body?: unkn
       demoReleases = demoReleases.filter((r) => r.id !== id);
       return { ok: true };
     }
-    demoReleases = demoReleases.map((r) => (r.id === id ? { ...r, ...body, id } : r));
+    demoReleases = demoReleases.map((r) => (r.id === id ? withDisplay({ ...r, ...body, id }) : r));
     return demoReleases.find((r) => r.id === id) ?? null;
   }
   if (init?.method === "POST") {
@@ -2710,6 +2723,8 @@ function demoReleasesApi(pathname: string, init?: { method?: string; body?: unkn
       orderKey: demoReleases.length + 1,
       docUrl: body.docUrl ?? null,
       projectId: body.projectId ?? null,
+      changelogVersion: body.changelogVersion ?? null,
+      displayVersion: String(body.version ?? "v0.0.0"),
       taskCount: 0,
       doneCount: 0,
     };

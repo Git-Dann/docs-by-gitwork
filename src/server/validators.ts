@@ -1376,6 +1376,8 @@ export const releaseInputSchema = z
     endDate: isoDateString.nullable().optional(),
     docUrl: releaseDocUrl,
     projectId: z.string().cuid().nullable().optional(),
+    /** The changelog version this release ships as ("2.0.4"); '' or null clears it (§158). */
+    changelogVersion: z.string().trim().max(RELEASE_LIMITS.version).nullable().optional(),
   })
   .refine((v) => !v.startDate || !v.endDate || new Date(v.endDate) >= new Date(v.startDate), {
     message: "The end date must be on or after the start date",
