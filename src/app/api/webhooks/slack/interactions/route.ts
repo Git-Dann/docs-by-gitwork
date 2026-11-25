@@ -20,15 +20,16 @@
  * `Workspace.slackTeamId`.
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { apiError, apiOk } from "@/lib/api-response";
 import { decryptNullable } from "@/lib/encryption";
 import { prisma } from "@/lib/prisma";
 import { verifySlackSignature } from "@/server/slack/signature";
 import { handleInteraction, parseInteractionBody } from "@/server/slack/interactions";
+import { isDispatchSlackAction } from "@/lib/dispatch/slack-format";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 10;
+export const maxDuration = 60;
 
 async function resolveSigningSecret(teamId: string | undefined): Promise<string | null> {
   // Prefer a workspace whose Slack team id matches the payload; fall back to
@@ -78,6 +79,13 @@ export async function POST(request: NextRequest) {
 
   if (!peeked) {
     return apiError("Malformed Slack payload.", 400);
+  }
+
+  // Dispatch Confirm/Cancel opens no modal, and creating tasks can outlast Slack's 3-second
+  // window, so it runs after the 200 instead.
+  if (peeked.type === "block_actions" && peeked.actions?.some((a) => isDispatchSlackAction(a.action_id))) {
+    after(() => handleInteraction(peeked).catch((err) => console.warn("[slack] dispatch decision failed", err)));
+    return apiOk({ status: "received" });
   }
 
   // 3. Run the handler SYNCHRONOUSLY so views.open finishes before the

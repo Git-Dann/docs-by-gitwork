@@ -8,6 +8,7 @@ import { useClientList } from "@/hooks/use-proposals";
 import { useTasks } from "@/hooks/use-tasks";
 import { MyDay } from "@/components/tasks/my-day";
 import { NewTaskButton } from "@/components/tasks/new-task-button";
+import { AskDispatchIcon } from "@/components/dispatch/ask-dispatch";
 import { cn, formatDate } from "@/lib/format";
 import type { TaskStatus } from "@/types/tasks";
 import { Skeleton } from "@/components/ui/motion/skeleton";
@@ -251,6 +252,7 @@ export function DevOverview() {
                       <span className="truncate text-sm font-medium text-[var(--text-1)]" title={c.name}>{c.name}</span>
                       <ArrowRightIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
                     </Link>
+                    <AskDispatchIcon clientSlug={c.slug} clientName={c.name} />
                     <NewTaskButton clientId={c.id} clientName={c.name} />
                   </div>
                 ))}

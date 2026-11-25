@@ -24,6 +24,8 @@ import { cn } from "@/lib/format";
 import { isCommandMenuShortcut, rankCommands, type CommandItem } from "@/lib/command-menu";
 import { normaliseQuery, type SearchGroup, type SearchHit, type SearchResponse } from "@/lib/global-search";
 import { apiFetch } from "@/lib/api";
+import { openDispatch } from "@/lib/dispatch/open";
+import { useDispatchAvailable } from "@/hooks/use-dispatch";
 
 const SEARCH_ICON: Record<SearchGroup, React.ComponentType<{ className?: string }>> = {
   Tasks: CheckCircleIcon,
@@ -113,6 +115,7 @@ export function CommandMenu({
   const [everOpened, setEverOpened] = useState(false);
 
   const clients = useClientList(undefined, { enabled: everOpened && canSeeClients });
+  const dispatchAvailable = useDispatchAvailable();
   const [query, setQuery] = useState("");
   const searchQ = normaliseQuery(useDebounced(query, 220));
   const search = useQuery({
@@ -178,6 +181,16 @@ export function CommandMenu({
         href: `/app/docs/${d.id}`,
       });
     }
+    if (dispatchAvailable) {
+      out.push({
+        id: "action:dispatch",
+        group: "Actions",
+        label: "Ask Dispatch",
+        hint: "Ask Claude about a client you work on",
+        keywords: "dispatch ask ai claude question help",
+        action: "ask-dispatch",
+      });
+    }
     out.push({
       id: "action:theme",
       group: "Actions",
@@ -186,7 +199,7 @@ export function CommandMenu({
       action: "toggle-theme",
     });
     return out;
-  }, [pages, clients.data, docs.data, resolved]);
+  }, [pages, clients.data, docs.data, resolved, dispatchAvailable]);
 
   const items = useMemo<EasyCommandItem[]>(() => {
     const iconFor = (item: CommandItem) => {
@@ -196,6 +209,7 @@ export function CommandMenu({
       }
       if (item.group === "Clients") return BuildingOffice2Icon;
       if (item.group === "Documents") return DocumentTextIcon;
+      if (item.action === "ask-dispatch") return ChatBubbleLeftRightIcon;
       return resolved === "dark" ? SunIcon : MoonIcon;
     };
     const recordItems: EasyCommandItem[] = hits.map((h) => {
@@ -216,17 +230,21 @@ export function CommandMenu({
       const Icon = iconFor(item);
       return {
         id: item.id,
-        title: item.label,
+        title: item.action === "ask-dispatch" && query.trim() ? `Ask Dispatch: “${query.trim()}”` : item.label,
         category: CATEGORY_LABEL[item.group],
         icon: <Icon aria-hidden className="h-4 w-4 shrink-0 text-[var(--text-3)]" />,
         onSelect: () => {
           setOpen(false);
           if (item.action === "toggle-theme") setMode(resolved === "dark" ? "light" : "dark");
+          else if (item.action === "ask-dispatch") {
+            const m = /^\/app\/portal\/([^/?#]+)/.exec(window.location.pathname);
+            openDispatch({ clientSlug: m?.[1], prompt: query.trim() });
+          }
           else if (item.href) router.push(mapHref(item.href));
         },
       };
     }), ...recordItems];
-  }, [commands, hits, pages, resolved, setMode, router, mapHref]);
+  }, [commands, hits, pages, resolved, setMode, router, mapHref, query]);
 
   // Foundry's ranking, not EasyUI's substring filter: grouped, capped, typo-tolerant, and clients
   // and documents only once you type.
@@ -234,6 +252,9 @@ export function CommandMenu({
     (list: EasyCommandItem[], query: string) => {
       const byId = new Map(list.map((i) => [i.id, i]));
       const local = rankCommands(commands, query).flatMap((c) => byId.get(c.id) ?? []);
+      // With words typed, "Ask Dispatch" is always offered (last), carrying the words as the question.
+      const ask = byId.get("action:dispatch");
+      if (ask && query.trim() && !local.includes(ask)) local.push(ask);
       // Server hits already matched every word; they follow, in the server's order.
       const records = query.trim() ? hits.flatMap((h) => byId.get(h.id) ?? []) : [];
       return [...local, ...records];

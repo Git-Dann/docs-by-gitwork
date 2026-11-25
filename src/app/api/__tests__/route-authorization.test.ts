@@ -253,6 +253,10 @@ const VERDICTS: Record<string, string> = {
   "POST agents/status/route.ts":
     "The write half of the same beacon. In-memory, workspace-scoped, dropped on restart — there is no stored state for a permission to protect.",
 
+  // --- The caller travels inside a scope object. ---
+  "POST dispatch/chat/route.ts":
+    "runTurn is handed the scope openScope built from the signed-in caller after assertAssistantAvailable, and every tool it runs re-checks assertClientInScope against scope.user, so the caller is carried even though the argument isn't named user.",
+
   // --- Any member may read their own workspace's own settings. ---
   "GET workspace/branding/route.ts":
     "The workspace's own logo and colours, scoped to the caller's workspace. ⚠️ Deliberately NOT gated: the document cover renders it, including on a client's share link, so a session gate here would break the page the client sees.",

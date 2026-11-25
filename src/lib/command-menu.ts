@@ -23,7 +23,7 @@ export interface CommandItem {
   keywords?: string;
   href?: string;
   /** Actions run instead of navigating. */
-  action?: "toggle-theme";
+  action?: "toggle-theme" | "ask-dispatch";
 }
 
 /** How many results each group shows while searching. Empty query shows pages and actions only. */

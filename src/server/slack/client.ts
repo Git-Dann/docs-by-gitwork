@@ -136,6 +136,14 @@ export function postMessage(token: string, input: PostMessageInput): Promise<Sla
   });
 }
 
+/** chat.postEphemeral: a message only `user` sees, in a channel they are in. */
+export function postEphemeral(
+  token: string,
+  input: { channel: string; user: string; text: string; thread_ts?: string },
+): Promise<SlackResponse> {
+  return call(token, "chat.postEphemeral", input);
+}
+
 export interface UpdateMessageInput {
   channel: string;
   ts: string;

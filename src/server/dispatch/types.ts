@@ -41,6 +41,12 @@ export interface DispatchConfig {
   maxEvidenceItems: number;
   /** Per-channel question budget per rolling hour. A chatty agent is an unbounded cost. */
   perChannelPerHour: number;
+  /**
+   * The release switch for Dispatch as the team assistant (the in-app panel, and Slack answering
+   * with tools). Off until Dan switches it on; Super Admins can use the panel while it's off,
+   * for testing. Only a literal `true` turns it on.
+   */
+  assistantEnabled: boolean;
   // There is deliberately no switch for Slack Connect (externally shared) channels. Those
   // channels contain the client, and Dispatch never answers in them (respond.ts). It used to be
   // an `allowExternalChannels` option; a stored value is now ignored.
@@ -51,6 +57,7 @@ export const DISPATCH_DEFAULTS: DispatchConfig = {
   recentDays: 7,
   maxEvidenceItems: 12,
   perChannelPerHour: 20,
+  assistantEnabled: false,
 };
 
 // ─── Evidence ───────────────────────────────────────────────────────────────

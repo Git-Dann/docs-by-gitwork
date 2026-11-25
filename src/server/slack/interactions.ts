@@ -14,7 +14,14 @@
 
 import { columnNameFor, parseBoardColumns } from "@/lib/tasks/board-columns";
 import { prisma } from "@/lib/prisma";
-import { getSlackBotToken, openView, updateMessage, deleteMessage } from "./client";
+import { getSlackBotToken, openView, updateMessage, deleteMessage, postEphemeral } from "./client";
+import { resolveSlackAsker } from "./asker";
+import {
+  DISPATCH_SLACK_ACTIONS,
+  isDispatchSlackAction,
+  markActionDecided,
+  type SlackBlock as DispatchSlackBlock,
+} from "@/lib/dispatch/slack-format";
 import {
   SLACK_ACTIONS,
   buildAddCommentModal,
@@ -212,10 +219,64 @@ async function handlePmUpdatesDelete(
   await prisma.slackMessageRef.delete({ where: { id: ref.id } }).catch(() => undefined);
 }
 
+/**
+ * Confirm or Cancel on a change Dispatch proposed. Honoured only for the Foundry member the
+ * pressing Slack account resolves to, and only if that member is the one the proposal was made
+ * for: decideAction refuses anyone else and re-checks every rule against the data as it is now.
+ */
+async function handleDispatchDecision(
+  payload: SlackInteractionPayload,
+  action: NonNullable<SlackInteractionPayload["actions"]>[number],
+): Promise<void> {
+  const actionId = action.value;
+  const channel = payload.channel?.id;
+  const slackUser = payload.user?.id;
+  if (!actionId || !channel || !slackUser) return;
+  const ws = await resolveWorkspaceForPayload(payload);
+  if (!ws) return;
+  const tell = (text: string) => postEphemeral(ws.token, { channel, user: slackUser, text }).catch(() => undefined);
+
+  const asker = await resolveSlackAsker(ws.token, ws.workspaceId, slackUser);
+  if (!asker) {
+    await tell("I couldn't match your Slack account to Foundry, so I can't act on this.");
+    return;
+  }
+  const { decideAction, ActionNotFoundError } = await import("@/server/dispatch/assistant/actions");
+  let outcome: string;
+  try {
+    const decision = action.action_id === DISPATCH_SLACK_ACTIONS.CONFIRM ? "confirm" : "cancel";
+    const result = await decideAction(asker, actionId, decision);
+    outcome =
+      result.status === "done"
+        ? `Done: ${result.message}`
+        : result.status === "cancelled"
+          ? result.message === "Already decided." ? "Already decided." : "Cancelled. Nothing was changed."
+          : `Not done: ${result.message}`;
+  } catch (err) {
+    if (err instanceof ActionNotFoundError) {
+      await tell("Only the person who asked Dispatch can confirm or cancel this.");
+      return;
+    }
+    await tell("That didn't work. Try again from Foundry.");
+    return;
+  }
+  const blocks = (payload.message?.blocks ?? []) as DispatchSlackBlock[];
+  const ts = payload.message?.ts;
+  if (ts && blocks.length) {
+    await updateMessage(ws.token, { channel, ts, blocks: markActionDecided(blocks, actionId, outcome) }).catch(() => undefined);
+  } else {
+    await tell(outcome);
+  }
+}
+
 async function handleBlockAction(
   payload: SlackInteractionPayload,
   action: NonNullable<SlackInteractionPayload["actions"]>[number],
 ): Promise<void> {
+  if (isDispatchSlackAction(action.action_id)) {
+    await handleDispatchDecision(payload, action);
+    return;
+  }
   // PM-updates delete carries just a ref id in `value` — resolve it before the
   // task-based parsing below (which expects "<messageRefId>:<taskId>").
   if (action.action_id === SLACK_ACTIONS.PM_UPDATES_DELETE) {
