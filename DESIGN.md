@@ -1085,8 +1085,11 @@ The pattern for any chat surface in Foundry. Source: `src/components/dispatch/di
   `openDispatch({ clientSlug?, taskId?, prompt? })`. Full width below `sm`, `max-w-[460px]` above,
   `motion-sheet-right`, `--surface-0` with a `--border-2` left hairline. The backdrop dims on a
   phone and is transparent from `lg`, so the page stays readable beside it.
-- **Header** is a `widget-header` with a mono label, then a row with the client picker
-  (`app-select-compact`, only the person's own clients) and past chats.
+- **Header** is a `widget-header` with a mono label, then a row with the client picker (only the
+  person's own clients) and past chats. Both are Headless UI `Listbox`es anchored below their
+  button with the house `menuPanel` (z-[70], above the sheet), **not native `<select>`s**: macOS
+  opens a native menu with the chosen row over the box, so a long list ran off the top of the
+  window. Anything inside a fixed sheet or near the top of the window should use the same.
 - **The person's message** is a `--surface-1` bubble, `rounded-[10px]`, inset `ml-8`. **Dispatch's
   answer is not a bubble**: plain text at full width, because answers are long and are read, not
   glanced at. Tool progress ("Reading the board…") is a quiet `--text-3` line while it works.
