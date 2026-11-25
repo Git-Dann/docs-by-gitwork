@@ -2456,3 +2456,14 @@ From Dan and Syed testing Dispatch, 25 Nov.
   to Foundry itself. The manifest now turns on the app's Messages tab (`app_home`), which must
   also be switched on in the Slack app's App Home settings.
 - Tests: `assistant/__tests__/my-work.test.ts`.
+
+**Follow-up (25 Nov): why Slack couldn't tell who was asking.** Dan's first direct message to
+Foundry got "I couldn't match your Slack account", although his Slack email matched and the app
+had `users:read.email`. Foundry sent every Slack call as JSON, and Slack's read methods
+(`users.info`, `conversations.info`, `conversations.list`) don't accept a JSON body, so the user
+id never arrived. Those three now go form-encoded (`call(..., { form: true })` in
+`src/server/slack/client.ts`; writes stay JSON for blocks), and an unmatched asker is told why:
+the Slack error and the missing permission it names, no email from Slack, or no Foundry account
+for that email (`resolveSlackAskerDetailed`, `askerProblemMessage`). The same JSON problem would
+have made `conversations.info` fail in every channel, which Dispatch treats as "maybe shared with
+the client" and refuses. Test: `src/server/slack/__tests__/read-methods-form.test.ts`.
