@@ -35,6 +35,8 @@ interface DispatchSettings {
   };
 }
 
+type PendingAction = "switch" | "budget" | "figma" | "figma-off" | "anthropic" | "anthropic-off";
+
 type Patch = Partial<{
   assistantEnabled: boolean;
   budgetUsd: number;
@@ -62,10 +64,13 @@ export function DispatchSettingsPanel() {
   const [since, setSince] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [adminKey, setAdminKey] = useState("");
+  /** The one control being saved: only its button shows a spinner (they used to all spin). */
+  const [pending, setPending] = useState<PendingAction | null>(null);
 
   if (isLoading || !data) return <LoadingState label="Loading Dispatch…" className="py-8" />;
 
-  async function apply(patch: Patch, done: string) {
+  async function apply(patch: Patch, done: string, action: PendingAction) {
+    setPending(action);
     try {
       await save.mutateAsync(patch);
       success(done);
@@ -73,6 +78,8 @@ export function DispatchSettingsPanel() {
     } catch (e) {
       error("Not saved", e instanceof Error ? e.message : undefined);
       return false;
+    } finally {
+      setPending(null);
     }
   }
 
@@ -93,9 +100,9 @@ export function DispatchSettingsPanel() {
           </div>
           <Switch
             checked={data.assistantEnabled}
-            disabled={save.isPending}
+            disabled={pending === "switch"}
             label="Dispatch for the team"
-            onChange={(next) => void apply({ assistantEnabled: next }, next ? "Dispatch is on for the team" : "Dispatch is off for the team")}
+            onChange={(next) => void apply({ assistantEnabled: next }, next ? "Dispatch is on for the team" : "Dispatch is off for the team", "switch")}
           />
         </div>
       </SettingsCard>
@@ -133,7 +140,7 @@ export function DispatchSettingsPanel() {
             e.preventDefault();
             const n = Number(budgetValue);
             if (!Number.isFinite(n) || n < 1) return error("Not saved", "The budget must be at least $1.");
-            void apply({ budgetUsd: n, budgetSince: sinceValue || null }, "Budget saved").then((ok) => {
+            void apply({ budgetUsd: n, budgetSince: sinceValue || null }, "Budget saved", "budget").then((ok) => {
               if (ok) {
                 setBudget(null);
                 setSince(null);
@@ -157,7 +164,7 @@ export function DispatchSettingsPanel() {
               max={new Date().toISOString().slice(0, 10)}
             />
           </div>
-          <Button type="submit" variant="secondary" size="sm" loading={save.isPending}>
+          <Button type="submit" variant="secondary" size="sm" loading={pending === "budget"}>
             Save budget
           </Button>
         </form>
@@ -170,29 +177,30 @@ export function DispatchSettingsPanel() {
           read-only. Make it from an account that can see the clients&apos; files. It is checked against one of those files,
           stored encrypted and never shown again.
         </p>
-        <form
-          className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!token.trim()) return;
-            void apply({ figmaToken: token.trim() }, "Figma connected").then((ok) => ok && setToken(""));
-          }}
-        >
-          <label className="block min-w-0 flex-1">
-            <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">{data.figmaConnected ? "Replace token" : "Personal access token"}</span>
-            <input className="app-input" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="figd_…" />
-          </label>
-          <div className="flex gap-2">
-            <Button type="submit" variant="secondary" size="sm" loading={save.isPending} disabled={!token.trim()}>
+        {data.figmaConnected ? (
+          <ConnectedRow
+            text="Connected. To use a different token, disconnect this one and add the new one."
+            loading={pending === "figma-off"}
+            onDisconnect={() => void apply({ figmaToken: null }, "Figma disconnected", "figma-off")}
+          />
+        ) : (
+          <form
+            className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!token.trim()) return;
+              void apply({ figmaToken: token.trim() }, "Figma connected", "figma").then((ok) => ok && setToken(""));
+            }}
+          >
+            <label className="block min-w-0 flex-1">
+              <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">Personal access token</span>
+              <input className="app-input" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="figd_…" />
+            </label>
+            <Button type="submit" variant="secondary" size="sm" loading={pending === "figma"} disabled={!token.trim()}>
               Save token
             </Button>
-            {data.figmaConnected ? (
-              <Button type="button" variant="tertiary" size="sm" disabled={save.isPending} onClick={() => void apply({ figmaToken: null }, "Figma disconnected")}>
-                Disconnect
-              </Button>
-            ) : null}
-          </div>
-        </form>
+          </form>
+        )}
       </SettingsCard>
 
       <SettingsCard
@@ -208,32 +216,43 @@ export function DispatchSettingsPanel() {
         </p>
         {data.anthropicKeyFromServer ? (
           <p className="mt-3 text-sm text-[var(--text-2)]">Set on the server (ANTHROPIC_ADMIN_KEY), so it&apos;s changed there.</p>
+        ) : data.anthropicConnected ? (
+          <ConnectedRow
+            text="Connected. To use a different key, disconnect this one and add the new one."
+            loading={pending === "anthropic-off"}
+            onDisconnect={() => void apply({ anthropicAdminKey: null }, "Anthropic billing disconnected", "anthropic-off")}
+          />
         ) : (
           <form
             className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
             onSubmit={(e) => {
               e.preventDefault();
               if (!adminKey.trim()) return;
-              void apply({ anthropicAdminKey: adminKey.trim() }, "Anthropic billing connected").then((ok) => ok && setAdminKey(""));
+              void apply({ anthropicAdminKey: adminKey.trim() }, "Anthropic billing connected", "anthropic").then((ok) => ok && setAdminKey(""));
             }}
           >
             <label className="block min-w-0 flex-1">
-              <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">{data.anthropicConnected ? "Replace Admin key" : "Admin key"}</span>
+              <span className="mb-1 block text-xs font-medium text-[var(--text-2)]">Admin key</span>
               <input className="app-input" type="password" autoComplete="off" value={adminKey} onChange={(e) => setAdminKey(e.target.value)} placeholder="sk-ant-admin…" />
             </label>
-            <div className="flex gap-2">
-              <Button type="submit" variant="secondary" size="sm" loading={save.isPending} disabled={!adminKey.trim()}>
-                Save key
-              </Button>
-              {data.anthropicConnected ? (
-                <Button type="button" variant="tertiary" size="sm" disabled={save.isPending} onClick={() => void apply({ anthropicAdminKey: null }, "Anthropic billing disconnected")}>
-                  Disconnect
-                </Button>
-              ) : null}
-            </div>
+            <Button type="submit" variant="secondary" size="sm" loading={pending === "anthropic"} disabled={!adminKey.trim()}>
+              Save key
+            </Button>
           </form>
         )}
       </SettingsCard>
+    </div>
+  );
+}
+
+/** A connected key: what it means, and the one thing to do with it. */
+function ConnectedRow({ text, loading, onDisconnect }: { text: string; loading: boolean; onDisconnect: () => void }) {
+  return (
+    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-[var(--text-2)]">{text}</p>
+      <Button type="button" variant="secondary" size="sm" loading={loading} onClick={onDisconnect}>
+        Disconnect
+      </Button>
     </div>
   );
 }
