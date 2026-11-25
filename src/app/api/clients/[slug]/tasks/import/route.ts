@@ -25,7 +25,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     const clientId = await resolveClientId(user.workspaceId, slug);
     if (!clientId) return apiError("Client not found", 404);
     const body = taskImportSchema.parse(await req.json());
-    return apiOk(await importTasks(user, clientId, body.tasks));
+    return apiOk(await importTasks(user, clientId, body.tasks, { updateExisting: body.updateExisting }));
   } catch (e) {
     return fromError(e);
   }

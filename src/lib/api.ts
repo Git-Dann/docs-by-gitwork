@@ -3237,6 +3237,8 @@ export function batchCreateTasks(
 }
 
 export type TaskImportRow = {
+  /** A Foundry task id; with `updateExisting` the row updates that task. */
+  id?: string;
   title: string;
   description?: string | null;
   status?: TaskStatus;
@@ -3250,11 +3252,12 @@ export type TaskImportRow = {
 export function importTasks(
   slug: string,
   tasks: TaskImportRow[],
-): Promise<{ created: number; skipped: number }> {
+  opts: { updateExisting?: boolean } = {},
+): Promise<{ created: number; updated: number; skipped: number; notFound: number }> {
   return apiFetch(`/api/clients/${slug}/tasks/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tasks }),
+    body: JSON.stringify({ tasks, updateExisting: opts.updateExisting }),
   });
 }
 

@@ -35,6 +35,7 @@ import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
 import { BoardColumnError, parseBoardColumns } from "@/lib/tasks/board-columns";
 import { BOARD_LIST_MAX, cardProgress, isProductCard, linkProblem } from "@/lib/tasks/product-cards";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
+import { importRowPatch, planImportRows } from "@/lib/tasks/task-csv";
 import { assertProjectInClient } from "@/server/projects";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
@@ -979,11 +980,19 @@ export async function createTask(
  * category/feature-block) against the loaded lists before sending; here we
  * re-validate those ids belong to this client/workspace (dropping any that don't),
  * skip rows without a title, and assign a distinct orderKey per status.
+ *
+ * With `updateExisting`, a row carrying a Foundry task `id` (the Task ID column of an export)
+ * UPDATES that task instead of creating one, through `updateTask`, so every edit rule applies.
+ * Only fields the row actually carries change; a blank cell leaves the field alone. The task
+ * must be on THIS client: an id from another client, or one that doesn't exist, is counted in
+ * `notFound` and never created or touched. Nothing is ever deleted.
  */
 export async function importTasks(
   user: EffectiveUser,
   clientId: string,
   rows: Array<{
+    /** A Foundry task id. Only read when `updateExisting` is on. */
+    id?: string;
     title: string;
     description?: string | null;
     status?: TaskStatus;
@@ -993,8 +1002,33 @@ export async function importTasks(
     releaseId?: string | null;
     dueDate?: string | null;
   }>,
-): Promise<{ created: number; skipped: number }> {
+  opts: { updateExisting?: boolean } = {},
+): Promise<{ created: number; updated: number; skipped: number; notFound: number }> {
   await assertClientInScope(user, clientId);
+
+  // Rows that update an existing task on this client, split off before anything is created.
+  let updated = 0;
+  let notFound = 0;
+  if (opts.updateExisting) {
+    const ids = [...new Set(rows.map((r) => r.id).filter((x): x is string => !!x))];
+    const onThisClient = new Set(
+      ids.length
+        ? (
+            await prisma.task.findMany({
+              where: { id: { in: ids }, workspaceId: user.workspaceId, clientId },
+              select: { id: true },
+            })
+          ).map((t) => t.id)
+        : [],
+    );
+    const plan = planImportRows(rows, onThisClient);
+    notFound = plan.notFound;
+    for (const r of plan.updates) {
+      await updateTask(user, r.id!, importRowPatch(r) as Parameters<typeof updateTask>[2]);
+      updated++;
+    }
+    rows = plan.creates;
+  }
 
   // Validate referenced blocks + assignees once (drop anything out of scope).
   const blockIds = [...new Set(rows.map((r) => r.featureBlockId).filter((x): x is string => !!x))];
@@ -1065,8 +1099,9 @@ export async function importTasks(
     });
     created++;
   }
-  return { created, skipped: rows.length - created };
+  return { created, updated, skipped: rows.length - created, notFound };
 }
+
 
 export async function updateTask(
   user: EffectiveUser,
