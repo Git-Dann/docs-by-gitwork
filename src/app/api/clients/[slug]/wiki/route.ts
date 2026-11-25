@@ -20,7 +20,9 @@ export async function GET(
     // `?board=0`: likewise the Board's cards (the summary still comes).
     const courseRequests = req.nextUrl.searchParams.get("courseRequests") !== "0";
     const board = req.nextUrl.searchParams.get("board") !== "0";
-    const wiki = await getWikiBySlug(slug, workspaceId, { courseRequests, board });
+    // `?code=0`: Code Handover without file contents (the section loads them from .../wiki/code).
+    const code = req.nextUrl.searchParams.get("code") !== "0";
+    const wiki = await getWikiBySlug(slug, workspaceId, { courseRequests, board, code });
     if (!wiki) return apiError("Client not found", 404);
     // Which replies the caller may edit/delete — an API-key caller (null) gets none.
     const viewer = internalCommentViewer(await getEffectiveUserOrNull(req));

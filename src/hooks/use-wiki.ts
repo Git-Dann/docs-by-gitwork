@@ -127,7 +127,8 @@ import {
   listWikiCodeEventsApi,
   restoreWikiCodeVersionApi,
 } from "@/lib/api";
-import type { CourseImportInput, BigWedgeSyncResult, MonitorInput, WikiIntakeItemPayload } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
+import type { CourseImportInput, BigWedgeSyncResult, MonitorInput, WikiCodeHandoverSection, WikiIntakeItemPayload } from "@/lib/api";
 
 export function useClientWiki(slug: string) {
   return useQuery({
@@ -1214,6 +1215,23 @@ export function useDeleteCodeVariant(slug: string) {
   return useMutation({
     mutationFn: ({ moduleId, variantId }: { moduleId: string; variantId: string }) => deleteWikiCodeVariantApi(slug, moduleId, variantId),
     onSuccess: invalidate,
+  });
+}
+
+/**
+ * Code Handover with its files' contents. The wiki sends a light copy (no contents) to keep every
+ * wiki load small; the section loads this when it opens. The team's key sits under the wiki's,
+ * so any code change (which invalidates the wiki) refreshes it too.
+ */
+export function useWikiCodeFiles(slug: string, token: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: token ? ["public-wiki", token, "code"] : ["client-wiki", slug, "code"],
+    queryFn: () =>
+      apiFetch<WikiCodeHandoverSection>(
+        token ? `/api/wiki/${encodeURIComponent(token)}/code` : `/api/clients/${encodeURIComponent(slug)}/wiki/code`,
+      ),
+    enabled,
+    staleTime: 30_000,
   });
 }
 

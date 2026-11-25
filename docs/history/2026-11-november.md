@@ -2244,6 +2244,11 @@ use it before that to test it). Operator notes: `docs/dispatch.md`.
     scroller has a width (ResizeObserver), which fixes it opening at the earliest release when the
     view mounted before it was laid out.
 
+**Follow-up (25 Nov): the team can approve too.** Dan asked for it. The team's card dialog now has
+Changes needed, Approve and Reply. `addBoardFeedback` no longer refuses a sign-off from the team; it
+is recorded as Gitwork's (`authorUserId`, shown as "GITWORK · name" in the activity) and notifies
+nobody. `POST /api/tasks/[id]/client-feedback` takes `{ kind?, body }`, `kind` defaulting to a comment.
+
 ---
 
 ## 156. Recent Changes (November 2026) — Dispatch reads code and designs, watches the budget
@@ -2296,6 +2301,15 @@ which now lives in **Settings → Dispatch** (Super Admins) rather than raw JSON
   cached prefix moves except the additions.
 - Tests: `src/lib/dispatch/__tests__/code-and-design.test.ts`, `budget.test.ts`,
   `assistant/__tests__/purge.test.ts`, each rule broken on purpose to prove it.
+
+**Follow-up (25 Nov): lighter wiki loads.** Investigating "Foundry is slow": the server was idle and
+answering in milliseconds, but PollenIQ's wiki carried 1 MB of Code Handover file contents on every
+load (every version keeps a full copy of its files). The wiki now sends a light copy with no file
+contents (`liteCodeHandover`, `?code=0` on the team's wiki, `code: false` on the share page) and the
+section loads the files itself (`useWikiCodeFiles`: `GET /api/clients/[slug]/wiki/code`, or
+`GET /api/wiki/[token]/code` on the client's link, access in `src/server/wiki-code-access.ts`). Card
+actions on the team's Board now re-read the Board's cards only and mark the wiki stale, instead of
+reloading the whole wiki each time.
 
 ---
 

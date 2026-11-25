@@ -69,7 +69,10 @@ export function useBoardRefresh(target: BoardTarget): () => void {
   const mode = target.mode;
   return useCallback(() => {
     if (mode === "internal") {
-      void queryClient.invalidateQueries({ queryKey: ["client-wiki", key] });
+      // Re-read the Board's cards now. The wiki itself only carries the Board's summary (for the
+      // dashboard card), so mark it stale rather than reloading the whole wiki on every card action.
+      void queryClient.invalidateQueries({ queryKey: ["client-wiki", key, "board"] });
+      void queryClient.invalidateQueries({ queryKey: ["client-wiki", key], exact: true, refetchType: "none" });
       // The team's own board shows the client's sign-off too.
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
     } else {
@@ -99,7 +102,7 @@ export function useSendBoardFeedback(target: BoardTarget, taskId: string) {
     mutationFn: (input: { kind: FeedbackKind; body: string }) =>
       apiFetch<{ entry: WikiBoardFeedback }>(
         feedbackUrl(target, taskId),
-        json(target.mode === "public" ? input : { body: input.body }),
+        json(input),
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["wiki-board-feedback", target.mode, key, taskId] });

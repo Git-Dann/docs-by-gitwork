@@ -36,7 +36,9 @@ import {
   useDeleteCodeVariant,
   useDeleteCodeVersion,
   useUpdateCodeVersion,
+  useWikiCodeFiles,
 } from "@/hooks/use-wiki";
+import { LoadingState } from "@/components/ui/motion/loading-state";
 import { compareVersions, previousVersionOf, summariseComparison, type VersionComparison } from "@/lib/code-diff";
 import { CodeCompareDialog } from "./code-compare";
 import { CODE_HL_CSS, NumberedCode } from "./code-highlight";
@@ -1137,7 +1139,37 @@ function AddModuleModal({ slug, open, onClose }: { slug: string; open: boolean; 
   );
 }
 
+/**
+ * Code Handover. The wiki carries a light copy with no file contents (`section.lite`), so every
+ * wiki load stays small; the contents are loaded here when the section opens. A full section (the
+ * demo, an older caller) is used as it is.
+ */
 export function WikiCodeSection({
+  slug,
+  section: light,
+  mode,
+  token,
+}: {
+  slug: string;
+  section: WikiCodeHandoverSection;
+  mode: "internal" | "public";
+  /** The client's share token, on their page: the files are read through their own link. */
+  token?: string;
+}) {
+  const files = useWikiCodeFiles(slug, mode === "public" ? token : undefined, Boolean(light.lite));
+  if (!light.lite) return <WikiCodeSectionBody slug={slug} section={light} mode={mode} />;
+  if (files.isPending) return <LoadingState label="Loading the code" />;
+  if (files.isError) {
+    return (
+      <p role="alert" className="text-[13px] text-[var(--danger-500)]">
+        {files.error instanceof Error ? files.error.message : "Couldn't load the code"}
+      </p>
+    );
+  }
+  return <WikiCodeSectionBody slug={slug} section={files.data} mode={mode} />;
+}
+
+function WikiCodeSectionBody({
   slug,
   section,
   mode,

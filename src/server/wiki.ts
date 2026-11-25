@@ -48,7 +48,7 @@ import {
   notifyClientSlackNewRequests,
 } from "./wiki-slack-notify";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
-import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
+import { liteCodeHandover, loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
 import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
 import { loadWikiCosts } from "./wiki-costs";
 import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
@@ -1438,8 +1438,8 @@ const PAGE_TYPE_TO_SECTION: Partial<Record<WikiPageType, string>> = {
  */
 export async function getOrCreateWiki(clientId: string, opts: WikiLoadOptions = {}): Promise<WikiDTO> {
   const dto = await loadWiki(clientId, opts);
-  // The Board's cards load on their own (GET .../wiki/board): send the summary only.
-  return opts.board === false ? { ...dto, board: liteBoard(dto.board) } : dto;
+  // The Board's cards and the code's file contents load on their own: send the light copies.
+  return withLiteParts(dto, opts);
 }
 
 /** Course request counts for a wiki without loading the requests (one groupBy). */
@@ -1457,6 +1457,16 @@ async function courseRequestCountsFor(wikiId: string): Promise<CourseRequestCoun
 export interface WikiLoadOptions {
   courseRequests?: boolean;
   board?: boolean;
+  /** False: Code Handover without file contents (`liteCodeHandover`); the section loads them. */
+  code?: boolean;
+}
+
+function withLiteParts(dto: WikiDTO, opts: WikiLoadOptions): WikiDTO {
+  return {
+    ...dto,
+    board: opts.board === false ? liteBoard(dto.board) : dto.board,
+    codeHandover: opts.code === false ? liteCodeHandover(dto.codeHandover) : dto.codeHandover,
+  };
 }
 
 async function loadWiki(clientId: string, opts: WikiLoadOptions): Promise<WikiDTO> {
@@ -3614,7 +3624,7 @@ export async function resolvePublicWiki(
   const include = opts.courseRequests === false ? { ...WIKI_INCLUDE, courseRequests: false as const } : WIKI_INCLUDE;
   const finish = async (row: { id: string }, dto: WikiDTO): Promise<WikiDTO> => {
     const counts = opts.courseRequests === false ? await courseRequestCountsFor(row.id) : dto.courseRequestCounts;
-    return { ...dto, courseRequestCounts: counts, board: opts.board === false ? liteBoard(dto.board) : dto.board };
+    return withLiteParts({ ...dto, courseRequestCounts: counts }, opts);
   };
   // Whole-wiki share takes precedence.
   const whole = await prisma.clientWiki.findFirst({
