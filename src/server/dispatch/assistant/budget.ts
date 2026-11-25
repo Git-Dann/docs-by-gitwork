@@ -1,46 +1,112 @@
 /**
- * The AI budget: how much of it is spent, and telling Super Admins as it fills (§156).
+ * The AI budget: how much of it is spent, and telling Super Admins as it fills (§156, §159).
  *
- * Spend is the estimated cost of every logged call on the Anthropic key this period (AiUsageLog,
- * from list prices: src/server/ai-pricing.ts), across every AI feature, because the $200 pot is
- * one key. Checked hourly from the `jobs` worker (the disk check's pattern, CLAUDE.md §144):
- * each level is sent once per period, latched with a system marker.
+ * Spend is ANTHROPIC'S OWN billed figure when an Anthropic Admin key is connected (Settings →
+ * Dispatch): organisation-wide, because one prepaid credit pays for every key. Anthropic's
+ * report stops at the last UTC midnight, so today is added from Foundry's own log (AiUsageLog,
+ * estimated from list prices). With no Admin key it is Foundry's estimate alone, and says so.
+ *
+ * There is no API for the credit balance or a spend limit on a Console organisation, so the
+ * budget figure itself is the one set in Settings → Dispatch.
+ *
+ * Checked hourly from the `jobs` worker (the disk check's pattern, CLAUDE.md §144): each level is
+ * sent once per period, latched with a system marker.
  */
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import { budgetAlert, budgetAlertCopy, budgetPeriod, BUDGET_LEVELS, type BudgetPeriod } from "@/lib/dispatch/budget";
 import { resolveDispatchConfig } from "@/server/dispatch/config";
 import { markSystem, readSystemMarkers } from "@/server/system-markers";
+import { anthropicAdminKey, anthropicBilledSince } from "@/server/ai-cost";
 
 const CHECKED = "ai-budget-checked";
 const EVERY_MS = 60 * 60_000;
+/** Anthropic's figures change once a day; read them at most hourly. */
+const BILLED_TTL_MS = 60 * 60_000;
 
 export interface BudgetStatus {
   budgetUsd: number;
   spentUsd: number;
-  /** Of which Dispatch. */
+  /** Of which Dispatch (Foundry's own estimate: Anthropic doesn't split by feature). */
   dispatchUsd: number;
+  /** "anthropic": Anthropic's billed spend (+ today's estimate). "estimate": Foundry's alone. */
+  source: "anthropic" | "estimate";
+  /** With Anthropic's figures: billed up to here (the last UTC midnight); estimated after it. */
+  billedThrough: string | null;
+  /** An Admin key is set but Anthropic didn't answer: shown so it isn't mistaken for "not set". */
+  anthropicError: boolean;
   period: { key: string; label: string; start: string };
 }
 
+async function estimateSince(workspaceId: string, since: Date, module?: "DISPATCH"): Promise<number> {
+  const agg = await prisma.aiUsageLog.aggregate({
+    where: {
+      workspaceId,
+      createdAt: { gte: since },
+      provider: { equals: "anthropic", mode: "insensitive" },
+      ...(module ? { module } : {}),
+    },
+    _sum: { costUsd: true },
+  });
+  return agg._sum.costUsd ?? 0;
+}
+
+/** Anthropic's billed figure for the period, cached an hour in AiResponseCache. */
+async function billedCached(
+  workspaceId: string,
+  key: string,
+  period: BudgetPeriod,
+  now: Date,
+): Promise<{ usd: number; through: Date } | null> {
+  const cacheKey = `ai-billed:${period.key}`;
+  const row = await prisma.aiResponseCache.findUnique({ where: { workspaceId_cacheKey: { workspaceId, cacheKey } } });
+  const hit = row?.response as { usd?: number; through?: string; fetchedAt?: string } | undefined;
+  const through = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (
+    hit?.fetchedAt &&
+    typeof hit.usd === "number" &&
+    hit.through === through.toISOString() &&
+    now.getTime() - Date.parse(hit.fetchedAt) < BILLED_TTL_MS
+  ) {
+    return { usd: hit.usd, through };
+  }
+  const fresh = await anthropicBilledSince(key, period.start, now);
+  if (!fresh) return null;
+  const response = { usd: fresh.usd, through: fresh.through.toISOString(), fetchedAt: now.toISOString() } as Prisma.InputJsonValue;
+  await prisma.aiResponseCache
+    .upsert({
+      where: { workspaceId_cacheKey: { workspaceId, cacheKey } },
+      update: { response, inputsHash: now.toISOString() },
+      create: { workspaceId, cacheKey, inputsHash: now.toISOString(), response },
+    })
+    .catch(() => undefined);
+  return fresh;
+}
+
 export async function budgetStatus(workspaceId: string, now: Date = new Date()): Promise<BudgetStatus> {
-  const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { dispatchConfig: true } });
+  const ws = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { dispatchConfig: true, anthropicAdminApiKey: true },
+  });
   const config = resolveDispatchConfig(ws?.dispatchConfig);
   const period = budgetPeriod(config.budgetSince, now);
-  const where = {
-    workspaceId,
-    createdAt: { gte: period.start },
-    provider: { equals: "anthropic", mode: "insensitive" as const },
-  };
-  const [all, dispatch] = await Promise.all([
-    prisma.aiUsageLog.aggregate({ where, _sum: { costUsd: true } }),
-    prisma.aiUsageLog.aggregate({ where: { ...where, module: "DISPATCH" }, _sum: { costUsd: true } }),
+  const key = ws ? anthropicAdminKey(ws) : null;
+  const billed = key ? await billedCached(workspaceId, key, period, now) : null;
+
+  const [dispatchEst, totalEst] = await Promise.all([
+    estimateSince(workspaceId, period.start, "DISPATCH"),
+    // With Anthropic's figure, only what it hasn't reported yet (since its last midnight).
+    estimateSince(workspaceId, billed ? billed.through : period.start),
   ]);
   return {
     budgetUsd: config.budgetUsd,
-    spentUsd: round2(all._sum.costUsd ?? 0),
-    dispatchUsd: round2(dispatch._sum.costUsd ?? 0),
+    spentUsd: round2((billed?.usd ?? 0) + totalEst),
+    dispatchUsd: round2(dispatchEst),
+    source: billed ? "anthropic" : "estimate",
+    billedThrough: billed ? billed.through.toISOString() : null,
+    anthropicError: Boolean(key) && !billed,
     period: { key: period.key, label: period.label, start: period.start.toISOString() },
   };
 }

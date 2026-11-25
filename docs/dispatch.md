@@ -174,6 +174,12 @@ are saved as theirs, so delete test chats afterwards.
 - **What was built:** screenshots of the client's own sites (production or staging), and
   screenshots people attach or paste in the panel (at most four per question).
 
+**Where the spend comes from (§159).** With an Anthropic Admin key (Settings → Dispatch → 04
+Anthropic billing), Anthropic's own billed spend for the whole organisation, plus Foundry's
+estimate for today, since Anthropic reports a day behind. Without one, Foundry's estimate from
+list prices. The sidebar's AI spend card and the alerts use the same figure. The budget amount is
+always the one set here: Anthropic has no API for the credit balance.
+
 **Budget alerts.** Hourly from the `jobs` worker. Super Admins are told once at 50%, 80% and 95%
 of the budget per period, in Foundry and on the ops Slack webhook. Nothing is switched off at
 100%. Spend is estimated from list prices (Analytics → AI usage shows it beside the provider's

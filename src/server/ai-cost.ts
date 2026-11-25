@@ -70,6 +70,11 @@ async function fetchJson(url: string, headers: Record<string, string>): Promise<
   }
 }
 
+/** Anthropic's cost amounts: decimal strings in cents → US dollars. */
+export function centsToUsd(v: unknown): number {
+  return num(v) / 100;
+}
+
 /** Coerce anything number-ish (string or number) to a finite number, else 0. */
 function num(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -106,7 +111,10 @@ async function anthropicCost(key: string, now: Date, modelLabel: string | null):
     for (const bucket of json.data ?? []) {
       const bucketStart = bucket.starting_at ? Date.parse(bucket.starting_at) : NaN;
       for (const r of bucket.results ?? []) {
-        const amount = num(r.amount);
+        // ⚠️ Anthropic reports cost in CENTS, as a decimal string ("123.45" is $1.2345). This
+        // read it as dollars until Nov 2026, so the card would have shown 100× the spend; it
+        // never ran, because no Admin key was set.
+        const amount = centsToUsd(r.amount);
         if (typeof r.currency === "string") base.currency = r.currency;
         base.monthToDate += amount;
         if (Number.isFinite(bucketStart) && bucketStart >= dayStart) base.today += amount;
@@ -246,4 +254,47 @@ export async function getAiCostSummary(ws: CostWorkspace): Promise<AiCostSummary
   }
 
   return summary;
+}
+
+
+/**
+ * Anthropic's billed spend from `start` up to the last UTC midnight (the cost report stops
+ * there; today arrives the next day). Organisation-wide: the same credit pays for every key.
+ * Returns null on any failure, so callers fall back to Foundry's own estimate and say so.
+ */
+export async function anthropicBilledSince(
+  key: string,
+  start: Date,
+  now: Date = new Date(),
+): Promise<{ usd: number; through: Date } | null> {
+  const through = startOfDayUtc(now);
+  if (through.getTime() <= start.getTime()) return { usd: 0, through };
+  try {
+    let usd = 0;
+    let page: string | null = null;
+    for (let i = 0; i < 20; i++) {
+      const params = new URLSearchParams({
+        starting_at: start.toISOString(),
+        ending_at: through.toISOString(),
+        bucket_width: "1d",
+        limit: "31",
+      });
+      if (page) params.set("page", page);
+      const json = (await fetchJson(`https://api.anthropic.com/v1/organizations/cost_report?${params.toString()}`, {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      })) as { data?: Array<{ results?: Array<Record<string, unknown>> }>; has_more?: boolean; next_page?: string | null };
+      for (const bucket of json.data ?? []) for (const r of bucket.results ?? []) usd += centsToUsd(r.amount);
+      if (!json.has_more || !json.next_page) break;
+      page = json.next_page;
+    }
+    return { usd: Math.round(usd * 10000) / 10000, through };
+  } catch {
+    return null;
+  }
+}
+
+/** The Anthropic Admin key Foundry reads billing with (env first, then the workspace's). */
+export function anthropicAdminKey(ws: { anthropicAdminApiKey?: string | null }): string | null {
+  return resolveAdminKeys(ws).anthropic;
 }

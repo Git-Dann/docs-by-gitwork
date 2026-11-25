@@ -70,12 +70,15 @@ describe("stored secrets are only ever read through readSecret", () => {
     'src/app/api/settings/integrations/route.ts:          target: "workspace.externalApiKey",',
     "src/app/api/integrations/meeting-summary/route.ts:    const hasServiceAccount = !!(workspace.googleServiceAccountJson && workspace.googleSubjectEmail);",
     'src/app/api/documents/[id]/ai/chat/route.ts:    if (!ws || (ws.aiProvider ?? "ANTHROPIC") !== "ANTHROPIC" || !ws.anthropicApiKey) {',
+    // Settings → Dispatch clearing a key on Disconnect: a write of null, not a read.
+    "src/app/api/dispatch/settings/route.ts:        data.figmaToken = null;",
+    "src/app/api/dispatch/settings/route.ts:        data.anthropicAdminApiKey = null;",
   ];
 
   it("sweep", () => {
     const root = join(__dirname, "../../..");
     const out = execSync(
-      "grep -rnE '\\.(anthropicApiKey|openaiApiKey|geminiApiKey|emailApiKey|externalApiKey|googleServiceAccountJson|anthropicAdminApiKey|openaiAdminApiKey)\\b' src --include=*.ts --include=*.tsx || true",
+      "grep -rnE '\\.(anthropicApiKey|openaiApiKey|geminiApiKey|emailApiKey|externalApiKey|googleServiceAccountJson|anthropicAdminApiKey|openaiAdminApiKey|figmaToken)\\b' src --include=*.ts --include=*.tsx || true",
       { cwd: root, encoding: "utf8" },
     );
     const lines = out
