@@ -913,3 +913,4 @@ be resolved by reading. Do not renumber either one.
 - **§155** — Board: sign-off without a reload, and a Timeline that shows what's late
 - **§156** — Dispatch reads code and designs, watches the budget
 - **§157** — Dispatch answers with Haiku unless it needs Sonnet
+- **§158** — Dispatch's first live test, and what it changed
