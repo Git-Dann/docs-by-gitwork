@@ -18,6 +18,7 @@
 
 import type { TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { IN_PROGRESS_STATUSES, isStuck } from "@/lib/tasks/stuck";
 import { recommendationFor } from "./recommend";
 import type {
   ForemanConfig,
@@ -26,7 +27,7 @@ import type {
 } from "./types";
 
 const DAY_MS = 86_400_000;
-const DOING_STATUSES: TaskStatus[] = ["DOING", "IN_REVIEW", "UI_DONE"];
+const DOING_STATUSES: TaskStatus[] = [...IN_PROGRESS_STATUSES];
 
 // ─── Gathered raw data (plain, DB-free from here on) ─────────────────────────
 
@@ -580,12 +581,8 @@ export function detectFindings(
       );
     }
 
-    const stalled = agg.tasks.filter(
-      (t) =>
-        DOING_STATUSES.includes(t.status) &&
-        t.startedAt &&
-        dayspan(t.startedAt, startToday) >= config.staleDoingDays,
-    );
+    // One rule with the "stuck" badge on the task card (src/lib/tasks/stuck.ts).
+    const stalled = agg.tasks.filter((t) => isStuck(t, config.staleDoingDays, new Date(startToday)));
     if (stalled.length > 0) {
       const maxAge = Math.max(...stalled.map((t) => dayspan(t.startedAt!, startToday)));
       findings.push(

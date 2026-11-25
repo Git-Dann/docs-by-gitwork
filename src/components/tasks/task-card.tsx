@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { ChatBubbleLeftIcon, VideoCameraIcon } from "@heroicons/react/24/outline";
-import { FlagIcon, CalendarDaysIcon } from "@heroicons/react/16/solid";
+import { FlagIcon, CalendarDaysIcon, BookmarkIcon } from "@heroicons/react/16/solid";
+import { daysInProgress, DEFAULT_STALE_DAYS } from "@/lib/tasks/stuck";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import type { TaskDTO } from "@/types/tasks";
 import { releaseLabel } from "@/lib/tasks/releases";
@@ -42,6 +43,9 @@ export const TaskCard = memo(function TaskCard({
   onScribeSourceClick?: (task: TaskDTO) => void;
 }) {
   const overdue = isOverdue(task);
+  // Stuck in progress: Foreman's rule (src/lib/tasks/stuck.ts), at its default threshold.
+  const inProgressDays = daysInProgress(task);
+  const stuck = inProgressDays !== null && inProgressDays >= DEFAULT_STALE_DAYS;
   const flag = PRIORITY_FLAG[task.priority] ?? PRIORITY_FLAG.LOW;
   const subtaskPct =
     task.subtaskCount > 0
@@ -103,6 +107,23 @@ export const TaskCard = memo(function TaskCard({
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
         {showStatus ? <TaskStatusBadge status={task.status} /> : null}
         {task.blockedReason ? <TaskBlockedBadge clientReplied={Boolean(task.blockedResponseAt)} /> : null}
+        {task.flag ? (
+          <span
+            className="inline-flex items-center gap-0.5 rounded-[4px] bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+            title={`Flagged for follow-up${task.flag.by ? ` by ${task.flag.by.name}` : ""}${task.flag.note ? `: ${task.flag.note}` : ""}`}
+          >
+            <BookmarkIcon className="h-3 w-3" />
+            Follow up
+          </span>
+        ) : null}
+        {stuck ? (
+          <span
+            className="inline-flex items-center rounded-[4px] border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+            title={`In progress for ${inProgressDays} days with no move to done`}
+          >
+            In progress {inProgressDays}d
+          </span>
+        ) : null}
         {task.label ? <TaskLabelBadge label={task.label} /> : null}
         <ItemTypeChip itemType={task.itemType} />
         <TierChip tier={task.tier} />

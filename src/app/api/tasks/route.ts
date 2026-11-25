@@ -34,6 +34,7 @@ function taskListResponse(task: TaskDTO): TaskDTO {
     blockedAt: null,
     blockedResponse: null,
     blockedResponseAt: null,
+    flag: task.flag ?? null,
     commentCount: task.commentCount,
     subtaskCount: task.subtaskCount,
     subtaskDoneCount: task.subtaskDoneCount,

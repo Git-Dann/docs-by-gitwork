@@ -3144,6 +3144,8 @@ export function updateTask(
     metadata?: Record<string, unknown> | null;
     archived?: boolean;
     blockedReason?: string | null;
+    /** Flag for follow-up: `{ note? }` flags it, null clears it. */
+    flag?: { note?: string | null } | null;
   },
 ): Promise<TaskDTO> {
   return apiFetch(`/api/tasks/${id}`, {

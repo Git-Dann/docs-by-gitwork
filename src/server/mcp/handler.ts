@@ -603,6 +603,8 @@ const updateTaskSchema = z.object({
   estimateHours: z.number().min(0).max(10000).optional(),
   productCard: z.string().max(200).optional(),
   list: z.string().max(80).optional(),
+  flag: z.boolean().optional(),
+  flagNote: z.string().max(500).optional(),
 });
 
 const listReleasesSchema = z.object({ client: z.string() });
@@ -2432,6 +2434,11 @@ const TOOLS: ToolDef[] = [
           description: "A version like 'v2.0.0' or a release id; empty string takes it out of its release.",
         },
         dueDate: { type: "string", description: "ISO date." },
+        flag: {
+          type: "boolean",
+          description: "true flags the task for follow-up (visible to the team), false clears the flag.",
+        },
+        flagNote: { type: "string", description: "Why it's flagged. Used with flag: true." },
         ...CARD_PROPERTIES,
       },
       required: ["taskId"],
@@ -2439,7 +2446,7 @@ const TOOLS: ToolDef[] = [
     },
     handler: async (user, args) => {
       const parsed = updateTaskSchema.parse(args);
-      const { taskId, featureBlockId, release, productCard, itemType, tier, list, ...rest } = parsed;
+      const { taskId, featureBlockId, release, productCard, itemType, tier, list, flag, flagNote, ...rest } = parsed;
       let releaseId: string | null | undefined;
       let productCardId: string | null | undefined;
       if (release !== undefined || productCard !== undefined) {
@@ -2456,6 +2463,7 @@ const TOOLS: ToolDef[] = [
         itemType: itemType === undefined ? undefined : itemType || null,
         tier: tier === undefined ? undefined : tier || null,
         boardList: list === undefined ? undefined : list || null,
+        flag: flag === undefined ? undefined : flag ? { note: flagNote ?? null } : null,
       });
       return textResult(updated, `Updated task "${updated.title}" (status: ${updated.status}).`);
     },

@@ -225,6 +225,7 @@ model User {
   tasksAssigned             Task[]                  @relation("TaskAssignee")
   assignedTasks             Task[]                  @relation("TaskAssignees")
   tasksCreated              Task[]                  @relation("TaskCreator")
+  tasksFlagged              Task[]                  @relation("TaskFlaggedBy")
   designSystemsUpdated      ClientDesignSystem[]    @relation("DesignSystemUpdatedBy")
   taskComments              TaskComment[]
   taskAttachments           TaskAttachment[]
@@ -4910,6 +4911,11 @@ model Task {
   /// drives the dev-side "client replied" indicator + the response notification.
   blockedResponse    String?      @db.Text
   blockedResponseAt  DateTime?
+  /// Flagged for follow-up (Nov 2026): a team-visible marker anyone on the client can set,
+  /// with an optional note. It annotates the task; it doesn't change its work. Null = not flagged.
+  flaggedAt          DateTime?
+  flaggedById        String?
+  flagNote           String?
   /// Imported ClickUp custom fields (Dept, Build Number, QA, Category…). Display-only.
   metadata           Json?
   /// Source ClickUp task id (one-time migration). Indexed, NOT unique.
@@ -4946,6 +4952,7 @@ model Task {
   assignee         User?             @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   assignees        User[]            @relation("TaskAssignees")
   createdBy        User?             @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  flaggedBy        User?             @relation("TaskFlaggedBy", fields: [flaggedById], references: [id], onDelete: SetNull)
   featureBlock     FeatureBlock?     @relation(fields: [featureBlockId], references: [id], onDelete: SetNull)
   release          ClientRelease?    @relation(fields: [releaseId], references: [id], onDelete: SetNull)
   parent           Task?             @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)

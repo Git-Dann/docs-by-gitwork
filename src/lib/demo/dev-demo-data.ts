@@ -220,6 +220,8 @@ function mkTask(
     card?: { itemType: string; tier?: string | null; area?: string | null; estimateHours?: number | null };
     /** The card this dev task delivers. */
     delivers?: { id: string; title: string; itemType: string | null } | null;
+    /** Flagged for follow-up, with why. */
+    flagNote?: string;
   },
 ): TaskDTO {
   const client = byClient[partial.clientSlug];
@@ -248,6 +250,10 @@ function mkTask(
     blockedAt: null,
     blockedResponse: null,
     blockedResponseAt: null,
+    flag:
+      partial.flagNote !== undefined
+        ? { at: atDays(-1), by: { id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl }, note: partial.flagNote }
+        : null,
     commentCount: partial.commentCount ?? 0,
     subtaskCount: partial.subtaskCount ?? 0,
     subtaskDoneCount: partial.subtaskDoneCount ?? 0,
@@ -269,7 +275,7 @@ function mkTask(
 
 /** The master task list — powers the board, dashboard "My Tasks", standup + attention. */
 export const demoBoardTasks: TaskDTO[] = [
-  mkTask({ id: "t1", release: REL.v140, title: "Harden webhook retry handling", clientSlug: "northwind", status: "DOING", priority: "HIGH", dueDate: atDays(2), startedAt: atDays(-1), commentCount: 3, subtaskCount: 4, subtaskDoneCount: 1, description: "Add idempotent retry handling for dropped delivery webhooks." }),
+  mkTask({ id: "t1", release: REL.v140, title: "Harden webhook retry handling", clientSlug: "northwind", status: "DOING", priority: "HIGH", dueDate: atDays(2), startedAt: atDays(-1), commentCount: 3, subtaskCount: 4, subtaskDoneCount: 1, description: "Add idempotent retry handling for dropped delivery webhooks.", flagNote: "Check with the client how long a retry may take" }),
   mkTask({ id: "t2", title: "Fix mobile nav overflow on iOS Safari", clientSlug: "cadenza", status: "DOING", priority: "HIGH", dueDate: atDays(-1), startedAt: atDays(-2), commentCount: 1 }),
   mkTask({ id: "t3", title: "Booking calendar timezone bug", clientSlug: "fairway-nine", status: "DOING", priority: "MEDIUM", dueDate: atDays(-2), startedAt: atDays(-3), commentCount: 5, subtaskCount: 2, subtaskDoneCount: 2 }),
   mkTask({ id: "t4", title: "Add rounds-played analytics endpoint", clientSlug: "fairway-nine", status: "IN_REVIEW", priority: "MEDIUM", dueDate: atDays(1), commentCount: 2 }),
@@ -296,7 +302,7 @@ export const demoBoardTasks: TaskDTO[] = [
   mkTask({ id: "t21", release: REL.v150, title: "Analytics dashboard loading skeletons", clientSlug: "northwind", status: "DONE", completedAt: atDays(-8) }),
   // Product cards (CLAUDE.md §124): what the client plans, with the dev tasks above linked
   // to the card they deliver. The dev tasks stay where they are on the board.
-  mkTask({ id: "c1", release: REL.v140, title: "Saved searches", dueDate: atDays(4), clientSlug: "northwind", status: "DOING", priority: "HIGH", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Search & discovery", estimateHours: 24 } }),
+  mkTask({ id: "c1", release: REL.v140, title: "Saved searches", dueDate: atDays(4), startedAt: atDays(-8), clientSlug: "northwind", status: "DOING", priority: "HIGH", unassigned: true, card: { itemType: "feature", tier: "premium", area: "Search & discovery", estimateHours: 24 } }),
   mkTask({ id: "c2", release: REL.v140, title: "Search paging breaks on iOS", dueDate: atDays(1), clientSlug: "northwind", status: "IN_REVIEW", priority: "HIGH", unassigned: true, card: { itemType: "bug", area: "Search & discovery" } }),
   mkTask({ id: "c3", title: "Let users pin a favourite report", dueDate: atDays(-3), clientSlug: "northwind", status: "BACKLOG", unassigned: true, card: { itemType: "feedback", tier: "free", area: "Analytics" } }),
   // More cards across the releases, so the Board's Timeline has a real shape: one release under
