@@ -2376,3 +2376,33 @@ to understand… hide the approved ones… adjust the timeline so we don't have 
 - **Card dialog**: Changes needed and Approve sit bottom right of the card (`SignOffButtons`); the
   note box has Reply beside it for the team (`NoteBox`); one draft is shared (`useCardFeedback`), so
   a typed note goes with whichever is pressed.
+
+---
+
+## 159. Recent Changes (November 2026) — The AI budget reads Anthropic's own billing, and sits in the sidebar
+
+Dan: the budget must sync to the actual figures in Anthropic's admin, and sit in the sidebar.
+
+- **Spend is Anthropic's billed figure** when an Anthropic Admin key is connected (Settings →
+  Dispatch → 04 Anthropic billing; checked against Anthropic's cost report before it is saved,
+  stored with `storeSecret`, never sent back; `ANTHROPIC_ADMIN_KEY` on the server still wins).
+  Organisation-wide, because one prepaid credit pays for every key. Anthropic's report stops at
+  the last UTC midnight, so today is added from Foundry's own log. Cached an hour
+  (`AiResponseCache`, `ai-billed:<period>`). With no key, or if Anthropic doesn't answer, it is
+  Foundry's estimate and says so (`budgetStatus().source`, `anthropicError`). The alerts use the
+  same figure.
+- **The budget figure itself stays the one set in Settings.** Anthropic's API has no credit
+  balance, and spend limits are only readable on Enterprise or an early-access preview.
+- **⚠️ Anthropic reports cost in cents.** `ai-cost.ts` read them as dollars, so the sidebar card
+  would have shown 100× the spend; it never ran, because no Admin key was ever set
+  (`centsToUsd`, tested, and the test fails if the division goes).
+- **The sidebar's AI spend card** (`ai-spend-card.tsx`, Super Admins) now always shows: spent
+  of the budget, a bar that turns amber at 80% and red at 95%, the period, and "Anthropic" or
+  "est." for where the figure comes from. It links to Settings → Dispatch. Data from
+  `GET /api/admin/ai-budget`.
+- **Settings → Dispatch:** "Count from" uses the house date picker (UK dates, "3 Nov 2026"),
+  and the line under the budget says where the figure comes from.
+- **Figma tokens:** checked by opening one of the workspace's linked Figma designs (needs only
+  "File content: read"), not Figma's "who am I", which needs a scope read-only tokens are made
+  without. The error says which: invalid, missing a permission, or can't see the client's files.
+- Tests: `src/server/__tests__/ai-billed-spend.test.ts` (cents, paging, refusal, first day).
