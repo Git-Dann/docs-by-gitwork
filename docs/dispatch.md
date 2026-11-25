@@ -215,6 +215,16 @@ system prompt and tools are read from the cache.
 
 ---
 
+### The brief (§161)
+
+The panel opens on a brief, not an empty chat: the person's own tasks that need them and why,
+four numbers, and at most three suggestions, each with the reason it's suggested now. It comes
+from `GET /api/dispatch/brief?clientSlug=&taskId=` (`src/server/dispatch/assistant/brief.ts`
+gathers through `openScope`; `src/lib/dispatch/brief.ts` decides, pure and tested) and makes
+**no AI call**, so opening the panel is free. Its visibility follows the rules above: "needs
+you" is only the asker's tasks; with nothing of their own, an admin sees open work per person
+and anyone else only how much has nobody assigned.
+
 ## What gets recorded
 
 One `DispatchExchange` row per question, written **before** the answer is composed:

@@ -1077,37 +1077,54 @@ The exception covers Canvas's own shell only. Don't carry the orange back into F
 
 The full token and component reference lives with its source, in `Git-Dann/canvas` `docs/BRAND.md`.
 
-## Dispatch panel (the assistant, `CLAUDE.md` §154)
+## Dispatch panel (the assistant, `CLAUDE.md` §154, §161)
 
-The pattern for any chat surface in Foundry. Source: `src/components/dispatch/dispatch-panel.tsx`.
+The pattern for any assistant surface in Foundry. Source: `src/components/dispatch/dispatch-panel.tsx`.
+**It opens on a brief, not an empty chat**: what it found, then what it could do about it. A
+blank box with a wall of prompt chips reads as "a chat bot"; that was the complaint (§161).
 
 - **A right-hand sheet, mounted once** in the app shell and opened from anywhere with
-  `openDispatch({ clientSlug?, taskId?, prompt? })`. Full width below `sm`, `max-w-[460px]` above,
+  `openDispatch({ clientSlug?, taskId?, prompt? })`. Full width below `sm`, `max-w-[480px]` above,
   `motion-sheet-right`, `--surface-0` with a `--border-2` left hairline. The backdrop dims on a
   phone and is transparent from `lg`, so the page stays readable beside it.
-- **Header** is a `widget-header` with a mono label, then a row with the client picker (only the
-  person's own clients) and past chats. Both are Headless UI `Listbox`es anchored below their
-  button with the house `menuPanel` (z-[70], above the sheet), **not native `<select>`s**: macOS
-  opens a native menu with the chosen row over the box, so a long list ran off the top of the
-  window. Anything inside a fixed sheet or near the top of the window should use the same.
-- **The person's message** is a `--surface-1` bubble, `rounded-[10px]`, inset `ml-8`. **Dispatch's
-  answer is not a bubble**: plain text at full width, because answers are long and are read, not
-  glanced at. Tool progress ("Reading the board…") is a quiet `--text-3` line while it works.
+- **Header**: a 28px `--brand-700` square with the sparkle, "Dispatch", and the client name under
+  it when there's only one. 32px icon buttons on the right: earlier chats, new chat (in a chat),
+  close. **The client switcher shows only when there's more than one client**: a full-width
+  button with the client's initial in a `--brand-50` square, the name, and the chevron at the
+  right edge. Never give a custom dropdown button `app-select`/`app-select-compact`: their right
+  padding is reserved for a background chevron, so an icon chevron floats inward. Both menus are
+  Headless UI `Listbox`es anchored below their button with the house `menuPanel` (z-[70]),
+  **not native `<select>`s** (macOS opens a native menu with the chosen row over the box).
+- **The brief**, top to bottom: a mono date line, a 19px greeting, one line on the week; a row
+  of three or four number tiles in one hairline frame (20px mono figure, 11px label; tone colour
+  only on the figure); then numbered sections, `NN // LABEL` in mono:
+  - **01 Needs you**: a framed list, one row per task: a 6px tone dot, the title (truncated), a
+    tone pill with the reason, and a 36px "open on the board" arrow cell.
+  - **02 Suggested**: cards, each a 32px `--brand-50` icon square, a title, the **reason** in
+    `--text-3` underneath, and an arrow that nudges right on hover. A suggestion without a reason
+    doesn't belong here.
+  - **03 More it can do**: folded by default; chips grouped under small labels.
+  Tones: `--danger-*` overdue, `--warning-*` waiting, stuck, flagged, `--brand-*` due soon,
+  neutral otherwise.
+- **The person's message** is a `--surface-1` bubble on the right, `max-w-[85%]`,
+  `rounded-[12px]` with a 4px bottom-right corner. **Dispatch's answer is not a bubble**: plain
+  text at full width, because answers are read, not glanced at. **Above it, the steps it took**
+  ("Looking at your tasks"): live with a spinner on the current one, then folded into a quiet
+  "Looked at N things" line that opens on a click.
 - **Sources** are small hairline chips under the answer, truncated with a `title`, linking to the
   record when there is one.
 - **A proposed change** is a card in `--surface-brand` with a `--brand-300` border: a title, the
   lines it will create or change, then Confirm (primary) and Cancel. After the click the buttons
   become the outcome in words ("Done: Created 2 tasks."). Nothing Dispatch proposes runs without it.
-- **Problems** (no key, a limit reached) are an amber note in plain words, never a red error.
-- **The input** is one framed box (`rounded-[10px]`, `--border-2`, brand border on focus) holding
-  a two-line textarea at 16px on phones (iOS zooms on anything smaller) with the inline
-  `outline: none` a framed input needs (§69), and the send button. Enter sends; Shift+Enter is a
-  new line.
-- **Quick actions** are outlined `rounded-[6px]` chips on an empty chat, chosen by where the panel
-  was opened (anywhere, a client, a task).
-- **Screenshots** attach with the paperclip beside the input, or by pasting. They show as 56px
-  thumbnails above the input with a round remove button, are shrunk in the browser before
-  sending, and the sent question carries a small "N pictures" line.
+- **Problems** (no key, a limit reached) are a `--warning-50` note in plain words, never a red error.
+- **The input** is one `rounded-[12px]` box (`--border-1`, brand border and a 3px `--brand-100`
+  ring on focus): the textarea on top (16px on phones, iOS zooms on anything smaller; grows to
+  about seven lines; inline `outline: none`, §69), and underneath it a row with "Screenshot"
+  (paperclip), the `↵ send · ⇧↵ new line` hint, and a 32px `--brand-700` send button with an
+  up arrow. One quiet line under the box says it only sees what you can and changes wait for you.
+- **Screenshots** attach with "Screenshot" or by pasting. They show as 56px thumbnails above the
+  box with a round remove button, are shrunk in the browser before sending, and the sent question
+  carries a small "N pictures" line.
 
 ## Do's and Don'ts
 
