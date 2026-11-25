@@ -2523,5 +2523,11 @@ in from the right edge, and the client row should only show when there's a choic
   with none picked, the panel asks which, as a list. The last client used is remembered on this
   device (`localStorage`, a convenience only).
 - The demo (`/demo/tasks` → Ask Dispatch) serves the real `buildBrief` over sample tasks.
+- **No colour fade when the theme switches (app-wide).** Anything with a hover `transition` faded
+  from the old theme's colours to the new over 150ms while the page around it flipped at once, so
+  for a moment the brief's cards were black on a white panel (Dan spotted it in a screenshot).
+  `applyTheme` (`theme-provider.tsx`) now sets `data-theme-switching` for two frames and
+  `globals.css` pauses transitions under it, except inside the animated `.mode-switch`. Measured on
+  the demo: the card was dark, grey, then white across 150ms; now it's white from the first frame.
 - Tests: `src/lib/dispatch/__tests__/brief.test.ts` (who sees whose work, ranking, suggestions
   and their reasons, the task view).
