@@ -350,9 +350,12 @@ describe("adding a card", () => {
 });
 
 describe("feedback and sign-off", () => {
-  it("only the client signs off: the team can only comment", async () => {
-    await expect(addBoardFeedback(team, "t1", { kind: "approved" })).rejects.toMatchObject({ status: 403 });
-    expect(db.feedback).toHaveLength(0);
+  it("the team can sign a card off too, recorded as Gitwork's with their name, and nobody is notified", async () => {
+    const entry = await addBoardFeedback(team, "t1", { kind: "approved" });
+    expect(entry).toMatchObject({ kind: "approved", side: "team" });
+    expect(db.feedback[0]).toMatchObject({ kind: "approved", authorWikiUserId: null });
+    expect(db.feedback[0].authorUserId).toBeTruthy();
+    expect(spies.dispatch).not.toHaveBeenCalled();
   });
 
   it("feedback on another client's card is a 404", async () => {
