@@ -70,7 +70,13 @@ export type TaskClientRef = { id: string; name: string; slug: string };
 export type TaskBlockRef = { id: string; name: string };
 
 /** The release a task ships in (ClientRelease). See src/lib/tasks/releases.ts. */
-export type TaskReleaseRef = { id: string; version: string; name: string | null };
+export type TaskReleaseRef = {
+  id: string;
+  version: string;
+  name: string | null;
+  /** The number shown: the changelog version when the client numbers releases that way (§158). */
+  displayVersion?: string;
+};
 
 /** A client's release, as the board and timeline read it. Dates are ISO strings. */
 export type ReleaseDTO = {
@@ -85,6 +91,10 @@ export type ReleaseDTO = {
   docUrl: string | null;
   /** The client's project this release belongs to (CLAUDE.md §150). */
   projectId: string | null;
+  /** The changelog version this release ships as ("2.0.4"), or null (§158). */
+  changelogVersion: string | null;
+  /** The number shown: `changelogVersion` when the client numbers releases by it, else `version`. */
+  displayVersion: string;
   taskCount: number;
   doneCount: number;
 };
