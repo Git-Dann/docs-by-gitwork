@@ -31,7 +31,7 @@ import { deliveryFor } from "@/server/dispatch/access";
 import { stripBotMention } from "@/server/dispatch/resolve";
 import { buildDispatchAnswer, buildDispatchNotice } from "./blocks";
 import { conversationsInfo, openDirectMessage, postMessage } from "./client";
-import { resolveSlackAsker } from "./asker";
+import { askerProblemMessage, resolveSlackAskerDetailed } from "./asker";
 
 // ─── Envelope types ─────────────────────────────────────────────────────────
 
@@ -137,8 +137,26 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
 
   try {
     const isExternal = await isExternalChannel(botToken, event.channel, event.channel_type);
-    const asker = await resolveSlackAsker(botToken, workspaceId, event.user ?? null);
+    const resolved = await resolveSlackAskerDetailed(botToken, workspaceId, event.user ?? null);
+    const asker = "user" in resolved ? resolved.user : null;
     const askerUserId = asker?.id ?? null;
+
+    // Couldn't tell who is asking: say exactly why (a missing Slack permission reads very
+    // differently from "no Foundry account"), and answer nothing about any client.
+    if ("problem" in resolved && !isExternal) {
+      const notice = buildDispatchNotice(askerProblemMessage(resolved.problem));
+      await postMessage(botToken, { channel: event.channel, thread_ts: threadTs, text: notice.text, blocks: notice.blocks });
+      await prisma.dispatchExchange.update({
+        where: { id: exchangeId },
+        data: {
+          status: "error",
+          error: `asker:${resolved.problem.kind}${resolved.problem.kind === "slack_error" ? `:${resolved.problem.error}` : ""}`.slice(0, 200),
+          latencyMs: Date.now() - startedAt,
+          answeredAt: new Date(),
+        },
+      });
+      return;
+    }
 
     // The assistant (tools, proposals, chats) when it's switched on for this person and the
     // question is about one of their clients; otherwise the status answer below. External

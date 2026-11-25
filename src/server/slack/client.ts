@@ -45,18 +45,28 @@ export function getSlackBotToken(workspace: WorkspaceSlackFields | null | undefi
   return legacy && legacy.length > 0 ? legacy : null;
 }
 
+/**
+ * ⚠️ Slack's read methods (`users.info`, `conversations.info` and others) do NOT accept a JSON
+ * body: they read their arguments from a form or the query, so a JSON `{ user }` arrives as no
+ * user at all and Slack answers `user_not_found`. Dispatch's asker lookup failed for every
+ * person that way (Nov 2026). Those methods go form-encoded (`form: true`); writes stay JSON,
+ * which Slack wants for blocks.
+ */
 async function call<T = Record<string, unknown>>(
   token: string,
   method: string,
   body: object,
+  opts: { form?: boolean } = {},
 ): Promise<SlackResponse<T>> {
   const res = await fetch(`${SLACK_API}/${method}`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json; charset=utf-8",
+      "Content-Type": opts.form ? "application/x-www-form-urlencoded" : "application/json; charset=utf-8",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(body),
+    body: opts.form
+      ? new URLSearchParams(Object.entries(body).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString()
+      : JSON.stringify(body),
   });
   // Slack always returns JSON, even for HTTP-level errors. Surface the parse
   // failure as a Slack-style error so callers have a uniform shape to handle.
@@ -199,7 +209,7 @@ export interface SlackUser {
 
 /** users.info — resolve a Slack user id to a name/email. Needs `users:read.email` for the email. */
 export function usersInfo(token: string, user: string): Promise<SlackResponse<{ user?: SlackUser }>> {
-  return call<{ user?: SlackUser }>(token, "users.info", { user });
+  return call<{ user?: SlackUser }>(token, "users.info", { user }, { form: true });
 }
 
 // ─── conversations.* ────────────────────────────────────────────────────────
@@ -229,7 +239,7 @@ export function listConversations(
     exclude_archived: true,
     limit: 200,
     ...input,
-  });
+  }, { form: true });
 }
 
 /**
@@ -241,7 +251,7 @@ export function conversationsInfo(
   token: string,
   channel: string,
 ): Promise<SlackResponse<{ channel?: SlackChannel }>> {
-  return call<{ channel?: SlackChannel }>(token, "conversations.info", { channel });
+  return call<{ channel?: SlackChannel }>(token, "conversations.info", { channel }, { form: true });
 }
 
 /**
