@@ -2407,6 +2407,12 @@ Dan: the budget must sync to the actual figures in Anthropic's admin, and sit in
   without. The error says which: invalid, missing a permission, or can't see the client's files.
 - Tests: `src/server/__tests__/ai-billed-spend.test.ts` (cents, paging, refusal, first day).
 
+**Follow-up (25 Nov), from Dan's review of Settings → Dispatch:** a connected Figma token or
+Anthropic Admin key now shows only **Disconnect** (no field or Save beside it; to change a key,
+disconnect and add the new one), and saving one thing spins only its own button: the card used
+one shared "saving" flag, so pressing Save token spun every button on the page.
+`dispatch-settings-panel.test.tsx` covers both.
+
 ---
 
 ## 158. Recent Changes (November 2026) — Releases numbered by the changelog
