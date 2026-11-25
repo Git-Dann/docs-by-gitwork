@@ -2365,6 +2365,18 @@ Ten real Wedge questions asked as Nasir (Super Admin view-as, §156) in producti
     text block after the tool results: append-only, so the cache and thinking are untouched).
 - The test chats were deleted afterwards (as Nasir, through the chat's own DELETE route).
 
+**Follow-up (25 Nov): a calmer Timeline, and the sign-off in the card's bottom bar.** Dan: "difficult
+to understand… hide the approved ones… adjust the timeline so we don't have red".
+- **Approved cards are signed off**: hidden by default (**Show approved (N)**), and they don't make a
+  release late (`releaseState(r, today, approvedOpen)`, `approvedOpenByRelease`; "Behind · N waiting").
+- **Less red**: a card is flagged only for its OWN late due date (`cardBehind`), never for sitting in
+  a late release; the release bar says that once. No more red ring on every card.
+- **Move a release's dates from the timeline** (team only): the calendar beside a release's name
+  (`EditDates`) saves through `PATCH /api/releases/[id]`.
+- **Card dialog**: Changes needed and Approve sit bottom right of the card (`SignOffButtons`); the
+  note box has Reply beside it for the team (`NoteBox`); one draft is shared (`useCardFeedback`), so
+  a typed note goes with whichever is pressed.
+
 ---
 
 ## 159. Recent Changes (November 2026) — The AI budget reads Anthropic's own billing, and sits in the sidebar

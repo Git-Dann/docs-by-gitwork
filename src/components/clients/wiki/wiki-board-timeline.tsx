@@ -11,11 +11,14 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CheckIcon, ChevronRightIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { CalendarDaysIcon, CheckIcon, ChevronRightIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
+import { menuPanel } from "@/components/ui/menu-styles";
 import { cn } from "@/lib/format";
 import { Segmented } from "@/components/ui/segmented";
 import { ITEM_TYPE_LABELS, isItemType } from "@/lib/tasks/product-cards";
 import {
+  approvedOpenByRelease,
   cardBehind,
   dayOf,
   initialScrollLeft,
@@ -28,6 +31,7 @@ import {
   timelineGroups,
   timelineRange,
   todayX,
+  waitingCount,
   type TimelineScale,
 } from "@/lib/wiki-board-timeline";
 import type { WikiBoardCard, WikiBoardRelease } from "@/types/wiki-board";
@@ -64,6 +68,7 @@ export function WikiBoardTimeline({
   releases,
   readOnly,
   onOpen,
+  onEditDates,
 }: {
   /** The cards in view, already filtered the way the Board is. */
   cards: WikiBoardCard[];
@@ -71,16 +76,22 @@ export function WikiBoardTimeline({
   /** A card the viewer can see but not open (the team's dev tasks, for the client). */
   readOnly: (card: WikiBoardCard) => boolean;
   onOpen: (id: string) => void;
+  /** The team can move a release's dates from here. Absent for the client. Dates are YYYY-MM-DD. */
+  onEditDates?: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null }) => Promise<void>;
 }) {
   const [scale, setScale] = useState<TimelineScale>("weeks");
   const today = useMemo(() => dayOf(new Date()), []);
   // Completed releases are out of the way by default; "Behind only" shows just what's late.
   const [showCompleted, setShowCompleted] = useState(false);
   const [onlyBehind, setOnlyBehind] = useState(false);
+  // Approved cards are signed off, so they're out of the way unless asked for.
+  const [showApproved, setShowApproved] = useState(false);
+  const approvedOpen = useMemo(() => approvedOpenByRelease(cards), [cards]);
+  const stateOf = (r: WikiBoardRelease) => releaseState(r, today, approvedOpen.get(r.id) ?? 0);
   const counts = useMemo(() => timelineCounts(cards, releases, today), [cards, releases, today]);
   const groups = useMemo(
-    () => timelineGroups(cards, releases, { today, showCompleted, onlyBehind }),
-    [cards, releases, today, showCompleted, onlyBehind],
+    () => timelineGroups(cards, releases, { today, showCompleted, showApproved, onlyBehind }),
+    [cards, releases, today, showCompleted, showApproved, onlyBehind],
   );
   // The calendar spans the releases shown, so hiding finished ones brings it closer to today.
   const shownReleases = useMemo(() => groups.flatMap((g) => (g.release ? [g.release] : [])), [groups]);
@@ -156,6 +167,10 @@ export function WikiBoardTimeline({
         </button>
       ) : null}
       <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-[6px] border border-[var(--border-2)] px-2.5 text-[12px] text-[var(--text-2)] hover:bg-[var(--surface-1)]">
+        <input type="checkbox" checked={showApproved} onChange={(e) => setShowApproved(e.target.checked)} data-timeline-show-approved />
+        Show approved{counts.approved ? ` (${counts.approved})` : ""}
+      </label>
+      <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-[6px] border border-[var(--border-2)] px-2.5 text-[12px] text-[var(--text-2)] hover:bg-[var(--surface-1)]">
         <input type="checkbox" checked={showCompleted} onChange={(e) => setShowCompleted(e.target.checked)} data-timeline-show-completed />
         Show completed{counts.completed ? ` (${counts.completed})` : ""}
       </label>
@@ -214,24 +229,29 @@ export function WikiBoardTimeline({
             </div>
             {rows.map((row) =>
               row.kind === "release" ? (
-                <button
+                <div
                   key={`r-${row.key}`}
-                  type="button"
-                  onClick={() => toggle(row.key)}
-                  aria-expanded={!collapsed.has(row.key)}
-                  className="flex w-full items-center gap-1.5 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-2 text-left hover:bg-[var(--surface-2)]"
+                  className="group/rel flex w-full items-center border-b border-[var(--border-2)] bg-[var(--surface-1)] pr-1 hover:bg-[var(--surface-2)]"
                   style={{ height: ROW_H }}
-                  title={row.release?.label ?? "No release"}
                 >
-                  <ChevronRightIcon
-                    className={cn("h-3.5 w-3.5 shrink-0 text-[var(--text-3)] transition-transform motion-reduce:transition-none", !collapsed.has(row.key) && "rotate-90")}
-                  />
-                  {row.release ? <ReleaseChip state={releaseState(row.release, today)} /> : null}
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[var(--text-1)]">{row.release?.label ?? "No release"}</span>
-                  <span className="shrink-0 text-[10px] text-[var(--text-4)]" style={MONO}>
-                    {row.count}
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => toggle(row.key)}
+                    aria-expanded={!collapsed.has(row.key)}
+                    className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left"
+                    title={row.release?.label ?? "No release"}
+                  >
+                    <ChevronRightIcon
+                      className={cn("h-3.5 w-3.5 shrink-0 text-[var(--text-3)] transition-transform motion-reduce:transition-none", !collapsed.has(row.key) && "rotate-90")}
+                    />
+                    {row.release ? <ReleaseChip state={stateOf(row.release)} /> : null}
+                    <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[var(--text-1)]">{row.release?.label ?? "No release"}</span>
+                    <span className="shrink-0 text-[10px] text-[var(--text-4)]" style={MONO}>
+                      {row.count}
+                    </span>
+                  </button>
+                  {row.release && onEditDates ? <EditDates release={row.release} onSave={onEditDates} /> : null}
+                </div>
               ) : (
                 <RailCard key={row.card.id} card={row.card} behind={cardBehind(row.card, row.release, today)} readOnly={readOnly(row.card)} onOpen={onOpen} />
               ),
@@ -276,7 +296,14 @@ export function WikiBoardTimeline({
 
             {rows.map((row) =>
               row.kind === "release" ? (
-                <ReleaseRow key={`rb-${row.key}`} release={row.release} state={row.release ? releaseState(row.release, today) : "open"} range={range} scale={scale} />
+                <ReleaseRow
+                  key={`rb-${row.key}`}
+                  release={row.release}
+                  state={row.release ? stateOf(row.release) : "open"}
+                  waiting={row.release ? waitingCount(row.release, approvedOpen.get(row.release.id) ?? 0) : 0}
+                  range={range}
+                  scale={scale}
+                />
               ) : (
                 <CardRow
                   key={`cb-${row.card.id}`}
@@ -294,8 +321,9 @@ export function WikiBoardTimeline({
         </div>
       </div>
       <p className="text-[12px] text-[var(--text-4)]">
-        Each card runs for its release&rsquo;s dates. Red means behind schedule: the end date (or a
-        card&rsquo;s due date) has passed with work still open. A tick means the card is approved.
+        Each card runs for its release&rsquo;s dates. A red release has passed its end date with
+        cards still waiting (approved cards don&rsquo;t count).{onEditDates ? " Move its dates with the calendar beside its name." : ""} A card is
+        flagged only when its own due date has passed.
       </p>
     </div>
   );
@@ -345,19 +373,21 @@ function RailCard({ card, behind, readOnly, onOpen }: { card: WikiBoardCard; beh
 function ReleaseRow({
   release,
   state,
+  waiting,
   range,
   scale,
 }: {
   release: WikiBoardRelease | null;
   state: ReturnType<typeof releaseState>;
+  /** Cards still waiting: not done and not approved. */
+  waiting: number;
   range: { start: number; end: number };
   scale: TimelineScale;
 }) {
   const span = release ? spanX(release.startDate, release.endDate, range, scale) : null;
   const pct = release ? releasePercent(release) : null;
   const dates = release ? [shortDate(release.startDate), shortDate(release.endDate)].filter(Boolean).join(" – ") : "";
-  const open = release ? release.cards - release.done : 0;
-  const status = state === "behind" ? `Behind · ${open} open` : state === "complete" ? "Complete" : null;
+  const status = state === "behind" ? `Behind · ${waiting} waiting` : state === "complete" ? "Complete" : null;
   return (
     <div className="relative border-b border-[var(--border-2)] bg-[var(--surface-1)]/60" style={{ height: ROW_H }}>
       {span ? (
@@ -406,7 +436,6 @@ function CardRow({
   const cls = cn(
     "absolute top-1/2 flex h-6 -translate-y-1/2 items-center gap-1 overflow-hidden rounded-[6px] border px-2 text-[11px]",
     t === "dev" ? DEV_TONE : BAR_TONE[t],
-    behind && "ring-2 ring-red-500 ring-offset-1 ring-offset-[var(--surface-0)]",
     done && "opacity-55",
   );
   const mark = approved ? (
@@ -457,5 +486,90 @@ function ReleaseChip({ state }: { state: ReturnType<typeof releaseState> }) {
     <span className={cn("shrink-0 rounded-[4px] border px-1 text-[9px] uppercase tracking-[0.06em]", tone, state === "open" && "hidden sm:inline")} style={MONO} data-timeline-release-chip={state}>
       {state === "behind" ? "Behind" : state === "complete" ? "Done" : "Release"}
     </span>
+  );
+}
+
+/** YYYY-MM-DD for a date input, from a stored midnight-UTC date. */
+function inputDate(iso: string | null): string {
+  return iso ? iso.slice(0, 10) : "";
+}
+
+/**
+ * Move a release's dates from the timeline (the team only). A release that slipped can be given
+ * its real dates instead of sitting red.
+ */
+function EditDates({
+  release,
+  onSave,
+}: {
+  release: WikiBoardRelease;
+  onSave: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null }) => Promise<void>;
+}) {
+  return (
+    <Popover className="shrink-0">
+      <PopoverButton
+        className="app-button app-button-tertiary app-button-icon-sm text-[var(--text-3)] opacity-60 group-hover/rel:opacity-100 data-[open]:opacity-100"
+        title="Change this release's dates"
+        aria-label={`Change the dates of ${release.label}`}
+        data-timeline-edit-dates
+      >
+        <CalendarDaysIcon className="h-4 w-4" />
+      </PopoverButton>
+      <PopoverPanel anchor={{ to: "bottom start", gap: 6 }} className={cn(menuPanel, "w-[260px] p-3")}>
+        {({ close }) => <EditDatesForm release={release} onSave={onSave} close={close} />}
+      </PopoverPanel>
+    </Popover>
+  );
+}
+
+function EditDatesForm({
+  release,
+  onSave,
+  close,
+}: {
+  release: WikiBoardRelease;
+  onSave: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null }) => Promise<void>;
+  close: () => void;
+}) {
+  const [start, setStart] = useState(inputDate(release.startDate));
+  const [end, setEnd] = useState(inputDate(release.endDate));
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    if (start && end && end < start) return setError("The end date is before the start.");
+    setError(null);
+    setSaving(true);
+    try {
+      await onSave(release, { startDate: start || null, endDate: end || null });
+      close();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save the dates.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="space-y-2.5" data-timeline-dates-form>
+      <p className="truncate text-[12px] font-semibold text-[var(--text-1)]" title={release.label}>
+        {release.label}
+      </p>
+      <label className="block">
+        <span className="widget-data-label text-[var(--text-4)]">Starts</span>
+        <input type="date" className="app-input mt-1 h-9 w-full px-2 text-[16px] sm:text-sm" value={start} onChange={(e) => setStart(e.target.value)} />
+      </label>
+      <label className="block">
+        <span className="widget-data-label text-[var(--text-4)]">Ends</span>
+        <input type="date" className="app-input mt-1 h-9 w-full px-2 text-[16px] sm:text-sm" value={end} onChange={(e) => setEnd(e.target.value)} />
+      </label>
+      {error ? <p className="text-[12px] text-red-700">{error}</p> : null}
+      <div className="flex justify-end gap-2">
+        <button type="button" className="app-button app-button-secondary app-button-sm h-8" onClick={close}>
+          Cancel
+        </button>
+        <button type="button" className="app-button app-button-primary app-button-sm h-8" disabled={saving} onClick={() => void save()}>
+          {saving ? "Saving…" : "Save dates"}
+        </button>
+      </div>
+    </div>
   );
 }

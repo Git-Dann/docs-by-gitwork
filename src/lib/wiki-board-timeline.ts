@@ -154,30 +154,53 @@ export function releasePercent(r: Pick<WikiBoardRelease, "cards" | "done">): num
 /**
  * Where a release stands, for the Timeline's filters and markers:
  * - "complete": it has cards and every one is done.
- * - "behind": its end date has passed and cards are still open.
+ * - "behind": its end date has passed and cards are still waiting: not done, and not approved.
  * - "open": anything else (not finished, not late, or no end date).
  * Counted from the release's own totals (every client card, before a Done column is capped).
+ * `approvedOpen` is how many of its not-done cards the client has approved: those are signed off,
+ * so they don't make a release late (Dan, Nov 2026).
  */
 export type ReleaseState = "complete" | "behind" | "open";
 
-export function releaseState(r: Pick<WikiBoardRelease, "cards" | "done" | "endDate">, today: number): ReleaseState {
+export function releaseState(
+  r: Pick<WikiBoardRelease, "cards" | "done" | "endDate">,
+  today: number,
+  approvedOpen = 0,
+): ReleaseState {
   if (r.cards > 0 && r.done >= r.cards) return "complete";
-  if (r.endDate && dayOf(r.endDate) < today && r.done < r.cards) return "behind";
+  const waiting = r.cards - r.done - approvedOpen;
+  if (r.endDate && dayOf(r.endDate) < today && waiting > 0) return "behind";
   return "open";
 }
 
+/** How many cards in each release are approved but not done, from the cards in hand. Every
+ *  not-done card is always sent (only Done columns are capped), so this count is complete. */
+export function approvedOpenByRelease(cards: readonly WikiBoardCard[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const c of cards) {
+    if (!c.release || c.status === "DONE" || c.signOff !== "approved") continue;
+    out.set(c.release.id, (out.get(c.release.id) ?? 0) + 1);
+  }
+  return out;
+}
+
+/** Cards that are still waiting in a release: not done and not approved. */
+export function waitingCount(r: Pick<WikiBoardRelease, "cards" | "done">, approvedOpen: number): number {
+  return Math.max(0, r.cards - r.done - approvedOpen);
+}
+
 /**
- * A card that's late: not done, and its own due date has passed, or (with no due date) the
- * release it's in has ended. A done card is never late.
+ * A card that's late: not done, not approved, and its OWN due date has passed. A card in a late
+ * release isn't flagged one by one: the release bar says it once (flagging every card turned the
+ * whole timeline red).
  */
 export function cardBehind(
-  card: Pick<WikiBoardCard, "status" | "dueDate">,
-  release: Pick<WikiBoardRelease, "endDate"> | null,
+  card: Pick<WikiBoardCard, "status" | "dueDate" | "signOff">,
+  _release: Pick<WikiBoardRelease, "endDate"> | null,
   today: number,
 ): boolean {
-  if (card.status === "DONE") return false;
-  if (card.dueDate) return dayOf(card.dueDate) < today;
-  return Boolean(release?.endDate && dayOf(release.endDate) < today);
+  if (card.status === "DONE" || card.signOff === "approved") return false;
+  return Boolean(card.dueDate && dayOf(card.dueDate) < today);
 }
 
 export interface TimelineGroup {
@@ -190,6 +213,8 @@ export interface TimelineFilter {
   today: number;
   /** Show releases whose cards are all done, and done cards with no release. Off by default. */
   showCompleted: boolean;
+  /** Show cards the client has approved. Off by default: they're signed off. */
+  showApproved?: boolean;
   /** Only what's late: behind releases, and late cards. */
   onlyBehind: boolean;
 }
@@ -208,13 +233,16 @@ export function timelineGroups(
   filter?: TimelineFilter,
 ): TimelineGroup[] {
   const known = new Map(releases.map((r) => [r.id, r]));
+  const approved = approvedOpenByRelease(cards);
   const byRelease = new Map<string, WikiBoardCard[]>();
   const loose: WikiBoardCard[] = [];
   for (const c of cards) {
     const r = c.release ? known.get(c.release.id) : undefined;
     if (filter) {
-      if (filter.onlyBehind && !cardBehind(c, r ?? null, filter.today)) continue;
-      if (!filter.showCompleted && (r ? releaseState(r, filter.today) === "complete" : c.status === "DONE")) continue;
+      const state = r ? releaseState(r, filter.today, approved.get(r.id) ?? 0) : null;
+      if (filter.onlyBehind && !(cardBehind(c, r ?? null, filter.today) || (state === "behind" && c.status !== "DONE" && c.signOff !== "approved"))) continue;
+      if (!filter.showCompleted && (r ? state === "complete" : c.status === "DONE")) continue;
+      if (!filter.showApproved && c.signOff === "approved") continue;
     }
     if (!r) loose.push(c);
     else byRelease.set(r.id, [...(byRelease.get(r.id) ?? []), c]);
@@ -234,15 +262,16 @@ export function timelineCounts(
   cards: readonly WikiBoardCard[],
   releases: readonly WikiBoardRelease[],
   today: number,
-): { completed: number; behind: number } {
+): { completed: number; behind: number; approved: number } {
   const inView = new Set(cards.map((c) => c.release?.id).filter(Boolean) as string[]);
+  const approvedOpen = approvedOpenByRelease(cards);
   let completed = 0;
   let behind = 0;
   for (const r of releases) {
     if (!inView.has(r.id)) continue;
-    const st = releaseState(r, today);
+    const st = releaseState(r, today, approvedOpen.get(r.id) ?? 0);
     if (st === "complete") completed++;
     else if (st === "behind") behind++;
   }
-  return { completed, behind };
+  return { completed, behind, approved: cards.filter((c) => c.signOff === "approved").length };
 }
