@@ -30,3 +30,27 @@ export function pickOwnClient(query: string, clients: readonly OwnClient[]): Cli
   if (partial.length > 1) return { kind: "several", names: partial.map((c) => c.name).sort((a, b) => a.localeCompare(b)).slice(0, 8) };
   return { kind: "none" };
 }
+
+export interface Teammate {
+  id: string;
+  name: string;
+  aliases?: string[];
+}
+
+export type PersonPick = { kind: "one"; person: Teammate } | { kind: "several"; names: string[] } | { kind: "none" };
+
+/**
+ * Which teammate a name means ("Nasir", "nasir javed", an alias on the team roster). A bare
+ * first name only counts when it's unambiguous (respond.ts adds it as an alias then).
+ */
+export function pickTeammate(query: string, people: readonly Teammate[]): PersonPick {
+  const q = norm(query);
+  if (!q) return { kind: "none" };
+  const keys = (p: Teammate) => [p.name, ...(p.aliases ?? [])].map(norm);
+  const exact = people.filter((p) => keys(p).includes(q));
+  if (exact.length === 1) return { kind: "one", person: exact[0] };
+  const partial = (exact.length ? exact : people).filter((p) => keys(p).some((k) => k.includes(q) || (k.length > 3 && q.includes(k))));
+  if (partial.length === 1) return { kind: "one", person: partial[0] };
+  if (partial.length > 1) return { kind: "several", names: partial.map((p) => p.name).sort((a, b) => a.localeCompare(b)).slice(0, 8) };
+  return { kind: "none" };
+}

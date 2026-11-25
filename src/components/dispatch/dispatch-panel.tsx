@@ -22,6 +22,7 @@ import {
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
   ArrowUpIcon,
+  ChatBubbleBottomCenterTextIcon,
   CheckCircleIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -43,7 +44,7 @@ import { useDispatchAvailable, useDispatchBrief, type DispatchBrief } from "@/ho
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/motion/spinner";
 import { Skeleton } from "@/components/ui/motion/skeleton";
-import { SKILL_GROUP_LABELS, skillsFor, type DispatchSkill, type SkillGroup } from "@/lib/dispatch/skills";
+import { SIMPLER_PROMPT, SKILL_GROUP_LABELS, skillsFor, type DispatchSkill, type SkillGroup } from "@/lib/dispatch/skills";
 import { shortDay, type BriefSuggestion, type Tone } from "@/lib/dispatch/brief";
 import { DISPATCH_OPEN_EVENT, openDispatch, type OpenDispatchDetail } from "@/lib/dispatch/open";
 import { shrinkPicture } from "@/lib/dispatch/shrink-picture";
@@ -520,8 +521,14 @@ export function DispatchPanel() {
             />
           ) : (
             <div className="space-y-5 px-4 py-4">
-              {items.map((it) => (
-                <ChatItem key={it.key} item={it} onDecide={decide} />
+              {items.map((it, i) => (
+                <ChatItem
+                  key={it.key}
+                  item={it}
+                  onDecide={decide}
+                  // Only on the latest answer, and not while another is on its way.
+                  onSimpler={it.type === "answer" && i === items.length - 1 && !busy ? () => void ask(SIMPLER_PROMPT) : undefined}
+                />
               ))}
               {sources.length > 0 && !busy ? <SourceChips sources={sources} /> : null}
             </div>
@@ -622,6 +629,9 @@ export function DispatchPanel() {
     </div>
   );
 }
+
+const answerAction =
+  "inline-flex items-center gap-1 rounded-[6px] px-1.5 py-1 text-[11px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]";
 
 const iconButton =
   "flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]";
@@ -985,7 +995,16 @@ function StepTrail({ steps, working }: { steps: string[]; working: boolean }) {
   );
 }
 
-function ChatItem({ item, onDecide }: { item: Item; onDecide: (id: string, d: "confirm" | "cancel") => void }) {
+function ChatItem({
+  item,
+  onDecide,
+  onSimpler,
+}: {
+  item: Item;
+  onDecide: (id: string, d: "confirm" | "cancel") => void;
+  /** "Simpler": ask for the answer again in plainer words (the latest answer only). */
+  onSimpler?: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   if (item.type === "question") {
     return (
@@ -1015,19 +1034,27 @@ function ChatItem({ item, onDecide }: { item: Item; onDecide: (id: string, d: "c
           </div>
         ) : null}
         {item.text.length > 40 && !item.working ? (
-          <button
-            type="button"
-            onClick={() => {
-              void navigator.clipboard?.writeText(item.text).then(() => {
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1500);
-              });
-            }}
-            className="inline-flex items-center gap-1 rounded-[6px] px-1.5 py-1 text-[11px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
-          >
-            {copied ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
-            {copied ? "Copied" : "Copy"}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(item.text).then(() => {
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1500);
+                });
+              }}
+              className={answerAction}
+            >
+              {copied ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+            {onSimpler ? (
+              <button type="button" onClick={onSimpler} title="Say that again in plainer words" className={answerAction}>
+                <ChatBubbleBottomCenterTextIcon className="h-3 w-3" />
+                Simpler
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     );

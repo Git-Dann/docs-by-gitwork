@@ -2619,3 +2619,32 @@ give a baked set of responses."
 - **The fixed messages explain themselves**: the hourly limit says why it exists and when it lifts,
   a long chat says why to start a new one and where the button is, a declined question says it
   was the AI that turned it down and what to try, an empty message asks what they meant.
+
+## 166. Recent Changes (November 2026) — Teammate and "everything" questions get Dispatch, and an "Explain it simply" button
+
+Dan, 25 Nov: move the questions Slack still answered from a template (about a teammate, or
+"everything") onto the conversational Dispatch; and "help the dev team ask Dispatch for a
+better, less techy way of explaining something".
+
+- **Two new tools**, appended to the list:
+  - `person_work`: what a teammate is on, across the asker's active clients. In progress (and
+    for how long), overdue, due in 7 days, done this week. The name is matched against the team
+    (`pickTeammate`, `src/lib/dispatch/clients.ts`: full name, roster alias or a unique first name;
+    "Ali" asks which Ali).
+  - `all_clients_overview`: every active client at a glance. Open, overdue, in progress, stuck,
+    waiting on the client, nobody assigned, done this week, next release; for an admin, also who
+    holds the most open work.
+- **Same board rule as Foundry** (memory `dispatch-visibility-rules`): both read only the
+  asker's own active clients, so a developer sees teammates' tasks only on clients they work on;
+  the per-person workload line is admin-only. **Neither runs in a client's own Slack channel**
+  (nor does `my_clients`, which could have listed the asker's other clients there): the tool
+  says to answer about this client with `find_tasks` or to ask by DM. A test pins the guard on all
+  three.
+- **Slack routing:** a question about a teammate or everything no longer goes to respond.ts's
+  fixed status answer. It starts on the client the person last asked about and Dispatch looks
+  across from there; in a channel that isn't a client's own, the answer goes by DM as before.
+  respond.ts now only serves people without the assistant.
+- **"Explain it simply"** (quick action `plain-words`, anywhere, under Write): paste something
+  technical (an error, a PR, a developer's message) and get it in plain words for the client.
+  **"Simpler"** under the latest answer in the panel asks for that answer again without the
+  technical terms (`SIMPLER_PROMPT`). In Slack, "say that more simply" does the same.

@@ -5,7 +5,9 @@
  *   1. a thread this person already started with Dispatch keeps its client;
  *   2. a client's own internal channel means that client;
  *   3. otherwise the client named in the question, from the clients this person can open.
- * Anything else (a teammate, "everything") goes to the older status answer in respond.ts.
+ *   4. otherwise (a teammate, "everything", or nothing named) the client they last asked about,
+ *      and Dispatch looks across their clients from there (§166; these used to get a fixed
+ *      status answer from respond.ts, which now only serves people without the assistant).
  *
  * Where the answer goes:
  *   - a DM with the bot, or the client's own internal channel: in the thread;
@@ -47,7 +49,7 @@ export interface SlackQuestion {
   exchangeId: string;
 }
 
-/** "legacy" = not for the assistant (switched off, or not about one client): use respond.ts. */
+/** "legacy" = Dispatch's assistant isn't switched on for this person: use respond.ts. */
 export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "legacy"> {
   if (!(await assistantAvailable(q.asker))) return "legacy";
   const startedAt = Date.now();
@@ -98,13 +100,11 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
   // their first, and Dispatch moves between their clients from there (§164).
   const { ownClients, activeOnly } = await import("./own-clients");
   const sortedClients = activeOnly(await ownClients(q.asker));
-  const lastChat = isDm
-    ? await prisma.dispatchConversation.findFirst({
-        where: { workspaceId: q.workspaceId, userId: q.asker.id, clientId: { in: sortedClients.map((c) => c.id) } },
-        orderBy: { updatedAt: "desc" },
-        select: { clientId: true },
-      })
-    : null;
+  const lastChat = await prisma.dispatchConversation.findFirst({
+    where: { workspaceId: q.workspaceId, userId: q.asker.id, clientId: { in: sortedClients.map((c) => c.id) } },
+    orderBy: { updatedAt: "desc" },
+    select: { clientId: true },
+  });
   const decision = decideSlackChat({
     isDm,
     inThread: q.inThread,
@@ -119,7 +119,6 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
     maxMessages: MAX_CHAT_MESSAGES - 6,
     now: new Date(),
   });
-  if (decision.action === "legacy") return "legacy";
 
   // In a DM, answer where they wrote: at the top level, or in the thread they used. In a
   // channel, always in the thread, so the channel stays quiet.

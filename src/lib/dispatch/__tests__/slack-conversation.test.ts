@@ -65,8 +65,10 @@ describe("decideSlackChat: with nothing to go on", () => {
     expect(decideSlackChat({ ...base, onlyClientId: "wedge" })).toEqual({ action: "new", clientId: "wedge" });
   });
 
-  it("a question about a person or everything goes to the status answer", () => {
-    expect(decideSlackChat({ ...base, aboutPersonOrAll: true })).toEqual({ action: "legacy" });
+  it("a question about a teammate or everything goes to Dispatch too, not a fixed answer (§166)", () => {
+    expect(decideSlackChat({ ...base, aboutPersonOrAll: true, fallbackClientId: "wedge" })).toEqual({ action: "new", clientId: "wedge" });
+    // In a channel that isn't a client's own, it's answered by DM (slack.ts).
+    expect(decideSlackChat({ ...base, isDm: false, aboutPersonOrAll: true, fallbackClientId: "wedge" })).toEqual({ action: "new", clientId: "wedge" });
   });
 });
 

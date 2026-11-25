@@ -42,6 +42,17 @@ describe("the permission wall in the tools", () => {
     }
   });
 
+  it("tools that look across clients never run in a channel, and only read the asker's own clients", () => {
+    const src = readFileSync(join(process.cwd(), "src/server/dispatch/assistant/tools.ts"), "utf8");
+    for (const name of ["my_clients", "person_work", "all_clients_overview"]) {
+      const at = src.indexOf(`name: "${name}"`);
+      expect(at).toBeGreaterThan(-1);
+      const body = src.slice(at, src.indexOf("\nconst ", at));
+      expect(body).toContain("if (scope.inChannel) return { text: IN_CHANNEL_CROSS_CLIENT(scope), isError: true };");
+      expect(body).toMatch(/ownClients\(scope\.user\)/);
+    }
+  });
+
   it("switch_client only opens the asker's own clients, through openScope, and never in a channel", () => {
     const src = readFileSync(join(process.cwd(), "src/server/dispatch/assistant/tools.ts"), "utf8");
     const body = src.slice(src.indexOf('name: "switch_client"'), src.indexOf("// ─── Read tools"));

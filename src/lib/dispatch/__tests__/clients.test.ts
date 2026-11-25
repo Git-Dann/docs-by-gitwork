@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickOwnClient } from "../clients";
+import { pickOwnClient, pickTeammate } from "../clients";
 
 const mine = [
   { id: "1", name: "Wedge", slug: "wedge" },
@@ -28,5 +28,28 @@ describe("pickOwnClient", () => {
   it("a client that isn't theirs is simply not found", () => {
     expect(pickOwnClient("Northwind", mine)).toEqual({ kind: "none" });
     expect(pickOwnClient("", mine)).toEqual({ kind: "none" });
+  });
+});
+
+describe("pickTeammate", () => {
+  const team = [
+    { id: "n", name: "Nasir Javed", aliases: ["nasir"] },
+    { id: "f", name: "Muhammad Fahad", aliases: ["fahad"] },
+    { id: "a1", name: "Ali Asghar" },
+    { id: "a2", name: "Ali Sher" },
+  ];
+
+  it("a full name, an alias or a unique first name", () => {
+    expect(pickTeammate("Nasir Javed", team)).toMatchObject({ kind: "one", person: { id: "n" } });
+    expect(pickTeammate("nasir", team)).toMatchObject({ kind: "one", person: { id: "n" } });
+    expect(pickTeammate("Fahad", team)).toMatchObject({ kind: "one", person: { id: "f" } });
+  });
+
+  it("an ambiguous first name asks which", () => {
+    expect(pickTeammate("Ali", team)).toEqual({ kind: "several", names: ["Ali Asghar", "Ali Sher"] });
+  });
+
+  it("nobody by that name", () => {
+    expect(pickTeammate("Priya", team)).toEqual({ kind: "none" });
   });
 });

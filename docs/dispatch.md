@@ -223,6 +223,11 @@ Slack DM the one named, else the client the person last asked about) and moves w
 open and overdue work. Access is checked on the switch (`openScope`) and on every tool call. In a
 Slack channel the chat never leaves the channel's client.
 
+`person_work` (a teammate's work) and `all_clients_overview` (every client at a glance) read only
+the asker's active clients, like the board; the per-person workload line is admin-only. Neither,
+nor `my_clients`, runs in a client's own Slack channel (§166). Questions about a teammate or
+everything now come here from Slack instead of respond.ts's fixed answer.
+
 ### The brief (§161)
 
 The panel opens on a brief, not an empty chat: the person's own tasks that need them and why,

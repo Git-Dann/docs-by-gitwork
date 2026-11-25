@@ -36,6 +36,18 @@ export const DISPATCH_SKILLS: readonly DispatchSkill[] = [
   { id: "pre-call", label: "Pre-call summary", context: "client", group: "plan", prompt: "I've got a call with the client soon. Summarise what we committed to last time, what's ready to demo, and the open questions or blockers that need their input.", requestedBy: "Shahbaz" },
   { id: "feedback", label: "Turn feedback into tickets", context: "client", group: "write", prompt: "Here's client feedback. Check each point against existing tasks (duplicates, or already done), suggest who should pick each up by platform, and propose tickets for the new ones:\n\n", needsInput: true, requestedBy: "Nasir" },
   { id: "reply", label: "Help me reply to the client", context: "client", group: "write", prompt: "Help me write a plain-English reply to the client about this:\n\n", needsInput: true },
+  // Dan, 25 Nov 2026: the team wanted "a better, less techy way of explaining something".
+  // Anywhere (not just on a task): paste the technical thing, get words for the client.
+  {
+    id: "plain-words",
+    label: "Explain it simply",
+    context: "client",
+    group: "write",
+    prompt:
+      "Explain this in plain, non-technical English, the way I could say it to the client or anyone who isn't a developer. Keep what matters (what happened, what it means for them, what happens next) and drop the jargon:\n\n",
+    needsInput: true,
+    requestedBy: "Dan",
+  },
   { id: "release-notes", label: "Release notes", context: "client", group: "write", prompt: "Write client-friendly release notes for the latest release: what's new, what's fixed. Plain English.", requestedBy: "Fahad" },
   // Added 25 Nov 2026 (requests 17 and 18 on the team's list): both read the code or the Figma
   // design, so they are answered by the stronger model (src/lib/dispatch/model.ts).
@@ -84,6 +96,9 @@ export const DISPATCH_SKILLS: readonly DispatchSkill[] = [
     requestedBy: "Billal",
   },
 ];
+
+/** The follow-up under every answer: the same thing again, less technical. */
+export const SIMPLER_PROMPT = "Say that again more simply: plain words, no technical terms, as I'd explain it to the client.";
 
 export function skillsFor(context: SkillContext): DispatchSkill[] {
   return DISPATCH_SKILLS.filter((s) => (context === "task" ? true : s.context === "client"));

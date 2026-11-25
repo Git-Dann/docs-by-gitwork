@@ -229,6 +229,11 @@ async function proposeAction(
 // through openScope, which checks access again; so a client they can't see reads like a name
 // that doesn't exist. "Your clients" means the active ones, as Portal lists them.
 
+/** Cross-client tools in a Slack channel: everyone there reads the answer, and it's a client's
+ *  own channel, so it never hears about other clients. */
+const IN_CHANNEL_CROSS_CLIENT = (scope: DispatchScope) =>
+  `In a channel I stick to ${scope.client.name}, so nobody here sees other clients' work. For this client use find_tasks or project_overview; for anything wider, the person can ask in a direct message to Foundry. Tell them that.`;
+
 type ClientCounts = { mine: number; mineOverdue: number; open: number; overdue: number; nobody: number };
 const NO_COUNTS: ClientCounts = { mine: 0, mineOverdue: 0, open: 0, overdue: 0, nobody: 0 };
 
@@ -240,6 +245,7 @@ const myClients = tool({
   schema: z.object({}).strict(),
   status: "Looking at your clients",
   async run(scope) {
+    if (scope.inChannel) return { text: IN_CHANNEL_CROSS_CLIENT(scope), isError: true };
     const { ownClients, activeOnly } = await import("./own-clients");
     const all = await ownClients(scope.user);
     const active = activeOnly(all);
@@ -304,6 +310,133 @@ const switchClient = tool({
     if (pick.client.id === scope.client.id) return { text: `Already on ${scope.client.name}.` };
     const next = await openScope(scope.user, { id: pick.client.id }, scope.surface);
     return { text: `Now on ${next.client.name}. Every tool from here works on ${next.client.name}.`, switchTo: next };
+  },
+});
+
+// ─── A teammate's work, and everything at once (§166) ───────────────────────
+// Both span clients, so both only ever read the ASKER'S OWN active clients (the board rule:
+// a developer sees teammates' tasks on clients they work on, nothing else), and neither runs in
+// a channel. Per-person workload across clients is for admins only.
+
+function dueDays(iso: string | null, now: number): number | null {
+  if (!iso) return null;
+  return Math.round((Date.UTC(new Date(iso).getUTCFullYear(), new Date(iso).getUTCMonth(), new Date(iso).getUTCDate()) - Math.floor(now / DAY_MS) * DAY_MS) / DAY_MS);
+}
+
+const personWork = tool({
+  name: "person_work",
+  description:
+    "What a teammate is working on across the clients the person asking works on: in progress (and for how long), overdue, due soon, and done in the last 7 days. Use for 'what's Nasir on?', 'what has Fahad done this week?'. Pass the name as they said it.",
+  input_schema: obj({ person: { type: "string", description: "The teammate's name, as the person said it." } }, ["person"]),
+  schema: z.object({ person: z.string().min(1).max(120) }).strict(),
+  status: "Looking at their work",
+  async run(scope, { person }) {
+    if (scope.inChannel) return { text: IN_CHANNEL_CROSS_CLIENT(scope), isError: true };
+    const { askerScope, loadCandidates } = await import("@/server/dispatch/respond");
+    const { pickTeammate } = await import("@/lib/dispatch/clients");
+    const { ownClients, activeOnly } = await import("./own-clients");
+    const [{ people }, clients] = await Promise.all([
+      loadCandidates(scope.user.workspaceId, await askerScope(scope.user)),
+      ownClients(scope.user).then(activeOnly),
+    ]);
+    const pick = pickTeammate(person, people);
+    if (pick.kind === "none") return { text: `Nobody on the team matches "${person}". Say so, and ask who they meant.`, isError: true };
+    if (pick.kind === "several") return { text: `"${person}" could be ${pick.names.join(", ")}. Ask which one.`, isError: true };
+    const who = pick.person;
+    if (!clients.length) return { text: "The person asking isn't on any active clients, so there's no work to show." };
+    const { listTasks } = await import("@/server/tasks");
+    const ids = clients.map((c) => c.id);
+    const [open, done] = await Promise.all([
+      listTasks(scope.user, { clientIds: ids, assigneeId: who.id, openOnly: true, limit: 300 }),
+      listTasks(scope.user, { clientIds: ids, assigneeId: who.id, status: "DONE", doneWithinDays: 7, limit: 100 }),
+    ]);
+    const now = Date.now();
+    const line = (t: TaskDTO) => {
+      const bits = [`${t.title} [ref ${taskRef(t.id).replace(/^#/, "")}]`, t.client.name, TASK_STATUS_LABELS[t.status] ?? t.status];
+      const d = dueDays(t.dueDate, now);
+      if (d !== null) bits.push(d < 0 ? `overdue ${-d}d` : d === 0 ? "due today" : `due ${day(t.dueDate)}`);
+      const started = isStuck(t) && t.startedAt ? Math.floor((now - new Date(t.startedAt).getTime()) / DAY_MS) : null;
+      if (started) bits.push(`in progress ${started}d, stuck`);
+      if (t.blockedReason) bits.push("waiting on the client");
+      if (t.assignees.length > 1) bits.push(`shared with ${t.assignees.filter((a) => a.id !== who.id).map((a) => a.name).join(", ")}`);
+      return `- ${bits.join(" · ")}`;
+    };
+    const doing = open.filter((t) => t.status === "DOING" || t.status === "IN_REVIEW" || t.status === "UI_DONE");
+    const overdue = open.filter((t) => !doing.includes(t) && (dueDays(t.dueDate, now) ?? 1) < 0);
+    const soon = open.filter((t) => !doing.includes(t) && !overdue.includes(t) && (dueDays(t.dueDate, now) ?? 99) <= 7);
+    const rest = open.length - doing.length - overdue.length - soon.length;
+    const section = (title: string, rows: TaskDTO[], cap = 15) => (rows.length ? `${title}:\n${rows.slice(0, cap).map(line).join("\n")}${rows.length > cap ? `\n…and ${rows.length - cap} more` : ""}` : `${title}: none`);
+    const scopeNote = scope.user.id === who.id ? "" : ` (only on the clients ${scope.user.name ?? "the person asking"} works on)`;
+    const text = [
+      `${who.name}: ${open.length} open task${open.length === 1 ? "" : "s"}${scopeNote}, ${done.length} done in the last 7 days.`,
+      section("In progress", doing),
+      section("Overdue", overdue),
+      section("Due in the next 7 days", soon),
+      rest > 0 ? `Other open, not started and not due soon: ${rest}.` : "",
+      section("Done in the last 7 days", done, 10),
+    ].filter(Boolean).join("\n\n");
+    return {
+      text: asSource("person", who.id, text),
+      sources: [...doing, ...overdue].slice(0, 6).map((t) => ({ kind: "task" as const, id: t.id, label: chipTitle(t.title), href: `/app/portal/${t.client.slug}/tasks?task=${t.id}` })),
+    };
+  },
+});
+
+const allClientsOverview = tool({
+  name: "all_clients_overview",
+  description:
+    "Every client the person asking works on at a glance: open, overdue, in progress, stuck, waiting on the client, nobody assigned, done this week, and the next release. For an admin, also who holds the most open work. Use for 'how's everything looking?', 'what's late?', 'where should I look first?'.",
+  input_schema: obj({}),
+  schema: z.object({}).strict(),
+  status: "Looking across your clients",
+  async run(scope) {
+    if (scope.inChannel) return { text: IN_CHANNEL_CROSS_CLIENT(scope), isError: true };
+    const { ownClients, activeOnly } = await import("./own-clients");
+    const clients = activeOnly(await ownClients(scope.user));
+    if (!clients.length) return { text: "The person asking isn't on any active clients." };
+    const ids = clients.map((c) => c.id);
+    const { listTasks } = await import("@/server/tasks");
+    const now = Date.now();
+    const [open, done, releases] = await Promise.all([
+      listTasks(scope.user, { clientIds: ids, openOnly: true, limit: 5000 }),
+      listTasks(scope.user, { clientIds: ids, status: "DONE", doneWithinDays: 7, limit: 2000 }),
+      prisma.clientRelease.findMany({
+        where: { workspaceId: scope.user.workspaceId, clientId: { in: ids }, endDate: { gte: new Date(now - DAY_MS) } },
+        orderBy: { endDate: "asc" },
+        select: { clientId: true, version: true, endDate: true },
+      }),
+    ]);
+    type Row = { open: number; overdue: number; doing: number; stuck: number; blocked: number; nobody: number; done: number };
+    const per = new Map<string, Row>(ids.map((id) => [id, { open: 0, overdue: 0, doing: 0, stuck: 0, blocked: 0, nobody: 0, done: 0 }]));
+    const people = new Map<string, number>();
+    for (const t of open) {
+      const r = per.get(t.client.id);
+      if (!r) continue;
+      r.open += 1;
+      if ((dueDays(t.dueDate, now) ?? 1) < 0) r.overdue += 1;
+      if (t.status === "DOING" || t.status === "IN_REVIEW" || t.status === "UI_DONE") r.doing += 1;
+      if (isStuck(t)) r.stuck += 1;
+      if (t.blockedReason) r.blocked += 1;
+      if (!t.assignees.length) r.nobody += 1;
+      for (const a of t.assignees) people.set(a.name, (people.get(a.name) ?? 0) + 1);
+    }
+    for (const t of done) {
+      const r = per.get(t.client.id);
+      if (r) r.done += 1;
+    }
+    const nextRelease = new Map<string, { version: string; endDate: Date | null }>();
+    for (const r of releases) if (!nextRelease.has(r.clientId)) nextRelease.set(r.clientId, r);
+    const lines = clients
+      .map((c) => ({ c, r: per.get(c.id)! }))
+      .sort((a, b) => b.r.overdue - a.r.overdue || b.r.stuck - a.r.stuck || b.r.open - a.r.open)
+      .map(({ c, r }) => {
+        const rel = nextRelease.get(c.id);
+        return `- ${c.name}: ${r.open} open, ${r.overdue} overdue, ${r.doing} in progress (${r.stuck} stuck), ${r.blocked} waiting on the client, ${r.nobody} with nobody, ${r.done} done this week${rel?.endDate ? ` · next release ${rel.version} on ${day(rel.endDate)}` : ""}`;
+      });
+    const top = scope.isAdmin
+      ? `\n\nMost open work (a shared task counts for each person): ${[...people.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([n, k]) => `${n} ${k}`).join(", ") || "nobody"}.`
+      : "";
+    return { text: asSource("overview", "all", `${clients.length} active clients:\n${lines.join("\n")}${top}`) };
   },
 });
 
@@ -1027,6 +1160,9 @@ export const DISPATCH_TOOLS: readonly DispatchTool[] = [
   // §164: chats move between the asker's own clients.
   myClients,
   switchClient,
+  // §166: a teammate's work and everything at once (questions Slack used to send to a template).
+  personWork,
+  allClientsOverview,
 ];
 
 const BY_NAME = new Map(DISPATCH_TOOLS.map((t) => [t.name, t]));

@@ -922,3 +922,4 @@ be resolved by reading. Do not renumber either one.
 - **§163** — The Portal Timeline card, glanceable; Studies off the client page
 - **§164** — Dispatch talks to you, not to one client at a time
 - **§165** — Dispatch counts clients like Portal, and talks like a person
+- **§166** — Teammate and "everything" questions get Dispatch, and an "Explain it simply" button
