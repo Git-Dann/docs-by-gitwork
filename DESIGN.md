@@ -1090,8 +1090,11 @@ blank box with a wall of prompt chips reads as "a chat bot"; that was the compla
 - **Header**: a 28px `--brand-700` square with the sparkle, "Dispatch", and the client name under
   it when there's only one. 32px icon buttons on the right: earlier chats, new chat (in a chat),
   close. **The client switcher shows only when there's more than one client**: a full-width
-  button with the client's initial in a `--brand-50` square, the name, and the chevron at the
-  right edge. Never give a custom dropdown button `app-select`/`app-select-compact`: their right
+  button with the client's logo (its Portal `logoUrl`; the initial in a `--brand-50` square when
+  there's none or it won't load), the name, and the chevron at the right edge. The menu rows
+  carry the logo too. **With one client** there's nothing to switch, so the header ends with a
+  client card instead: a 40px logo, a mono "YOUR CLIENT" label over the name, a soft
+  `--surface-brand-soft` wash, and an "Open" link to the client's Portal page. Never give a custom dropdown button `app-select`/`app-select-compact`: their right
   padding is reserved for a background chevron, so an icon chevron floats inward. Both menus are
   Headless UI `Listbox`es anchored below their button with the house `menuPanel` (z-[70]),
   **not native `<select>`s** (macOS opens a native menu with the chosen row over the box).

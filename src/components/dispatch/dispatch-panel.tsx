@@ -392,6 +392,7 @@ export function DispatchPanel() {
 
   const inChat = items.length > 0;
   const manyClients = clientOptions.length > 1;
+  const current = clientOptions.find((c) => c.slug === clientSlug);
 
   return (
     <div className="fixed inset-0 z-[65] flex justify-end" role="dialog" aria-modal="true" aria-label="Dispatch">
@@ -405,7 +406,6 @@ export function DispatchPanel() {
             </span>
             <div className="min-w-0 flex-1 leading-tight">
               <p className="text-[13px] font-semibold text-[var(--text-1)]">Dispatch</p>
-              {!manyClients && clientName ? <p className="truncate text-[11.5px] text-[var(--text-3)]">{clientName}</p> : null}
             </div>
             {history.length > 0 ? (
               <Listbox value="" onChange={(id: string) => id && void loadConversation(id)}>
@@ -444,7 +444,7 @@ export function DispatchPanel() {
                 aria-label={`Client: ${clientName ?? "none picked"}`}
                 className="mt-3 flex w-full items-center gap-2.5 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-0)] py-1.5 pl-1.5 pr-2.5 text-left transition hover:bg-[var(--surface-1)] disabled:opacity-60"
               >
-                <ClientMark name={clientName} />
+                <ClientMark name={clientName} logoUrl={current?.logoUrl} />
                 <span className={cn("min-w-0 flex-1 truncate text-[16px] font-medium sm:text-sm", clientName ? "text-[var(--text-1)]" : "text-[var(--text-4)]")}>
                   {clientName ?? "Pick a client"}
                 </span>
@@ -458,7 +458,7 @@ export function DispatchPanel() {
                   <ListboxOption key={c.id} value={c.slug} className={cn(menuItem, "gap-2.5 data-[selected]:font-medium data-[selected]:text-[var(--text-1)]")}>
                     {({ selected }) => (
                       <>
-                        <ClientMark name={c.name} small />
+                        <ClientMark name={c.name} logoUrl={c.logoUrl} size="sm" />
                         <span className="min-w-0 flex-1 truncate">{c.name}</span>
                         {selected ? <CheckIcon className="h-4 w-4 shrink-0 text-[var(--brand-700)]" aria-hidden /> : null}
                       </>
@@ -467,6 +467,28 @@ export function DispatchPanel() {
                 ))}
               </ListboxOptions>
             </Listbox>
+          ) : null}
+
+          {/* One client: nothing to switch, so the client is the top of the panel. */}
+          {!manyClients && current ? (
+            <div className="relative mt-3 flex items-center gap-3 overflow-hidden rounded-[10px] border border-[var(--border-2)] p-3">
+              <span aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,var(--surface-brand-soft)_0%,transparent_60%)]" />
+              <ClientMark name={current.name} logoUrl={current.logoUrl} size="lg" />
+              <div className="relative min-w-0 flex-1">
+                <p className="text-[10.5px] font-medium uppercase tracking-[0.8px] text-[var(--text-4)]" style={MONO}>
+                  Your client
+                </p>
+                <p className="truncate text-[15px] font-semibold text-[var(--text-1)]">{current.name}</p>
+              </div>
+              <Link
+                href={`/app/portal/${current.slug}`}
+                onClick={() => setOpen(false)}
+                className="relative inline-flex shrink-0 items-center gap-1 rounded-[6px] px-2 py-1.5 text-xs font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
+              >
+                Open
+                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" aria-hidden />
+              </Link>
+            </div>
           ) : null}
         </header>
 
@@ -598,14 +620,30 @@ export function DispatchPanel() {
 const iconButton =
   "flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]";
 
-function ClientMark({ name, small = false }: { name?: string; small?: boolean }) {
+const MARK_SIZE = {
+  sm: "h-5 w-5 rounded-[5px] text-[10px]",
+  md: "h-7 w-7 rounded-[6px] text-xs",
+  lg: "h-10 w-10 rounded-[8px] text-sm",
+} as const;
+
+/** The client's logo (as on its Portal card), or its initial when there's none or it won't load. */
+function ClientMark({ name, logoUrl, size = "md" }: { name?: string; logoUrl?: string | null; size?: keyof typeof MARK_SIZE }) {
+  const [broken, setBroken] = useState(false);
+  if (logoUrl && !broken) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- a client's own uploaded logo
+      <img
+        src={logoUrl}
+        alt=""
+        onError={() => setBroken(true)}
+        className={cn("relative shrink-0 border border-[var(--border-2)] bg-white object-cover", MARK_SIZE[size])}
+      />
+    );
+  }
   return (
     <span
       aria-hidden
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-[6px] bg-[var(--brand-50)] font-semibold text-[var(--brand-700)]",
-        small ? "h-5 w-5 text-[10px]" : "h-7 w-7 text-xs",
-      )}
+      className={cn("relative flex shrink-0 items-center justify-center bg-[var(--brand-50)] font-semibold text-[var(--brand-700)]", MARK_SIZE[size])}
     >
       {(name ?? "?").trim().charAt(0).toUpperCase()}
     </span>
@@ -628,7 +666,7 @@ function ClientChooser({
   onPick,
   firstName,
 }: {
-  clients: { id: string; slug: string; name: string }[];
+  clients: { id: string; slug: string; name: string; logoUrl?: string | null }[];
   onPick: (slug: string) => void;
   firstName: string | null;
 }) {
@@ -643,7 +681,7 @@ function ClientChooser({
         {clients.map((c) => (
           <li key={c.id}>
             <button type="button" onClick={() => onPick(c.slug)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-[var(--surface-1)]">
-              <ClientMark name={c.name} />
+              <ClientMark name={c.name} logoUrl={c.logoUrl} />
               <span className="min-w-0 flex-1 truncate font-medium text-[var(--text-1)]">{c.name}</span>
               <ArrowRightIcon className="h-4 w-4 text-[var(--text-4)]" aria-hidden />
             </button>
