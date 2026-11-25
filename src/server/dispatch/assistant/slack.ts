@@ -96,7 +96,8 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
 
   // A DM with nothing to go on starts on the client the person last asked Dispatch about, or
   // their first, and Dispatch moves between their clients from there (§164).
-  const sortedClients = [...candidates.clients].sort((a, b) => a.name.localeCompare(b.name));
+  const { ownClients, activeOnly } = await import("./own-clients");
+  const sortedClients = activeOnly(await ownClients(q.asker));
   const lastChat = isDm
     ? await prisma.dispatchConversation.findFirst({
         where: { workspaceId: q.workspaceId, userId: q.asker.id, clientId: { in: sortedClients.map((c) => c.id) } },
@@ -112,7 +113,7 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
     namedClientId: resolved.subject?.kind === "client" ? resolved.subject.id : null,
     aboutPersonOrAll: resolved.subject !== null && resolved.subject.kind !== "client",
     channelClientId: ownChannelClient?.id ?? null,
-    onlyClientId: candidates.clients.length === 1 ? candidates.clients[0].id : null,
+    onlyClientId: sortedClients.length === 1 ? sortedClients[0].id : null,
     fallbackClientId: lastChat?.clientId ?? sortedClients[0]?.id ?? null,
     // Room for this turn's question, tool calls and answer before the cap.
     maxMessages: MAX_CHAT_MESSAGES - 6,

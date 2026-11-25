@@ -225,35 +225,31 @@ async function proposeAction(
 
 // ─── Across the person's clients (§164) ─────────────────────────────────────
 // A chat isn't locked to one client: these two let it move between the ASKER'S OWN clients.
-// The list is built from the clients the asker can open (respond.ts loadCandidates), and the
-// switch goes through openScope, which checks access again; so a client they can't see reads
-// like a name that doesn't exist.
+// The list is built from the clients the asker can open (own-clients.ts), and the switch goes
+// through openScope, which checks access again; so a client they can't see reads like a name
+// that doesn't exist. "Your clients" means the active ones, as Portal lists them.
 
-async function ownClients(scope: DispatchScope) {
-  const { askerScope, loadCandidates } = await import("@/server/dispatch/respond");
-  const { clients } = await loadCandidates(scope.user.workspaceId, await askerScope(scope.user));
-  return clients;
-}
+type ClientCounts = { mine: number; mineOverdue: number; open: number; overdue: number; nobody: number };
+const NO_COUNTS: ClientCounts = { mine: 0, mineOverdue: 0, open: 0, overdue: 0, nobody: 0 };
 
 const myClients = tool({
   name: "my_clients",
   description:
-    "The clients the person asking works on (only theirs), with how many open and overdue tasks they have on each, and for an admin the client's totals. Use for 'what clients have I got', 'where am I busiest', or questions across clients.",
+    "The clients the person asking works on (only theirs, the active ones as Portal lists them), with how many open and overdue tasks they have on each, and for an admin the client's totals. Also names any paused or archived clients they can still ask about. Use for 'what clients have I got', 'where am I busiest', or questions across clients.",
   input_schema: obj({}),
   schema: z.object({}).strict(),
   status: "Looking at your clients",
   async run(scope) {
-    const clients = await ownClients(scope);
-    if (!clients.length) return { text: "This person isn't on any clients." };
-    const ids = clients.map((c) => c.id);
-    const statuses = await prisma.workspaceClient.findMany({ where: { id: { in: ids }, workspaceId: scope.user.workspaceId }, select: { id: true, status: true } });
-    const statusOf = new Map(statuses.map((r) => [r.id, r.status]));
+    const { ownClients, activeOnly } = await import("./own-clients");
+    const all = await ownClients(scope.user);
+    const active = activeOnly(all);
+    if (!all.length) return { text: "This person isn't on any clients." };
     const { listTasks } = await import("@/server/tasks");
-    const open = await listTasks(scope.user, { clientIds: ids, openOnly: true, limit: 5000 });
+    const open = active.length ? await listTasks(scope.user, { clientIds: active.map((c) => c.id), openOnly: true, limit: 5000 }) : [];
     const today = Date.now();
-    const per = new Map<string, { mine: number; mineOverdue: number; open: number; overdue: number; nobody: number }>();
+    const per = new Map<string, ClientCounts>();
     for (const t of open) {
-      const row = per.get(t.client.id) ?? { mine: 0, mineOverdue: 0, open: 0, overdue: 0, nobody: 0 };
+      const row = { ...(per.get(t.client.id) ?? NO_COUNTS) };
       const overdue = t.dueDate !== null && new Date(t.dueDate).getTime() < today - DAY_MS;
       const mine = t.assignees.some((a) => a.id === scope.user.id);
       row.open += 1;
@@ -263,18 +259,26 @@ const myClients = tool({
       if (mine && overdue) row.mineOverdue += 1;
       per.set(t.client.id, row);
     }
-    const lines = clients
-      .map((c) => ({ c, r: per.get(c.id) ?? { mine: 0, mineOverdue: 0, open: 0, overdue: 0, nobody: 0 }, status: statusOf.get(c.id) ?? "ACTIVE" }))
+    const lines = active
+      .map((c) => ({ c, r: per.get(c.id) ?? NO_COUNTS }))
       .sort((a, b) => b.r.mine - a.r.mine || b.r.open - a.r.open || a.c.name.localeCompare(b.c.name))
-      .slice(0, 40)
-      .map(({ c, r, status }) => {
+      .map(({ c, r }) => {
         const bits = [`yours: ${r.mine} open${r.mineOverdue ? `, ${r.mineOverdue} overdue` : ""}`];
         if (scope.isAdmin) bits.push(`client: ${r.open} open, ${r.overdue} overdue, ${r.nobody} with nobody`);
-        if (status !== "ACTIVE") bits.push(String(status).toLowerCase().replace(/_/g, " "));
         return `- ${c.name}${c.id === scope.client.id ? " (current)" : ""}: ${bits.join(" · ")}`;
       });
-    const more = clients.length > 40 ? `\n…and ${clients.length - 40} more.` : "";
-    return { text: asSource("clients", "mine", `${clients.length} client${clients.length === 1 ? "" : "s"}:\n${lines.join("\n")}${more}`) };
+    const others = all.filter((c) => c.status !== "ACTIVE");
+    const word = (st: string) => ({ INACTIVE: "paused", ARCHIVED: "archived", LEAD: "lead" })[st] ?? st.toLowerCase();
+    const otherLine = others.length
+      ? `\nNot active (not counted above, but can be asked about by name): ${others.slice(0, 20).map((c) => `${c.name} (${word(c.status)})`).join(", ")}${others.length > 20 ? `, and ${others.length - 20} more` : ""}.`
+      : "";
+    return {
+      text: asSource(
+        "clients",
+        "mine",
+        `${active.length} active client${active.length === 1 ? "" : "s"}, as Portal lists them:\n${lines.join("\n") || "(none)"}${otherLine}`,
+      ),
+    };
   },
 });
 
@@ -290,7 +294,11 @@ const switchClient = tool({
       return { text: `In a channel I stay on ${scope.client.name}, so nobody here sees another client's work. Ask about other clients in a direct message to Foundry.`, isError: true };
     }
     const { pickOwnClient } = await import("@/lib/dispatch/clients");
-    const pick = pickOwnClient(client, await ownClients(scope));
+    const { ownClients, activeOnly } = await import("./own-clients");
+    const mine = await ownClients(scope.user);
+    // An active client wins a name clash with a paused or archived one ("Wedge" vs an old "Wedge v1").
+    const fromActive = pickOwnClient(client, activeOnly(mine));
+    const pick = fromActive.kind === "none" ? pickOwnClient(client, mine) : fromActive;
     if (pick.kind === "none") return { text: `"${client}" isn't one of this person's clients. Don't guess: say you can't see a client by that name.`, isError: true };
     if (pick.kind === "several") return { text: `"${client}" could be ${pick.names.join(", ")}. Ask which one.`, isError: true };
     if (pick.client.id === scope.client.id) return { text: `Already on ${scope.client.name}.` };

@@ -45,7 +45,8 @@ describe("the permission wall in the tools", () => {
   it("switch_client only opens the asker's own clients, through openScope, and never in a channel", () => {
     const src = readFileSync(join(process.cwd(), "src/server/dispatch/assistant/tools.ts"), "utf8");
     const body = src.slice(src.indexOf('name: "switch_client"'), src.indexOf("// ─── Read tools"));
-    expect(body).toContain("pickOwnClient(client, await ownClients(scope))");
+    expect(body).toContain("const mine = await ownClients(scope.user);");
+    expect(body).toContain("pickOwnClient(client, mine)");
     expect(body).toContain("openScope(scope.user, { id: pick.client.id }, scope.surface)");
     expect(body).toContain("scope.inChannel");
   });
