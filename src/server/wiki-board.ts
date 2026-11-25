@@ -1462,10 +1462,9 @@ export async function addBoardFeedback(
 ): Promise<WikiBoardFeedback> {
   const task = await loadOwnTask(writer.clientId, taskId);
   assertClientMayAct(writer, task);
+  // The team may sign a card off too (Dan, Nov 2026): the entry is recorded as Gitwork's, with
+  // the person's name, so it never reads as the client's own approval.
   const fromTeam = Boolean(writer.userId) && !writer.wikiUserId;
-  if (fromTeam && input.kind !== "comment") {
-    throw new BoardError("Only the client can approve a card or ask for changes. Reply with a comment instead.", 403);
-  }
   const refusal = feedbackRefusal(input.kind, input.body);
   if (refusal) throw new BoardError(refusal, 400);
   if (!fromTeam) await assertWithinBoardFeedbackQuota(writer.wikiId);
@@ -1523,7 +1522,12 @@ export async function listTaskFeedbackForTeam(user: EffectiveUser, taskId: strin
 }
 
 /** The team replying to a client on a card. Shown to the client on their Board. */
-export async function replyToTaskFeedback(user: EffectiveUser, taskId: string, body: string): Promise<WikiBoardFeedback> {
+export async function replyToTaskFeedback(
+  user: EffectiveUser,
+  taskId: string,
+  body: string,
+  kind: FeedbackKind = "comment",
+): Promise<WikiBoardFeedback> {
   const task = await prisma.task.findFirst({
     where: { id: taskId, workspaceId: user.workspaceId },
     select: { clientId: true, client: { select: { slug: true, wiki: { select: { id: true } } } } },
@@ -1542,7 +1546,7 @@ export async function replyToTaskFeedback(user: EffectiveUser, taskId: string, b
       userId: user.id,
     },
     taskId,
-    { kind: "comment", body },
+    { kind, body },
   );
 }
 

@@ -245,8 +245,12 @@ describe("signing a card off", () => {
     expect(composer().querySelector("[data-sign-off-approved]")).not.toBeNull();
   });
 
-  it("keeps a plain Reply for the team", () => {
+  it("lets the team approve and ask for changes as well as reply", async () => {
     open(CARD, "team");
-    expect(labels()).toEqual(["Reply"]);
+    expect(labels()).toEqual(["Changes needed", "Approve", "Reply"]);
+    await act(async () => (composer().querySelector("[data-sign-off-approve]") as HTMLButtonElement).click());
+    const post = calls.find((c) => c.init?.method === "POST" && c.url.endsWith("/tasks/c1/client-feedback"));
+    expect(JSON.parse(String(post?.init?.body))).toMatchObject({ kind: "approved" });
+    expect(composer().querySelector("[data-sign-off-approved]")).not.toBeNull();
   });
 });

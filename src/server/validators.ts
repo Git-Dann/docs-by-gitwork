@@ -2743,8 +2743,12 @@ export const boardKeyDatePatchSchema = z
   .refine((b) => Object.keys(b).length > 0, "Nothing to change");
 
 /** The team's reply on a card's client feedback thread: comments only. */
+/** The team's reply, approval or request for changes (`feedbackRefusal` decides when a note is needed). */
 export const teamFeedbackSchema = z
-  .object({ body: z.string().trim().min(1, "Write something first.").max(BOARD_LIMITS.feedback) })
+  .object({
+    kind: z.enum(FEEDBACK_KINDS).default("comment"),
+    body: z.string().trim().max(BOARD_LIMITS.feedback).default(""),
+  })
   .strict();
 
 /** POST /api/hq/needs-you/state — a person's own snooze, dismissal or clear of one inbox item. */

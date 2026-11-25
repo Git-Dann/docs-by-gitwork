@@ -4452,8 +4452,9 @@ export function uploadPublicWikiIntakeItemImage(
 }
 
 export async function getClientWiki(slug: string): Promise<WikiDTO> {
-  // Course requests and the Board's cards load on their own: Wedge has 5,000+ requests.
-  return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki?courseRequests=0&board=0`);
+  // Course requests, the Board's cards and the code's file contents load on their own: Wedge
+  // has 5,000+ requests, and PollenIQ's code was 1 MB on every wiki load.
+  return apiFetch<WikiDTO>(`/api/clients/${slug}/wiki?courseRequests=0&board=0&code=0`);
 }
 
 /** Updates in the client wiki (CLAUDE.md §147): the team's side by slug, the client's by share token. */
