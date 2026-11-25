@@ -112,6 +112,9 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
 
   // Answer under the question: an existing thread if there is one, else start one on it.
   const threadTs = event.thread_ts ?? event.ts;
+  // In a DM, reply where they wrote (top level unless they used a thread), so it reads as a
+  // conversation rather than a thread under every message. In a channel, always in a thread.
+  const replyThreadTs = event.channel_type === "im" && !event.thread_ts ? undefined : threadTs;
   const startedAt = Date.now();
 
   // ── Dedupe: the unique index is the guard, not a prior read ──
@@ -145,7 +148,7 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
     // differently from "no Foundry account"), and answer nothing about any client.
     if ("problem" in resolved && !isExternal) {
       const notice = buildDispatchNotice(askerProblemMessage(resolved.problem));
-      await postMessage(botToken, { channel: event.channel, thread_ts: threadTs, text: notice.text, blocks: notice.blocks });
+      await postMessage(botToken, { channel: event.channel, ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}), text: notice.text, blocks: notice.blocks });
       await prisma.dispatchExchange.update({
         where: { id: exchangeId },
         data: {
@@ -171,6 +174,7 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
         channelId: event.channel,
         channelType: event.channel_type,
         threadTs,
+        inThread: Boolean(event.thread_ts),
         question,
         exchangeId,
       });
@@ -218,11 +222,11 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
           ? "I've sent you my answer by direct message, because people in this channel may not have the same access as you."
           : "I couldn't send you a direct message, and I won't post the answer here because people in this channel may not have the same access as you. Ask me in a DM.",
       );
-      await postMessage(botToken, { channel: event.channel, thread_ts: threadTs, text: note.text, blocks: note.blocks });
+      await postMessage(botToken, { channel: event.channel, ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}), text: note.text, blocks: note.blocks });
     } else {
       posted = await postMessage(botToken, {
         channel: event.channel,
-        thread_ts: threadTs,
+        ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}),
         text: payload.text,
         blocks: payload.blocks,
       });
@@ -269,7 +273,7 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
     const notice = buildDispatchNotice("Something went wrong answering that. It's logged in Foundry.");
     await postMessage(botToken, {
       channel: event.channel,
-      thread_ts: threadTs,
+      ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}),
       text: notice.text,
       blocks: notice.blocks,
     }).catch(() => undefined);
