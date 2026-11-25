@@ -316,3 +316,43 @@ export function NeedsYouRow({
     </div>
   );
 }
+
+/**
+ * One item on one line, for HQ's card (§157): the title and its evidence, the age, and the actions.
+ * The rule that put it here ("why") is in the tooltip; the inbox page shows it in full.
+ */
+export function NeedsYouLine({ item, now, showSource }: { item: NeedsYouItem; now: Date; showSource?: boolean }) {
+  const tone = severityTone(item);
+  const age = sinceWords(item.since, now);
+  const tip = [item.title, item.clientName, item.detail, item.why ? `Why: ${item.why}` : null].filter(Boolean).join(" · ");
+  return (
+    <div className="group flex flex-col gap-1 px-4 py-2 transition-colors hover:bg-[var(--surface-1)] sm:flex-row sm:items-center sm:gap-3" data-needs-you-line>
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        <StatusDot
+          tone={tone}
+          motion={item.severity === "critical" && !item.hold ? "ping" : "none"}
+          className="shrink-0"
+          label={SEVERITY_LABEL[item.severity]}
+        />
+        {showSource ? (
+          <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-[var(--text-3)]" style={MONO}>
+            {SOURCE_LABEL[item.source]}
+          </span>
+        ) : null}
+        <Link href={item.href} title={tip} className="min-w-0 flex-1 truncate text-sm outline-none hover:text-[var(--brand-700)]">
+          <span className="font-medium text-[var(--text-1)]">{item.title}</span>
+          {item.clientName && !item.title.includes(item.clientName) ? <span className="text-[var(--text-3)]"> · {item.clientName}</span> : null}
+          {item.detail ? <span className="text-[var(--text-3)]"> · {item.detail}</span> : null}
+        </Link>
+        {age ? (
+          <span className="shrink-0 text-[11px] text-[var(--text-4)]" style={MONO}>
+            {age}
+          </span>
+        ) : null}
+      </div>
+      <div className="shrink-0 pl-[18px] sm:pl-0">
+        <RowActions item={item} compact />
+      </div>
+    </div>
+  );
+}

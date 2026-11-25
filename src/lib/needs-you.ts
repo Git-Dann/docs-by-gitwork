@@ -136,6 +136,61 @@ export function rankItems(items: NeedsYouItem[]): NeedsYouItem[] {
   });
 }
 
+/** What a source's items are, counted: "27 projects need a look". */
+export function groupHeadline(source: NeedsYouSource, n: number): string {
+  const many = n !== 1;
+  switch (source) {
+    case "monitors":
+      return many ? `${n} services need attention` : "1 service needs attention";
+    case "foreman":
+      return many ? `${n} delivery risks` : "1 delivery risk";
+    case "commitments":
+      return many ? `${n} suggested commitments` : "1 suggested commitment";
+    case "care":
+      return many ? `${n} clients with customers waiting` : "1 client with customers waiting";
+    case "requests":
+      return many ? `${n} client requests to look at` : "1 client request to look at";
+    case "docs":
+      return many ? `${n} documents to follow up` : "1 document to follow up";
+    case "pulse":
+      return many ? `${n} projects need a look` : "1 project needs a look";
+  }
+}
+
+export interface NeedsYouGroup {
+  source: NeedsYouSource;
+  /** The group's items, in the inbox's order (most serious first). */
+  items: NeedsYouItem[];
+  /** The most serious item's severity. */
+  severity: NeedsYouSeverity;
+}
+
+/**
+ * HQ's card, one group per source (§157): 27 Pulse projects are one line you can open, not 27
+ * rows burying the one outage. Groups go most serious first, then outages, then the biggest.
+ */
+export function groupBySource(items: NeedsYouItem[]): NeedsYouGroup[] {
+  const by = new Map<NeedsYouSource, NeedsYouItem[]>();
+  for (const item of rankItems(items)) by.set(item.source, [...(by.get(item.source) ?? []), item]);
+  return [...by.entries()]
+    .map(([source, list]) => ({ source, items: list, severity: list[0].severity }))
+    .sort(
+      (a, b) =>
+        SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+        (a.source === "monitors" ? -1 : b.source === "monitors" ? 1 : 0) ||
+        b.items.length - a.items.length,
+    );
+}
+
+/** The names in a group's summary line: "adam-beasley.com, Afterdesk Testing +25". */
+export function groupNames(items: NeedsYouItem[], shown = 2): string {
+  const names = items.map((i) => i.clientName ?? i.title.replace(/ needs a look$/, ""));
+  const unique = [...new Set(names)];
+  const head = unique.slice(0, shown).join(", ");
+  const rest = items.length - Math.min(shown, unique.length);
+  return rest > 0 ? `${head} +${rest}` : head;
+}
+
 // ── Who may do what ───────────────────────────────────────────────────────────
 
 /**
