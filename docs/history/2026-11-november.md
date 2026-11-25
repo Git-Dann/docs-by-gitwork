@@ -2467,3 +2467,11 @@ the Slack error and the missing permission it names, no email from Slack, or no 
 for that email (`resolveSlackAskerDetailed`, `askerProblemMessage`). The same JSON problem would
 have made `conversations.info` fail in every channel, which Dispatch treats as "maybe shared with
 the client" and refuses. Test: `src/server/slack/__tests__/read-methods-form.test.ts`.
+
+**Follow-up (25 Nov): the last four of the team's requests get buttons.** Dispatch quick actions
+for **Impact analysis** (Fahad, on a task), **Test scenarios from Figma** (Billal, on a task),
+**Design vs build** (Nasir, on a client: fills the box so you name the screen and attach
+screenshots) and **Write docs from the code** (Sibghat, on a client: you say which doc). All four
+read code or Figma designs, so they're answered by Sonnet 5.5 (`model.test.ts` pins it). Every
+request on Syed's list now has a button except outdated libraries (No. 14), which waits on
+Dispatch reading Pulse's findings.

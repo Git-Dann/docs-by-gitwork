@@ -31,6 +31,14 @@ describe("chooseDispatchTier", () => {
     expect(chooseDispatchTier({ question: "Is this right?", pictures: 1 })).toBe("deep");
   });
 
+  it("the code and design quick actions go to Sonnet", () => {
+    for (const id of ["impact", "figma-tests", "design-vs-build", "docs-from-code", "pr"]) {
+      const skill = skillsFor("task").find((s) => s.id === id);
+      expect(skill, id).toBeDefined();
+      expect(chooseDispatchTier({ question: skill!.prompt }), id).toBe("deep");
+    }
+  });
+
   it("most quick actions are everyday; only the code and design ones are deep", () => {
     const all = skillsFor("task");
     const deep = all.filter((s) => chooseDispatchTier({ question: s.prompt }) === "deep").map((s) => s.id);
