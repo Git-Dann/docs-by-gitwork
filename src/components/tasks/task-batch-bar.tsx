@@ -21,6 +21,7 @@ import { useBackstageTeam } from "@/hooks/use-backstage";
 import { isAtLeast } from "@/types/auth";
 import { TASK_STATUSES, type TaskStatus, type TaskPriority, type FeatureBlockDTO } from "@/types/tasks";
 import { TaskStatusBadge, TaskPriorityDot } from "@/components/tasks/task-badges";
+import { Spinner } from "@/components/ui/motion/spinner";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   BACKLOG: "Backlog",
@@ -127,35 +128,71 @@ export function TaskBatchBar({
     : members;
   const busy = batchUpdate.isPending || batchDelete.isPending;
   const n = selectedIds.length;
+  // What is running right now, shown in the bar. The menus close as soon as a choice is made, so
+  // without this the bar looked stuck while a bulk change of many tasks was saving.
+  const [working, setWorking] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
 
-  async function apply(patch: Parameters<typeof batchUpdate.mutateAsync>[0]["patch"]) {
-    await batchUpdate.mutateAsync({ ids: selectedIds, patch });
-    onClear();
+  /** Run one bulk action with visible progress; a failure keeps the selection and says so. */
+  async function run(label: string, action: () => Promise<unknown>): Promise<boolean> {
+    setFailed(null);
+    setWorking(label);
+    try {
+      await action();
+      return true;
+    } catch (err) {
+      setFailed(err instanceof Error && err.message ? err.message : "That didn't save. Try again.");
+      return false;
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function apply(label: string, patch: Parameters<typeof batchUpdate.mutateAsync>[0]["patch"]) {
+    if (await run(label, () => batchUpdate.mutateAsync({ ids: selectedIds, patch }))) onClear();
   }
 
   async function applyAssignees(close: () => void) {
-    await batchUpdate.mutateAsync({ ids: selectedIds, patch: { assigneeIds: [...assignSel] } });
+    close();
+    const ok = await run("Assigning", () =>
+      batchUpdate.mutateAsync({ ids: selectedIds, patch: { assigneeIds: [...assignSel] } }),
+    );
+    if (!ok) return;
     setAssignSel(new Set());
     setAssignQuery("");
-    close();
     onClear();
   }
 
   async function doDelete() {
-    await batchDelete.mutateAsync(selectedIds);
+    const ok = await run("Deleting", () => batchDelete.mutateAsync(selectedIds));
     setConfirmDelete(false);
-    onClear();
+    if (ok) onClear();
   }
 
   async function applyDueDate(close: () => void, value: string | null) {
-    await apply({ dueDate: value });
-    setDueDate("");
     close();
+    await apply("Setting due date", { dueDate: value });
+    setDueDate("");
   }
 
   return (
     <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-[12px] border border-[var(--border-2)] bg-white px-3 py-2 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.30)]">
-      <span className="shrink-0 whitespace-nowrap text-sm font-semibold text-[var(--brand-800)]">{n} selected</span>
+      {working ? (
+        <span
+          role="status"
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-[var(--brand-800)]"
+        >
+          <Spinner size="sm" tone="brand" />
+          {working} {n} {n === 1 ? "task" : "tasks"}…
+        </span>
+      ) : (
+        <span className="shrink-0 whitespace-nowrap text-sm font-semibold text-[var(--brand-800)]">{n} selected</span>
+      )}
+      {failed ? (
+        <span role="alert" className="max-w-[220px] truncate text-xs font-medium text-red-600" title={failed}>
+          {failed}
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={onClear}
@@ -254,7 +291,7 @@ export function TaskBatchBar({
               <MenuButton
                 key={s}
                 onClick={() => {
-                  void apply({ status: s });
+                  void apply("Updating", { status: s });
                   close();
                 }}
               >
@@ -272,7 +309,7 @@ export function TaskBatchBar({
               <MenuButton
                 key={p}
                 onClick={() => {
-                  void apply({ priority: p });
+                  void apply("Updating", { priority: p });
                   close();
                 }}
               >
@@ -289,7 +326,7 @@ export function TaskBatchBar({
             <div className="max-h-60 overflow-y-auto">
               <MenuButton
                 onClick={() => {
-                  void apply({ featureBlockId: null });
+                  void apply("Updating", { featureBlockId: null });
                   close();
                 }}
               >
@@ -299,7 +336,7 @@ export function TaskBatchBar({
                 <MenuButton
                   key={b.id}
                   onClick={() => {
-                    void apply({ featureBlockId: b.id });
+                    void apply("Updating", { featureBlockId: b.id });
                     close();
                   }}
                 >
@@ -317,7 +354,7 @@ export function TaskBatchBar({
               <div className="max-h-60 overflow-y-auto">
                 <MenuButton
                   onClick={() => {
-                    void apply({ releaseId: null });
+                    void apply("Updating", { releaseId: null });
                     close();
                   }}
                 >
@@ -327,7 +364,7 @@ export function TaskBatchBar({
                   <MenuButton
                     key={r.id}
                     onClick={() => {
-                      void apply({ releaseId: r.id });
+                      void apply("Updating", { releaseId: r.id });
                       close();
                     }}
                   >
@@ -378,7 +415,7 @@ export function TaskBatchBar({
         <button
           type="button"
           disabled={busy}
-          onClick={() => void apply({ archived: mode !== "archived" })}
+          onClick={() => void apply(mode === "archived" ? "Unarchiving" : "Archiving", { archived: mode !== "archived" })}
           className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
         >
           {mode === "archived" ? (

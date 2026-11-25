@@ -686,7 +686,8 @@ export function TaskImportModal({
                 type="button"
                 variant="primary"
                 onClick={runImport}
-                disabled={!titleMapped || !resolved || resolved.importCount === 0 || importMut.isPending}
+                loading={importMut.isPending}
+                disabled={!titleMapped || !resolved || resolved.importCount === 0}
               >
                 {importMut.isPending ? "Importing…" : `Import ${resolved?.importCount ?? 0} tasks`}
               </Button>

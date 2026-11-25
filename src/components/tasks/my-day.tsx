@@ -17,6 +17,7 @@ import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import { useAccount } from "@/hooks/use-account";
 import { PlanQuickAdd } from "@/components/tasks/plan-quick-add";
 import { SkeletonBlock } from "@/components/ui/motion/skeleton";
+import { standupPreviewGroups, type PreviewGroup } from "@/lib/standup-preview";
 
 /** "From the plan" shows this many before "Show all". */
 const FROM_PLAN_PREVIEW = 4;
@@ -109,7 +110,7 @@ export function MyDay() {
             : {
                 text:
                   phase === "PM"
-                    ? "Saved — no tasks marked done today to post"
+                    ? "Saved — nothing done, in review or in progress to post"
                     : "Saved — nothing in progress to post",
                 ok: false,
               },
@@ -299,7 +300,7 @@ export function MyDay() {
       {/* Pre-send confirmation — preview exactly what will post before it goes out. */}
       <PushConfirmModal
         phase={confirm}
-        tasks={confirm === "AM" ? data.doing : confirm === "PM" ? data.done : []}
+        groups={standupPreviewGroups(confirm, data)}
         note={note.trim()}
         weekPlan={confirm === "AM" && data.isMonday ? weekPlan.trim() : ""}
         sending={push.isPending}
@@ -448,7 +449,7 @@ function PhaseStatus({
 /** Confirmation modal previewing the standup before it posts to Slack. */
 function PushConfirmModal({
   phase,
-  tasks,
+  groups,
   note,
   weekPlan,
   sending,
@@ -456,7 +457,7 @@ function PushConfirmModal({
   onSend,
 }: {
   phase: "AM" | "PM" | null;
-  tasks: TaskDTO[];
+  groups: PreviewGroup[];
   note: string;
   weekPlan: string;
   sending: boolean;
@@ -465,12 +466,12 @@ function PushConfirmModal({
    *  list restricts the post to the clients the dev ticked. */
   onSend: (clientIds: string[] | undefined) => void;
 }) {
-  // Distinct clients present in this phase's tasks, in first-seen order.
+  // Distinct clients present in this phase's tasks (every group), in first-seen order.
   const clientsInPhase = useMemo(() => {
     const seen = new Map<string, string>();
-    for (const t of tasks) if (!seen.has(t.client.id)) seen.set(t.client.id, t.client.name);
+    for (const g of groups) for (const t of g.tasks) if (!seen.has(t.client.id)) seen.set(t.client.id, t.client.name);
     return [...seen.entries()].map(([id, name]) => ({ id, name }));
-  }, [tasks]);
+  }, [groups]);
 
   // The client picker only appears when there's an actual choice to make — a dev
   // whose work this phase touches a single client sees nothing and behaviour is
@@ -484,10 +485,12 @@ function PushConfirmModal({
   }, [phase, clientsInPhase]);
 
   const activeIds = multiClient ? selected : new Set(clientsInPhase.map((c) => c.id));
-  const shownTasks = tasks.filter((t) => activeIds.has(t.client.id));
+  const shownGroups = groups
+    .map((g) => ({ ...g, tasks: g.tasks.filter((t) => activeIds.has(t.client.id)) }))
+    .filter((g) => g.tasks.length > 0);
+  const shownCount = shownGroups.reduce((n, g) => n + g.tasks.length, 0);
   const shownClients = clientsInPhase.filter((c) => activeIds.has(c.id));
-  const heading = phase === "AM" ? "In progress" : "Done today";
-  const nothing = shownTasks.length === 0 && !weekPlan;
+  const nothing = shownCount === 0 && !weekPlan;
 
   function toggleClient(id: string) {
     setSelected((prev) => {
@@ -561,30 +564,34 @@ function PushConfirmModal({
           </div>
         ) : null}
 
-        <div>
-          <p className="app-eyebrow mb-1.5">{heading} · {shownTasks.length}</p>
-          {shownTasks.length === 0 ? (
-            <p className="text-[13px] text-[var(--text-4)]">
-              {multiClient
-                ? "No tasks for the selected clients."
-                : phase === "AM"
-                  ? "Nothing in progress."
-                  : "No tasks marked done today."}
-            </p>
-          ) : (
-            <ul className="space-y-1">
-              {shownTasks.map((t) => (
-                <li key={t.id} className="flex items-baseline gap-2 text-sm text-[var(--text-1)]">
-                  <span className="text-[var(--text-4)]">•</span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {t.title}
-                    <span className="ml-1.5 text-[11px] text-[var(--text-4)]">{t.client.name}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        {shownCount === 0 ? (
+          <p className="text-[13px] text-[var(--text-4)]">
+            {multiClient
+              ? "No tasks for the selected clients."
+              : phase === "AM"
+                ? "Nothing in progress."
+                : "Nothing done, in review or in progress today."}
+          </p>
+        ) : (
+          shownGroups.map((g) => (
+            <div key={g.label}>
+              <p className="app-eyebrow mb-1.5">
+                {g.label} · {g.tasks.length}
+              </p>
+              <ul className="space-y-1">
+                {g.tasks.map((t) => (
+                  <li key={t.id} className="flex items-baseline gap-2 text-sm text-[var(--text-1)]">
+                    <span className="text-[var(--text-4)]">•</span>
+                    <span className="min-w-0 flex-1 truncate" title={`${t.title} · ${t.client.name}`}>
+                      {t.title}
+                      <span className="ml-1.5 text-[11px] text-[var(--text-4)]">{t.client.name}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
 
         {note ? (
           <div>

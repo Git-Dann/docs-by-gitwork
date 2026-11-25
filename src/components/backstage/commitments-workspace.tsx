@@ -45,6 +45,7 @@ import {
   useUpdateCommitmentSettings,
 } from "@/hooks/use-commitments";
 import type { CommitmentDTO, CommitmentSettingsDTO } from "@/types/commitments";
+import { Spinner } from "@/components/ui/motion/spinner";
 
 /** The page reads its sources itself when opened and the last read is older than this. */
 const STALE_MS = 30 * 60_000;
@@ -264,7 +265,12 @@ function QuickAdd() {
       <div className="w-[150px]">
         <DatePicker value={due} onChange={setDue} aria-label="Due date" placeholder="No date" />
       </div>
-      <button type="submit" disabled={!title.trim() || create.isPending} className="app-button app-button-primary app-button-sm">
+      <button
+        type="submit"
+        disabled={!title.trim() || create.isPending}
+        className="app-button app-button-primary app-button-sm inline-flex items-center gap-1.5"
+      >
+        {create.isPending ? <Spinner size="sm" /> : null}
         Add
       </button>
     </form>

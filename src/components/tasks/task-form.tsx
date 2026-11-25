@@ -371,7 +371,10 @@ export function TaskFormModal({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-4 lg:overflow-hidden lg:p-1.5">
+          {/* The settings column scrolls on its own from lg. It used to be overflow-hidden, so on a
+              short window Due date, Status and Priority were cut off below the Assignees box with
+              no way to reach them (the dev team's "fields become unresponsive" report). */}
+          <div className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto lg:p-1.5">
             {!lockClient ? (
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Client</label>
