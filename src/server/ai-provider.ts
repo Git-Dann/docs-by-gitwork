@@ -67,11 +67,15 @@ export const DEFAULT_MODELS: Record<AiProvider, string> = {
  * provider's error), but it still needs a review. Reviewed 2 Nov 2026.
  */
 /**
- * Dispatch, the team assistant (Nov 2026). Dan chose Sonnet 5.5 for it. Kept apart from
- * DEFAULT_MODELS on purpose: changing the platform default would move every AI feature.
- * Anthropic ids are complete as-is. Review when Anthropic retires it; reviewed 25 Nov 2026.
+ * Dispatch, the team assistant (Nov 2026). Haiku 5.5 answers most chats; Sonnet 5.5 only the
+ * code and design-against-build ones (src/lib/dispatch/model.ts), to keep the $200 pot going
+ * (Dan, 25 Nov 2026). Kept apart from DEFAULT_MODELS on purpose: changing the platform default
+ * would move every AI feature. Review when Anthropic retires either; reviewed 25 Nov 2026.
  */
-export const DISPATCH_MODEL = "claude-sonnet-5-5";
+export const DISPATCH_MODELS = {
+  everyday: "claude-haiku-5-5",
+  deep: "claude-sonnet-5-5",
+} as const;
 
 export const AI_ANSWER_MODELS = {
   chatgpt: "gpt-5",

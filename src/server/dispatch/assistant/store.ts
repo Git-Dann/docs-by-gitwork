@@ -26,7 +26,7 @@ export async function getOwnConversation(user: EffectiveUser, id: string) {
 
 export async function createConversation(
   user: EffectiveUser,
-  input: { clientId: string; surface: "web" | "slack"; title: string; slackChannelId?: string; slackThreadTs?: string },
+  input: { clientId: string; surface: "web" | "slack"; title: string; model: string; slackChannelId?: string; slackThreadTs?: string },
 ) {
   return prisma.dispatchConversation.create({
     data: {
@@ -35,6 +35,7 @@ export async function createConversation(
       clientId: input.clientId,
       surface: input.surface,
       title: input.title.slice(0, 80) || "New chat",
+      model: input.model,
       slackChannelId: input.slackChannelId ?? null,
       slackThreadTs: input.slackThreadTs ?? null,
     },

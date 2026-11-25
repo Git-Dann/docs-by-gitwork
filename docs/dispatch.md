@@ -154,7 +154,8 @@ The Figma token is on the same page (stored encrypted in `Workspace.figmaToken`)
 1. Reinstall the Slack app from `docs/slack-app-manifest.json` (it now asks for
    `channels:history` and `groups:history`) and re-save the bot token in Settings → Integrations.
 2. Check the workspace has an Anthropic key in Settings → Integrations. Dispatch uses
-   `claude-sonnet-5-5` with that key, whatever the workspace's own model setting says.
+   that key, whatever the workspace's own model setting says: Claude Haiku 5.5 for most chats,
+   Claude Sonnet 5.5 for code and design-against-build chats (see Cost below).
 3. For code questions, the server's `GITHUB_TOKEN` must be able to read the clients' repos.
    For design questions, add a Figma token in Settings → Dispatch from an account that can see
    the clients' files.
@@ -214,7 +215,20 @@ One `DispatchExchange` row per question, written **before** the answer is compos
 
 ## Cost
 
-Same discipline as the Foreman narrative:
+**The assistant (§157).** Each chat is answered by one model, chosen from its first question
+(`src/lib/dispatch/model.ts`) and kept for the chat:
+
+| Chats about | Model | Price per million tokens (in / out) |
+|---|---|---|
+| Everything else: tasks, calls, plans, stand-ups, replies, release notes, subtasks | Claude Haiku 5.5, thinking off | $0.10 / $0.50 |
+| Code (repo, PRs, commits, impact analysis), design against build, or with screenshots attached | Claude Sonnet 5.5, brief thinking | $2 / $10 |
+
+Other limits (`src/lib/dispatch/limits.ts`): 5 rounds of lookups, 2,500 output tokens, results cut
+at ~1,100 tokens (code ~1,500), 3 pictures a question, and a chat closes for new questions at 24
+messages or ~30k tokens. The last one matters most after the model: every follow-up resends the
+whole chat, so Dispatch asks for a new chat rather than letting one grow.
+
+**The older Slack status answer** keeps the Foreman narrative's discipline:
 
 - **One** `tier: "light"` (Haiku) call per question, 900 max tokens.
 - The stable system prompt is `cache_control: ephemeral`, so it's prompt-cached.
