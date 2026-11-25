@@ -107,7 +107,9 @@ function day(iso: string | Date | null | undefined): string {
 
 function taskLine(t: TaskDTO): string {
   const bits = [
-    `${taskRef(t.id)} ${t.title}`,
+    // The ref is a handle for get_task / propose_*, in brackets so the model treats it as one;
+    // the prompt says never to show it to the person (they know tasks by their titles).
+    `${t.title} [ref ${taskRef(t.id).replace(/^#/, "")}]`,
     TASK_STATUS_LABELS[t.status] ?? t.status,
     t.assignees.length ? t.assignees.map((a) => a.name).join(", ") : "unassigned",
   ];
@@ -118,6 +120,24 @@ function taskLine(t: TaskDTO): string {
   if (t.flag) bits.push(`flagged${t.flag.note ? `: ${t.flag.note}` : ""}`);
   if (isStuck(t)) bits.push("stuck in progress");
   return `- ${bits.join(" · ")}`;
+}
+
+/** Open tasks on a client counted per person ("Nasir Javed 5, Fahad 3; 4 with nobody"). For admins. */
+export function openByPerson(open: readonly Pick<TaskDTO, "assignees">[], clientName: string): string {
+  const counts = new Map<string, number>();
+  let nobody = 0;
+  for (const t of open) {
+    if (!t.assignees.length) nobody += 1;
+    for (const a of t.assignees) counts.set(a.name, (counts.get(a.name) ?? 0) + 1);
+  }
+  const people = [...counts.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+  const list = people.map(([name, n]) => `${name} ${n}`).join(", ");
+  return `Open tasks on ${clientName} by person (a shared task counts for each person on it): ${list || "none assigned"}. ${nobody} with nobody assigned.`;
+}
+
+/** A source chip names a task by its title (what people know it by), shortened. */
+function chipTitle(title: string): string {
+  return title.length > 48 ? `${title.slice(0, 47)}…` : title;
 }
 
 function taskHref(scope: DispatchScope, id: string): string {
@@ -292,9 +312,30 @@ const myWork = tool({
       return d !== null && d >= endWeek && d < endNext;
     });
     const label = { this_week: "This week", next_week: "Next week", done: "Done in the last 14 days", flagged: "Flagged for follow-up", stuck: "Stuck in progress" }[range];
+    // Nothing on this client is theirs at all (not just nothing in this range): say so, and how
+    // much is waiting for an owner, rather than an empty list (Dan, 25 Nov).
+    if (mine && tasks.length === 0) {
+      const who = scope.user.name ?? "The person asking";
+      const none = `${who} has no tasks assigned on ${scope.client.name}.`;
+      // An admin runs the project, so they're told whose the open work is (counts per person).
+      // A developer is told only how much has no owner: what their teammates hold isn't theirs
+      // to be handed in an answer about their own work (Dan, 25 Nov).
+      if (scope.isAdmin) {
+        const open = await listTasks(scope.user, { clientId: scope.client.id, openOnly: true, limit: 500 });
+        return { text: asSource("tasks", range, `${none}\n${openByPerson(open, scope.client.name)}`) };
+      }
+      const unassigned = await listTasks(scope.user, { clientId: scope.client.id, unassignedOnly: true, openOnly: true, limit: 500 });
+      return {
+        text: asSource(
+          "tasks",
+          range,
+          `${none} There ${unassigned.length === 1 ? "is 1 open task" : `are ${unassigned.length} open tasks`} on ${scope.client.name} with nobody assigned.`,
+        ),
+      };
+    }
     return {
       text: asSource("tasks", range, picked.length ? `${label}:\n${picked.slice(0, 40).map(taskLine).join("\n")}` : `${label}: nothing.`),
-      sources: picked.slice(0, 8).map((t) => ({ kind: "task" as const, id: t.id, label: taskRef(t.id), href: taskHref(scope, t.id) })),
+      sources: picked.slice(0, 8).map((t) => ({ kind: "task" as const, id: t.id, label: chipTitle(t.title), href: taskHref(scope, t.id) })),
     };
   },
 });
@@ -342,7 +383,7 @@ const findTasks = tool({
     const tasks = await Promise.all(rows.map((r) => getTask(scope.user, r.id)));
     return {
       text: asSource("tasks", "search", tasks.map(taskLine).join("\n")),
-      sources: tasks.slice(0, 8).map((t) => ({ kind: "task" as const, id: t.id, label: taskRef(t.id), href: taskHref(scope, t.id) })),
+      sources: tasks.slice(0, 8).map((t) => ({ kind: "task" as const, id: t.id, label: chipTitle(t.title), href: taskHref(scope, t.id) })),
     };
   },
 });
@@ -370,7 +411,7 @@ const getTaskTool = tool({
     ].filter(Boolean);
     return {
       text: asSource("task", taskRef(t.id), lines.join("\n\n")),
-      sources: [{ kind: "task", id: t.id, label: `${taskRef(t.id)} ${t.title}`, href: taskHref(scope, t.id) }],
+      sources: [{ kind: "task", id: t.id, label: chipTitle(t.title), href: taskHref(scope, t.id) }],
     };
   },
 });
@@ -421,7 +462,7 @@ const searchProject = tool({
       .filter(({ p, text }) => p.title.toLowerCase().includes(lower) || text.toLowerCase().includes(lower))
       .slice(0, 5);
     const sections = [
-      tasks.length ? `Tasks:\n${tasks.map((t) => `- [${t.id}] ${taskRef(t.id)} ${t.title} (${t.status})`).join("\n")}` : "",
+      tasks.length ? `Tasks:\n${tasks.map((t) => `- ${t.title} [ref ${taskRef(t.id).replace(/^#/, "")}] (${t.status})`).join("\n")}` : "",
       meetings.length
         ? `Meetings:\n${meetings.slice(0, 5).map((m) => `- [${m.id}] ${m.title} ${day(m.startedAt)}${m.summary ? `: ${snippet(m.summary)}` : ""}`).join("\n")}`
         : "",
@@ -765,7 +806,7 @@ const proposeSubtasks = tool({
       ctx,
       "create_subtasks",
       { parentId: found.id, tasks: subtasks.map((t) => ({ ...t, assigneeIds: assigneesForNewTask(t.assignToMe, scope.user.id) })) },
-      { title: `Add ${subtasks.length} subtask${subtasks.length === 1 ? "" : "s"} to ${taskRef(found.id)} ${facts!.title}`, lines: subtasks.map((t) => t.title) },
+      { title: `Add ${subtasks.length} subtask${subtasks.length === 1 ? "" : "s"} to \u201c${facts!.title}\u201d`, lines: subtasks.map((t) => t.title) },
     );
   },
 });
@@ -811,7 +852,7 @@ const proposeTaskUpdate = tool({
       .filter(([, v]) => v !== undefined)
       .map(([k, v]) => (k === "takeIt" ? "Assign it to you" : `${k}: ${String(v).slice(0, 120)}`));
     if (!lines.length) return { text: "Nothing to change.", isError: true };
-    return proposeAction(scope, ctx, "update_task", { taskId: found.id, ...patch }, { title: `Update ${taskRef(found.id)} ${facts.title}`, lines });
+    return proposeAction(scope, ctx, "update_task", { taskId: found.id, ...patch }, { title: `Update \u201c${facts.title}\u201d`, lines });
   },
 });
 
@@ -827,7 +868,7 @@ const proposeComment = tool({
     const facts = await taskFacts(scope, found.id);
     const refusal = facts ? mayAnnotateTask(facts, scope.client.id) : "Task not found.";
     if (refusal) return { text: refusal, isError: true };
-    return proposeAction(scope, ctx, "comment", { taskId: found.id, body }, { title: `Comment on ${taskRef(found.id)} ${facts!.title}`, lines: [body.slice(0, 280)] });
+    return proposeAction(scope, ctx, "comment", { taskId: found.id, body }, { title: `Comment on \u201c${facts!.title}\u201d`, lines: [body.slice(0, 280)] });
   },
 });
 
@@ -844,7 +885,7 @@ const proposeFlag = tool({
     const refusal = facts ? mayAnnotateTask(facts, scope.client.id) : "Task not found.";
     if (refusal) return { text: refusal, isError: true };
     return proposeAction(scope, ctx, "flag", { taskId: found.id, flagged, note: note ?? null }, {
-      title: `${flagged ? "Flag" : "Clear the flag on"} ${taskRef(found.id)} ${facts!.title}`,
+      title: `${flagged ? "Flag" : "Clear the flag on"} \u201c${facts!.title}\u201d`,
       lines: note ? [note] : [],
     });
   },

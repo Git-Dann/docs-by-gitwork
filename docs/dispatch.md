@@ -188,6 +188,10 @@ billed figure when an admin key is set).
 **Chats are deleted after 90 days unused**, nightly, with any proposal never carried out.
 Carried-out proposals stay as the record of what Dispatch changed.
 
+**Where you can ask in Slack.** @Foundry in a channel Foundry is a member of (invite it with
+`/invite @Foundry`), or a direct message to Foundry itself (App Home → Messages tab, switched on
+in the manifest). Slack never shows an app a DM between people, so @Foundry there goes nowhere.
+
 **Where a Slack answer goes.** A DM, or the client's own internal channel: in the thread. Anywhere
 else: to the asker by DM, with a note in the thread. An answer posted in a channel never shows
 figures or admin-only document types, whoever asked (`forChannel` in `assistant/scope.ts`).

@@ -2433,3 +2433,26 @@ by the changelog instead (Dan, Nov 2026: a toggle for every client, on for Wedge
   field when editing a release; the Timeline's date editor has the field too.
 - With the switch on and no changelog version set, a release shows its own number, so turning it on
   changes nothing until versions are filled in.
+
+---
+
+## 160. Recent Changes (November 2026) — Dispatch names tasks by title, says when nothing is yours, and where it works in Slack
+
+From Dan and Syed testing Dispatch, 25 Nov.
+
+- **"Syed sees tasks that aren't his"** was the data, not Dispatch: Syed is an assignee on 40
+  Campfire tasks (some shared with Sardar Jamal), created on 3 Nov. `my_work` only ever reads the
+  asker's own tasks (`assigneeId: scope.user.id`), which a test now pins.
+- **Nothing assigned:** when the asker has no tasks on the client at all, `my_work` says so.
+  **An admin** (Admin, Super Admin) is then told whose the open work is ("Nasir Javed 5, Muhammad
+  Fahad 3; 4 with nobody assigned", `openByPerson`); **anyone else** only how many have nobody
+  assigned. Dan: "admin is different to dev". Every task list says whose each task is.
+- **Titles, not refs:** answers, source chips and proposal cards name tasks by their title. Tool
+  results still carry the ref as a bracketed handle (`[ref AB12CD]`) for `get_task` and the
+  `propose_*` tools, and the prompt says never to show it.
+- **Slack: where it can answer.** Dan's @Foundry was in his DM with Syed. Slack never delivers
+  messages from a two-person DM (or a group DM the app isn't in) to an app, so nothing reached
+  Foundry. Dispatch answers @mentions in channels Foundry is a member of, and direct messages
+  to Foundry itself. The manifest now turns on the app's Messages tab (`app_home`), which must
+  also be switched on in the Slack app's App Home settings.
+- Tests: `assistant/__tests__/my-work.test.ts`.
