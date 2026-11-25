@@ -138,7 +138,7 @@ describe("pictures", () => {
     expect(imageMediaType(html)).toBeNull();
     expect(checkAttachments([`data:image/png;base64,${html.toString("base64")}`])).toMatch(/isn't a PNG/);
     expect(checkAttachments([png.toString("base64")])).toEqual([{ mediaType: "image/png", data: png.toString("base64") }]);
-    expect(checkAttachments(Array(5).fill(png.toString("base64")))).toMatch(/at most 4/);
+    expect(checkAttachments(Array(4).fill(png.toString("base64")))).toMatch(/at most 3/);
   });
 
   it("counts a stored picture as a page of text, not its base64 length", () => {

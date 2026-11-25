@@ -130,7 +130,7 @@ not scroll sideways. Run it locally with `./scripts/smoke-db.sh`, `npx next buil
    it handles prompt caching, the cheap Haiku tier, and cost tracking for you. Same rule for
    Gitwork's own company number / VAT / registered office: `src/lib/gitwork.ts` only. Both have a
    test that fails naming any file that pastes a copy back out.
-   The one pinned model is Dispatch's (`DISPATCH_MODEL`, same file), and its system prompt must
+   The pinned models are Dispatch's (`DISPATCH_MODELS`, same file: Haiku 5.5 for most chats, Sonnet 5.5 for code and design), and its system prompt must
    stay identical for everyone: per-person text goes in the first user message, or the cache
    that keeps it cheap stops working (§154).
 5. **Tables scroll, they don't reflow.** Wrap wide ones in `overflow-x-auto` — and a `grid` with

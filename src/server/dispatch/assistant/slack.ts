@@ -24,7 +24,6 @@ import { openDirectMessage, postMessage } from "@/server/slack/client";
 import { buildDispatchNotice } from "@/server/slack/blocks";
 import { resolveSubject } from "@/server/dispatch/resolve";
 import { askerScope, loadCandidates } from "@/server/dispatch/respond";
-import { DISPATCH_MODEL } from "@/server/ai-provider";
 import { assistantAvailable } from "./access-gate";
 import { DispatchAccessError, forChannel, openScope, type DispatchScope } from "./scope";
 import { DispatchLimitError, runTurn } from "./loop";
@@ -116,8 +115,9 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
   const sources = new Map<string, SlackSource>();
   const notices: string[] = [];
   let outcome = "failed";
+  let usedModel: string | null = null;
   try {
-    ({ outcome } = await runTurn({
+    ({ outcome, model: usedModel } = await runTurn({
       scope,
       question: q.question,
       conversationId: existing?.id ?? null,
@@ -174,7 +174,7 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
     subjectKind: "client",
     subjectId: scope.client.id,
     subjectLabel: scope.client.name,
-    aiModel: DISPATCH_MODEL,
+    aiModel: usedModel,
     cached: false,
     error: posted.ok ? null : `slack:${posted.error ?? "unknown"}`,
   });

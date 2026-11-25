@@ -2310,3 +2310,22 @@ section loads the files itself (`useWikiCodeFiles`: `GET /api/clients/[slug]/wik
 `GET /api/wiki/[token]/code` on the client's link, access in `src/server/wiki-code-access.ts`). Card
 actions on the team's Board now re-read the Board's cards only and mark the wiki stale, instead of
 reloading the whole wiki each time.
+
+---
+
+## 157. Recent Changes (November 2026) — Dispatch answers with Haiku unless it needs Sonnet
+
+Dan, the same day: keep the $200 pot going. Measured costs come next; this is the model.
+
+- **Claude Haiku 5.5 answers most chats** ($0.10 / $0.50 per million tokens, about a twentieth
+  of Sonnet 5.5), with thinking off. **Sonnet 5.5 only for code** (repo, PRs, commits, impact
+  analysis) **and design against build**, or when screenshots are attached
+  (`chooseDispatchTier`, `src/lib/dispatch/model.ts`, tested against every quick action).
+- **One model per chat**, chosen from its first question and stored on
+  `DispatchConversation.model` (nullable, additive). Each model's thinking only replays to that
+  model and its cache is its own, so switching mid-chat would pay for the history again. Chats from
+  before carry on with Sonnet. Haiku 5.5 has no server-side fallback, so it is sent without one.
+- `DISPATCH_MODEL` became `DISPATCH_MODELS = { everyday, deep }` in `src/server/ai-provider.ts`.
+- **Tighter limits for both:** 5 lookup rounds (was 6), 2,500 output tokens (4,000), results
+  ~4,500 characters (6,000) and code ~6,000 (8,000), 3 pictures a question (4), and a chat closes
+  at 24 messages or ~30k tokens (40 / 60k): every follow-up resends the whole chat.
