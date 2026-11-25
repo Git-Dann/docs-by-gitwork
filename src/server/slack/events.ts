@@ -5,6 +5,11 @@
  * clicks, but it could not be *spoken to*. This is that missing half: an `app_mention` in a
  * channel, or a plain message in a DM with the bot, becomes a question for Dispatch.
  *
+ * Dispatch answers AS THE PERSON ASKING (dispatch/access.ts): their Slack account is matched to
+ * their Foundry account and only their access applies. Someone with no Foundry account gets no
+ * answer, and an answer about a client is only posted where that client's own team reads it;
+ * elsewhere it goes to the asker by DM.
+ *
  * Four guards, in order, before anything expensive or disclosing happens:
  *   1. Loop guard — never answer ourselves or any other bot. An agent that replies to its own
  *      message in a channel it is a member of is an infinite loop with a billing account.
@@ -22,9 +27,11 @@
 
 import { prisma } from "@/lib/prisma";
 import { answerQuestion } from "@/server/dispatch/respond";
+import { deliveryFor } from "@/server/dispatch/access";
+import type { EffectiveUser } from "@/server/auth/effective-user";
 import { stripBotMention } from "@/server/dispatch/resolve";
 import { buildDispatchAnswer, buildDispatchNotice } from "./blocks";
-import { conversationsInfo, postMessage, usersInfo } from "./client";
+import { conversationsInfo, openDirectMessage, postMessage, usersInfo } from "./client";
 
 // ─── Envelope types ─────────────────────────────────────────────────────────
 
@@ -130,13 +137,15 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
 
   try {
     const isExternal = await isExternalChannel(botToken, event.channel, event.channel_type);
-    const askerUserId = await resolveAsker(botToken, workspaceId, event.user ?? null);
+    const asker = await resolveAsker(botToken, workspaceId, event.user ?? null);
+    const askerUserId = asker?.id ?? null;
 
     const result = await answerQuestion({
       workspaceId,
       question,
       channelId: event.channel,
       isExternalChannel: isExternal,
+      asker,
     });
 
     const payload =
@@ -152,12 +161,35 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
           })
         : buildDispatchNotice(result.message ?? "I couldn't answer that one.");
 
-    const posted = await postMessage(botToken, {
-      channel: event.channel,
-      thread_ts: threadTs,
-      text: payload.text,
-      blocks: payload.blocks,
-    });
+    // An answer carries client data, so it is only posted where that client's own team reads
+    // it. Notices carry none and always go in the thread.
+    const delivery =
+      result.status === "answered" && result.subject
+        ? deliveryFor({
+            channelType: event.channel_type,
+            channelId: event.channel,
+            subject: result.subject,
+            subjectInternalChannelIds: await internalChannelIds(workspaceId, result.subject),
+          })
+        : "thread";
+
+    let posted: Awaited<ReturnType<typeof postMessage>>;
+    if (delivery === "dm" && event.user) {
+      posted = await postPrivately(botToken, event.user, payload);
+      const note = buildDispatchNotice(
+        posted.ok
+          ? "I've sent you my answer by direct message, because people in this channel may not have the same access as you."
+          : "I couldn't send you a direct message, and I won't post the answer here because people in this channel may not have the same access as you. Ask me in a DM.",
+      );
+      await postMessage(botToken, { channel: event.channel, thread_ts: threadTs, text: note.text, blocks: note.blocks });
+    } else {
+      posted = await postMessage(botToken, {
+        channel: event.channel,
+        thread_ts: threadTs,
+        text: payload.text,
+        blocks: payload.blocks,
+      });
+    }
     if (!posted.ok) console.warn("[dispatch] post failed", posted.error);
 
     await prisma.dispatchExchange.update({
@@ -228,12 +260,16 @@ async function isExternalChannel(
   }
 }
 
-/** Best-effort Slack user id → Foundry user id, for the audit row. Never blocks the answer. */
+/**
+ * Slack user → the Foundry member asking, with their live role and permissions in THIS workspace.
+ * Matched by the Slack profile email. An archived member, someone from another workspace, or a
+ * failed lookup all come back null, and Dispatch then refuses rather than answering as nobody.
+ */
 async function resolveAsker(
   botToken: string,
   workspaceId: string,
   slackUserId: string | null,
-): Promise<string | null> {
+): Promise<EffectiveUser | null> {
   if (!slackUserId) return null;
   try {
     const info = await usersInfo(botToken, slackUserId);
@@ -246,8 +282,37 @@ async function resolveAsker(
       },
       select: { id: true },
     });
-    return user?.id ?? null;
+    if (!user) return null;
+    // Loaded here rather than at the top so the pure triage helpers in this file stay
+    // importable without the auth stack.
+    const { resolveEffectiveUserById } = await import("@/server/mcp/auth");
+    return await resolveEffectiveUserById(user.id, workspaceId, { onlyThisWorkspace: true });
   } catch {
     return null;
   }
+}
+
+/** The subject client's own internal channel(s): the only channels an answer about it is posted in. */
+async function internalChannelIds(
+  workspaceId: string,
+  subject: { kind: string; id?: string },
+): Promise<(string | null)[]> {
+  if (subject.kind !== "client" || !subject.id) return [];
+  const client = await prisma.workspaceClient.findFirst({
+    where: { id: subject.id, workspaceId },
+    select: { slackInternalChannelId: true, slackChannelId: true },
+  });
+  return client ? [client.slackInternalChannelId, client.slackChannelId] : [];
+}
+
+/** Post a payload to the asker's DM with the bot. */
+async function postPrivately(
+  botToken: string,
+  slackUserId: string,
+  payload: { text: string; blocks: unknown[] },
+): Promise<Awaited<ReturnType<typeof postMessage>>> {
+  const dm = await openDirectMessage(botToken, slackUserId);
+  const channel = dm.data.channel?.id;
+  if (!dm.ok || !channel) return { ok: false, error: dm.error ?? "no-dm-channel", data: {} };
+  return postMessage(botToken, { channel, text: payload.text, blocks: payload.blocks });
 }

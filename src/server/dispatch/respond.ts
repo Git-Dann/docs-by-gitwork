@@ -2,9 +2,14 @@
  * Dispatch — the orchestrator. question in, grounded answer out.
  *
  * Order is deliberate: every cheap, deterministic gate runs before anything that costs money or
- * discloses anything. Disabled → stop. External channel → stop. Rate limited → stop. No subject
- * matched → stop and SAY SO (an answer about the wrong client is the worst possible output).
- * Only then do we gather evidence, and only then does a token get spent.
+ * discloses anything. Disabled → stop. External channel → stop. Asker unknown or without Portal →
+ * stop. Rate limited → stop. No subject matched → stop and SAY SO (an answer about the wrong
+ * client is the worst possible output). Subject outside the asker's access → stop. Only then do
+ * we gather evidence, and only then does a token get spent.
+ *
+ * Everything is answered AS THE ASKER (access.ts). Clients they can't open are not even
+ * candidates for matching, so a question about one reads exactly like an unknown name: Dispatch
+ * never confirms that a client it won't discuss exists.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -17,6 +22,8 @@ import { gatherEvidence } from "./evidence";
 import { resolveSubject, type ClientCandidate, type PersonCandidate } from "./resolve";
 import type { DispatchConfig, DispatchResult } from "./types";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
+import type { EffectiveUser } from "@/server/auth/effective-user";
+import { documentTypesFor, mayAskDispatch, seesAllClients, subjectAllowed, type AskerScope } from "./access";
 
 /** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
  *  const DISABLES the excess-property check that would otherwise catch a field
@@ -41,8 +48,10 @@ export interface AnswerQuestionArgs {
   question: string;
   /** Slack channel the question came from — the rate-limit bucket. */
   channelId: string;
-  /** True when the channel is externally shared (Slack Connect). Gated separately. */
+  /** True when the channel is externally shared (Slack Connect). Never answered. */
   isExternalChannel?: boolean;
+  /** The Foundry member asking, resolved from their Slack account. Null = no match: refused. */
+  asker: EffectiveUser | null;
   now?: Date;
 }
 
@@ -61,13 +70,31 @@ export async function answerQuestion(args: AnswerQuestionArgs): Promise<Dispatch
     return { ...empty, status: "error", message: "Dispatch is switched off for this workspace." };
   }
 
-  // Internal delivery state is not client-facing. This is a disclosure gate, not a preference.
-  if (args.isExternalChannel && !config.allowExternalChannels) {
+  // Internal delivery state is not client-facing. This is a disclosure gate, not a preference,
+  // and there is no switch for it.
+  if (args.isExternalChannel) {
     return {
       ...empty,
       status: "error",
       message:
         "This is a shared channel with people outside Gitwork, so I won't post internal delivery detail here. Ask me in an internal channel or a DM.",
+    };
+  }
+
+  const asker = args.asker;
+  if (!asker) {
+    return {
+      ...empty,
+      status: "error",
+      message:
+        "I can only answer people with a Foundry account, and I couldn't match your Slack account to one. Check your Slack profile email is the one you sign in to Foundry with.",
+    };
+  }
+  if (!mayAskDispatch(asker)) {
+    return {
+      ...empty,
+      status: "error",
+      message: "Your Foundry account doesn't include client boards, so I can't answer questions about them for you.",
     };
   }
 
@@ -88,7 +115,8 @@ export async function answerQuestion(args: AnswerQuestionArgs): Promise<Dispatch
     };
   }
 
-  const candidates = await loadCandidates(args.workspaceId);
+  const scope = await askerScope(asker);
+  const candidates = await loadCandidates(args.workspaceId, scope);
   const resolved = resolveSubject(question, candidates);
 
   if (!resolved.subject) {
@@ -100,12 +128,22 @@ export async function answerQuestion(args: AnswerQuestionArgs): Promise<Dispatch
     };
   }
 
+  if (!subjectAllowed(resolved.subject, scope)) {
+    return {
+      ...empty,
+      status: "no_subject",
+      message:
+        "I can only answer about the clients you work on. Name one of them, e.g. “where are we with Acme?”.",
+    };
+  }
+
   const evidence = await gatherEvidence({
     workspaceId: args.workspaceId,
     subject: resolved.subject,
     personFilter: resolved.personFilter,
     config,
     now,
+    documentTypes: documentTypesFor(asker),
   });
 
   const { answer, aiModel, cached } = await runAnswer({
@@ -135,14 +173,25 @@ async function withinRateLimit(
   return used <= config.perChannelPerHour;
 }
 
+/** The clients this asker can open. Same rule as the task board (`assignedClientIds`). */
+async function askerScope(asker: EffectiveUser): Promise<AskerScope> {
+  if (seesAllClients(asker)) return { seeAll: true, clientIds: new Set() };
+  // Loaded lazily: the tasks module pulls in the notification and auth stacks, which the pure
+  // Slack triage helpers (and their tests) shouldn't need just to be imported.
+  const { assignedClientIds } = await import("@/server/tasks");
+  return { seeAll: false, clientIds: new Set(await assignedClientIds(asker)) };
+}
+
 /** Clients and teammates a question could be about. Archived clients stay in — "what happened
- *  with X?" about a wrapped-up project is a fair question. */
+ *  with X?" about a wrapped-up project is a fair question. Only clients the asker can open are
+ *  candidates: Dispatch must not confirm that a client it won't discuss exists. */
 async function loadCandidates(
   workspaceId: string,
+  scope: AskerScope,
 ): Promise<{ clients: ClientCandidate[]; people: PersonCandidate[] }> {
   const [clients, members] = await Promise.all([
     prisma.workspaceClient.findMany({
-      where: { workspaceId },
+      where: scope.seeAll ? { workspaceId } : { workspaceId, id: { in: [...scope.clientIds] } },
       select: { id: true, name: true, slug: true },
     }),
     prisma.workspaceMember.findMany({

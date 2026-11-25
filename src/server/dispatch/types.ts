@@ -41,13 +41,9 @@ export interface DispatchConfig {
   maxEvidenceItems: number;
   /** Per-channel question budget per rolling hour. A chatty agent is an unbounded cost. */
   perChannelPerHour: number;
-  /**
-   * Whether Dispatch will answer in a Slack Connect (externally shared) channel.
-   * Default FALSE and deliberately so: those channels contain the client, and Foundry's
-   * internal delivery state — overdue counts, developer workload, unassigned work — is not
-   * client-facing. Turning this on is a disclosure decision, not a convenience toggle.
-   */
-  allowExternalChannels: boolean;
+  // There is deliberately no switch for Slack Connect (externally shared) channels. Those
+  // channels contain the client, and Dispatch never answers in them (respond.ts). It used to be
+  // an `allowExternalChannels` option; a stored value is now ignored.
 }
 
 export const DISPATCH_DEFAULTS: DispatchConfig = {
@@ -55,7 +51,6 @@ export const DISPATCH_DEFAULTS: DispatchConfig = {
   recentDays: 7,
   maxEvidenceItems: 12,
   perChannelPerHour: 20,
-  allowExternalChannels: false,
 };
 
 // ─── Evidence ───────────────────────────────────────────────────────────────
