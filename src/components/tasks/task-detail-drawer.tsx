@@ -22,6 +22,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/motion/spinner";
 import { Markdown } from "@/lib/markdown";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import {
@@ -427,6 +428,13 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
     setSubtaskTitle("");
   }
 
+  // Which save is in flight, so the control that started it shows a spinner (the dev team's
+  // "buttons look stuck" report): the status chip clicked, the subtask ticked, or Archive.
+  const pending = update.isPending ? update.variables : undefined;
+  const pendingStatus = pending && task && pending.id === task.id ? pending.input.status : undefined;
+  const pendingArchive = Boolean(pending && task && pending.id === task.id && pending.input.archived !== undefined);
+  const pendingSubtaskId = pending && task && pending.id !== task.id ? pending.id : undefined;
+
   async function toggleSubtask(subId: string, done: boolean) {
     await update.mutateAsync({ id: subId, input: { status: done ? "DONE" : "TODO" } });
   }
@@ -519,7 +527,11 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                           on ? STATUS_ACTIVE[s] : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
                         )}
                       >
-                        <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} />
+                        {pendingStatus === s ? (
+                          <Spinner size="xs" />
+                        ) : (
+                          <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[s])} />
+                        )}
                         {TASK_STATUS_LABELS[s]}
                       </button>
                     );
@@ -623,14 +635,18 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                 <div className="space-y-1.5">
                   {task.subtasks.map((s) => (
                     <div key={s.id} className="group flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2">
-                      <input
-                        type="checkbox"
-                        checked={s.status === "DONE"}
-                        disabled={update.isPending}
-                        onChange={(e) => toggleSubtask(s.id, e.target.checked)}
-                        className="accent-[var(--brand-700)]"
-                        aria-label={s.status === "DONE" ? "Mark subtask not done" : "Mark subtask done"}
-                      />
+                      {pendingSubtaskId === s.id ? (
+                        <Spinner size="sm" tone="brand" label="Saving" />
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={s.status === "DONE"}
+                          disabled={update.isPending}
+                          onChange={(e) => toggleSubtask(s.id, e.target.checked)}
+                          className="accent-[var(--brand-700)]"
+                          aria-label={s.status === "DONE" ? "Mark subtask not done" : "Mark subtask done"}
+                        />
+                      )}
                       {/* Open the subtask in the edit form (rename, reassign, due,
                           priority, description) — a light modal, not a nested drawer. */}
                       <button
@@ -729,7 +745,13 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
                     disabled={update.isPending}
                     className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-4)] transition hover:text-[var(--text-2)] disabled:opacity-50"
                   >
-                    {task.archivedAt ? <ArchiveBoxXMarkIcon className="h-4 w-4" /> : <ArchiveBoxArrowDownIcon className="h-4 w-4" />}
+                    {pendingArchive ? (
+                      <Spinner size="md" />
+                    ) : task.archivedAt ? (
+                      <ArchiveBoxXMarkIcon className="h-4 w-4" />
+                    ) : (
+                      <ArchiveBoxArrowDownIcon className="h-4 w-4" />
+                    )}
                     {task.archivedAt ? "Unarchive" : "Archive"}
                   </button>
                 </div>

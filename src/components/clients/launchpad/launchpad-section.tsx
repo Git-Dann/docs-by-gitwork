@@ -46,6 +46,7 @@ import { CustomItemForm } from "./launchpad-custom-item-form";
 import { LaunchpadDocPanel } from "./launchpad-doc-panel";
 import type { OnboardingAnswerValue, OnboardingFieldDef } from "@/types/onboarding";
 import type { LaunchpadDTO, LaunchpadDocKey, LaunchpadFieldDef } from "@/types/launchpad";
+import { Spinner } from "@/components/ui/motion/spinner";
 import type { LaunchpadDocPatch, LaunchpadItemPatch } from "@/lib/api";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -544,6 +545,18 @@ export function LaunchpadSection({
 
   return (
     <div className="space-y-3">
+      {/* Every Launchpad write saves on its own (a status pick, a typed answer, a doc edit), and
+          none of those controls has room for a spinner, so one shared "Saving…" note shows
+          while any of them is in flight. Above the Desk drawer's 48px bar. */}
+      {busy ? (
+        <div
+          role="status"
+          className="fixed bottom-16 right-6 z-40 inline-flex items-center gap-2 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] shadow-[0_8px_24px_-6px_rgba(0,0,0,0.2)]"
+        >
+          <Spinner size="sm" tone="brand" />
+          Saving…
+        </div>
+      ) : null}
       {/* Two short cards side by side from xl. Below that they stack — the module
           toggles wrap to three rows on a narrow column and would squeeze the
           progress readout's stat figures. */}

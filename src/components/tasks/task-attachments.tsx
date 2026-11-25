@@ -1,5 +1,6 @@
 "use client";
 
+import { Spinner } from "@/components/ui/motion/spinner";
 import { useState } from "react";
 import imageCompression from "browser-image-compression";
 import { TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -40,8 +41,9 @@ export function TaskAttachments({
   }
 
   async function handleDelete(attachmentId: string) {
-    setViewing(null);
+    // Keep the viewer open until it's gone, so the spinner on its delete button shows.
     await del.mutateAsync({ taskId, attachmentId });
+    setViewing(null);
   }
 
   return (
@@ -107,7 +109,7 @@ export function TaskAttachments({
                   aria-label="Delete attachment"
                   className="rounded-[6px] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--danger-500)] disabled:opacity-50"
                 >
-                  <TrashIcon className="h-4 w-4" />
+                  {del.isPending ? <Spinner size="md" label="Deleting" /> : <TrashIcon className="h-4 w-4" />}
                 </button>
                 <button
                   type="button"

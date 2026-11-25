@@ -55,6 +55,7 @@ import {
 } from "@/hooks/use-wiki";
 import { RequestThread } from "@/components/clients/wiki/request-thread";
 import { useToast } from "@/components/ui/toast";
+import { Spinner } from "@/components/ui/motion/spinner";
 import { WikiPageActions } from "./wiki-page-header";
 
 /** A full-width labelled action in a request's details card. */
@@ -1115,7 +1116,11 @@ export function WikiIntakeSection({
                                 aria-label={`Create a task from ${item.title}`}
                                 className="rounded-[6px] border border-[var(--border-2)] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] disabled:opacity-60"
                               >
-                                <SquaresPlusIcon className="h-4 w-4" />
+                                {promoteItem.isPending && promoteItem.variables?.id === item.id ? (
+                                  <Spinner size="md" label="Creating task" />
+                                ) : (
+                                  <SquaresPlusIcon className="h-4 w-4" />
+                                )}
                               </button>
                             ) : (
                               <a
@@ -1402,7 +1407,12 @@ export function WikiIntakeSection({
                                           }
                                           className={sideBtn}
                                         >
-                                          <SquaresPlusIcon className="h-4 w-4" /> Create task
+                                          {promoteItem.isPending && promoteItem.variables?.id === item.id ? (
+                                            <Spinner size="md" />
+                                          ) : (
+                                            <SquaresPlusIcon className="h-4 w-4" />
+                                          )}{" "}
+                                          Create task
                                         </button>
                                       ) : (
                                         <a href={`/app/portal/${slug}/tasks`} className={sideBtn}>
@@ -1487,8 +1497,11 @@ export function WikiIntakeSection({
                                               }
                                               setConfirmDeleteId(null);
                                             }}
-                                            className="rounded-[6px] bg-rose-600 px-2.5 py-1 text-[12px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                                            className="inline-flex items-center gap-1.5 rounded-[6px] bg-rose-600 px-2.5 py-1 text-[12px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
                                           >
+                                            {(isInternal ? deleteItem.isPending : deletePublic.isPending) ? (
+                                              <Spinner size="xs" />
+                                            ) : null}
                                             {isInternal ? "Delete" : "Withdraw"}
                                           </button>
                                           <button

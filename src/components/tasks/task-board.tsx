@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/format";
+import { Spinner } from "@/components/ui/motion/spinner";
 import { useMoveTask } from "@/hooks/use-tasks";
 import { TASK_STATUS_LABELS, type TaskDTO, type TaskStatus } from "@/types/tasks";
 import { boardLanes, laneKeyFor, type BoardColumnDef, type BoardLane } from "@/lib/tasks/board-columns";
@@ -91,6 +92,8 @@ export function TaskBoard({
   );
 
   const [overrides, setOverrides] = useState<Record<string, Override>>({});
+  // Cards whose move is still saving: they show a small spinner so a drag never looks lost.
+  const [savingIds, setSavingIds] = useState<ReadonlySet<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
@@ -189,6 +192,7 @@ export function TaskBoard({
 
     const next: Override = { status: target.stage, orderKey, boardColumnId: target.columnId };
     setOverrides((prev) => ({ ...prev, [id]: next }));
+    setSavingIds((prev) => new Set(prev).add(id));
     try {
       await move.mutateAsync({ id, ...next });
       // The override is pruned by the effect above once the refetch reflects it.
@@ -197,6 +201,12 @@ export function TaskBoard({
       setOverrides((prev) => {
         const next = { ...prev };
         delete next[id];
+        return next;
+      });
+    } finally {
+      setSavingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
         return next;
       });
     }
@@ -231,6 +241,7 @@ export function TaskBoard({
             onScribeSourceClick={onScribeSourceClick}
             overId={overId}
             activeId={activeId}
+            savingIds={savingIds}
           />
         ))}
       </div>
@@ -257,6 +268,7 @@ const BoardColumn = memo(function BoardColumn({
   onScribeSourceClick,
   overId,
   activeId,
+  savingIds,
 }: {
   lane: BoardLane;
   index: number;
@@ -266,6 +278,7 @@ const BoardColumn = memo(function BoardColumn({
   onScribeSourceClick?: (task: TaskDTO) => void;
   overId: string | null;
   activeId: string | null;
+  savingIds: ReadonlySet<string>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: lane.key });
   const status = lane.stage;
@@ -317,6 +330,7 @@ const BoardColumn = memo(function BoardColumn({
             onCardClick={onCardClick}
             onScribeSourceClick={onScribeSourceClick}
             showIndicator={overId === task.id && activeId != null && activeId !== task.id}
+            saving={savingIds.has(task.id)}
           />
         ))}
         {hidden > 0 ? (
@@ -349,12 +363,14 @@ const BoardCard = memo(function BoardCard({
   onCardClick,
   onScribeSourceClick,
   showIndicator = false,
+  saving = false,
 }: {
   task: TaskDTO;
   showClient: boolean;
   onCardClick: (taskId: string) => void;
   onScribeSourceClick?: (task: TaskDTO) => void;
   showIndicator?: boolean;
+  saving?: boolean;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({ id: task.id });
   // Also a drop target, so a card dropped onto it lands at this card's position.
@@ -383,6 +399,11 @@ const BoardCard = memo(function BoardCard({
         onClick={handleClick}
         onScribeSourceClick={onScribeSourceClick}
       />
+      {saving ? (
+        <span className="pointer-events-none absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-[var(--border-2)] bg-[var(--surface-0)] shadow-sm">
+          <Spinner size="xs" tone="brand" label="Saving move" />
+        </span>
+      ) : null}
     </div>
   );
 });
