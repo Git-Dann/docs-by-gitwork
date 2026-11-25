@@ -99,7 +99,7 @@ export function useSendBoardFeedback(target: BoardTarget, taskId: string) {
     mutationFn: (input: { kind: FeedbackKind; body: string }) =>
       apiFetch<{ entry: WikiBoardFeedback }>(
         feedbackUrl(target, taskId),
-        json(target.mode === "public" ? input : { body: input.body }),
+        json(input),
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["wiki-board-feedback", target.mode, key, taskId] });

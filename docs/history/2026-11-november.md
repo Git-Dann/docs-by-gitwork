@@ -2243,3 +2243,8 @@ use it before that to test it). Operator notes: `docs/dispatch.md`.
   - The calendar spans only the releases shown, and opens on today: it scrolls the first time the
     scroller has a width (ResizeObserver), which fixes it opening at the earliest release when the
     view mounted before it was laid out.
+
+**Follow-up (25 Nov): the team can approve too.** Dan asked for it. The team's card dialog now has
+Changes needed, Approve and Reply. `addBoardFeedback` no longer refuses a sign-off from the team; it
+is recorded as Gitwork's (`authorUserId`, shown as "GITWORK · name" in the activity) and notifies
+nobody. `POST /api/tasks/[id]/client-feedback` takes `{ kind?, body }`, `kind` defaulting to a comment.

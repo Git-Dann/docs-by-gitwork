@@ -1546,8 +1546,9 @@ function DependsPicker({ initial, choices, onCommit }: { initial: string[]; choi
 }
 
 /**
- * Approve or ask for changes (the client), or reply (the team): pinned under the card's activity.
- * The client gets no separate Comment button: a note goes with Approve or Changes needed. Sending
+ * Approve or ask for changes (the client and the team), or reply (the team): pinned under the
+ * card's activity. The client gets no separate Comment button: a note goes with Approve or
+ * Changes needed. The team's sign-off is recorded as Gitwork's, with their name. Sending
  * updates the card in place (`onSent`), so Approve turns into "Approved" at once, with no reload.
  */
 function Composer({
@@ -1591,48 +1592,45 @@ function Composer({
           onChange={(e) => setBody(e.target.value)}
           rows={1}
           maxLength={BOARD_LIMITS.feedback}
-          placeholder={audience === "client" ? "Add a note, or say what needs changing…" : "Reply to the client…"}
+          placeholder={audience === "client" ? "Add a note, or say what needs changing…" : "Reply to the client, or add a note…"}
           aria-label={audience === "client" ? "Note" : "Reply"}
           // Grows with what's typed, up to a few lines, so an empty composer takes one line.
           className="app-input max-h-[120px] min-h-[36px] w-full flex-1 resize-none px-3 py-2 text-[16px] [field-sizing:content] sm:text-sm"
         />
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          {audience === "client" ? (
-            <>
-              <button
-                type="button"
-                className="app-button app-button-secondary app-button-sm h-9"
-                disabled={send.isPending}
-                onClick={() => void submit("changes_requested")}
-                data-sign-off-changes
-              >
-                {sending === "changes_requested" ? "Sending…" : "Changes needed"}
-              </button>
-              {approved && !body.trim() ? (
-                <span
-                  className="app-button app-button-sm pointer-events-none h-9 border border-emerald-200 bg-emerald-50 text-emerald-700"
-                  role="status"
-                  data-sign-off-approved
-                >
-                  <CheckIcon className="h-4 w-4" /> Approved
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="app-button app-button-primary app-button-sm h-9"
-                  disabled={send.isPending}
-                  onClick={() => void submit("approved")}
-                  data-sign-off-approve
-                >
-                  {sending === "approved" ? "Approving…" : approved ? "Approve again" : "Approve"}
-                </button>
-              )}
-            </>
+          <button
+            type="button"
+            className="app-button app-button-secondary app-button-sm h-9"
+            disabled={send.isPending}
+            onClick={() => void submit("changes_requested")}
+            data-sign-off-changes
+          >
+            {sending === "changes_requested" ? "Sending…" : "Changes needed"}
+          </button>
+          {approved && !body.trim() ? (
+            <span
+              className="app-button app-button-sm pointer-events-none h-9 border border-emerald-200 bg-emerald-50 text-emerald-700"
+              role="status"
+              data-sign-off-approved
+            >
+              <CheckIcon className="h-4 w-4" /> Approved
+            </span>
           ) : (
-            <button type="button" className="app-button app-button-primary app-button-sm h-9" disabled={send.isPending} onClick={() => void submit("comment")}>
-              {sending ? "Sending…" : "Reply"}
+            <button
+              type="button"
+              className={cn("app-button app-button-sm h-9", audience === "client" ? "app-button-primary" : "app-button-secondary")}
+              disabled={send.isPending}
+              onClick={() => void submit("approved")}
+              data-sign-off-approve
+            >
+              {sending === "approved" ? "Approving…" : approved ? "Approve again" : "Approve"}
             </button>
           )}
+          {audience === "team" ? (
+            <button type="button" className="app-button app-button-primary app-button-sm h-9" disabled={send.isPending} onClick={() => void submit("comment")}>
+              {sending === "comment" ? "Sending…" : "Reply"}
+            </button>
+          ) : null}
         </div>
       </div>
       {error ? <p className="mt-1.5 text-[12px] text-red-700">{error}</p> : null}
