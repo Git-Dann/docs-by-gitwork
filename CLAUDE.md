@@ -390,7 +390,7 @@ src/
       answer.ts                   ← Pure no-AI floor + ONE cached light-tier phrasing call
       respond.ts                  ← Orchestrator: gates → resolve → gather → answer
       config.ts / types.ts        ← resolveDispatchConfig + DISPATCH_DEFAULTS
-      assistant/                  ← The assistant (§154): loop.ts (Sonnet 5.5 tool loop, cached prefix), scope.ts (permission wall),
+      assistant/                  ← The assistant (§154): loop.ts (tool loop, Haiku 5.5 / Sonnet 5.5 per chat §157, cached prefix), scope.ts (permission wall),
                                      tools.ts (read + propose_* tools), tools-code.ts (GitHub), tools-design.ts (Figma + page
                                      screenshots), actions.ts (confirm executor), slack.ts, redact.ts, budget.ts, purge.ts (§156)
     slack/
@@ -912,3 +912,4 @@ be resolved by reading. Do not renumber either one.
 - **§154** — Dispatch becomes an assistant
 - **§155** — Board: sign-off without a reload, and a Timeline that shows what's late
 - **§156** — Dispatch reads code and designs, watches the budget
+- **§157** — Dispatch answers with Haiku unless it needs Sonnet

@@ -91,7 +91,7 @@ export function contentsPath(r: RepoChoice, path: string): string {
  * Lines `from`..`to` (1-based, inclusive) with their numbers, so the model can cite them. Stops
  * before `cap` characters and says so, with the line to ask for next.
  */
-export function numberedLines(text: string, from = 1, to?: number, cap = 7000): { text: string; more: number | null; total: number } {
+export function numberedLines(text: string, from = 1, to?: number, cap = 5500): { text: string; more: number | null; total: number } {
   const lines = text.split("\n");
   const start = Math.max(1, Math.floor(from));
   const end = Math.min(lines.length, to ? Math.floor(to) : lines.length);

@@ -3,6 +3,8 @@
  * answers, streaming as it goes. Used by the in-app panel and by Slack.
  *
  * Cost (a $200 pot shared with every AI feature):
+ *   - Claude Haiku 5.5 answers most chats; Sonnet 5.5 only code and design-against-build ones
+ *     (src/lib/dispatch/model.ts). The model is fixed per chat.
  *   - The system prompt and the tool list are identical for every person and question, with a
  *     cache breakpoint after them, so every question after the first in a 5-minute window reads
  *     them at a tenth of the price. Who is asking and about which client goes in the first user
@@ -28,7 +30,8 @@ import {
   QUESTIONS_PER_HOUR,
   roughTokens,
 } from "@/lib/dispatch/limits";
-import { DISPATCH_MODEL } from "@/server/ai-provider";
+import { DISPATCH_MODELS } from "@/server/ai-provider";
+import { chooseDispatchTier } from "@/lib/dispatch/model";
 import { aiKeyFor } from "@/server/ai-keys";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 import { describeAiError } from "@/lib/ai-error-words";
@@ -77,7 +80,7 @@ type Param = Anthropic.Beta.BetaMessageParam;
 /** "failed" = the model call failed (the person was told why); "no_key" = no Anthropic key. */
 export type TurnOutcome = "answered" | "failed" | "no_key";
 
-export async function runTurn(input: TurnInput): Promise<{ conversationId: string; outcome: TurnOutcome }> {
+export async function runTurn(input: TurnInput): Promise<{ conversationId: string; outcome: TurnOutcome; model: string }> {
   const { scope, emit } = input;
   const question = input.question.trim().slice(0, MAX_QUESTION_CHARS);
   if (!question) throw new DispatchLimitError("Ask me something first.");
@@ -89,21 +92,27 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
   // ── The conversation ──
   let conversationId: string;
   let history: { role: "user" | "assistant"; content: unknown }[] = [];
+  // The model is chosen from the chat's first question and kept for the chat (model.ts).
+  let model: string;
   if (input.conversationId) {
     const conv = await getOwnConversation(scope.user, input.conversationId);
     if (conv.clientId !== scope.client.id) {
       throw new DispatchLimitError("This chat is about a different client. Start a new one.");
     }
     conversationId = conv.id;
+    // Chats from before the Haiku switch carry on with the model they started with.
+    model = conv.model ?? DISPATCH_MODELS.deep;
     history = await loadMessages(conv.id);
     if (history.length >= MAX_CHAT_MESSAGES || roughTokens(history) >= MAX_CHAT_TOKENS) {
       throw new DispatchLimitError("This chat has got long. Start a new one to keep answers quick and cheap.");
     }
   } else {
+    model = DISPATCH_MODELS[chooseDispatchTier({ question, pictures: input.images?.length ?? 0 })];
     const conv = await createConversation(scope.user, {
       clientId: scope.client.id,
       surface: scope.surface,
       title: question.replace(/\s+/g, " ").slice(0, 80),
+      model,
       slackChannelId: input.slack?.channelId,
       slackThreadTs: input.slack?.threadTs,
     });
@@ -148,9 +157,21 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
   const apiKey = aiKeyFor("ANTHROPIC", ws, "workspace");
   if (!apiKey) {
     emit.notice("Dispatch needs an Anthropic key in Settings → Integrations before it can answer.");
-    return { conversationId, outcome: "no_key" };
+    return { conversationId, outcome: "no_key", model };
   }
   const client = new Anthropic({ apiKey, maxRetries: 2 });
+  // Haiku answers without thinking (cheapest; it isn't needed to look things up). Sonnet thinks
+  // briefly, and a declined request is retried on Anthropic's fallback model in the same call;
+  // Haiku 5.5 has no server-side fallback.
+  const isHaiku = model === DISPATCH_MODELS.everyday;
+  const modelParams = isHaiku
+    ? { thinking: { type: "disabled" as const }, output_config: { effort: "low" as const } }
+    : {
+        thinking: { type: "adaptive" as const },
+        output_config: { effort: "low" as const },
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default" as const,
+      };
   const tools = toolDefinitions() as Anthropic.Beta.BetaToolUnion[];
 
   // Shared by every tool call in this question: attached pictures already used some slots.
@@ -162,7 +183,7 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
     let final: Anthropic.Beta.BetaMessage;
     try {
       const stream = client.beta.messages.stream({
-        model: DISPATCH_MODEL,
+        model,
         max_tokens: MAX_OUTPUT_TOKENS,
         // Cached prefix: tools, then this exact text. Never put anything per-person here.
         system: [{ type: "text", text: DISPATCH_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
@@ -170,13 +191,9 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
         // On the last allowed round the model must answer with what it has.
         ...(lastRound ? { tool_choice: { type: "none" as const } } : {}),
         messages,
-        thinking: { type: "adaptive" },
-        output_config: { effort: "low" },
+        ...modelParams,
         // Automatic caching for the growing conversation.
         cache_control: { type: "ephemeral" },
-        // A declined request is retried on Anthropic's fallback model inside the same call.
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
       });
       stream.on("text", (delta) => emit.text(delta));
       final = await stream.finalMessage();
@@ -188,14 +205,14 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
         userId: scope.user.id,
         operation: scope.surface,
         provider: "anthropic",
-        model: DISPATCH_MODEL,
+        model,
         usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
         latencyMs: Date.now() - started,
         success: false,
         errorKind: raw.slice(0, 120),
       });
       emit.notice(describeAiError(raw));
-      return { conversationId, outcome: "failed" };
+      return { conversationId, outcome: "failed", model };
     }
 
     const usage = usageFromAnthropic(final.usage);
@@ -205,7 +222,7 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
       userId: scope.user.id,
       operation: scope.surface,
       provider: "anthropic",
-      model: final.model || DISPATCH_MODEL,
+      model: final.model || model,
       usage,
       latencyMs: Date.now() - started,
       success: final.stop_reason !== "refusal",
@@ -252,7 +269,7 @@ export async function runTurn(input: TurnInput): Promise<{ conversationId: strin
     messages.push({ role: "user", content: results });
   }
 
-  return { conversationId, outcome: "answered" };
+  return { conversationId, outcome: "answered", model };
 }
 
 /** Plain text of the latest assistant reply in stored content blocks (for Slack). */

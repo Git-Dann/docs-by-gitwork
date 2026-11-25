@@ -6650,6 +6650,9 @@ model DispatchConversation {
   slackChannelId String?
   slackThreadTs  String?
   title          String   @default("New chat")
+  /// The model the chat was started with, kept for the whole chat (src/lib/dispatch/model.ts).
+  /// Null on chats from before the Haiku switch: they carry on with Sonnet 5.5.
+  model          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
