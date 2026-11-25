@@ -69,6 +69,7 @@ export function WikiBoardTimeline({
   readOnly,
   onOpen,
   onEditDates,
+  searching = false,
 }: {
   /** The cards in view, already filtered the way the Board is. */
   cards: WikiBoardCard[];
@@ -78,6 +79,8 @@ export function WikiBoardTimeline({
   onOpen: (id: string) => void;
   /** The team can move a release's dates from here. Absent for the client. Dates are YYYY-MM-DD. */
   onEditDates?: (release: WikiBoardRelease, dates: { startDate: string | null; endDate: string | null; changelogVersion?: string | null }) => Promise<void>;
+  /** A search is on: every release opens, so a match is never hidden inside a folded one. */
+  searching?: boolean;
 }) {
   const [scale, setScale] = useState<TimelineScale>("weeks");
   const today = useMemo(() => dayOf(new Date()), []);
@@ -114,6 +117,11 @@ export function WikiBoardTimeline({
       return next;
     });
   const allFolded = groups.length > 0 && groups.every((g) => collapsed.has(keyOf(g.release)));
+  // Searching opens every release: a folded release hid "Big Wedge Handicap Calculation" from a
+  // search for "handicap" (Dan, Nov 2026). Folding by hand still works while searching.
+  useEffect(() => {
+    if (searching) setCollapsed(new Set());
+  }, [searching]);
 
   const scroller = useRef<HTMLDivElement>(null);
   const rail = useRef<HTMLDivElement>(null);
