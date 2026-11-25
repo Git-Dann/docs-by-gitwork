@@ -122,6 +122,19 @@ function taskLine(t: TaskDTO): string {
   return `- ${bits.join(" · ")}`;
 }
 
+/** Open tasks on a client counted per person ("Nasir Javed 5, Fahad 3; 4 with nobody"). For admins. */
+export function openByPerson(open: readonly Pick<TaskDTO, "assignees">[], clientName: string): string {
+  const counts = new Map<string, number>();
+  let nobody = 0;
+  for (const t of open) {
+    if (!t.assignees.length) nobody += 1;
+    for (const a of t.assignees) counts.set(a.name, (counts.get(a.name) ?? 0) + 1);
+  }
+  const people = [...counts.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+  const list = people.map(([name, n]) => `${name} ${n}`).join(", ");
+  return `Open tasks on ${clientName} by person (a shared task counts for each person on it): ${list || "none assigned"}. ${nobody} with nobody assigned.`;
+}
+
 /** A source chip names a task by its title (what people know it by), shortened. */
 function chipTitle(title: string): string {
   return title.length > 48 ? `${title.slice(0, 47)}…` : title;
@@ -302,12 +315,21 @@ const myWork = tool({
     // Nothing on this client is theirs at all (not just nothing in this range): say so, and how
     // much is waiting for an owner, rather than an empty list (Dan, 25 Nov).
     if (mine && tasks.length === 0) {
+      const who = scope.user.name ?? "The person asking";
+      const none = `${who} has no tasks assigned on ${scope.client.name}.`;
+      // An admin runs the project, so they're told whose the open work is (counts per person).
+      // A developer is told only how much has no owner: what their teammates hold isn't theirs
+      // to be handed in an answer about their own work (Dan, 25 Nov).
+      if (scope.isAdmin) {
+        const open = await listTasks(scope.user, { clientId: scope.client.id, openOnly: true, limit: 500 });
+        return { text: asSource("tasks", range, `${none}\n${openByPerson(open, scope.client.name)}`) };
+      }
       const unassigned = await listTasks(scope.user, { clientId: scope.client.id, unassignedOnly: true, openOnly: true, limit: 500 });
       return {
         text: asSource(
           "tasks",
           range,
-          `${scope.user.name ?? "The person asking"} has no tasks assigned on ${scope.client.name}. There ${unassigned.length === 1 ? "is 1 open task" : `are ${unassigned.length} open tasks`} on ${scope.client.name} with nobody assigned.`,
+          `${none} There ${unassigned.length === 1 ? "is 1 open task" : `are ${unassigned.length} open tasks`} on ${scope.client.name} with nobody assigned.`,
         ),
       };
     }

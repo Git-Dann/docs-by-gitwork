@@ -2443,9 +2443,10 @@ From Dan and Syed testing Dispatch, 25 Nov.
 - **"Syed sees tasks that aren't his"** was the data, not Dispatch: Syed is an assignee on 40
   Campfire tasks (some shared with Sardar Jamal), created on 3 Nov. `my_work` only ever reads the
   asker's own tasks (`assigneeId: scope.user.id`), which a test now pins.
-- **Nothing assigned:** when the asker has no tasks on the client at all, `my_work` says so and
-  gives the number of open tasks with nobody assigned, instead of an empty list, and the prompt
-  says to answer that way rather than offering anyone else's work.
+- **Nothing assigned:** when the asker has no tasks on the client at all, `my_work` says so.
+  **An admin** (Admin, Super Admin) is then told whose the open work is ("Nasir Javed 5, Muhammad
+  Fahad 3; 4 with nobody assigned", `openByPerson`); **anyone else** only how many have nobody
+  assigned. Dan: "admin is different to dev". Every task list says whose each task is.
 - **Titles, not refs:** answers, source chips and proposal cards name tasks by their title. Tool
   results still carry the ref as a bracketed handle (`[ref AB12CD]`) for `get_task` and the
   `propose_*` tools, and the prompt says never to show it.
