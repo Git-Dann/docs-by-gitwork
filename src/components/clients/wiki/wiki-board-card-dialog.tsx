@@ -315,6 +315,14 @@ function CardDialogBody(props: BodyProps) {
     if (card) setLocal(card);
   }, [card]);
   const values: BoardCardForm = isAdd || !local ? form : formFromCard(local);
+  // One draft for the note box and the sign-off buttons in the bottom bar.
+  const fb = useCardFeedback(target, local?.id ?? "", (kind) => {
+    if (!local) return;
+    // Show the sign-off on the card now; the board's re-read brings the same back.
+    const next = { ...local, feedbackCount: local.feedbackCount + 1, ...(kind === "comment" ? {} : { signOff: kind }) };
+    setLocal(next);
+    props.onSaved(next);
+  });
   const editing = isAdd ? { fields: true, move: true } : cardEditing(local!, audience, previewing);
 
   const [files, setFiles] = useState<File[]>([]);
@@ -885,20 +893,7 @@ function CardDialogBody(props: BodyProps) {
               </Block>
             ) : null}
           </div>
-          {!isAdd && local ? (
-            <Composer
-              target={target}
-              cardId={local.id}
-              audience={audience}
-              signOff={local.signOff}
-              onSent={(kind) => {
-                // Show the sign-off on the card now; the board's re-read brings the same back.
-                const next = { ...local, feedbackCount: local.feedbackCount + 1, ...(kind === "comment" ? {} : { signOff: kind }) };
-                setLocal(next);
-                props.onSaved(next);
-              }}
-            />
-          ) : null}
+          {!isAdd && local ? <NoteBox fb={fb} audience={audience} /> : null}
         </div>
 
         <aside className="hidden min-h-0 overflow-y-auto border-l border-[var(--border-2)] px-3 py-4 md:block" data-card-rail>
@@ -961,7 +956,7 @@ function CardDialogBody(props: BodyProps) {
                 <TrashIcon className="h-3.5 w-3.5" /> Delete
               </button>
             ) : null}
-            <p className={cn("ml-auto min-w-0 text-right text-[12px]", saveState.error ? "text-red-700" : "text-[var(--text-4)]")} role="status" data-card-save-state>
+            <p className={cn("mr-auto min-w-0 text-[12px]", saveState.error ? "text-red-700" : "text-[var(--text-4)]")} role="status" data-card-save-state>
               {saveState.error
                 ? saveState.error
                 : saveState.pending
@@ -976,6 +971,7 @@ function CardDialogBody(props: BodyProps) {
                           ? "One of Gitwork’s own tasks: read only"
                           : "A dev task: edit its details on the task board"}
             </p>
+            {local ? <SignOffButtons fb={fb} signOff={local.signOff} audience={audience} /> : null}
           </>
         )}
       </div>
@@ -1546,24 +1542,13 @@ function DependsPicker({ initial, choices, onCommit }: { initial: string[]; choi
 }
 
 /**
- * Approve or ask for changes (the client and the team), or reply (the team): pinned under the
- * card's activity. The client gets no separate Comment button: a note goes with Approve or
- * Changes needed. The team's sign-off is recorded as Gitwork's, with their name. Sending
- * updates the card in place (`onSent`), so Approve turns into "Approved" at once, with no reload.
+ * The card's feedback: a note box under the activity (with Reply for the team) and the sign-off
+ * buttons in the card's bottom bar, sharing one draft so a typed note goes with whichever is
+ * pressed. Sending updates the card in place (`onSent`): Approve turns into "Approved" at once,
+ * with no reload. The client has no separate Comment button; the team's sign-off is recorded as
+ * Gitwork's, with their name.
  */
-function Composer({
-  target,
-  cardId,
-  audience,
-  signOff,
-  onSent,
-}: {
-  target: BoardTarget;
-  cardId: string;
-  audience: "client" | "team";
-  signOff: SignOff;
-  onSent: (kind: FeedbackKind) => void;
-}) {
+function useCardFeedback(target: BoardTarget, cardId: string, onSent: (kind: FeedbackKind) => void) {
   const send = useSendBoardFeedback(target, cardId);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -1583,57 +1568,79 @@ function Composer({
       setSending(null);
     }
   }
-  const approved = signOff === "approved";
+  return { body, setBody, error, sending, busy: send.isPending, submit };
+}
+type CardFeedback = ReturnType<typeof useCardFeedback>;
+
+/** The note box under the activity, with Reply beside it for the team. */
+function NoteBox({ fb, audience }: { fb: CardFeedback; audience: "client" | "team" }) {
   return (
     <div className="shrink-0 border-t border-[var(--border-2)] px-5 py-3" data-card-composer>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="flex items-end gap-2">
         <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
+          value={fb.body}
+          onChange={(e) => fb.setBody(e.target.value)}
           rows={1}
           maxLength={BOARD_LIMITS.feedback}
           placeholder={audience === "client" ? "Add a note, or say what needs changing…" : "Reply to the client, or add a note…"}
           aria-label={audience === "client" ? "Note" : "Reply"}
-          // Grows with what's typed, up to a few lines, so an empty composer takes one line.
+          // Grows with what's typed, up to a few lines, so an empty box takes one line.
           className="app-input max-h-[120px] min-h-[36px] w-full flex-1 resize-none px-3 py-2 text-[16px] [field-sizing:content] sm:text-sm"
         />
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+        {audience === "team" ? (
           <button
             type="button"
-            className="app-button app-button-secondary app-button-sm h-9"
-            disabled={send.isPending}
-            onClick={() => void submit("changes_requested")}
-            data-sign-off-changes
+            className="app-button app-button-primary app-button-sm h-9 shrink-0"
+            disabled={fb.busy || !fb.body.trim()}
+            onClick={() => void fb.submit("comment")}
+            data-card-reply
           >
-            {sending === "changes_requested" ? "Sending…" : "Changes needed"}
+            {fb.sending === "comment" ? "Sending…" : "Reply"}
           </button>
-          {approved && !body.trim() ? (
-            <span
-              className="app-button app-button-sm pointer-events-none h-9 border border-emerald-200 bg-emerald-50 text-emerald-700"
-              role="status"
-              data-sign-off-approved
-            >
-              <CheckIcon className="h-4 w-4" /> Approved
-            </span>
-          ) : (
-            <button
-              type="button"
-              className={cn("app-button app-button-sm h-9", audience === "client" ? "app-button-primary" : "app-button-secondary")}
-              disabled={send.isPending}
-              onClick={() => void submit("approved")}
-              data-sign-off-approve
-            >
-              {sending === "approved" ? "Approving…" : approved ? "Approve again" : "Approve"}
-            </button>
-          )}
-          {audience === "team" ? (
-            <button type="button" className="app-button app-button-primary app-button-sm h-9" disabled={send.isPending} onClick={() => void submit("comment")}>
-              {sending === "comment" ? "Sending…" : "Reply"}
-            </button>
-          ) : null}
-        </div>
+        ) : null}
       </div>
-      {error ? <p className="mt-1.5 text-[12px] text-red-700">{error}</p> : null}
+      {fb.error ? <p className="mt-1.5 text-[12px] text-red-700">{fb.error}</p> : null}
+      {audience === "client" ? (
+        <p className="mt-1.5 text-[11px] text-[var(--text-4)]">Your note goes with Approve or Changes needed, below.</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Changes needed and Approve, in the card's bottom bar. Approve reads "Approved" once it is. */
+function SignOffButtons({ fb, signOff, audience }: { fb: CardFeedback; signOff: SignOff; audience: "client" | "team" }) {
+  const approved = signOff === "approved";
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-2" data-card-sign-off>
+      <button
+        type="button"
+        className="app-button app-button-secondary app-button-sm h-9"
+        disabled={fb.busy}
+        onClick={() => void fb.submit("changes_requested")}
+        data-sign-off-changes
+      >
+        {fb.sending === "changes_requested" ? "Sending…" : "Changes needed"}
+      </button>
+      {approved && !fb.body.trim() ? (
+        <span
+          className="app-button app-button-sm pointer-events-none h-9 border border-emerald-200 bg-emerald-50 text-emerald-700"
+          role="status"
+          data-sign-off-approved
+        >
+          <CheckIcon className="h-4 w-4" /> Approved
+        </span>
+      ) : (
+        <button
+          type="button"
+          className={cn("app-button app-button-sm h-9", audience === "client" ? "app-button-primary" : "app-button-secondary")}
+          disabled={fb.busy}
+          onClick={() => void fb.submit("approved")}
+          data-sign-off-approve
+        >
+          <CheckIcon className="h-4 w-4" />
+          {fb.sending === "approved" ? "Approving…" : approved ? "Approve again" : "Approve"}
+        </button>
+      )}
     </div>
   );
 }
