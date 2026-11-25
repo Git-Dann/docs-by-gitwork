@@ -373,6 +373,7 @@ export function WikiBoardSectionView({
         {view === "timeline" ? (
           <WikiBoardTimeline
             cards={visible}
+            searching={Boolean(q.trim())}
             releases={section.releases}
             readOnly={readOnly}
             onOpen={setOpenId}
