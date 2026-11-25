@@ -93,7 +93,7 @@ import { ClientDevelopersCard } from "@/components/clients/client-developers-car
 import { ClientLifecycleCard } from "@/components/clients/client-lifecycle";
 import { ClientDeliveryCard } from "@/components/clients/client-delivery-card";
 import { ClientProjectsCard } from "@/components/projects/client-projects-card";
-import { ClientPulseCard, ClientStudiesCard } from "@/components/clients/client-portal-cards";
+import { ClientPulseCard } from "@/components/clients/client-portal-cards";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import type {
@@ -329,8 +329,8 @@ export function ClientDetail({ slug }: { slug: string }) {
   const showBilling = Boolean(
     client.legalCompanyName || client.vatNumber || client.companyNumber || client.invoiceEmail || client.billingAddressLine1,
   );
-  const showStudies = !isSuggested;
-  const bottomCards = (canViewPulse ? 1 : 0) + (showStudies ? 1 : 0) + (client.notes ? 1 : 0) + (lifecycle.length > 0 ? 1 : 0);
+  // Studies left the client page (Dan, Nov 2026): research isn't client delivery. It's still in Pulse.
+  const bottomCards = (canViewPulse ? 1 : 0) + (client.notes ? 1 : 0) + (lifecycle.length > 0 ? 1 : 0);
   const num = portalSectionNumbers((section) => {
     switch (section) {
       case "statPulse":
@@ -338,8 +338,6 @@ export function ClientDetail({ slug }: { slug: string }) {
         return canViewPulse;
       case "billing":
         return showBilling;
-      case "studies":
-        return showStudies;
       case "notes":
         return Boolean(client.notes);
       case "proof":
@@ -1284,9 +1282,6 @@ export function ClientDetail({ slug }: { slug: string }) {
               compact
               style={rise()}
             />
-          ) : null}
-          {showStudies ? (
-            <ClientStudiesCard number={num.studies} clientId={client.id} studies={studies} compact style={rise()} />
           ) : null}
           {client.notes ? (
             <section className="widget-card motion-rise flex flex-col" style={rise()}>

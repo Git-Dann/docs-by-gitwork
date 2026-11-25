@@ -2475,3 +2475,24 @@ screenshots) and **Write docs from the code** (Sibghat, on a client: you say whi
 read code or Figma designs, so they're answered by Sonnet 5.5 (`model.test.ts` pins it). Every
 request on Syed's list now has a button except outdated libraries (No. 14), which waits on
 Dispatch reading Pulse's findings.
+
+---
+
+## 159. Recent Changes (November 2026) — The Portal Timeline card, readable; Studies off the client page
+
+Dan, on the Portal client page's Timeline: "this is brutal". It listed every finished task as a
+full sentence, week after week ("Show all 49"), and "Up next" was five imported subtasks 244 days
+late.
+
+- **One line per week** (`client-delivery-card.tsx`): when, an activity bar scaled to the busiest
+  week, chips only for what a client would ask about (releases, outages, blockers, meetings,
+  requests), and "N done". This week starts open; the others open on click.
+- **An opened week** leads with its events (`weekHighlights`), then the finished work grouped by
+  release or category (`doneByGroup`), three per group with "+N more", one line per task (full text
+  on hover).
+- **Where things stand**: one line per task. Anything more than `LONG_OVERDUE_DAYS` (30) late is
+  counted as "N long overdue" rather than listed (`splitLongOverdue`).
+- **Studies is no longer on the client page** (Dan: research isn't client delivery; it stays in
+  Pulse). `studies` left `PORTAL_SECTIONS`, so the numbers still run without a gap; the rendered
+  order was checked against the numbering, and the lead layout's fixed 02–08 is unchanged.
+- Tests: `client-delivery-compact.test.ts`.

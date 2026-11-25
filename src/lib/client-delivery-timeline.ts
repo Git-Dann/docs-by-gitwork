@@ -316,3 +316,44 @@ export function foldQuietWeeks(weeks: readonly DeliveryWeek[]): WeekRow[] {
   flush();
   return rows;
 }
+
+/** A task more than this many days late is "long overdue": counted, not listed (§159). */
+export const LONG_OVERDUE_DAYS = 30;
+
+/**
+ * Split open tasks into the ones worth listing and the long overdue ones. Wedge's "Up next" was
+ * five subtasks 244 days late from an old import: true, but not what anyone is working towards,
+ * and they buried everything else. They're counted and linked to instead.
+ */
+export function splitLongOverdue<T extends { dueDate: string | null }>(tasks: readonly T[], now: Date): { current: T[]; longOverdue: T[] } {
+  const current: T[] = [];
+  const longOverdue: T[] = [];
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  for (const t of tasks) {
+    const due = t.dueDate && valid(t.dueDate) ? new Date(t.dueDate) : null;
+    const dueDay = due ? Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate()) : null;
+    if (dueDay !== null && Math.round((today - dueDay) / DAY) > LONG_OVERDUE_DAYS) longOverdue.push(t);
+    else current.push(t);
+  }
+  return { current, longOverdue };
+}
+
+/** The week's events worth a line of their own: releases, outages, meetings, blockers, requests, documents. */
+export function weekHighlights(week: DeliveryWeek): DeliveryItem[] {
+  return week.items.filter((i) => i.kind !== "done" && i.kind !== "started" && i.kind !== "tidy");
+}
+
+/**
+ * The week's finished work grouped by release or category, biggest group first ("No group" last),
+ * so a week of 49 tasks reads as five groups rather than 49 sentences.
+ */
+export function doneByGroup(week: DeliveryWeek): Array<{ group: string | null; items: DeliveryItem[] }> {
+  const by = new Map<string | null, DeliveryItem[]>();
+  for (const i of week.items) {
+    if (i.kind !== "done") continue;
+    by.set(i.group, [...(by.get(i.group) ?? []), i]);
+  }
+  return [...by.entries()]
+    .map(([group, items]) => ({ group, items }))
+    .sort((a, b) => (a.group === null ? 1 : b.group === null ? -1 : b.items.length - a.items.length || a.group.localeCompare(b.group)));
+}
