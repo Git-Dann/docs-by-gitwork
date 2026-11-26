@@ -2701,3 +2701,24 @@ channel and who the developers are, and be conversational about it.
   prefix, never per-person text in the prefix.
 - Tests: `src/server/__tests__/client-team.test.ts` (one row per person, the welcome text),
   `prompt-and-tools.test.ts` (room and team in the context, the prompt names no client).
+
+## 169. Recent Changes (November 2026) — Dispatch knows who's who
+
+Dan, 26 Nov, on tagging Foundry in the team channel with "who is the best MD?": "I would want it
+to be cheeky... but also mention Harry". Dispatch knew who was asking, but not anyone's job title
+or who runs Gitwork.
+
+- **`peopleContext`** (`src/server/dispatch/assistant/people-context.ts`) reads Staff records
+  (`Candidate.jobTitle`, `employmentType`): the asker's job title, and Gitwork's leadership
+  (a DIRECTOR employment type, or a title like Managing Director, Director, Founder, CEO/CTO;
+  `isLeadershipTitle`), at most six, on-team records only (not DevSignal candidates, not
+  archived). Job titles are already shown on Staff and public profiles, so this is fine for anyone
+  asking; nothing else from a Staff record is read.
+- Both the client chat context and the no-client one (§167) now say "Asking: Dan Lindsay (Super
+  Admin, Managing Director)" and "Gitwork's leadership: …".
+- **The prompt**: for a playful question about the bosses, an MD or "the best" anyone, be cheeky
+  and even-handed: tease, bring in the others it could be (not just whoever's asking), never
+  seriously rank anyone.
+- It only knows the titles that are filled in on Staff: set Dan's and Harry's there for the MD
+  joke to land.
+- Tests: `people-context.test.ts`.
