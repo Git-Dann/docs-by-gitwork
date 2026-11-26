@@ -46,6 +46,7 @@ import { ThemeSoundToggle, ThemeToggle } from "@/components/theme-toggle";
 import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { DispatchButton, DispatchPanel } from "@/components/dispatch/dispatch-panel";
+import { UpdateWatcher } from "@/components/update-watcher";
 import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
 import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenSpiderSlot } from "@/components/seasonal/halloween";
 import { ChristmasLogoBadge, ChristmasSnow } from "@/components/seasonal/christmas";
@@ -543,6 +544,7 @@ export function AppShell({
       {hideContentHeader ? null : <HalloweenSpiderSlot />}
       {/* Dispatch: Claude for the team, about one client at a time, as far as this person can see. */}
       <DispatchPanel />
+      <UpdateWatcher />
       {/* ⌘K. The pages are this viewer's own nav, so it never offers a product the sidebar hides. */}
       <CommandMenu
         pages={primaryNav}

@@ -17,16 +17,20 @@ export function useDispatchAvailable(): boolean {
   return q.data === true;
 }
 
-/** What the panel opens on for a client (and the task it came from): no AI, so it's free. */
-export function useDispatchBrief(clientSlug: string, taskId: string | null, enabled: boolean) {
-  return useQuery({
-    queryKey: ["dispatch", "brief", clientSlug, taskId],
+/** The brief query, shared so the header button can fetch it before the panel opens (§175). */
+export function briefQuery(clientSlug: string, taskId: string | null) {
+  return {
+    queryKey: ["dispatch", "brief", clientSlug, taskId] as const,
     queryFn: () =>
       apiFetch<DispatchBrief>(
         `/api/dispatch/brief?clientSlug=${encodeURIComponent(clientSlug)}${taskId ? `&taskId=${encodeURIComponent(taskId)}` : ""}`,
       ),
-    enabled: enabled && Boolean(clientSlug),
     staleTime: 60_000,
     retry: false,
-  });
+  };
+}
+
+/** What the panel opens on for a client (and the task it came from): no AI, so it's free. */
+export function useDispatchBrief(clientSlug: string, taskId: string | null, enabled: boolean) {
+  return useQuery({ ...briefQuery(clientSlug, taskId), enabled: enabled && Boolean(clientSlug) });
 }

@@ -2181,6 +2181,20 @@ h2, h3, h4, h5 {
 .motion-rise { animation: motion-rise 380ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
 @keyframes motion-rise { from { opacity: 0; transform: translateY(10px); } }
 
+/* An indeterminate progress bar: a short brand segment sliding across a hairline track, for a
+   wait whose length isn't known (the Dispatch brief loading, §175). A static half-filled bar for
+   anyone who prefers reduced motion. */
+.motion-progress-track { position: relative; height: 2px; overflow: hidden; border-radius: 9999px; background: var(--brand-100); }
+.motion-progress-bar { position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: 9999px; background: var(--brand-600); animation: motion-progress-slide 1.2s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+@keyframes motion-progress-slide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+/* A text caret that blinks while something is typed out. */
+.motion-caret { display: inline-block; width: 1px; height: 1em; margin-left: 1px; vertical-align: -2px; background: currentColor; animation: motion-caret-blink 1s steps(1) infinite; }
+@keyframes motion-caret-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .motion-progress-bar { animation: none; width: 50%; }
+  .motion-caret { animation: none; }
+}
+
 /* Wiki pages (§137): each card rises in a beat after the one before it, and answers the pointer.
    ⚠️ Hover changes shadow and border only, never transform: a transformed card becomes the
    containing block for a fixed popup opened from inside it, and you are always hovering the card

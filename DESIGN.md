@@ -1121,6 +1121,10 @@ blank box with a wall of prompt chips reads as "a chat bot"; that was the compla
   - **03 More it can do**: folded by default; chips grouped under small labels.
   Tones: `--danger-*` overdue, `--warning-*` waiting, stuck, flagged, `--brand-*` due soon,
   neutral otherwise.
+- **Loading is never empty** (§175): the real greeting at once, a line typing out what Dispatch
+  is doing with a blinking brand caret, a 2px indeterminate brand bar
+  (`.motion-progress-track`/`.motion-progress-bar`), and skeletons in the brief's exact shape. Any
+  panel that waits on data follows the same rule: say what's happening, show the shape coming.
 - **The person's message** is a `--surface-1` bubble on the right, `max-w-[85%]`,
   `rounded-[12px]` with a 4px bottom-right corner. **Dispatch's answer is not a bubble**: plain
   text at full width, because answers are read, not glanced at. **Above it, the steps it took**
