@@ -7,6 +7,25 @@ import { cn, formatDate } from "@/lib/format";
 import { planPortfolio, type PortfolioRepo, type WorkItem } from "@/lib/code-portfolio";
 import { summarisePortfolio } from "@/lib/code-health-summary";
 import { PlainSummaryBox } from "./code-health-sections";
+import { SortHeader } from "@/components/ui/sort-header";
+import { useStoredSort } from "@/hooks/use-stored-sort";
+import { dateValue, sortRows, type SortValue } from "@/lib/table-sort";
+
+/** The Repositories table's sortable columns; unsorted it's most urgent first. */
+const REPO_SORT_KEYS = ["repo", "needs", "score", "lines", "debt", "security", "loops", "people", "checked"] as const;
+type RepoSortKey = (typeof REPO_SORT_KEYS)[number];
+const REPO_SORT_VALUE: Record<RepoSortKey, (r: PortfolioRepo) => SortValue> = {
+  repo: (r) => r.repo,
+  needs: (r) => r.urgency.rank,
+  score: (r) => r.score,
+  lines: (r) => r.loc,
+  debt: (r) => r.debtDays,
+  // Weighted so critical outranks any number of high, and high any number of other.
+  security: (r) => (r.vulnerable ? r.vulnerable.critical * 1e6 + r.vulnerable.high * 1e3 + r.vulnerable.other : null),
+  loops: (r) => r.cycles,
+  people: (r) => r.busFactor,
+  checked: (r) => dateValue(r.measuredAt),
+};
 
 /**
  * The code portfolio: every measured repository side by side, and where the next N
@@ -57,6 +76,13 @@ export function CodePortfolioView() {
   const [devs, setDevs] = useState(2);
   // A 60-day plan can run to dozens of items; the first few carry most of the risk.
   const [showAll, setShowAll] = useState(false);
+  const { sort: repoSort, sortBy: sortReposBy } = useStoredSort<RepoSortKey>("foundry.code-portfolio.sort.v1", REPO_SORT_KEYS, {
+    lines: "desc",
+    debt: "desc",
+    security: "desc",
+    loops: "desc",
+    checked: "desc",
+  });
   const days = DAY_STEPS[dayIdx];
   const plan = useMemo(() => planPortfolio(data?.items ?? [], days), [data?.items, days]);
 
@@ -115,27 +141,34 @@ export function CodePortfolioView() {
       <div className="widget-card">
         <div className="widget-header">
           <span className="widget-header-label">02 // REPOSITORIES</span>
-          <span className="widget-header-right">most urgent first</span>
+          <span className="widget-header-right">{repoSort ? "sorted by column" : "most urgent first"}</span>
         </div>
         <div className="widget-body">
           <div className="overflow-x-auto">
             <table className="app-table app-table--dense min-w-[1040px]">
               <thead>
                 <tr>
-                  <th className="text-left">Repository</th>
-                  <th className="text-left">Needs</th>
-                  <th className="text-right" title="How easy the code is to change. Security holes are their own column.">Code score</th>
+                  <SortHeader label="Repository" k="repo" sort={repoSort} onSort={sortReposBy} />
+                  <SortHeader label="Needs" k="needs" sort={repoSort} onSort={sortReposBy} />
+                  <SortHeader
+                    label="Code score"
+                    k="score"
+                    sort={repoSort}
+                    onSort={sortReposBy}
+                    align="right"
+                    title="How easy the code is to change. Security holes are their own column."
+                  />
                   <th className="text-left">Since last check</th>
-                  <th className="text-right">Lines</th>
-                  <th className="text-right">Tidy-up work</th>
-                  <th className="text-left">Security holes</th>
-                  <th className="text-right">File loops</th>
-                  <th className="text-right">Who knows it</th>
-                  <th className="text-left">Checked</th>
+                  <SortHeader label="Lines" k="lines" sort={repoSort} onSort={sortReposBy} align="right" />
+                  <SortHeader label="Tidy-up work" k="debt" sort={repoSort} onSort={sortReposBy} align="right" />
+                  <SortHeader label="Security holes" k="security" sort={repoSort} onSort={sortReposBy} />
+                  <SortHeader label="File loops" k="loops" sort={repoSort} onSort={sortReposBy} align="right" />
+                  <SortHeader label="Who knows it" k="people" sort={repoSort} onSort={sortReposBy} align="right" />
+                  <SortHeader label="Checked" k="checked" sort={repoSort} onSort={sortReposBy} />
                 </tr>
               </thead>
               <tbody>
-                {repos.map((r) => (
+                {(repoSort ? sortRows(repos, REPO_SORT_VALUE[repoSort.key], repoSort.dir) : repos).map((r) => (
                   <tr key={r.repo}>
                     <td className="max-w-[280px]">
                       <Link href={`/app/pulse/${r.scanId}`} className="block truncate font-mono text-xs text-[var(--brand-600)] hover:underline" title={r.repo}>

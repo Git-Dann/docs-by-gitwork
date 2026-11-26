@@ -926,3 +926,4 @@ be resolved by reading. Do not renumber either one.
 - **§167** — Dispatch chats about anything, and there's no canned "which client?"
 - **§168** — A client's new Slack channel comes with its team, and Dispatch knows the room
 - **§169** — Dispatch knows who's who
+- **§170** — Tables sort, one way everywhere

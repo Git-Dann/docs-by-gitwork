@@ -5,6 +5,9 @@ import { cn, formatDate, taskRef } from "@/lib/format";
 import type { TaskDTO, TaskStatus, TaskPriority } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
 import { AssigneeStack } from "@/components/tasks/task-avatar";
+import { SortButton } from "@/components/ui/sort-header";
+import { useStoredSort } from "@/hooks/use-stored-sort";
+import { dateValue, sortRows, type SortValue } from "@/lib/table-sort";
 import { ChevronDownIcon, ChevronRightIcon, CheckIcon, FlagIcon } from "@heroicons/react/16/solid";
 
 function isOverdue(task: TaskDTO): boolean {
@@ -26,6 +29,18 @@ const PRIORITY_FLAG: Record<TaskPriority, { color: string; label: string }> = {
   HIGH: { color: "text-red-500", label: "High" },
   MEDIUM: { color: "text-amber-400", label: "Medium" },
   LOW: { color: "text-[var(--text-4)]", label: "Low" },
+};
+
+/** The columns that sort, and how each reads a task. Priority sorts by rank, not by name. */
+const SORT_KEYS = ["name", "category", "who", "priority", "due"] as const;
+type TaskSortKey = (typeof SORT_KEYS)[number];
+const PRIORITY_RANK: Record<TaskPriority, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+const SORT_VALUE: Record<TaskSortKey, (t: TaskDTO) => SortValue> = {
+  name: (t) => t.title,
+  category: (t) => t.featureBlock?.name ?? null,
+  who: (t) => t.assignees[0]?.name ?? null,
+  priority: (t) => PRIORITY_RANK[t.priority],
+  due: (t) => dateValue(t.dueDate),
 };
 
 const VISIBLE_CAP = 8;
@@ -91,8 +106,14 @@ export function TaskList({
   const toggleShowAll = (s: TaskStatus) =>
     setShowAll((prev) => { const next = new Set(prev); if (next.has(s)) next.delete(s); else next.add(s); return next; });
 
+  // A column header sorts the tasks inside each status group; remembered in this browser.
+  const { sort, sortBy } = useStoredSort<TaskSortKey>("foundry.task-list.sort.v1", SORT_KEYS, { priority: "desc", due: "asc" });
   const grouped = TASK_STATUSES.reduce<Record<TaskStatus, TaskDTO[]>>(
-    (acc, s) => { acc[s] = tasks.filter((t) => t.status === s); return acc; },
+    (acc, s) => {
+      const inGroup = tasks.filter((t) => t.status === s);
+      acc[s] = sort ? sortRows(inGroup, SORT_VALUE[sort.key], sort.dir) : inGroup;
+      return acc;
+    },
     {} as Record<TaskStatus, TaskDTO[]>,
   );
 
@@ -120,11 +141,11 @@ export function TaskList({
           </div>
         ) : null}
         <div />
-        <span className={HEAD} style={MONO}>Name</span>
-        <span className={HEAD} style={MONO}>Category</span>
-        <span className={cn(HEAD, "text-center")} style={MONO}>Who</span>
-        <span className={HEAD} style={MONO}>Priority</span>
-        <span className={cn(HEAD, "text-right")} style={MONO}>Due</span>
+        <span className={HEAD} style={MONO}><SortButton label="Name" k="name" sort={sort} onSort={sortBy} /></span>
+        <span className={HEAD} style={MONO}><SortButton label="Category" k="category" sort={sort} onSort={sortBy} /></span>
+        <span className={cn(HEAD, "text-center")} style={MONO}><SortButton label="Who" k="who" sort={sort} onSort={sortBy} /></span>
+        <span className={HEAD} style={MONO}><SortButton label="Priority" k="priority" sort={sort} onSort={sortBy} /></span>
+        <span className={cn(HEAD, "text-right")} style={MONO}><SortButton label="Due" k="due" sort={sort} onSort={sortBy} align="right" /></span>
       </div>
 
       {/* Each status group is its own separated card. */}

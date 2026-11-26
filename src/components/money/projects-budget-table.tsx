@@ -15,6 +15,21 @@ import { TileHeader } from "@/components/dashboard/tile-header";
 import { useMoneyProjects } from "@/hooks/use-projects";
 import { VERDICT_DOT, VERDICT_TONE, projectDates } from "@/components/projects/project-dialogs";
 import type { ProjectBudgetRow } from "@/types/projects";
+import { SortHeader } from "@/components/ui/sort-header";
+import { useStoredSort } from "@/hooks/use-stored-sort";
+import { dateValue, sortRows, type SortValue } from "@/lib/table-sort";
+
+const SORT_KEYS = ["project", "dates", "budget", "spent", "burned", "time", "done"] as const;
+type BudgetSortKey = (typeof SORT_KEYS)[number];
+const SORT_VALUE: Record<BudgetSortKey, (r: ProjectBudgetRow) => SortValue> = {
+  project: (r) => r.name,
+  dates: (r) => dateValue(r.startDate),
+  budget: (r) => r.money.budget,
+  spent: (r) => r.money.spent,
+  burned: (r) => r.money.burned,
+  time: (r) => r.timeShare,
+  done: (r) => r.progress.share,
+};
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 
@@ -34,7 +49,16 @@ function Verdict({ r }: { r: ProjectBudgetRow }) {
 
 export function ProjectsBudgetTable({ index }: { index: number }) {
   const q = useMoneyProjects();
-  const rows = q.data?.projects ?? [];
+  const { sort, sortBy } = useStoredSort<BudgetSortKey>("foundry.money.projects.sort.v1", SORT_KEYS, {
+    budget: "desc",
+    spent: "desc",
+    burned: "desc",
+    time: "desc",
+    done: "desc",
+    dates: "desc",
+  });
+  const all = q.data?.projects ?? [];
+  const rows = sort ? sortRows(all, SORT_VALUE[sort.key], sort.dir) : all;
   const unpriced = rows.reduce((s, r) => s + r.money.unpricedDevs, 0);
 
   return (
@@ -86,15 +110,20 @@ export function ProjectsBudgetTable({ index }: { index: number }) {
             <table className="app-table app-table--dense min-w-[900px]">
               <thead>
                 <tr>
-                  <th className="text-left">Project</th>
-                  <th className="text-left">Dates</th>
-                  <th className="text-right">Budget</th>
-                  <th className="text-right" title="What the developers on the client cost at rate-card rates over the project's dates so far">
-                    Spent
-                  </th>
-                  <th className="text-right">Burned</th>
-                  <th className="text-right">Time gone</th>
-                  <th className="text-right">Work done</th>
+                  <SortHeader label="Project" k="project" sort={sort} onSort={sortBy} />
+                  <SortHeader label="Dates" k="dates" sort={sort} onSort={sortBy} />
+                  <SortHeader label="Budget" k="budget" sort={sort} onSort={sortBy} align="right" />
+                  <SortHeader
+                    label="Spent"
+                    k="spent"
+                    sort={sort}
+                    onSort={sortBy}
+                    align="right"
+                    title="What the developers on the client cost at rate-card rates over the project's dates so far"
+                  />
+                  <SortHeader label="Burned" k="burned" sort={sort} onSort={sortBy} align="right" />
+                  <SortHeader label="Time gone" k="time" sort={sort} onSort={sortBy} align="right" />
+                  <SortHeader label="Work done" k="done" sort={sort} onSort={sortBy} align="right" />
                   <th className="text-left">Verdict</th>
                 </tr>
               </thead>

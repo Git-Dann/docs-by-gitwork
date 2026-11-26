@@ -2722,3 +2722,28 @@ or who runs Gitwork.
 - It only knows the titles that are filled in on Staff: set Dan's and Harry's there for the MD
   joke to land.
 - Tests: `people-context.test.ts`.
+
+## 170. Recent Changes (November 2026) — Tables sort, one way everywhere
+
+Luke (Big Wedge), 26 Nov: "can you make the course request columns sortable so I can always submit
+the most requested?" Dan: do it for course requests "and any other tables, tasks etc".
+
+- **One rule set** (`src/lib/table-sort.ts`, tested): one column at a time; click again to
+  reverse; a new column starts in its natural direction (counts, money and dates high/recent first,
+  names A–Z); empties go last whichever way it's flipped; text ignores case and accents and reads
+  numbers naturally ("v2" before "v10"); equal rows keep their order. `useStoredSort`
+  (`src/hooks/use-stored-sort.ts`) remembers each table's choice in localStorage (guarded, read
+  after mount), and "no sort" means the table's own order.
+- **Course requests** (`src/lib/course-request-sort.ts`): every column header sorts, plus a sort
+  menu by the search box (phones can't reach the headers): Newest, Oldest, **Most requested**,
+  Course A–Z, Country A–Z, Recently sent, Status, and Best match while searching. Most requested
+  keeps every request for the same course together, newest first. Paging resets on a new sort.
+- **Also sortable:** the task list (name, category, who, priority, due; within each status
+  group), the wiki's Requests (request, category, priority, stage, from, updated), Settings → Team
+  (member, role by rank), Money → Projects (every figure; the phone cards follow), and Pulse's code
+  portfolio (repository, needs, score, lines, tidy-up work, security holes weighted critical >
+  high > other, file loops, who knows it, checked). Its header says "most urgent first" only while
+  unsorted.
+- Headers are `SortHeader` (table cells, `aria-sort`) or `SortButton` (grid headers, `aria-pressed`
+  plus a title, since `aria-sort` isn't allowed on a button).
+- Tests: `table-sort.test.ts`, `course-request-sort.test.ts`, `course-demand-render.test.tsx`.
