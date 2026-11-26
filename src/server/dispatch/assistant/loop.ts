@@ -19,7 +19,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-import { DISPATCH_SYSTEM_PROMPT, chatContext } from "@/lib/dispatch/prompt";
+import { DISPATCH_SYSTEM_PROMPT, chatContext, roomFor } from "@/lib/dispatch/prompt";
 import {
   MAX_CHAT_MESSAGES,
   MAX_CHAT_TOKENS,
@@ -147,7 +147,8 @@ export async function runTurn(
         })
       : null;
     const { ownClients, activeOnly } = await import("./own-clients");
-    const own = activeOnly(await ownClients(scope.user));
+    const { clientTeam } = await import("@/server/client-team");
+    const [own, team] = await Promise.all([ownClients(scope.user).then(activeOnly), clientTeam(scope.user.workspaceId, scope.client.id)]);
     content.push({
       type: "text",
       text: chatContext({
@@ -155,12 +156,21 @@ export async function runTurn(
         roleLabel: ROLES.find((r) => r.id === scope.user.role)?.label ?? scope.user.role,
         clientName: scope.client.name,
         clientCount: own.length,
+        room: roomFor(scope),
+        team: team.map((t) => t.name),
         today: new Date().toISOString().slice(0, 10),
         focusTask: focus ? { ref: taskRef(focus.id), title: focus.title } : null,
       }),
     });
   }
-  if (movedTo) content.push({ type: "text", text: `<chat_context>\nNow on client: ${movedTo}\n</chat_context>` });
+  if (movedTo) {
+    const { clientTeam } = await import("@/server/client-team");
+    const team = (await clientTeam(scope.user.workspaceId, scope.client.id)).map((t) => t.name).slice(0, 20);
+    content.push({
+      type: "text",
+      text: `<chat_context>\nNow on client: ${movedTo}${team.length ? `\n${movedTo}'s team: ${team.join(", ")}` : ""}\n</chat_context>`,
+    });
+  }
   const attached = (input.images ?? []).slice(0, MAX_IMAGES_PER_QUESTION);
   for (const img of attached) {
     content.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } });

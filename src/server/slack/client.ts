@@ -280,6 +280,18 @@ export function createConversation(
   return call<{ channel?: SlackChannel }>(token, "conversations.create", input);
 }
 
+/** users.lookupByEmail — the Slack user for an email. A read method: sent form-encoded. Needs
+ *  `users:read.email`. `users_not_found` when nobody in the workspace has that email. */
+export function lookupUserByEmail(token: string, email: string): Promise<SlackResponse<{ user?: SlackUser }>> {
+  return call<{ user?: SlackUser }>(token, "users.lookupByEmail", { email }, { form: true });
+}
+
+/** conversations.invite — add people to a channel the bot is in. A private channel needs
+ *  `groups:write`. Up to 1000 ids, comma-separated. */
+export function inviteToConversation(token: string, input: { channel: string; users: string[] }): Promise<SlackResponse> {
+  return call(token, "conversations.invite", { channel: input.channel, users: input.users.join(",") });
+}
+
 export interface SetTopicInput {
   channel: string;
   topic: string;
