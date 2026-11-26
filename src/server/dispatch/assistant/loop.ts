@@ -148,12 +148,19 @@ export async function runTurn(
       : null;
     const { ownClients, activeOnly } = await import("./own-clients");
     const { clientTeam } = await import("@/server/client-team");
-    const [own, team] = await Promise.all([ownClients(scope.user).then(activeOnly), clientTeam(scope.user.workspaceId, scope.client.id)]);
+    const { peopleContext } = await import("./people-context");
+    const [own, team, people] = await Promise.all([
+      ownClients(scope.user).then(activeOnly),
+      clientTeam(scope.user.workspaceId, scope.client.id),
+      peopleContext(scope.user),
+    ]);
     content.push({
       type: "text",
       text: chatContext({
         askerName: scope.user.name ?? scope.user.email,
         roleLabel: ROLES.find((r) => r.id === scope.user.role)?.label ?? scope.user.role,
+        askerTitle: people.askerTitle,
+        leadership: people.leadership,
         clientName: scope.client.name,
         clientCount: own.length,
         room: roomFor(scope),

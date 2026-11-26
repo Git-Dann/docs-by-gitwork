@@ -25,7 +25,7 @@ How you work:
 - Design against build: look at the Figma frame (figma_image) and at what was built (capture_page for a website, or pictures the person attached for an app). Say plainly that it is a visual comparison: list what matches, what is missing and what is different, and don't claim behaviour you can't see in a picture.
 
 How you talk:
-- Know the room. chat_context says where you are (the app, a direct message, or a client's Slack channel that everyone in it reads) and who's on the client's team. Use that naturally: in a client's channel you're talking to that client's team, so use their first names and mean the people listed when anyone says "the team".
+- Know the room. chat_context says where you are (the app, a direct message, or a client's Slack channel that everyone in it reads) and who's on the client's team. Use that naturally: in a client's channel you're talking to that client's team, so use their first names and mean the people listed when anyone says "the team". chat_context may also give the asker's job title and Gitwork's leadership: for a playful question about the bosses, an MD or "the best" anyone, be cheeky and even-handed. Tease, bring in the others it could be (not just whoever's asking), and never seriously rank anyone.
 - Like a person, not a report. Warm, direct and a little informal, the way a good colleague talks in Slack. UK spelling. No em dashes.
 - Match the person. Mirror their tone, energy and length: a quick casual message gets a quick casual reply, a careful detailed question gets a careful detailed answer. Pick up the words they use. If they say hi or ask how you are, answer the way a person would, in a line, then help.
 - Have a personality. When the moment is light, be light: a playful question deserves a playful answer, and a bit of dry humour is welcome. Never at anyone's expense, and never about a client. Gitwork is your team; you're allowed to be on its side.
@@ -44,6 +44,10 @@ How you talk:
 
 export interface ChatContextInput {
   askerName: string;
+  /** Their job title from Staff, when there is one (§169). */
+  askerTitle?: string | null;
+  /** Gitwork's leadership, "Name, Title" (§169). */
+  leadership?: string[];
   /** e.g. "Developer". */
   roleLabel: string;
   clientName: string;
@@ -64,9 +68,17 @@ export interface ChatContextInput {
  * on any clients yet, §167): Dispatch still talks, but no tools run, so nothing about any client
  * can come out of it.
  */
-export function noClientContext(input: { askerName: string; roleLabel: string; today: string; where: "channel" | "no_clients" }): string {
+export function noClientContext(input: {
+  askerName: string;
+  roleLabel: string;
+  askerTitle?: string | null;
+  leadership?: string[];
+  today: string;
+  where: "channel" | "no_clients";
+}): string {
   const lines = [
-    `Asking: ${input.askerName} (${input.roleLabel})`,
+    asking(input),
+    ...(input.leadership?.length ? [`Gitwork's leadership: ${input.leadership.join("; ")}`] : []),
     `Today: ${input.today}`,
     input.where === "channel"
       ? "Where: a Slack channel that isn't linked to a client, so there's no project to look at here and everyone in the channel reads your reply. Chat freely; if they want something about a project, say to ask in that client's channel or in a direct message to Foundry. Don't name any clients."
@@ -74,6 +86,11 @@ export function noClientContext(input: { askerName: string; roleLabel: string; t
     "No lookups are available for this message.",
   ];
   return `<chat_context>\n${lines.join("\n")}\n</chat_context>`;
+}
+
+/** "Asking: Dan Lindsay (Super Admin, Managing Director)": Foundry role, then job title. */
+function asking(input: { askerName: string; roleLabel: string; askerTitle?: string | null }): string {
+  return `Asking: ${input.askerName} (${input.roleLabel}${input.askerTitle ? `, ${input.askerTitle}` : ""})`;
 }
 
 /** Where a chat is happening, in words for the model: it decides who reads the reply (§168). */
@@ -86,11 +103,12 @@ export function roomFor(scope: { surface: "web" | "slack"; inChannel?: boolean; 
 /** What this chat is about: the first thing in the first user message, after the cached prefix. */
 export function chatContext(input: ChatContextInput): string {
   const lines = [
-    `Asking: ${input.askerName} (${input.roleLabel})`,
+    asking(input),
     `Current client: ${input.clientName}${input.clientCount && input.clientCount > 1 ? ` (one of ${input.clientCount} they work on)` : ""}`,
     `Today: ${input.today}`,
   ];
   if (input.room) lines.push(`Where: ${input.room}`);
+  if (input.leadership?.length) lines.push(`Gitwork's leadership: ${input.leadership.join("; ")}`);
   if (input.team?.length) lines.push(`${input.clientName}'s team: ${input.team.slice(0, 20).join(", ")}`);
   if (input.focusTask) lines.push(`Opened from task ${input.focusTask.ref}: ${input.focusTask.title}`);
   return `<chat_context>\n${lines.join("\n")}\n</chat_context>`;
