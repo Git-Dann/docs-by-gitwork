@@ -2648,3 +2648,30 @@ better, less techy way of explaining something".
   technical (an error, a PR, a developer's message) and get it in plain words for the client.
   **"Simpler"** under the latest answer in the panel asks for that answer again without the
   technical terms (`SIMPLER_PROMPT`). In Slack, "say that more simply" does the same.
+
+## 167. Recent Changes (November 2026) — Dispatch chats about anything, and there's no canned "which client?"
+
+Dan, 26 Nov: "I am more so wanted to make sure we do not have canned responses and we can have a
+conversational style response and make it engaging and fun... normally it will be used for
+project management tasks, but it needs to be more open in its conversation, not necessarily in
+its context."
+
+- **The prompt opens up.** Facts about Gitwork's work (clients, tasks, who's doing what,
+  releases, meetings, code, designs) still come only from tools. Everything else is open: chat,
+  banter, opinions, a general tech question, naming ideas, help wording something. Dispatch
+  answers those as itself with no lookup and doesn't steer every message back to a project. It
+  has a personality: a playful question gets a playful answer, never at anyone's expense and
+  never about a client.
+- **The last canned reply in Slack is gone.** A message in a channel that isn't a client's own,
+  or from someone on no clients, used to get a fixed "Which client is this about? You're on A, B,
+  C…", which also listed the person's clients in front of the whole channel. It now gets a real
+  reply (`chatWithoutClient`, `src/server/dispatch/assistant/small-talk.ts`): one call on the
+  cheap model, the same cached prefix, `tool_choice: none` so nothing is looked up, and a context
+  saying where it is, not to name clients, and to point project questions at the client's channel
+  or a DM. The decision is now `no_client` (was `ask_which`); `askWhichClientText` is deleted. Not
+  stored as a chat (a chat belongs to a client), so each such message stands on its own. The
+  Slack footer reads just "Dispatch" when there's no client.
+- A Slack Connect channel (shared with the client) is still refused with a fixed line: internal
+  delivery talk never goes where the client can read it, and that one stays canned on purpose.
+- Tests in `prompt-and-tools.test.ts` (no lookups in a no-client chat, no "which client?" text
+  left) and `slack-conversation.test.ts`.

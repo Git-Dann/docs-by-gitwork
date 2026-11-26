@@ -87,7 +87,8 @@ export function buildAssistantReply(input: {
   text: string;
   actions: SlackActionCard[];
   sources: SlackSource[];
-  clientName: string;
+  /** The client the answer is about; null for a chat with no client (small talk, §167). */
+  clientName: string | null;
   askerSlackId?: string | null;
   notice?: string | null;
 }): { text: string; blocks: SlackBlock[] } {
@@ -130,7 +131,7 @@ export function buildAssistantReply(input: {
     });
   }
 
-  const footer: string[] = [`*Dispatch* · ${escapeMrkdwn(input.clientName)}`];
+  const footer: string[] = [input.clientName ? `*Dispatch* · ${escapeMrkdwn(input.clientName)}` : "*Dispatch*"];
   if (input.actions.length && input.askerSlackId) footer.push(`only <@${input.askerSlackId}> can confirm these`);
   const sources = input.sources.slice(0, 6).map((s) => (s.url ? `<${s.url}|${escapeMrkdwn(s.label)}>` : escapeMrkdwn(s.label)));
   if (sources.length) footer.push(`from ${sources.join(", ")}`);

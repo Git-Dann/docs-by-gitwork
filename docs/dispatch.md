@@ -228,6 +228,12 @@ the asker's active clients, like the board; the per-person workload line is admi
 nor `my_clients`, runs in a client's own Slack channel (§166). Questions about a teammate or
 everything now come here from Slack instead of respond.ts's fixed answer.
 
+### With no client to go on (§167)
+
+A Slack channel that isn't a client's own, or someone on no clients: Dispatch still replies
+conversationally (`small-talk.ts`), with no tools (`tool_choice: none`) and told not to name any
+clients. Only a Slack Connect channel gets a fixed refusal.
+
 ### The brief (§161)
 
 The panel opens on a brief, not an empty chat: the person's own tasks that need them and why,
