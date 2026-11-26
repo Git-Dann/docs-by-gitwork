@@ -115,10 +115,8 @@ describe("demand column", () => {
 
   it("renders the column in the read-only client view too", () => {
     const doc = render({ readOnly: true });
-    const header = [...doc.querySelectorAll("span")].map((s) =>
-      s.textContent?.trim(),
-    );
-    expect(header).toContain("Demand");
+    // The headers are sort buttons now (Luke, Nov 2026).
+    expect(doc.querySelector('[data-course-sort="demand"]')?.textContent).toContain("Demand");
   });
 
   it("keeps the header and the row cells in one grid definition", () => {

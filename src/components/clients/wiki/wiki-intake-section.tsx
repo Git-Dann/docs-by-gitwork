@@ -20,6 +20,9 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiCommentScope, WikiIntakeCommentRecord, WikiIntakeItemRecord } from "@/lib/api";
+import { SortButton } from "@/components/ui/sort-header";
+import { useStoredSort } from "@/hooks/use-stored-sort";
+import { dateValue, sortRows } from "@/lib/table-sort";
 import { wikiIntakeCommentImageSrc } from "@/lib/api";
 import { RequestImportModal } from "@/components/clients/wiki/request-import-modal";
 import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
@@ -247,6 +250,11 @@ export function WikiIntakeSection({
    *  bare string would have nowhere to render and the failure would be silent. */
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>("ALL");
+  const { sort: requestSort, sortBy: sortRequestsBy } = useStoredSort(
+    `foundry.requests.sort.v1`,
+    ["request", "category", "priority", "stage", "from", "updated"] as const,
+    { priority: "desc", updated: "desc" },
+  );
   const [stageFilter, setStageFilter] = useState<RequestStage | "ALL">("ALL");
   const [search, setSearch] = useState("");
   /** Off by default: the list should show what still needs doing. */
@@ -260,6 +268,12 @@ export function WikiIntakeSection({
   const [copied, setCopied] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // A new order starts from the first page.
+  function sortRequestsFromPageOne(key: "request" | "category" | "priority" | "stage" | "from" | "updated") {
+    sortRequestsBy(key);
+    setPage(1);
+  }
 
   function selectTab(tab: string) {
     setActiveTab(tab);
@@ -307,8 +321,29 @@ export function WikiIntakeSection({
     : activeTab === "ALL"
       ? scopedItems
       : scopedItems.filter((item) => inCategory(item, activeTab));
-  const filteredItems =
+  const stageFiltered =
     stageFilter === "ALL" ? afterTab : afterTab.filter((item) => item.stage === stageFilter);
+  // A column header sorts the list (best match stays first while searching, until one is picked).
+  const filteredItems = useMemo(() => {
+    if (!requestSort) return stageFiltered;
+    const rank = (item: WikiIntakeItemRecord) => {
+      switch (requestSort.key) {
+        case "request":
+          return item.title;
+        case "category":
+          return displayCategory(categories, item);
+        case "priority":
+          return ({ LOW: 0, MEDIUM: 1, HIGH: 2 } as Record<string, number>)[item.priority] ?? null;
+        case "stage":
+          return STAGE_ORDER.indexOf(item.stage);
+        case "from":
+          return item.requestedBy;
+        case "updated":
+          return dateValue(item.updatedAt);
+      }
+    };
+    return sortRows(stageFiltered, rank, requestSort.dir);
+  }, [stageFiltered, requestSort, categories]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -961,15 +996,23 @@ export function WikiIntakeSection({
                   />
                 )}
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                  Request
+                  <SortButton label="Request" k="request" sort={requestSort} onSort={sortRequestsFromPageOne} />
                 </span>
-                <span className={headCell}>Category</span>
-                <span className={headCell}>Priority</span>
+                <span className={headCell}>
+                  <SortButton label="Category" k="category" sort={requestSort} onSort={sortRequestsFromPageOne} />
+                </span>
+                <span className={headCell}>
+                  <SortButton label="Priority" k="priority" sort={requestSort} onSort={sortRequestsFromPageOne} />
+                </span>
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                  Stage
+                  <SortButton label="Stage" k="stage" sort={requestSort} onSort={sortRequestsFromPageOne} />
                 </span>
-                <span className={headCell}>From</span>
-                <span className={headCell}>Updated</span>
+                <span className={headCell}>
+                  <SortButton label="From" k="from" sort={requestSort} onSort={sortRequestsFromPageOne} />
+                </span>
+                <span className={headCell}>
+                  <SortButton label="Updated" k="updated" sort={requestSort} onSort={sortRequestsFromPageOne} />
+                </span>
                 {isInternal && <span className={headCell} />}
               </div>
 

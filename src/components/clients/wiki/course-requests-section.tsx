@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   ArrowDownTrayIcon,
@@ -23,6 +23,14 @@ import {
   type DemandLevel,
 } from "@/lib/course-demand";
 import { describeFeedHealth, type CourseFeedStatus } from "@/lib/wedge-course-feed-status";
+import {
+  COURSE_SORT_LABEL,
+  DEFAULT_COURSE_SORT,
+  nextCourseSort,
+  sortCourseRequests,
+  type CourseSort,
+  type CourseSortKey,
+} from "@/lib/course-request-sort";
 
 // JetBrains Mono stack — used for all data labels and timestamps per DESIGN.md
 const MONO =
@@ -30,6 +38,10 @@ const MONO =
 
 /** Rows drawn at once; "Show more" adds another page. */
 export const PAGE_SIZE = 100;
+/** Where this browser remembers the chosen order. */
+const SORT_STORAGE_KEY = "foundry.course-requests.sort.v1";
+/** The orders the picker names; any other (a header flipped the other way) is added to it. */
+const SORT_PRESETS = new Set(["submitted:desc", "submitted:asc", "demand:desc", "course:asc", "country:asc", "sent:desc", "status:asc"]);
 
 const STATUSES = ["NEW", "SENT", "ADDED", "REJECTED"] as const;
 type Status = (typeof STATUSES)[number];
@@ -187,11 +199,33 @@ export function CourseRequestsSection({
   const [busy, setBusy] = useState(false);
   const [showAdded, setShowAdded] = useState(false);
   const [search, setSearch] = useState("");
+  // How the list is ordered: a column header (or the phone's Sort picker). Remembered in this
+  // browser, so Luke's "most requested first" sticks. Null until chosen = the default order,
+  // and while searching that means best match first.
+  const [sort, setSortState] = useState<CourseSort | null>(null);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(SORT_STORAGE_KEY) ?? "null") as CourseSort | null;
+      if (saved && saved.key in COURSE_SORT_LABEL && (saved.dir === "asc" || saved.dir === "desc")) setSortState(saved);
+    } catch {
+      // Storage blocked or unreadable: keep the default order.
+    }
+  }, []);
+  const setSort = (next: CourseSort | null) => {
+    setSortState(next);
+    try {
+      if (next) window.localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(next));
+      else window.localStorage.removeItem(SORT_STORAGE_KEY);
+    } catch {
+      // Not remembered; it still applies now.
+    }
+  };
+  const sortBy = (key: CourseSortKey) => setSort(nextCourseSort(sort ?? DEFAULT_COURSE_SORT, key));
   // Wedge has 1,000+ new requests. Drawing them all at once (twice: the table and the phone
   // cards are both in the page) froze the tab for over a second, so rows come a page at a time.
   // Selecting all still means everything in the view, and the batch bar says how many.
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const viewKey = `${filter}|${search}`;
+  const viewKey = `${filter}|${search}|${sort?.key ?? ""}${sort?.dir ?? ""}`;
   const [shownFor, setShownFor] = useState(viewKey);
   if (shownFor !== viewKey) {
     setShownFor(viewKey);
@@ -232,8 +266,6 @@ export function CourseRequestsSection({
         ? unnamedRequests
         : nonAddedRequests.filter((r) => r.status === filter);
 
-  const shown = filtered.length > limit ? filtered.slice(0, limit) : filtered;
-  const hidden = filtered.length - shown.length;
 
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((r) => selected.has(r.id));
@@ -322,6 +354,43 @@ export function CourseRequestsSection({
    */
   const demand = useMemo(() => computeCourseDemand(requests), [requests]);
 
+  // The chosen order. While searching with nothing chosen, the best match stays first.
+  const activeSort = sort ?? DEFAULT_COURSE_SORT;
+  const ordered = useMemo(
+    () => (searching && !sort ? filtered : sortCourseRequests(filtered, activeSort, demand, (r) => safeCountry(r.country))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered, sort, searching, demand],
+  );
+  const orderedAdded = useMemo(
+    () => sortCourseRequests(addedRequests, activeSort, demand, (r) => safeCountry(r.country)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [addedRequests, sort, demand],
+  );
+  const shown = ordered.length > limit ? ordered.slice(0, limit) : ordered;
+  const hidden = ordered.length - shown.length;
+
+  /** A column header that sorts; clicking it again reverses it. */
+  const head = (key: CourseSortKey) => {
+    const on = activeSort.key === key && (sort !== null || !searching);
+    return (
+      <button
+        type="button"
+        onClick={() => sortBy(key)}
+        aria-pressed={on}
+        title={on ? `Sorted by ${COURSE_SORT_LABEL[key].toLowerCase()}, ${activeSort.dir === "asc" ? "ascending" : "descending"}. Click to reverse.` : `Sort by ${COURSE_SORT_LABEL[key].toLowerCase()}`}
+        className={[
+          "inline-flex items-center gap-1 text-left text-[10px] font-semibold uppercase tracking-[0.08em] hover:text-[var(--text-1)]",
+          on ? "text-[var(--text-1)]" : "text-[var(--text-4)]",
+        ].join(" ")}
+        data-course-sort={key}
+      >
+        {COURSE_SORT_LABEL[key]}
+        <span aria-hidden className={["text-[9px]", on ? "opacity-100" : "opacity-0"].join(" ")}>
+          {activeSort.dir === "asc" ? "▲" : "▼"}
+        </span>
+      </button>
+    );
+  };
   // checkbox | course | demand | country | submitted | sent | status | actions
   const gridCols = readOnly
     ? "1fr 88px 88px 92px 92px 72px"
@@ -496,6 +565,34 @@ export function CourseRequestsSection({
               {allVisibleSelected ? "Deselect all" : "Select all"}
             </button>
           )}
+          {/* The order, as a picker too: the column headers aren't on a phone, and "Most
+              requested" is the one people reach for. */}
+          <select
+            aria-label="Sort course requests"
+            value={sort ? `${sort.key}:${sort.dir}` : searching ? "best" : `${DEFAULT_COURSE_SORT.key}:${DEFAULT_COURSE_SORT.dir}`}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "best") return setSort(null);
+              const [key, dir] = v.split(":") as [CourseSortKey, "asc" | "desc"];
+              setSort({ key, dir });
+            }}
+            className="app-select-compact app-select-chevron h-8 shrink-0 pr-7 text-[16px] sm:text-[12px]"
+            data-course-sort-picker
+          >
+            {searching && !sort ? <option value="best">Best match</option> : null}
+            <option value="submitted:desc">Newest first</option>
+            <option value="submitted:asc">Oldest first</option>
+            <option value="demand:desc">Most requested</option>
+            <option value="course:asc">Course A–Z</option>
+            <option value="country:asc">Country A–Z</option>
+            <option value="sent:desc">Recently sent</option>
+            <option value="status:asc">Status</option>
+            {sort && !SORT_PRESETS.has(`${sort.key}:${sort.dir}`) ? (
+              <option value={`${sort.key}:${sort.dir}`}>
+                {COURSE_SORT_LABEL[sort.key]} {sort.dir === "asc" ? "↑" : "↓"}
+              </option>
+            ) : null}
+          </select>
           {/* Search sits opposite the status tabs, and deliberately searches every
               status rather than the selected tab — see the `searching` note above. */}
           <div className="relative min-w-0 flex-1 sm:flex-none">
@@ -559,24 +656,12 @@ export function CourseRequestsSection({
               style={{ gridTemplateColumns: gridCols, fontFamily: MONO }}
             >
               {!readOnly && <span />}
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                Course
-              </span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                Demand
-              </span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                Country
-              </span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                Submitted
-              </span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                Sent
-              </span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]">
-                Status
-              </span>
+              {head("course")}
+              {head("demand")}
+              {head("country")}
+              {head("submitted")}
+              {head("sent")}
+              {head("status")}
               {!readOnly && <span />}
             </div>
             <div className="divide-y divide-[rgba(0,0,0,0.05)] overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white">
@@ -792,7 +877,7 @@ export function CourseRequestsSection({
 
           {showAdded && (
             <div className="mt-2 divide-y divide-[rgba(0,0,0,0.05)] overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-[var(--surface-0,#fafaf9)]">
-              {addedRequests.map((r) => {
+              {orderedAdded.map((r) => {
                 const country = safeCountry(r.country);
                 return (
                   <div key={r.id}>

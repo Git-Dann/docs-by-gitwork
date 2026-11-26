@@ -15,6 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
 import { Segmented } from "@/components/ui/segmented";
+import { SortHeader } from "@/components/ui/sort-header";
+import { useStoredSort } from "@/hooks/use-stored-sort";
+import { sortRows } from "@/lib/table-sort";
 import {
   ROLES,
   canManageRole,
@@ -95,7 +98,11 @@ export function UserManagementTable({
         .sort((a, b) => (a.daysUntilPurge ?? 0) - (b.daysUntilPurge ?? 0)),
     [members],
   );
-  const rows = tab === "active" ? active : archived;
+  // Member and Role sort (remembered in this browser); unsorted, each tab keeps its own order.
+  const { sort, sortBy } = useStoredSort("foundry.team.sort.v1", ["member", "role"] as const, { role: "desc" });
+  const roleRank = (r: string) => ROLES.find((x) => x.id === r)?.rank ?? 0;
+  const unsorted = tab === "active" ? active : archived;
+  const rows = sort ? sortRows(unsorted, (m) => (sort.key === "member" ? displayName(m) : roleRank(m.role)), sort.dir) : unsorted;
 
   // Only the roles this person is allowed to hand out. An Admin cannot make anyone
   // an Admin; nobody can assign a role above their own.
@@ -170,8 +177,8 @@ export function UserManagementTable({
           <table className="app-table app-table--dense w-full min-w-[760px]">
             <thead>
               <tr>
-                <th className="pl-6 text-left">Member</th>
-                <th className="w-[170px] text-left">Role</th>
+                <SortHeader label="Member" k="member" sort={sort} onSort={sortBy} className="pl-6" />
+                <SortHeader label="Role" k="role" sort={sort} onSort={sortBy} className="w-[170px]" />
                 <th className="text-left">{tab === "active" ? "Access" : "Archived"}</th>
                 <th className="w-[130px] text-left">{tab === "active" ? "Open work" : "Restore by"}</th>
                 <th className="w-[190px] pr-6 text-right">
