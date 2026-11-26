@@ -11,8 +11,9 @@
  *   goes by DM: a channel only ever hears about its own client).
  * - In a client's own channel, that client.
  * - With no client to go on, the chat starts on the person's usual client (the one they last
- *   asked about) and Dispatch can list or move between their clients itself. Only someone with
- *   no clients at all gets a fixed reply.
+ *   asked about) and Dispatch can list or move between their clients itself. In a channel that
+ *   isn't a client's, or for someone with no clients, Dispatch still chats, just with nothing to
+ *   look up (§167).
  */
 
 /** How long a DM chat stays "the one we're in" without a message. */
@@ -45,7 +46,8 @@ export interface SlackChatContext {
 export type SlackChatDecision =
   | { action: "continue"; conversationId: string; clientId: string }
   | { action: "new"; clientId: string }
-  | { action: "ask_which" };
+  /** No client to go on: Dispatch chats without looking anything up (small-talk.ts, §167). */
+  | { action: "no_client" };
 
 export function decideSlackChat(c: SlackChatContext): SlackChatDecision {
   const carryOn = (chat: { id: string; clientId: string }, messages: number) => {
@@ -71,21 +73,5 @@ export function decideSlackChat(c: SlackChatContext): SlackChatDecision {
   // answer goes to the person by DM (slack.ts), so it's only a question about a teammate or
   // everything that gets that far; anything else there is asked which client (§166).
   if (c.fallbackClientId && (c.isDm || c.aboutPersonOrAll)) return { action: "new", clientId: c.fallbackClientId };
-  return { action: "ask_which" };
-}
-
-const GREETING = /^\s*(hi|hiya|hey|hello|yo|morning|good (morning|afternoon|evening)|afternoon|evening|how are you|how's it going|alright)\b/i;
-
-/**
- * The reply when there's no client to go on: friendly, names their clients, and says Foundry
- * will keep the client in mind. Not a refusal.
- */
-export function askWhichClientText(input: { firstName: string | null; question: string; clients: readonly string[] }): string {
-  const hello = GREETING.test(input.question) ? `Hi${input.firstName ? ` ${input.firstName}` : ""}, all good here. ` : "";
-  if (!input.clients.length) {
-    return `${hello}You're not on any clients in Foundry yet, so there's nothing I can look up for you. Once you're added to a client, ask me about it here.`;
-  }
-  const shown = input.clients.slice(0, 12);
-  const more = input.clients.length > shown.length ? `, and ${input.clients.length - shown.length} more` : "";
-  return `${hello}Which client is this about? You're on ${shown.join(", ")}${more}. Name one, for example "what's happening on ${shown[0]} this week?", and I'll keep it in mind for the rest of our chat until you mention another.`;
+  return { action: "no_client" };
 }

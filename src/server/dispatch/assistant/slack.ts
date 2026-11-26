@@ -29,7 +29,7 @@ import { askerScope, loadCandidates } from "@/server/dispatch/respond";
 import { assistantAvailable } from "./access-gate";
 import { DispatchAccessError, forChannel, openScope, type DispatchScope } from "./scope";
 import { DispatchLimitError, runTurn } from "./loop";
-import { askWhichClientText, decideSlackChat, DM_CHAT_IDLE_MS } from "@/lib/dispatch/slack-conversation";
+import { decideSlackChat, DM_CHAT_IDLE_MS } from "@/lib/dispatch/slack-conversation";
 import { MAX_CHAT_MESSAGES } from "@/lib/dispatch/limits";
 
 const APP_BASE_URL = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://foundry.gitwork.co.uk";
@@ -124,16 +124,19 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
   // channel, always in the thread, so the channel stays quiet.
   const replyThreadTs = isDm && !q.inThread ? undefined : q.threadTs;
 
-  if (decision.action === "ask_which") {
-    const text = askWhichClientText({
-      firstName: q.asker.name?.split(" ")[0] ?? null,
-      question: q.question,
-      clients: candidates.clients.map((c) => c.name).sort((a, b) => a.localeCompare(b)),
-    });
-    const notice = buildDispatchNotice(text);
-    await postMessage(q.botToken, { channel: q.channelId, ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}), text: notice.text, blocks: notice.blocks });
+  if (decision.action === "no_client") {
+    // Nothing to look at (a channel that isn't a client's, or no clients at all): Dispatch still
+    // talks, with no lookups and no client named (small-talk.ts, §167). This was a fixed "which
+    // client?" reply that also listed the person's clients in front of the channel.
+    const { chatWithoutClient } = await import("./small-talk");
+    const chat = await chatWithoutClient({ user: q.asker, question: q.question, where: isDm ? "no_clients" : "channel" });
+    const reply = buildAssistantReply({ text: chat.text, actions: [], sources: [], clientName: null });
+    await postMessage(q.botToken, { channel: q.channelId, ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}), text: reply.text, blocks: reply.blocks });
     await prisma.dispatchExchange
-      .update({ where: { id: q.exchangeId }, data: { askerUserId: q.asker.id, status: "no_subject", latencyMs: Date.now() - startedAt, answeredAt: new Date() } })
+      .update({
+        where: { id: q.exchangeId },
+        data: { askerUserId: q.asker.id, status: chat.ok ? "answered" : "error", aiModel: chat.model, latencyMs: Date.now() - startedAt, answeredAt: new Date() },
+      })
       .catch(() => undefined);
     return "handled";
   }
@@ -235,7 +238,7 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
         askerSlackId: q.askerSlackId,
         notice: notices.join(" ") || null,
       })
-    : buildDispatchNotice(notices.join(" ") || "I couldn't come up with an answer to that one.");
+    : buildDispatchNotice(notices.join(" ") || "I came up blank on that one. That usually means I ran out of lookups before I found enough to say. Try asking it a narrower way, or point me at the task or client.");
 
   const posted = await post(reply, where);
   if (where === "dm") {

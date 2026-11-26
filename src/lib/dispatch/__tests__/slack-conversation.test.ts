@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { askWhichClientText, decideSlackChat, DM_CHAT_IDLE_MS, type SlackChatContext } from "../slack-conversation";
+import { decideSlackChat, DM_CHAT_IDLE_MS, type SlackChatContext } from "../slack-conversation";
 
 const now = new Date("2026-11-25T16:00:00Z");
 const base: SlackChatContext = {
@@ -43,7 +43,7 @@ describe("decideSlackChat: a DM is one running conversation", () => {
 
   it("after hours of quiet, the old chat is left behind", () => {
     const stale = { ...wedgeChat, updatedAt: new Date(now.getTime() - DM_CHAT_IDLE_MS - 1) };
-    expect(decideSlackChat({ ...base, recentDmChat: stale })).toEqual({ action: "ask_which" });
+    expect(decideSlackChat({ ...base, recentDmChat: stale })).toEqual({ action: "no_client" });
     expect(decideSlackChat({ ...base, recentDmChat: stale, fallbackClientId: "wedge" })).toEqual({ action: "new", clientId: "wedge" });
   });
 
@@ -57,8 +57,8 @@ describe("decideSlackChat: with nothing to go on", () => {
     expect(decideSlackChat({ ...base, fallbackClientId: "wedge" })).toEqual({ action: "new", clientId: "wedge" });
   });
 
-  it("only someone with no clients at all gets the fixed reply", () => {
-    expect(decideSlackChat(base)).toEqual({ action: "ask_which" });
+  it("someone with no clients at all gets a chat with nothing to look up", () => {
+    expect(decideSlackChat(base)).toEqual({ action: "no_client" });
   });
 
   it("someone on one client just gets that client", () => {
@@ -87,27 +87,10 @@ describe("decideSlackChat: channels", () => {
   });
 
   it("never starts a channel on a fallback client", () => {
-    expect(decideSlackChat({ ...channel, fallbackClientId: "wedge" })).toEqual({ action: "ask_which" });
+    expect(decideSlackChat({ ...channel, fallbackClientId: "wedge" })).toEqual({ action: "no_client" });
   });
 
   it("never carries a DM chat into a channel", () => {
-    expect(decideSlackChat({ ...channel, recentDmChat: wedgeChat })).toEqual({ action: "ask_which" });
-  });
-});
-
-describe("askWhichClientText", () => {
-  it("greets back, names their clients, and says it will remember", () => {
-    const text = askWhichClientText({ firstName: "Dan", question: "Hey, how are you?", clients: ["Campfire", "Wedge"] });
-    expect(text).toMatch(/^Hi Dan, all good here\./);
-    expect(text).toContain("You're on Campfire, Wedge.");
-    expect(text).toContain("keep it in mind");
-    expect(text).not.toMatch(/couldn't tell/i);
-  });
-
-  it("no greeting for a plain question, and a long list is shortened", () => {
-    const clients = Array.from({ length: 15 }, (_, i) => `Client ${i + 1}`);
-    const text = askWhichClientText({ firstName: "Dan", question: "what's late?", clients });
-    expect(text.startsWith("Which client")).toBe(true);
-    expect(text).toContain("and 3 more");
+    expect(decideSlackChat({ ...channel, recentDmChat: wedgeChat })).toEqual({ action: "no_client" });
   });
 });
