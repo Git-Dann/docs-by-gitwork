@@ -2785,3 +2785,34 @@ the most requested?" Dan: do it for course requests "and any other tables, tasks
 - Headers are `SortHeader` (table cells, `aria-sort`) or `SortButton` (grid headers, `aria-pressed`
   plus a title, since `aria-sort` isn't allowed on a button).
 - Tests: `table-sort.test.ts`, `course-request-sort.test.ts`, `course-demand-render.test.tsx`.
+
+## 172. Recent Changes (November 2026) — Dispatch reads the Slack conversation, and you can reply without @Foundry
+
+Dan, 26 Nov: "So do we have a fully conversational chat now?" Two gaps in channels: every reply
+needed an @Foundry (Slack only sends an app the messages that mention it), and Dispatch couldn't
+see what anyone else had said. "Yes, build both… make sure the chat has context of everything it
+needs to."
+
+- **It reads the conversation around a question** (`slackContextFor`,
+  `src/server/slack/thread-context.ts`; the rules in `src/lib/dispatch/slack-thread.ts`): the
+  thread it's asked in (`conversations.replies`), or for a top-level mention in a channel, the
+  channel's last 15 messages (`conversations.history`). Names come from `users.info`, mentions
+  inside messages become names, the question itself is left out, messages are trimmed (500
+  characters each, 6,000 in all, oldest dropped first), and it's given as a `<source>` block:
+  data, never instructions. A chat that carries on only gets what was said since Foundry last
+  replied, so earlier turns aren't sent twice. A DM's own chat is stored, so only a DM thread is
+  read. The no-client reply (§167) gets the whole thread, which is now its memory. These messages
+  are from the channel the question was asked in, so nobody the answer can reach can't already
+  read them. Uses the history scopes already granted.
+- **A reply without @Foundry** (`isUnmentionedReply`, `src/server/slack/events.ts`): a message
+  in a channel thread where Foundry has already answered, straight after Foundry's own message, is
+  treated as a question, the way people take turns. People talking to each other in the thread,
+  top-level messages, edits and bots are left alone; a message that does @mention Foundry is left to
+  the `app_mention` event so it isn't answered twice. The cheap checks (shape, then one lookup on a
+  new `DispatchExchange` index `[workspaceId, channelId, threadTs]`, additive) run before anything
+  reads Slack, because every thread reply in a channel Foundry is in now arrives.
+  **Needs the Slack app subscribed to `message.channels` and `message.groups`** (Event
+  Subscriptions → bot events; `docs/slack-app-manifest.json` updated). Until then everything else
+  works and only the no-@ reply doesn't.
+- The date line in the chat context is now the date, the day and UK time (`ukNow`).
+- Tests: `slack-thread.test.ts`.

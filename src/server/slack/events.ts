@@ -3,7 +3,8 @@
  *
  * Until now Foundry could POST to Slack (standups, roll-ups, digests) and react to button
  * clicks, but it could not be *spoken to*. This is that missing half: an `app_mention` in a
- * channel, or a plain message in a DM with the bot, becomes a question for Dispatch.
+ * channel, or a plain message in a DM with the bot, becomes a question for Dispatch; so does a
+ * thread reply to Foundry that didn't @mention it (§172, `isUnmentionedReply`).
  *
  * Dispatch answers AS THE PERSON ASKING (dispatch/access.ts): their Slack account is matched to
  * their Foundry account and only their access applies. Someone with no Foundry account gets no
@@ -95,11 +96,48 @@ export interface HandleEventArgs {
   botUserId: string | null;
 }
 
+/**
+ * A plain message (no @mention) in a channel thread where Foundry has already answered, replying
+ * straight to Foundry's last message (§172). Needs the app subscribed to `message.channels` and
+ * `message.groups`; every thread reply in a channel Foundry is in then arrives here, so the cheap
+ * checks (shape, then one indexed lookup) come before anything reads Slack.
+ */
+async function isUnmentionedReply(
+  event: SlackInnerEvent | undefined,
+  workspaceId: string,
+  botToken: string | null,
+  botUserId: string | null,
+): Promise<boolean> {
+  if (!event || event.type !== "message" || event.subtype || !botToken || !botUserId) return false;
+  if (event.channel_type !== "channel" && event.channel_type !== "group") return false;
+  if (!event.channel || !event.ts || !event.thread_ts || event.thread_ts === event.ts) return false;
+  if (isBotAuthored(event, botUserId)) return false;
+  const mentionsFoundry = (event.text ?? "").includes(`<@${botUserId}>`);
+  if (mentionsFoundry) return false;
+  const answered = await prisma.dispatchExchange.findFirst({
+    where: { workspaceId, channelId: event.channel, threadTs: event.thread_ts },
+    select: { id: true },
+  });
+  if (!answered) return false;
+  const { readSlackMessages } = await import("./thread-context");
+  const { isReplyToFoundry } = await import("@/lib/dispatch/slack-thread");
+  const messages = await readSlackMessages(botToken, { channel: event.channel, threadTs: event.thread_ts, currentTs: event.ts });
+  const before = messages.filter((m) => Number(m.ts) < Number(event.ts)).sort((a, b) => Number(a.ts) - Number(b.ts));
+  return isReplyToFoundry({
+    inThread: true,
+    mentionsFoundry,
+    foundryAnsweredHere: true,
+    previous: before[before.length - 1] ?? null,
+    botUserId,
+  });
+}
+
 export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
   const { envelope, workspaceId, botToken, botUserId } = args;
   const event = envelope.event;
 
-  if (!isQuestionEvent(event) || isBotAuthored(event, botUserId)) return;
+  if (isBotAuthored(event, botUserId)) return;
+  if (!isQuestionEvent(event) && !(await isUnmentionedReply(event, workspaceId, botToken, botUserId))) return;
   if (!event?.channel || !event.ts) return;
   const eventId = envelope.event_id;
   if (!eventId) return;
@@ -176,6 +214,8 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
         threadTs,
         inThread: Boolean(event.thread_ts),
         question,
+        messageTs: event.ts,
+        botUserId,
         exchangeId,
       });
       if (outcome === "handled") return;

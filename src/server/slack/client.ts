@@ -254,6 +254,35 @@ export function conversationsInfo(
   return call<{ channel?: SlackChannel }>(token, "conversations.info", { channel }, { form: true });
 }
 
+export interface RawSlackMessage {
+  ts: string;
+  user?: string;
+  bot_id?: string;
+  subtype?: string;
+  text?: string;
+}
+
+/** conversations.replies: a thread, oldest first. Needs the channel's `*:history` scope. */
+export function conversationReplies(
+  token: string,
+  input: { channel: string; ts: string; limit?: number },
+): Promise<SlackResponse<{ messages?: RawSlackMessage[] }>> {
+  return call<{ messages?: RawSlackMessage[] }>(token, "conversations.replies", { channel: input.channel, ts: input.ts, limit: input.limit ?? 50 }, { form: true });
+}
+
+/** conversations.history: a channel's latest messages before `latest`, newest first. */
+export function conversationHistory(
+  token: string,
+  input: { channel: string; latest?: string; limit?: number },
+): Promise<SlackResponse<{ messages?: RawSlackMessage[] }>> {
+  return call<{ messages?: RawSlackMessage[] }>(
+    token,
+    "conversations.history",
+    { channel: input.channel, latest: input.latest, limit: input.limit ?? 15, inclusive: false },
+    { form: true },
+  );
+}
+
 /**
  * conversations.open with one user — the bot's DM channel with them (created if needed).
  * Used by Dispatch to answer privately when a question was asked in a channel whose members

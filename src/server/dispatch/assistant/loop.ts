@@ -19,7 +19,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-import { DISPATCH_SYSTEM_PROMPT, chatContext, roomFor } from "@/lib/dispatch/prompt";
+import { DISPATCH_SYSTEM_PROMPT, chatContext, roomFor, ukNow } from "@/lib/dispatch/prompt";
 import {
   MAX_CHAT_MESSAGES,
   MAX_CHAT_TOKENS,
@@ -67,6 +67,8 @@ export interface TurnInput {
   /** The task the panel was opened from, if any (named in the chat context). */
   focusTaskId?: string | null;
   slack?: { channelId: string; threadTs: string };
+  /** What was said around the question in Slack, already wrapped as a <source> (§172). */
+  slackContext?: string | null;
   /** Pictures the person attached (already checked: src/lib/dispatch/images.ts). */
   images?: { mediaType: ToolImage["mediaType"]; data: string }[];
   emit: TurnEmitter;
@@ -165,7 +167,7 @@ export async function runTurn(
         clientCount: own.length,
         room: roomFor(scope),
         team: team.map((t) => t.name),
-        today: new Date().toISOString().slice(0, 10),
+        today: ukNow(),
         focusTask: focus ? { ref: taskRef(focus.id), title: focus.title } : null,
       }),
     });
@@ -178,6 +180,7 @@ export async function runTurn(
       text: `<chat_context>\nNow on client: ${movedTo}${team.length ? `\n${movedTo}'s team: ${team.join(", ")}` : ""}\n</chat_context>`,
     });
   }
+  if (input.slackContext) content.push({ type: "text", text: input.slackContext });
   const attached = (input.images ?? []).slice(0, MAX_IMAGES_PER_QUESTION);
   for (const img of attached) {
     content.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } });
