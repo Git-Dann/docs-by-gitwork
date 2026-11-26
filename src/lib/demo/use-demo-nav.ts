@@ -12,6 +12,35 @@
 import { useRouter } from "next/navigation";
 import type { MouseEvent } from "react";
 
+/**
+ * Where a real `/app/*` link goes in the demo, or `null` when the demo has no
+ * equivalent (the caller swallows those, so the demo never leaves into the gated
+ * app). Pure, so Gitwork OS (`/demo/os`) can open the same targets in a window
+ * instead of navigating.
+ */
+export function demoHrefFor(href: string): string | null {
+  if (!href.startsWith("/app/")) return null;
+  const docMatch = href.match(/^\/app\/docs\/([^/?#]+)/);
+  const devSignalMatch = href.match(/^\/app\/(?:staff\/hiring|codeclear)\/devsignal\/([^/?#]+)$/);
+  const pulseScanMatch = href.match(/^\/app\/pulse\/([^/?#]+)/);
+  const pulseProjectMatch = href.match(/^\/app\/pulse\/projects\/([^/?#]+)/);
+  const pulseCompareMatch = href.match(/^\/app\/pulse\/compare(\?.*)?$/);
+  // The embed settings page has no demo; its home in the nav is Growth.
+  if (/^\/app\/pulse\/embed(\?.*)?$/.test(href)) return "/demo/pulse/growth";
+  if (pulseProjectMatch) return `/demo/pulse/projects/${pulseProjectMatch[1]}`;
+  if (pulseCompareMatch) return `/demo/pulse/compare${pulseCompareMatch[1] ?? ""}`;
+  if (devSignalMatch) return `/demo/devsignal/${devSignalMatch[1]}`;
+  if (/^\/app\/(?:staff\/hiring|codeclear)\/devsignal$/.test(href)) return "/demo/devsignal";
+  if (/^\/app\/pulse\/new/.test(href) || /^\/app\/pulse$/.test(href)) return "/demo/pulse";
+  if (pulseScanMatch) return `/demo/pulse/${pulseScanMatch[1]}`;
+  if (/^\/app\/portal\/[^/]+\/wiki/.test(href)) return "/demo/wiki";
+  if (/^\/app\/portal\/[^/]+\/tasks/.test(href)) return "/demo/tasks";
+  if (/^\/app\/portal\/[^/]+$/.test(href)) return "/demo/portal";
+  // Open on the Builder tab so the rich section content shows (not the empty Overview summary).
+  if (docMatch && docMatch[1] !== "analytics") return `/demo/docs/${docMatch[1]}?tab=builder`;
+  return null;
+}
+
 export function useDemoLinkReroute() {
   const router = useRouter();
   return function handleDemoNav(e: MouseEvent<HTMLElement>) {
@@ -19,25 +48,8 @@ export function useDemoLinkReroute() {
     const href = anchor?.getAttribute("href") ?? "";
     if (!href.startsWith("/app/")) return;
     e.preventDefault();
-    const docMatch = href.match(/^\/app\/docs\/([^/?#]+)/);
-    const devSignalMatch = href.match(/^\/app\/(?:staff\/hiring|codeclear)\/devsignal\/([^/?#]+)$/);
-    const pulseScanMatch = href.match(/^\/app\/pulse\/([^/?#]+)/);
-    const pulseProjectMatch = href.match(/^\/app\/pulse\/projects\/([^/?#]+)/);
-    const pulseCompareMatch = href.match(/^\/app\/pulse\/compare(\?.*)?$/);
-    // The embed settings page has no demo; its home in the nav is Growth.
-    if (/^\/app\/pulse\/embed(\?.*)?$/.test(href)) router.push("/demo/pulse/growth");
-    else if (pulseProjectMatch) router.push(`/demo/pulse/projects/${pulseProjectMatch[1]}`);
-    else if (pulseCompareMatch) router.push(`/demo/pulse/compare${pulseCompareMatch[1] ?? ""}`);
-    else if (devSignalMatch) router.push(`/demo/devsignal/${devSignalMatch[1]}`);
-    else if (/^\/app\/(?:staff\/hiring|codeclear)\/devsignal$/.test(href)) router.push("/demo/devsignal");
-    else if (/^\/app\/pulse\/new/.test(href) || /^\/app\/pulse$/.test(href)) router.push("/demo/pulse");
-    else if (pulseScanMatch) router.push(`/demo/pulse/${pulseScanMatch[1]}`);
-    else if (/^\/app\/portal\/[^/]+\/wiki/.test(href)) router.push("/demo/wiki");
-    else if (/^\/app\/portal\/[^/]+\/tasks/.test(href)) router.push("/demo/tasks");
-    else if (/^\/app\/portal\/[^/]+$/.test(href)) router.push("/demo/portal");
-    else if (docMatch && docMatch[1] !== "analytics")
-      // Open on the Builder tab so the rich section content shows (not the empty Overview summary).
-      router.push(`/demo/docs/${docMatch[1]}?tab=builder`);
+    const target = demoHrefFor(href);
+    if (target) router.push(target);
     // else: swallow — don't leave the demo into the gated app.
   };
 }

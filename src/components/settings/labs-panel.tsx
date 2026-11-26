@@ -84,6 +84,12 @@ const ENTRIES: LabEntry[] = [
     note: "The page is the file. Source: Git-Dann/canvas.",
   },
   {
+    name: "Gitwork OS",
+    href: "/demo/os",
+    blurb: "A Mac in the browser that sells Gitwork: our work, our plans, and Foundry as the hero app.",
+    note: "Public demo, sample data only. Try the G. menu.",
+  },
+  {
     name: "Mission Control",
     href: "/edge",
     blurb: "A chrome-free exec board for the Corsair Xeneon Edge: client health, your desk and the day.",
