@@ -249,6 +249,13 @@ channel's last 15 messages, named and given to the model as data. A chat that ca
 what was said since Foundry last replied. A reply in a thread where Foundry has answered, straight
 after Foundry's message, is answered without an @mention (`isUnmentionedReply` in `events.ts`).
 
+### Calendar, links and memory (§173)
+
+`my_calendar` reads the asker's own Google Calendar (never in a channel). `check_links`, and card
+05 in Settings → Dispatch, say which of a client's Figma designs and GitHub repositories open and
+how to fix the rest. `remember` / `forget` keep the person's own notes across chats
+(`DispatchMemory`), listed under the bookmark in the panel.
+
 ### The brief (§161)
 
 The panel opens on a brief, not an empty chat: the person's own tasks that need them and why,

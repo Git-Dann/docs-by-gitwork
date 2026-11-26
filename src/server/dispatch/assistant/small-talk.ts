@@ -46,7 +46,8 @@ export async function chatWithoutClient(input: {
   }
   const client = new Anthropic({ apiKey, maxRetries: 2 });
   const { peopleContext } = await import("./people-context");
-  const people = await peopleContext(input.user);
+  const { listMemories } = await import("./memory");
+  const [people, memories] = await Promise.all([peopleContext(input.user), listMemories(input.user)]);
   const started = Date.now();
   try {
     const res = await client.beta.messages.create({
@@ -70,6 +71,7 @@ export async function chatWithoutClient(input: {
                 roleLabel: ROLES.find((r) => r.id === input.user.role)?.label ?? input.user.role,
                 askerTitle: people.askerTitle,
                 leadership: people.leadership,
+                memories: memories.map((m) => m.text),
                 today: ukNow(),
                 where: input.where,
               }),

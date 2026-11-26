@@ -86,6 +86,7 @@ export type SideIds = {
   template: string;
   dispatchConversation: string;
   dispatchAction: string;
+  dispatchMemory: string;
 };
 
 export function idsFor(side: Side): SideIds {
@@ -155,6 +156,7 @@ export function idsFor(side: Side): SideIds {
     template: id(side, "template"),
     dispatchConversation: id(side, "dispatch-conv"),
     dispatchAction: id(side, "dispatch-action"),
+    dispatchMemory: id(side, "dispatch-memory"),
   };
 }
 
@@ -346,6 +348,10 @@ export async function seedSide(db: PrismaClient, side: Side) {
       payload: json({ taskId: i.task, body: m(side, "dispatch-comment"), card: { title: m(side, "dispatch-card"), lines: [] } }),
     },
   });
+  // Dispatch memory (§173): a note only its owner may read or delete.
+  await db.dispatchMemory.create({
+    data: { id: i.dispatchMemory, workspaceId: i.workspace, userId: i.user, text: m(side, "dispatch-memory") },
+  });
 }
 
 /** Everything a write could change, read back as one string. A difference means a route wrote. */
@@ -416,6 +422,7 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
     db.dispatchConversation.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.dispatchMessage.findMany({ where: { conversationId: i.dispatchConversation }, orderBy: { id: "asc" } }),
     db.dispatchAction.findMany({ where: ws, orderBy: { id: "asc" } }),
+    db.dispatchMemory.findMany({ where: ws, orderBy: { id: "asc" } }),
   ]);
   return JSON.stringify(parts, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
 }

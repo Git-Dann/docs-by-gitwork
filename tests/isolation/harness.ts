@@ -172,6 +172,7 @@ const ID_BY_PARENT: Record<string, (v: SideIds) => string> = {
   templates: (v) => v.template,
   "dispatch/conversations": (v) => v.dispatchConversation,
   "dispatch/actions": (v) => v.dispatchAction,
+  "dispatch/memories": (v) => v.dispatchMemory,
 };
 
 export type Planned = {
