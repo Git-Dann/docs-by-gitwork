@@ -2701,3 +2701,41 @@ channel and who the developers are, and be conversational about it.
   prefix, never per-person text in the prefix.
 - Tests: `src/server/__tests__/client-team.test.ts` (one row per person, the welcome text),
   `prompt-and-tools.test.ts` (room and team in the context, the prompt names no client).
+
+## 169. Recent Changes (November 2026) — Gitwork OS: a Mac in the browser that sells Gitwork
+
+`/demo/os`, reached from **Settings → Labs → Gitwork OS**. A full-screen fake macOS desktop in the
+shape of vorssaint.com: menu bar, a notch with a live activity, a moving wallpaper, desktop icons,
+a magnifying dock, notifications and draggable windows. It sells Gitwork, with **Foundry as the
+hero app**.
+
+- **The copy is the website's, word for word** (`src/lib/demo/os/gitwork-content.ts`, captured
+  from gitwork.co.uk on 26 Nov 2026): the four plans and prices, the case studies and their only
+  published stats, the four steps, the FAQ, the three testimonials, and the "last 20%" hero card.
+  `gitwork-content.test.ts` pins the prices and stats, so a change is a deliberate edit from the
+  site, never a rounding. Company identifiers come from `src/lib/gitwork.ts` (§41.6's test caught
+  a hard-coded company number in the first cut).
+- **No client data, no database, no login.** The Foundry window shows the existing `/demo/**`
+  pages in an iframe, over their sample data. `isDemoHref()` is the only gate on what it can load:
+  same-origin `/demo` paths only, never `/demo/os` itself, and a saved layout pointing anywhere
+  else is dropped on read. "Book" and "View case study" open gitwork.co.uk in a new tab; Mail opens
+  the visitor's own email app. Nothing is sent from the page.
+- **Apps:** Work (case studies, Finder-style), Foundry, Plans, Notes (read-me, how we work, FAQ,
+  testimonials, a scratchpad), Calendar (illustrative audit slots, labelled as such), Mail,
+  Terminal, System Settings (light/dark, three wallpapers, reset) and Trash.
+- **Easter eggs**, mostly behind the **G.** where a Mac has the Apple logo (Apple's logo and icons
+  are its trademarks, so neither is used; the icons are drawn for this, `os-icons.tsx`): About This
+  Mac, a vibe check that runs the "last 20%" to done, Ship It (confetti), Force Quit of agency
+  habits, Sleep (lock screen), Restart (boot screen), Shut Down (refused, "not before launch").
+  Also: five quick clicks on the G. (party mode), the Konami code and `matrix` (code rain),
+  `sudo rm -rf` in Terminal, emptying the Trash, and the notch reaching 100% on its own.
+- **Window manager** is a pure reducer (`src/lib/demo/os/window-manager.ts`, tested): a title bar
+  can never leave the screen, opening something already open focuses it, and the dock behaves like
+  a dock (minimised → restore, focused → minimise). Below 1024px every window is a full-screen sheet.
+- `demoHrefFor()` was pulled out of `useDemoLinkReroute` (`src/lib/demo/use-demo-nav.ts`) so the
+  mapping from `/app` links to `/demo` pages is pure and tested.
+- **Verified:** `npm run verify` (see the PR), and the clipping audit clean on the first screen
+  and with each of nine apps open, at 390 · 768 · 1280×620 · 1440 (36 states, 0 findings).
+- ⚠️ Found while testing: the vibe check re-fired its "done" callback on every render it caused
+  ("Maximum update depth exceeded"), because the parent passes a new function each render. It now
+  calls it once, through a ref. Any effect that calls a prop callback wants the same treatment.

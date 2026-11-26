@@ -1077,6 +1077,18 @@ The exception covers Canvas's own shell only. Don't carry the orange back into F
 
 The full token and component reference lives with its source, in `Git-Dann/canvas` `docs/BRAND.md`.
 
+## Gitwork OS (the sales demo at `/demo/os`, `CLAUDE.md` §169)
+
+**A deliberate exception to this whole document.** Gitwork OS is a picture of a Mac, so it uses a
+Mac's grammar, not Foundry's: system font stack, traffic-light window controls (full-radius circles),
+squircle app icons, translucent menus, and its own `--os-*` light/dark palette set by its own
+Appearance setting rather than `gitwork.theme.v1`. The brand inside it is **Gitwork's** indigo
+(`#4F46E5`), as on gitwork.co.uk. Foundry's own pages appear inside its windows unchanged.
+
+The exception covers `src/components/demo/os/**` only. Don't carry traffic lights, squircles or
+`--os-*` back into Foundry's UI. Apple's logo and Apple's icons are never used: the **G.** mark
+sits where the Apple logo would, and every icon is drawn for this page (`os-icons.tsx`).
+
 ## Dispatch panel (the assistant, `CLAUDE.md` §154, §161)
 
 The pattern for any assistant surface in Foundry. Source: `src/components/dispatch/dispatch-panel.tsx`.
