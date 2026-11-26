@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 // The tool list is static; the access checks it calls at run time aren't exercised here, so the
 // sign-in stack they import is left out.
 vi.mock("../scope", () => ({ assertStillAllowed: vi.fn() }));
-import { DISPATCH_SYSTEM_PROMPT, asSource, chatContext, noClientContext } from "@/lib/dispatch/prompt";
+import { DISPATCH_SYSTEM_PROMPT, asSource, chatContext, noClientContext, roomFor } from "@/lib/dispatch/prompt";
 import { DISPATCH_ACTION_KINDS } from "@/lib/dispatch/actions";
 import { DISPATCH_TOOLS, toolDefinitions } from "../tools";
 
@@ -101,5 +101,30 @@ describe("talking with no client to go on (§167)", () => {
     const slack = readFileSync(join(process.cwd(), "src/server/dispatch/assistant/slack.ts"), "utf8");
     expect(slack).not.toMatch(/Which client is this about/);
     expect(slack).toContain('decision.action === "no_client"');
+  });
+});
+
+describe("knowing the room (§168)", () => {
+  it("the chat context says where it is and who's on the client's team", () => {
+    const ctx = chatContext({
+      askerName: "Dan",
+      roleLabel: "Super Admin",
+      clientName: "Wedge",
+      today: "2026-11-26",
+      room: roomFor({ surface: "slack", inChannel: true, client: { name: "Wedge" } }),
+      team: ["Nasir Javed", "Sibghat Ullah"],
+    });
+    expect(ctx).toContain("Where: Wedge's internal Slack channel; everyone in the channel reads your reply");
+    expect(ctx).toContain("Wedge's team: Nasir Javed, Sibghat Ullah");
+  });
+
+  it("the app and a DM are private to the person", () => {
+    expect(roomFor({ surface: "web", client: { name: "Wedge" } })).toContain("only the person asking");
+    expect(roomFor({ surface: "slack", client: { name: "Wedge" } })).toContain("only they see it");
+  });
+
+  it("the prompt can introduce itself, the same for everyone", () => {
+    expect(DISPATCH_SYSTEM_PROMPT).toContain("About you (for when someone asks who you are");
+    expect(DISPATCH_SYSTEM_PROMPT).not.toMatch(/Wedge/);
   });
 });

@@ -2675,3 +2675,29 @@ its context."
   delivery talk never goes where the client can read it, and that one stays canned on purpose.
 - Tests in `prompt-and-tools.test.ts` (no lookups in a no-client chat, no "which client?" text
   left) and `slack-conversation.test.ts`.
+
+## 168. Recent Changes (November 2026) — A client's new Slack channel comes with its team, and Dispatch knows the room
+
+Dan, 26 Nov: Foundry already creates a client's internal Slack channel (Portal → new client,
+or the "Provision Slack channels" box on the client page), but the channel started with only
+Foundry in it. "Yes, please build that" (invite the team). And: in the Wedge internal channel,
+"@Foundry who is the best dev team?" or "introduce yourself" should understand it's Wedge's
+channel and who the developers are, and be conversational about it.
+
+- **The team is invited.** After creating the internal channel, `provisionClientChannels` calls
+  `inviteClientTeam` (`src/server/slack/provisioning.ts`): the client's team (`clientTeam`,
+  `src/server/client-team.ts`: its ClientAssignment people who are active members, plus anyone
+  with an open Code placement on it, the same two sources that give a person access) is matched
+  to Slack by email (`users.lookupByEmail`, needs `users:read.email`) and added with
+  `conversations.invite` (`groups:write`; both scopes are already granted, so no reinstall). The
+  welcome message says who was added and who couldn't be found in Slack, or why Slack refused.
+  None of it can fail the provisioning. The retry box on the client page does the same.
+- **Dispatch knows the room.** The chat context now says where the chat is (`roomFor`,
+  `src/lib/dispatch/prompt.ts`: the app, a DM, or a client's internal channel that everyone in it
+  reads) and lists the client's team; a chat that moves to another client gets the new team.
+  The prompt gets an "About you" paragraph so "introduce yourself" has something real to say, and
+  "Know the room": in a client's channel, talk to that client's team by first name and mean them
+  when anyone says "the team". All of this goes in the first user message or the shared cached
+  prefix, never per-person text in the prefix.
+- Tests: `src/server/__tests__/client-team.test.ts` (one row per person, the welcome text),
+  `prompt-and-tools.test.ts` (room and team in the context, the prompt names no client).

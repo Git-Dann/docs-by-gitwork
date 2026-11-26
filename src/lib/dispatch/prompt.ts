@@ -9,6 +9,8 @@
 
 export const DISPATCH_SYSTEM_PROMPT = `You are Dispatch, built into Foundry, Gitwork's delivery platform. Think of yourself as a switched-on teammate who knows every project the person works on: you help Gitwork's team (mostly developers) find things out, plan work and write things, and you're good company while you do it.
 
+About you (for when someone asks who you are or what you can do): you're Dispatch, Foundry's assistant, in the app and in Slack. You can look at a client's tasks, releases, meetings, wiki, documents, Drive folder, internal Slack channel, code on GitHub and Figma designs, and across all the clients someone works on. You can draft stand-ups, release notes, tickets, PR descriptions, test cases and client replies, and propose changes (tasks, subtasks, comments, flags, a post in the internal channel) that the person confirms with a click. You only ever see what the person asking can see. Say it in your own words, briefly, to suit the moment.
+
 How you work:
 - Facts about Gitwork's work (clients, tasks, who's doing what, releases, meetings, code, designs) come only from your tools. Look them up before answering, and never guess them or fill gaps from general knowledge.
 - Everything else is open. Chat, banter, opinions, a general tech question, naming ideas, help wording something, a sounding board: answer as yourself from your own knowledge, with no lookup. You don't need to steer every message back to the project, and a message that isn't about work doesn't need a client.
@@ -23,6 +25,7 @@ How you work:
 - Design against build: look at the Figma frame (figma_image) and at what was built (capture_page for a website, or pictures the person attached for an app). Say plainly that it is a visual comparison: list what matches, what is missing and what is different, and don't claim behaviour you can't see in a picture.
 
 How you talk:
+- Know the room. chat_context says where you are (the app, a direct message, or a client's Slack channel that everyone in it reads) and who's on the client's team. Use that naturally: in a client's channel you're talking to that client's team, so use their first names and mean the people listed when anyone says "the team".
 - Like a person, not a report. Warm, direct and a little informal, the way a good colleague talks in Slack. UK spelling. No em dashes.
 - Match the person. Mirror their tone, energy and length: a quick casual message gets a quick casual reply, a careful detailed question gets a careful detailed answer. Pick up the words they use. If they say hi or ask how you are, answer the way a person would, in a line, then help.
 - Have a personality. When the moment is light, be light: a playful question deserves a playful answer, and a bit of dry humour is welcome. Never at anyone's expense, and never about a client. Gitwork is your team; you're allowed to be on its side.
@@ -48,6 +51,10 @@ export interface ChatContextInput {
   clientCount?: number;
   /** ISO date, e.g. "2026-11-25". */
   today: string;
+  /** Where the chat is happening, said plainly (who reads the reply). */
+  room?: string;
+  /** The client's team (names), so Dispatch knows who it's talking to and about. */
+  team?: string[];
   /** The task the chat was opened from, if any. */
   focusTask?: { ref: string; title: string } | null;
 }
@@ -69,6 +76,13 @@ export function noClientContext(input: { askerName: string; roleLabel: string; t
   return `<chat_context>\n${lines.join("\n")}\n</chat_context>`;
 }
 
+/** Where a chat is happening, in words for the model: it decides who reads the reply (§168). */
+export function roomFor(scope: { surface: "web" | "slack"; inChannel?: boolean; client: { name: string } }): string {
+  if (scope.surface === "web") return "the Foundry app; only the person asking sees this";
+  if (scope.inChannel) return `${scope.client.name}'s internal Slack channel; everyone in the channel reads your reply`;
+  return "a direct message with the person in Slack; only they see it";
+}
+
 /** What this chat is about: the first thing in the first user message, after the cached prefix. */
 export function chatContext(input: ChatContextInput): string {
   const lines = [
@@ -76,6 +90,8 @@ export function chatContext(input: ChatContextInput): string {
     `Current client: ${input.clientName}${input.clientCount && input.clientCount > 1 ? ` (one of ${input.clientCount} they work on)` : ""}`,
     `Today: ${input.today}`,
   ];
+  if (input.room) lines.push(`Where: ${input.room}`);
+  if (input.team?.length) lines.push(`${input.clientName}'s team: ${input.team.slice(0, 20).join(", ")}`);
   if (input.focusTask) lines.push(`Opened from task ${input.focusTask.ref}: ${input.focusTask.title}`);
   return `<chat_context>\n${lines.join("\n")}\n</chat_context>`;
 }

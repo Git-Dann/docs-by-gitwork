@@ -234,6 +234,12 @@ A Slack channel that isn't a client's own, or someone on no clients: Dispatch st
 conversationally (`small-talk.ts`), with no tools (`tool_choice: none`) and told not to name any
 clients. Only a Slack Connect channel gets a fixed refusal.
 
+### Knowing the room (§168)
+
+The first message of a chat tells Dispatch where it is (`roomFor`: the app, a DM, or a client's
+internal channel everyone reads) and the client's team (`clientTeam`). A new internal channel
+created by Foundry invites that team (`inviteClientTeam`), matched to Slack by email.
+
 ### The brief (§161)
 
 The panel opens on a brief, not an empty chat: the person's own tasks that need them and why,
