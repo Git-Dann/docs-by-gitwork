@@ -203,7 +203,8 @@ function Desktop() {
   const dismiss = useCallback((id: number) => {
     // Animate out, then remove: a notification that just vanishes reads as a glitch.
     setToasts((list) => list.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
-    setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), 330);
+    // Slide out (260ms), then the slot closes up (to 500ms); remove once both are done.
+    setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), 540);
   }, []);
 
   // At most three on screen; the oldest slides out to make room.

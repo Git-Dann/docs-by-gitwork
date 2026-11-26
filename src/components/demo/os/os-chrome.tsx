@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 import type { OsApp, OsWindowProps } from "@/lib/demo/os/window-manager";
 import { CASE_STUDIES, FAQ, FOUNDRY_PAGES, LAST_20, PLANS } from "@/lib/demo/os/gitwork-content";
@@ -225,14 +225,44 @@ function MenuPanel({
   );
 }
 
+const NOTCH_IDLE_MS = 5000;
+
 /* Notch — a live activity, the "last 20%" card from the website ───────────── */
 
 export function Notch({ percent, onOpenFoundry }: { percent: number; onOpenFoundry: () => void }) {
   const [open, setOpen] = useState(false);
   const shipped = percent >= 100;
   const done = Math.round((percent / 100) * LAST_20.length);
+  const ref = useRef<HTMLDivElement>(null);
+  const idle = useRef<number | undefined>(undefined);
+  // Like a live activity: a click anywhere else, Escape, or a few seconds left alone
+  // tucks it back up. Hovering it keeps it open while someone is reading.
+  const armIdle = useCallback(() => {
+    window.clearTimeout(idle.current);
+    idle.current = window.setTimeout(() => setOpen(false), NOTCH_IDLE_MS);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    armIdle();
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(idle.current);
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, armIdle]);
   return (
-    <div className="pointer-events-auto relative">
+    <div
+      ref={ref}
+      className="pointer-events-auto relative"
+      onPointerEnter={() => open && window.clearTimeout(idle.current)}
+      onPointerLeave={() => open && armIdle()}
+    >
       <button
         type="button"
         aria-expanded={open}
@@ -622,15 +652,27 @@ export function Toasts({
   onAction: (t: Toast) => void;
 }) {
   return (
-    <div aria-live="polite" className="pointer-events-none absolute right-2 top-9 z-[9500] flex w-[min(360px,calc(100vw-16px))] flex-col gap-2">
-      {toasts.map((t) => (
-        <ToastCard key={t.id} toast={t} dark={dark} onDismiss={onDismiss} onAction={onAction} />
+    <div aria-live="polite" className="pointer-events-none absolute right-2 top-9 z-[9500] flex w-[min(360px,calc(100vw-16px))] flex-col">
+      {/* Newest on top, as on a Mac. Each card sits in a slot that grows open before it
+          slides in and closes up after it slides out, so the rest of the stack glides
+          into place instead of jumping. */}
+      {[...toasts].reverse().map((t) => (
+        <div key={t.id} className={cn("os-toast-slot", t.leaving && "is-leaving")}>
+          <div className="min-h-0 pb-2">
+            <ToastCard toast={t} dark={dark} onDismiss={onDismiss} onAction={onAction} />
+          </div>
+        </div>
       ))}
       <style>{`
-        .os-toast { animation: os-toast-in .5s cubic-bezier(.2,1,.3,1.05) both; }
-        @keyframes os-toast-in { from { opacity: 0; transform: translateX(calc(100% + 16px)); } }
-        .os-toast.is-leaving { animation: os-toast-out .32s cubic-bezier(.5,0,.75,0) forwards; }
-        @keyframes os-toast-out { to { opacity: 0; transform: translateX(calc(100% + 16px)); } }
+        .os-toast-slot { display: grid; grid-template-rows: 1fr; animation: os-slot-in .32s cubic-bezier(.2,.9,.3,1) both; }
+        @keyframes os-slot-in { from { grid-template-rows: 0fr; } }
+        .os-toast-slot.is-leaving { animation: os-slot-out .3s cubic-bezier(.4,0,.2,1) .2s both; }
+        @keyframes os-slot-out { from { grid-template-rows: 1fr; } to { grid-template-rows: 0fr; } }
+        .os-toast { animation: os-toast-in .5s cubic-bezier(.2,1,.3,1.04) .22s both; }
+        @keyframes os-toast-in { from { opacity: 0; transform: translateX(calc(100% + 16px)) scale(.96); } }
+        .os-toast.is-leaving { animation: os-toast-out .26s cubic-bezier(.5,0,.75,0) both; }
+        @keyframes os-toast-out { to { opacity: 0; transform: translateX(calc(100% + 16px)) scale(.96); } }
+        @media (prefers-reduced-motion: reduce) { .os-toast-slot { animation: none; } .os-toast-slot.is-leaving { grid-template-rows: 0fr; } }
         .os-shine { background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); background-size: 250% 100%; animation: os-shine 1.6s ease-out .3s 2; }
         @keyframes os-shine { from { background-position: 150% 0 } to { background-position: -100% 0 } }
         @media (prefers-reduced-motion: reduce) { .os-toast, .os-toast.is-leaving, .os-shine { animation: none; } }
