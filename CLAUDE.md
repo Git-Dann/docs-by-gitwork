@@ -692,7 +692,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments · Money** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments · Money · Gitwork OS** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -926,3 +926,4 @@ be resolved by reading. Do not renumber either one.
 - **§167** — Dispatch chats about anything, and there's no canned "which client?"
 - **§168** — A client's new Slack channel comes with its team, and Dispatch knows the room
 - **§169** — Dispatch knows who's who
+- **§170** — Gitwork OS: a Mac in the browser that sells Gitwork
