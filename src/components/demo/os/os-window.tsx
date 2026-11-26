@@ -1,8 +1,24 @@
 "use client";
 
-import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 import { DOCK_RESERVE, MENU_BAR_H, type OsWindow } from "@/lib/demo/os/window-manager";
+import { dockIconRect } from "./os-chrome";
+
+function calm(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** The transform that shrinks a window into its dock icon (the Genie, simplified). */
+function toDock(el: HTMLElement, app: OsWindow["app"]): Keyframe | null {
+  const icon = dockIconRect(app);
+  if (!icon) return null;
+  const r = el.getBoundingClientRect();
+  const dx = icon.left + icon.width / 2 - (r.left + r.width / 2);
+  const dy = icon.top + icon.height / 2 - (r.top + r.height / 2);
+  const s = Math.max(0.04, icon.width / r.width);
+  return { transform: `translate(${dx}px, ${dy}px) scale(${s}, ${s * 0.7})`, opacity: 0.2 };
+}
 
 interface Props {
   win: OsWindow;
@@ -39,6 +55,55 @@ export function OsWindowFrame({
   children,
 }: Props) {
   const drag = useRef<{ kind: "move" | "resize"; sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const el = useRef<HTMLElement>(null);
+  const [moving, setMoving] = useState(false);
+  const busy = useRef(false);
+  const wasMinimised = useRef(win.minimised);
+
+  // Open: grow in from slightly smaller, as a Mac window does.
+  useLayoutEffect(() => {
+    if (calm() || !el.current) return;
+    el.current.animate(
+      [{ opacity: 0, transform: "scale(0.94) translateY(8px)" }, { opacity: 1, transform: "none" }],
+      { duration: 240, easing: "cubic-bezier(.2,.9,.3,1.05)" },
+    );
+  }, []);
+
+  // Restore from the dock: come back out of the icon.
+  useEffect(() => {
+    if (wasMinimised.current && !win.minimised && el.current && !calm()) {
+      const from = toDock(el.current, win.app);
+      if (from) el.current.animate([from, { opacity: 1, transform: "none" }], { duration: 380, easing: "cubic-bezier(.2,.9,.3,1)" });
+    }
+    wasMinimised.current = win.minimised;
+  }, [win.minimised, win.app]);
+
+  function animateClose() {
+    if (busy.current) return;
+    if (calm() || !el.current) return onClose();
+    busy.current = true;
+    const a = el.current.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(0.95)" }], {
+      duration: 150,
+      easing: "ease-in",
+      fill: "forwards",
+    });
+    a.onfinish = () => {
+      busy.current = false;
+      onClose();
+    };
+  }
+
+  function animateMinimise() {
+    if (busy.current) return;
+    const to = el.current && !calm() ? toDock(el.current, win.app) : null;
+    if (!to || !el.current) return onMinimise();
+    busy.current = true;
+    const a = el.current.animate([{ opacity: 1, transform: "none" }, to], { duration: 360, easing: "cubic-bezier(.55,0,.8,.4)" });
+    a.onfinish = () => {
+      busy.current = false;
+      onMinimise();
+    };
+  }
 
   function begin(kind: "move" | "resize", e: ReactPointerEvent<HTMLElement>) {
     if (compact || e.button !== 0) return;
@@ -53,6 +118,7 @@ export function OsWindowFrame({
       ox: kind === "move" ? win.x : win.w,
       oy: kind === "move" ? win.y : win.h,
     };
+    setMoving(true);
     onDragState(true);
   }
 
@@ -69,13 +135,18 @@ export function OsWindowFrame({
     if (!drag.current) return;
     drag.current = null;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    setMoving(false);
     onDragState(false);
   }
 
   const full = compact || win.maximised;
+  const vw = typeof window === "undefined" ? 1440 : window.innerWidth;
+  const vh = typeof window === "undefined" ? 900 : window.innerHeight;
+  // Both shapes use the same four properties, so zooming in and out can animate.
   const style = full
-    ? { left: 0, right: 0, top: MENU_BAR_H, bottom: compact ? DOCK_RESERVE : DOCK_RESERVE - 6, zIndex: win.z }
+    ? { left: 0, top: MENU_BAR_H, width: vw, height: vh - MENU_BAR_H - (compact ? DOCK_RESERVE : DOCK_RESERVE - 6), zIndex: win.z }
     : { left: win.x, top: win.y, width: win.w, height: win.h, zIndex: win.z };
+  const zoomTransition = moving || compact || calm() ? undefined : "left .32s cubic-bezier(.2,.9,.3,1), top .32s cubic-bezier(.2,.9,.3,1), width .32s cubic-bezier(.2,.9,.3,1), height .32s cubic-bezier(.2,.9,.3,1)";
 
   const dragHandlers = {
     onPointerDown: (e: ReactPointerEvent<HTMLElement>) => begin("move", e),
@@ -89,6 +160,7 @@ export function OsWindowFrame({
 
   return (
     <section
+      ref={el}
       role="dialog"
       aria-label={win.title}
       onPointerDownCapture={onFocus}
@@ -101,7 +173,7 @@ export function OsWindowFrame({
           ? "shadow-[0_0_0_0.5px_rgba(0,0,0,0.5),inset_0_0_0_0.5px_rgba(255,255,255,0.14),0_28px_70px_-10px_rgba(0,0,0,0.6)]"
           : "shadow-[0_0_0_0.5px_rgba(0,0,0,0.45),inset_0_0_0_0.5px_rgba(255,255,255,0.08),0_14px_36px_-8px_rgba(0,0,0,0.45)]",
       )}
-      style={style}
+      style={{ ...style, transition: zoomTransition, willChange: moving ? "left, top" : undefined }}
     >
       <header
         {...dragHandlers}
@@ -111,8 +183,8 @@ export function OsWindowFrame({
           focused={focused}
           compact={compact}
           maximised={win.maximised}
-          onClose={onClose}
-          onMinimise={onMinimise}
+          onClose={animateClose}
+          onMinimise={animateMinimise}
           onToggleMaximise={onToggleMaximise}
         />
         <span

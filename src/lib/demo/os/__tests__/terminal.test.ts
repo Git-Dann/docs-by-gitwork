@@ -26,10 +26,10 @@ describe("terminal", () => {
     expect(bad.lines[0].kind).toBe("err");
   });
 
-  it("ships with confetti, and refuses to delete things", () => {
-    expect(runTerminal("ship", ctx).effect).toEqual({ type: "egg", name: "confetti" });
+  it("ships with a launch, and refuses to delete things (which is a secret)", () => {
+    expect(runTerminal("ship", ctx).effect).toEqual({ type: "egg", name: "ship" });
     const rm = runTerminal("sudo rm -rf /", ctx);
-    expect(rm.effect).toBeUndefined();
+    expect(rm.effect).toEqual({ type: "egg", name: "sudo" });
     expect(rm.lines[0].text).toMatch(/finish them/);
   });
 

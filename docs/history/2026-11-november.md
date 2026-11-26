@@ -2785,3 +2785,36 @@ the most requested?" Dan: do it for course requests "and any other tables, tasks
 - Headers are `SortHeader` (table cells, `aria-sort`) or `SortButton` (grid headers, `aria-pressed`
   plus a title, since `aria-sort` isn't allowed on a button).
 - Tests: `table-sort.test.ts`, `course-request-sort.test.ts`, `course-demand-render.test.tsx`.
+
+### 170.1 Polish pass: motion, celebrations that mean something, and secrets as a game
+
+Dan's review of the first cut: magnified dock icons were boxed in by the shelf, confetti fired by
+itself (the notch reaching 100% on a timer, which landed while About was open), notifications
+vanished instead of animating, and party mode was just more confetti.
+
+- **Dock** is a fixed-height shelf; magnified icons rise out of it, as on a Mac (`os-chrome.tsx`).
+- **Windows** grow in on open, shrink away on close, and minimise into their own dock icon and come
+  back out of it (`os-window.tsx`, Web Animations API). Zoom animates. All of it stops under
+  prefers-reduced-motion.
+- **Notifications** slide in and out, pause while hovered, keep at most three on screen, and step
+  aside while **Notification Centre** (click the clock) is open. Notification Centre keeps history,
+  the live activity, the audit, and the secrets score with a hint for the next one.
+- **Menus** fade in and work from the keyboard (arrows walk items and menus, Escape closes).
+- **Nothing celebrates by itself.** The notch reaching 100% is a quiet "✓ Shipped" glow, not confetti.
+- **Each moment has its own celebration** (`os-celebrate.tsx`, art in `os-art.tsx`): a rocket launch
+  with smoke for Ship It, fireworks for a passed vibe check and for finding every secret, a CRT
+  power-off then a refusal and a reboot for Shut Down, a dust cloud on the dock for emptying the
+  Trash, and **party mode as a mode**: disco ball, stage lights, light spots, a sparkle cursor and a
+  dancing dock until you click the disco ball in the menu bar. Confetti is now two physics cannons.
+- **Secrets** (`src/lib/demo/os/secrets.ts`, tested): 13 Easter eggs, each a "Secret found · n of 13"
+  banner with a medal; finding all of them fires fireworks and an audit offer. Party Mode only
+  appears in the G. menu once found. Two live in Notes: an invisible P.S. at the foot of "Read me
+  first" that only shows when selected, and **famous last words** — type a developer classic ("it
+  works on my machine", "fix it later", "just one more feature"…) into Your notes and it answers.
+- **Sound** (`src/lib/demo/os/sound.ts`): synthesised, nothing downloaded, **off by default** (an
+  office demo must not make noise), toggled from the speaker in the menu bar. Party mode plays a beat.
+- ⚠️ Two bugs found by looking: the desktop was `overflow: hidden`, which code can still scroll, so
+  focusing a menu nudged the whole desktop 14px sideways (now `overflow: clip`); and the "secret
+  found" banner ran inside a React state updater, which React may run twice (moved to a ref).
+- Verified: tsc, lint and the OS tests clean; clipping audit 0 findings across 36 window ×
+  viewport states; every celebration driven and screenshotted in headless Chromium, no console errors.

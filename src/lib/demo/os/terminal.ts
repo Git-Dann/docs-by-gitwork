@@ -15,7 +15,7 @@ export interface TerminalLine {
 export type TerminalEffect =
   | { type: "open"; app: OsApp; href?: string }
   | { type: "exit" }
-  | { type: "egg"; name: "confetti" | "matrix" | "restart" | "sleep" };
+  | { type: "egg"; name: "ship" | "matrix" | "restart" | "sleep" | "sudo" | "shutdown" | "party" };
 
 export interface TerminalResult {
   lines: TerminalLine[];
@@ -129,13 +129,13 @@ export function runTerminal(input: string, ctx: { userName: string; now: Date })
           out("  ✓ security & accessibility"),
           accent(`Shipped. ${TAGLINE}`),
         ],
-        effect: { type: "egg", name: "confetti" },
+        effect: { type: "egg", name: "ship" },
       };
     case "neofetch":
       return { lines: NEOFETCH.map(out) };
     case "sudo":
       if (/rm\s+-rf/.test(arg)) {
-        return { lines: [err("Nice try. We don't delete half-built apps. We finish them.")] };
+        return { lines: [err("Nice try. We don't delete half-built apps. We finish them.")], effect: { type: "egg", name: "sudo" } };
       }
       return { lines: [err(`${ctx.userName} is not in the sudoers file. This incident will be reported to the PM.`)] };
     case "vibe":
@@ -150,6 +150,12 @@ export function runTerminal(input: string, ctx: { userName: string; now: Date })
       return { lines: [out("Restarting…")], effect: { type: "egg", name: "restart" } };
     case "sleep":
       return { lines: [out("Goodnight.")], effect: { type: "egg", name: "sleep" } };
+    case "shutdown":
+    case "halt":
+      return { lines: [out("Shutting down…")], effect: { type: "egg", name: "shutdown" } };
+    case "party":
+    case "disco":
+      return { lines: [out("🪩")], effect: { type: "egg", name: "party" } };
     case "exit":
     case "logout":
       return { lines: [], effect: { type: "exit" } };

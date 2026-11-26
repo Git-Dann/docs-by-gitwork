@@ -12,6 +12,9 @@ import {
   type Viewport,
 } from "@/lib/demo/os/window-manager";
 import type { TerminalEffect } from "@/lib/demo/os/terminal";
+import { SECRET_COUNT, parseSecrets, secretById, unlockSecret, type SecretId } from "@/lib/demo/os/secrets";
+import { playSound, startPartyBeat, type SoundName } from "@/lib/demo/os/sound";
+import { GOT_RID_OF } from "@/lib/demo/os/gitwork-content";
 import { AppIcon, DOCK_APPS, GitworkMark, appMeta } from "./os-apps";
 import {
   AboutView,
@@ -28,13 +31,32 @@ import {
   type EggName,
   type OsBridge,
 } from "./os-app-views";
-import { Clock, DesktopIcons, Dock, FileIcon, MenuBar, Notch, Spotlight, StatusIcon, Toasts, type DesktopItem, type Menu, type Toast } from "./os-chrome";
-import { BootScreen, Confetti, ForceQuit, LockScreen, MatrixRain, VibeCheck, konamiStep } from "./os-eggs";
+import {
+  Clock,
+  DesktopIcons,
+  DiscoGlyph,
+  Dock,
+  FileIcon,
+  MenuBar,
+  Notch,
+  NotificationCentre,
+  SpeakerGlyph,
+  Spotlight,
+  StatusIcon,
+  Toasts,
+  dockIconRect,
+  type DesktopItem,
+  type Menu,
+  type Toast,
+} from "./os-chrome";
+import { BootScreen, ForceQuit, LockScreen, MatrixRain, VibeCheck, konamiStep } from "./os-eggs";
+import { Confetti, CrtShutdown, Fireworks, PartyLights, Poof, Rocket } from "./os-celebrate";
 import { OsWindowFrame } from "./os-window";
 import { Wallpaper, wallpaperById, type WallpaperId } from "./os-wallpaper";
 
 const LAYOUT_KEY = "gitwork.os.layout.v1";
 const PREFS_KEY = "gitwork.os.prefs.v1";
+const SECRETS_KEY = "gitwork.os.secrets.v1";
 /** Below this the desktop becomes a phone/tablet layout: full-screen sheets, no dragging. */
 const COMPACT_BELOW = 1024;
 
@@ -125,6 +147,13 @@ export function GitworkOs() {
   return <Desktop />;
 }
 
+
+type Celebration =
+  | { kind: "confetti"; seed: number }
+  | { kind: "fireworks"; seed: number }
+  | { kind: "rocket"; seed: number }
+  | { kind: "poof"; seed: number; x: number; y: number };
+
 function Desktop() {
   const vp = useViewport();
   const now = useNow();
@@ -136,57 +165,178 @@ function Desktop() {
       height: window.innerHeight,
     }),
   );
-  const prefs = useMemo(() => readJson<{ appearance?: Appearance; wallpaper?: WallpaperId }>(PREFS_KEY) ?? {}, []);
+  const prefs = useMemo(() => readJson<{ appearance?: Appearance; wallpaper?: WallpaperId; sound?: boolean }>(PREFS_KEY) ?? {}, []);
   const [appearance, setAppearance] = useState<Appearance>(prefs.appearance === "light" ? "light" : "dark");
   const [wallpaper, setWallpaper] = useState<WallpaperId>(prefs.wallpaper ?? "indigo");
+  // Off by default: a sales demo opened in an office must not start making noise.
+  const [sound, setSound] = useState<boolean>(prefs.sound === true);
+  const [secrets, setSecrets] = useState<SecretId[]>(() => parseSecrets(readJson(SECRETS_KEY)));
   const [dragging, setDragging] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [history, setHistory] = useState<Toast[]>([]);
+  const [centre, setCentre] = useState(false);
   const [bouncing, setBouncing] = useState<OsApp | null>(null);
   const [spotlight, setSpotlight] = useState(false);
   const [egg, setEgg] = useState<EggName | null>(null);
-  const [confetti, setConfetti] = useState(0);
+  const [celebrations, setCelebrations] = useState<Celebration[]>([]);
   const [party, setParty] = useState(false);
+  const [crt, setCrt] = useState(false);
   const [showSeconds, setShowSeconds] = useState(false);
   const [percent, setPercent] = useState(67);
   const logoClicks = useRef<number[]>([]);
   const toastId = useRef(0);
+  const celebrationId = useRef(0);
   const konami = useRef(0);
+  const shippedByVibe = useRef(false);
 
-  // Persist the layout and preferences.
+  // Persist the layout, preferences and secrets.
   useEffect(() => writeJson(LAYOUT_KEY, { windows: state.windows }), [state.windows]);
-  useEffect(() => writeJson(PREFS_KEY, { appearance, wallpaper }), [appearance, wallpaper]);
+  useEffect(() => writeJson(PREFS_KEY, { appearance, wallpaper, sound }), [appearance, wallpaper, sound]);
+  useEffect(() => writeJson(SECRETS_KEY, secrets), [secrets]);
   // Keep every title bar reachable when the browser window shrinks.
   useEffect(() => dispatch({ type: "fit", viewport: vp }), [vp]);
 
-  const notify = useCallback((t: Omit<Toast, "id">) => {
-    const id = ++toastId.current;
-    setToasts((list) => [...list.slice(-2), { ...t, id }]);
-    setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), 9000);
+  const play = useCallback((name: SoundName) => sound && playSound(name), [sound]);
+
+  /* Notifications ─────────────────────────────────────────────────────── */
+
+  const dismiss = useCallback((id: number) => {
+    // Animate out, then remove: a notification that just vanishes reads as a glitch.
+    setToasts((list) => list.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), 330);
   }, []);
+
+  // At most three on screen; the oldest slides out to make room.
+  useEffect(() => {
+    const live = toasts.filter((t) => !t.leaving);
+    if (live.length > 3) dismiss(live[0].id);
+  }, [toasts, dismiss]);
+
+  const notify = useCallback(
+    (t: Omit<Toast, "id">) => {
+      const id = ++toastId.current;
+      const toast = { ...t, id, at: Date.now() };
+      setToasts((list) => [...list, toast]);
+      setHistory((h) => [...h.slice(-19), toast]);
+      play(t.kind === "achievement" ? "achievement" : "chime");
+    },
+    [play],
+  );
+
+  /* Celebrations ──────────────────────────────────────────────────────── */
+
+  const celebrate = useCallback((c: Omit<Celebration, "seed"> & { x?: number; y?: number }) => {
+    const seed = ++celebrationId.current;
+    setCelebrations((list) => [...list, { ...c, seed } as Celebration]);
+  }, []);
+  const finish = useCallback((seed: number) => setCelebrations((list) => list.filter((c) => c.seed !== seed)), []);
+
+  /* Secrets ───────────────────────────────────────────────────────────── */
+
+  // Read through a ref, not inside a state updater: React may run an updater twice,
+  // which would show the same "secret found" banner twice.
+  const secretsRef = useRef(secrets);
+  secretsRef.current = secrets;
+  const discover = useCallback(
+    (id: SecretId) => {
+      const r = unlockSecret(secretsRef.current, id);
+      if (!r.isNew) return;
+      secretsRef.current = r.found;
+      setSecrets(r.found);
+      const s = secretById(id);
+      // After the moment itself, so the banner doesn't land on top of it.
+      setTimeout(() => {
+        notify({ kind: "achievement", title: s.title, body: s.found, progress: { found: r.found.length, total: SECRET_COUNT } });
+        if (r.complete) {
+          setTimeout(() => {
+            celebrate({ kind: "fireworks" });
+            notify({
+              title: "Every secret found",
+              body: "You'd be good at finding what's missing in an app, too. We are. Fancy a free audit?",
+              action: { label: "Book", app: "calendar" },
+            });
+          }, 1400);
+        }
+      }, 900);
+    },
+    [notify, celebrate],
+  );
+
+  /* Apps ──────────────────────────────────────────────────────────────── */
 
   const open = useCallback(
     (app: OsApp, props?: OsWindowProps) => {
       const already = state.windows.some((w) => w.app === app);
       if (!already) {
         setBouncing(app);
-        setTimeout(() => setBouncing((b) => (b === app ? null : b)), 1100);
+        setTimeout(() => setBouncing((b) => (b === app ? null : b)), 1200);
+        play("pop");
       }
+      if (app === "about") discover("about");
       dispatch({ type: "open", app, title: appMeta(app).title, props, viewport: vp });
     },
-    [state.windows, vp],
+    [state.windows, vp, play, discover],
   );
 
-  const fireConfetti = useCallback(() => {
-    setConfetti(Date.now());
-    setTimeout(() => setConfetti(0), 3400);
-  }, []);
+  /* Eggs ──────────────────────────────────────────────────────────────── */
+
+  const shipIt = useCallback(() => {
+    play("launch");
+    celebrate({ kind: "rocket" });
+    discover("ship");
+  }, [play, celebrate, discover]);
+
+  const partyRef = useRef(party);
+  partyRef.current = party;
+  const toggleParty = useCallback(
+    (on?: boolean) => {
+      const next = on ?? !partyRef.current;
+      if (next && !partyRef.current) {
+        discover("party");
+        notify({ title: "Party mode", body: "Shipping is worth celebrating. Click the disco ball in the menu bar to stop." });
+      }
+      partyRef.current = next;
+      setParty(next);
+    },
+    [discover, notify],
+  );
 
   const runEgg = useCallback(
     (name: EggName) => {
-      if (name === "confetti") fireConfetti();
-      else setEgg(name);
+      switch (name) {
+        case "confetti":
+          celebrate({ kind: "confetti" });
+          break;
+        case "ship":
+          shipIt();
+          break;
+        case "trash": {
+          const r = dockIconRect("trash");
+          play("thud");
+          celebrate({ kind: "poof", x: r ? r.left + r.width / 2 : vp.width / 2, y: r ? r.top + r.height / 3 : vp.height - 60 });
+          discover("trash");
+          break;
+        }
+        case "sudo":
+          discover("sudo");
+          break;
+        case "shutdown":
+          play("thud");
+          setCrt(true);
+          discover("shutdown");
+          break;
+        case "party":
+          toggleParty(true);
+          break;
+        case "matrix":
+          setEgg("matrix");
+          discover("konami");
+          break;
+        default:
+          setEgg(name);
+      }
     },
-    [fireConfetti],
+    [celebrate, shipIt, play, vp, discover, toggleParty],
   );
 
   // First-run notifications, the way vorssaint.com greets you.
@@ -203,30 +353,38 @@ function Desktop() {
     const b = setTimeout(
       () =>
         notify({
-          title: "Got something half-built?",
-          body: "A free 30-minute audit with a real engineer. No slide deck, no sales pitch.",
-          action: { label: "Book", app: "calendar" },
+          title: `There are ${SECRET_COUNT} secrets on this Mac`,
+          body: "Click the clock to keep score. The G. in the top left is a good place to start.",
         }),
-      14000,
+      16000,
     );
     return () => {
       clearTimeout(a);
       clearTimeout(b);
     };
-  }, [notify]);
+    // Once, on boot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // The live activity ticks from 67% (the site's figure) to shipped.
+  // The live activity ticks from 67% (the site's figure) to shipped. Reaching 100% is
+  // a quiet moment in the notch, not a burst on top of whatever someone is reading.
   useEffect(() => {
     if (percent >= 100) return;
     const t = setTimeout(() => setPercent((p) => Math.min(100, p + (p < 83 ? 16 : 17))), 22000);
     return () => clearTimeout(t);
   }, [percent]);
   useEffect(() => {
-    if (percent === 100) {
-      fireConfetti();
-      notify({ title: "Shipped", body: "The last 20% is done. Ready for production.", action: { label: "See it", app: "foundry" } });
-    }
-  }, [percent, fireConfetti, notify]);
+    if (percent !== 100 || shippedByVibe.current) return;
+    discover("notch");
+    notify({ title: "Shipped", body: "The last 20% is done. Ready for production.", action: { label: "See it", app: "foundry", props: { href: "/demo/wiki" } } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [percent]);
+
+  // Party mode: a beat, if sound is on.
+  useEffect(() => {
+    if (!party || !sound) return;
+    return startPartyBeat();
+  }, [party, sound]);
 
   // Keyboard: ⌘K / Ctrl+K for Spotlight, the Konami code for the Matrix.
   useEffect(() => {
@@ -241,12 +399,12 @@ function Desktop() {
       konami.current = konamiStep(konami.current, e.key);
       if (konami.current === 10) {
         konami.current = 0;
-        setEgg("matrix");
+        runEgg("matrix");
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [runEgg]);
 
   const focused = focusedId(state);
   const focusedWin = state.windows.find((w) => w.id === focused) ?? null;
@@ -259,10 +417,7 @@ function Desktop() {
     logoClicks.current = [...logoClicks.current.filter((x) => t - x < 1600), t];
     if (logoClicks.current.length >= 5) {
       logoClicks.current = [];
-      setParty(true);
-      fireConfetti();
-      notify({ title: "You found party mode", body: "Shipping is worth celebrating. It wears off in ten seconds." });
-      setTimeout(() => setParty(false), 10000);
+      toggleParty(true);
     }
   }
 
@@ -270,6 +425,7 @@ function Desktop() {
     if (focused) dispatch({ type: "close", id: focused });
   }
 
+  const partyFound = secrets.includes("party");
   const menus: Menu[] = [
     {
       id: "logo",
@@ -282,16 +438,13 @@ function Desktop() {
         { label: "Spotlight Search", shortcut: "⌘K", onSelect: () => setSpotlight(true) },
         "sep",
         { label: "Run a Vibe Check…", onSelect: () => setEgg("vibe") },
-        { label: "Ship It", onSelect: () => fireConfetti() },
+        { label: "Ship It", onSelect: shipIt },
+        ...(partyFound ? [{ label: "Party Mode", checked: party, onSelect: () => toggleParty() }] : []),
         { label: "Force Quit…", shortcut: "⌥⌘⎋", onSelect: () => setEgg("forcequit") },
         "sep",
         { label: "Sleep", onSelect: () => setEgg("sleep") },
         { label: "Restart…", onSelect: () => setEgg("restart") },
-        {
-          label: "Shut Down…",
-          onSelect: () =>
-            notify({ title: "Not before launch", body: "Nobody shuts down with payments half-built. Book an audit instead.", action: { label: "Book", app: "calendar" } }),
-        },
+        { label: "Shut Down…", onSelect: () => runEgg("shutdown") },
         "sep",
         { label: "Lock Screen", shortcut: "⌃⌘Q", onSelect: () => setEgg("sleep") },
         { label: "Log Out of the Demo…", onSelect: () => (window.location.href = "/demo") },
@@ -332,6 +485,9 @@ function Desktop() {
         { label: "Dark Appearance", checked: appearance === "dark", onSelect: () => setAppearance("dark") },
         { label: "Light Appearance", checked: appearance === "light", onSelect: () => setAppearance("light") },
         { label: "Show Seconds in Clock", checked: showSeconds, onSelect: () => setShowSeconds((s) => !s) },
+        { label: "Sound Effects", checked: sound, onSelect: () => setSound((v) => !v) },
+        "sep",
+        { label: "Notification Centre", onSelect: () => setCentre(true) },
       ],
     },
     {
@@ -374,6 +530,7 @@ function Desktop() {
       desktopOnly: true,
       items: [
         { label: "Gitwork OS Help", onSelect: () => open("notes", { item: "welcome" }) },
+        { label: "Secrets & Hints", onSelect: () => setCentre(true) },
         { label: "Honest Answers", onSelect: () => open("notes", { item: "faq" }) },
         { label: "Talk to a Human", onSelect: () => open("mail") },
       ],
@@ -398,6 +555,9 @@ function Desktop() {
     resetDesktop: () => dispatch({ type: "closeAll" }),
     egg: runEgg,
     notify: (t) => notify({ title: t.title, body: t.body, action: t.action }),
+    secretsFound: secrets.length,
+    secretsTotal: SECRET_COUNT,
+    secret: discover,
   });
 
   function onTerminalEffect(id: string, e: TerminalEffect) {
@@ -440,7 +600,9 @@ function Desktop() {
 
   return (
     <div
-      className={cn("fixed inset-0 select-none overflow-hidden", dragging && "[&_iframe]:pointer-events-none")}
+      // overflow:clip, not hidden: a hidden box can still be scrolled by focus() or
+      // scrollIntoView, which nudged the whole desktop sideways when a menu took focus.
+      className={cn("fixed inset-0 select-none overflow-clip", dragging && "[&_iframe]:pointer-events-none")}
       style={{
         ...APPEARANCE[appearance],
         fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter Variable", Inter, system-ui, sans-serif',
@@ -472,6 +634,8 @@ function Desktop() {
         ))}
       </div>
 
+      {party ? <PartyLights /> : null}
+
       <MenuBar
         dark={wp.dark}
         menus={menus}
@@ -479,6 +643,14 @@ function Desktop() {
         notch={<Notch percent={percent} onOpenFoundry={() => open("foundry", { href: "/demo/wiki" })} />}
         right={
           <>
+            {party ? (
+              <StatusIcon label="Party mode is on. Click to stop." active onClick={() => toggleParty(false)}>
+                <DiscoGlyph />
+              </StatusIcon>
+            ) : null}
+            <StatusIcon label={sound ? "Sound effects on" : "Sound effects off"} active={sound} onClick={() => setSound((v) => !v)}>
+              <SpeakerGlyph on={sound} />
+            </StatusIcon>
             <span className="hidden lg:contents">
               <StatusIcon label="Foundry" onClick={() => open("foundry")}>
                 <span className="font-[family-name:var(--font-display)] text-[15px] leading-none">F</span>
@@ -502,9 +674,11 @@ function Desktop() {
                 <path d="M13 13l4 4" strokeLinecap="round" />
               </svg>
             </StatusIcon>
-            <StatusIcon label="Date and time (click for seconds)" onClick={() => setShowSeconds((s) => !s)}>
-              <Clock now={now} showSeconds={showSeconds} />
-            </StatusIcon>
+            <span data-nc-toggle className="contents">
+              <StatusIcon label="Notification Centre" active={centre} onClick={() => setCentre((c) => !c)}>
+                <Clock now={now} showSeconds={showSeconds} />
+              </StatusIcon>
+            </span>
           </>
         }
       />
@@ -512,23 +686,41 @@ function Desktop() {
       <Dock
         dark={wp.dark}
         compact={compact}
+        party={party}
         running={running}
         bouncing={bouncing}
         onActivate={(app) => {
           if (!state.windows.some((w) => w.app === app)) {
             setBouncing(app);
-            setTimeout(() => setBouncing((b) => (b === app ? null : b)), 1100);
+            setTimeout(() => setBouncing((b) => (b === app ? null : b)), 1200);
+            play("pop");
           }
           dispatch({ type: "dock", app, title: appMeta(app).title, viewport: vp });
         }}
       />
 
-      <Toasts
-        toasts={toasts}
+      <NotificationCentre
+        open={centre}
+        now={now}
         dark={wp.dark}
-        onDismiss={(id) => setToasts((l) => l.filter((t) => t.id !== id))}
+        history={history}
+        secrets={secrets}
+        percent={percent}
+        onClose={() => setCentre(false)}
+        onClear={() => setHistory([])}
+        onOpenApp={(app, props) => {
+          setCentre(false);
+          open(app, props);
+        }}
+      />
+
+      <Toasts
+        // Banners step aside while Notification Centre is open, as on a Mac.
+        toasts={centre ? [] : toasts}
+        dark={wp.dark}
+        onDismiss={dismiss}
         onAction={(t) => {
-          setToasts((l) => l.filter((x) => x.id !== t.id));
+          dismiss(t.id);
           if (t.action) open(t.action.app, t.action.props);
         }}
       />
@@ -542,29 +734,65 @@ function Desktop() {
         }}
       />
 
-      {confetti ? <Confetti seed={confetti} /> : null}
+      {celebrations.map((c) =>
+        c.kind === "confetti" ? (
+          <Confetti key={c.seed} seed={c.seed} onDone={() => finish(c.seed)} />
+        ) : c.kind === "fireworks" ? (
+          <Fireworks key={c.seed} seed={c.seed} onDone={() => finish(c.seed)} />
+        ) : c.kind === "rocket" ? (
+          <Rocket key={c.seed} onBurst={() => celebrate({ kind: "confetti" })} onDone={() => finish(c.seed)} />
+        ) : (
+          <Poof key={c.seed} x={c.x} y={c.y} onDone={() => finish(c.seed)} />
+        ),
+      )}
+
       {egg === "vibe" ? (
         <VibeCheck
           onClose={() => setEgg(null)}
           onShipped={() => {
-            fireConfetti();
+            shippedByVibe.current = true;
+            celebrate({ kind: "fireworks" });
+            play("achievement");
             setPercent(100);
+            discover("vibe");
           }}
         />
       ) : null}
       {egg === "forcequit" ? (
         <ForceQuit
           onClose={() => setEgg(null)}
-          onQuit={(name) => notify({ title: "Force quit", body: `${name} quit unexpectedly. It won't be back.` })}
+          onQuit={(name, remaining) => {
+            play("whoosh");
+            notify({ title: "Force quit", body: `${name} quit unexpectedly. It won't be back.` });
+            if (remaining === 0 && GOT_RID_OF.length) discover("forcequit");
+          }}
         />
       ) : null}
       {egg === "matrix" ? <MatrixRain onDone={() => setEgg(null)} /> : null}
-      {egg === "sleep" ? <LockScreen now={now} wallpaper={wp.css} onWake={() => setEgg(null)} /> : null}
+      {egg === "sleep" ? (
+        <LockScreen
+          now={now}
+          wallpaper={wp.css}
+          onWake={() => {
+            setEgg(null);
+            discover("sleep");
+          }}
+        />
+      ) : null}
       {egg === "restart" ? (
         <BootScreen
           onDone={() => {
             setEgg(null);
+            play("boot");
             notify({ title: "Welcome back", body: "Restarted. Your windows are where you left them." });
+          }}
+        />
+      ) : null}
+      {crt ? (
+        <CrtShutdown
+          onDone={() => {
+            setCrt(false);
+            setEgg("restart");
           }}
         />
       ) : null}
