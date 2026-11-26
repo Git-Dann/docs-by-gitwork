@@ -488,33 +488,8 @@ export function CourseRequestsSection({
     <div>
       {feed !== undefined && <FeedHealthLine feed={feed} />}
 
-      {/* ── Count summary — mono data-label per DESIGN.md ───────────── */}
-      {requests.length > 0 && (
-        <div
-          className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-0.5"
-          style={{ fontFamily: MONO }}
-        >
-          <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)]">
-            {activeRequests.length} active
-          </span>
-          {ACTIVE_STATUSES.filter((s) => counts[s] > 0).map((s) => (
-            <span
-              key={s}
-              className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
-            >
-              · {counts[s]} {STATUS_LABEL[s]}
-            </span>
-          ))}
-          {addedRequests.length > 0 && (
-            <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]">
-              · {addedRequests.length} Added
-            </span>
-          )}
-        </div>
-      )}
-
       {/* ── Filter tabs — rounded-[6px] per DESIGN.md (no pills) ─────── */}
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+      <div className="mb-4 flex flex-wrap items-center gap-1.5 gap-y-2">
         {(["ALL", ...ACTIVE_STATUSES] as Array<"ALL" | ActiveStatus>).map(
           (s) => (
             <button
@@ -522,7 +497,7 @@ export function CourseRequestsSection({
               type="button"
               onClick={() => setFilter(s)}
               className={[
-                "rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
+                "inline-flex h-8 items-center whitespace-nowrap rounded-[6px] px-2.5 text-[12px] font-medium transition",
                 filter === s
                   ? "bg-[var(--text-1)] text-[var(--surface-0)]"
                   : "border border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
@@ -543,7 +518,7 @@ export function CourseRequestsSection({
             onClick={() => setFilter("UNNAMED")}
             title="Requests with no course name — they show as “Untitled Course” and cannot be actioned"
             className={[
-              "rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
+              "inline-flex h-8 items-center whitespace-nowrap rounded-[6px] px-2.5 text-[12px] font-medium transition",
               filter === "UNNAMED"
                 ? "bg-amber-600 text-white"
                 : "border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100",
@@ -554,12 +529,12 @@ export function CourseRequestsSection({
         )}
         {/* On a phone the tabs wrap first, so this group takes its own full-width
             row rather than leaving a 190px search stub floated right. */}
-        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+        <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
           {!readOnly && filtered.length > 1 && (
             <button
               type="button"
               onClick={toggleAll}
-              className="text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+              className="shrink-0 whitespace-nowrap text-[12px] font-medium text-[var(--text-3)] transition hover:text-[var(--text-1)]"
               style={{ fontFamily: MONO }}
             >
               {allVisibleSelected ? "Deselect all" : "Select all"}
@@ -576,7 +551,7 @@ export function CourseRequestsSection({
               const [key, dir] = v.split(":") as [CourseSortKey, "asc" | "desc"];
               setSort({ key, dir });
             }}
-            className="app-select-compact app-select-chevron h-8 shrink-0 pr-7 text-[16px] sm:text-[12px]"
+            className="app-select-compact app-select-chevron !min-h-0 ml-auto h-8 w-auto shrink-0 sm:ml-0 pr-8 text-[16px] sm:text-[12px]"
             data-course-sort-picker
           >
             {searching && !sort ? <option value="best">Best match</option> : null}
@@ -595,7 +570,7 @@ export function CourseRequestsSection({
           </select>
           {/* Search sits opposite the status tabs, and deliberately searches every
               status rather than the selected tab — see the `searching` note above. */}
-          <div className="relative min-w-0 flex-1 sm:flex-none">
+          <div className="relative order-first min-w-0 basis-full sm:order-none sm:basis-auto">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-4)]" />
             <input
               type="search"
@@ -603,7 +578,7 @@ export function CourseRequestsSection({
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Find any course…"
               aria-label="Search all course requests"
-              className="app-input-compact w-full pl-8 pr-7 sm:w-[190px]"
+              className="app-input-compact !min-h-0 h-8 w-full pl-8 pr-7 sm:w-[200px]"
             />
             {searching && (
               <button
