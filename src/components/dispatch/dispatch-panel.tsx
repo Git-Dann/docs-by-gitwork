@@ -39,9 +39,10 @@ import { Listbox, ListboxButton, ListboxOption, ListboxOptions, Popover, Popover
 import { Markdown } from "@/lib/markdown";
 import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import { cn } from "@/lib/format";
-import { viewAsHeaders, apiFetch } from "@/lib/api";
+import { viewAsHeaders, apiFetch, listClients } from "@/lib/api";
 import { useClientList } from "@/hooks/use-proposals";
-import { useDispatchAvailable, useDispatchBrief, type DispatchBrief } from "@/hooks/use-dispatch";
+import { briefQuery, useDispatchAvailable, useDispatchBrief, type DispatchBrief } from "@/hooks/use-dispatch";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/motion/spinner";
 import { Skeleton } from "@/components/ui/motion/skeleton";
@@ -151,7 +152,9 @@ export function DispatchPanel() {
     [clients.data],
   );
   const clientName = clientOptions.find((c) => c.slug === clientSlug)?.name;
-  const brief = useDispatchBrief(clientSlug, focusTaskId, open && available === true && items.length === 0);
+  // Loads alongside the availability check, not after it (the route checks access itself), and
+  // usually it's already there: the header button fetches it ahead (§175).
+  const brief = useDispatchBrief(clientSlug, focusTaskId, open && available !== false && items.length === 0);
 
   const reset = useCallback(() => {
     setConversationId(null);
@@ -517,6 +520,8 @@ export function DispatchPanel() {
             <p className="px-5 py-6 text-sm text-[var(--text-3)]">Dispatch isn&apos;t switched on for your account yet.</p>
           ) : clients.data && clientOptions.length === 0 ? (
             <p className="px-5 py-6 text-sm text-[var(--text-3)]">You&apos;re not on any clients yet. Once you are, Dispatch can brief you on them.</p>
+          ) : !clientSlug && !clients.data ? (
+            <BriefLoading firstName={firstName} clientName={null} />
           ) : !clientSlug ? (
             <ClientChooser clients={clientOptions} onPick={chooseClient} firstName={firstName} />
           ) : !inChat ? (
@@ -525,6 +530,7 @@ export function DispatchPanel() {
               loading={brief.isLoading}
               error={brief.error ? (brief.error as Error).message : null}
               firstName={firstName}
+              clientName={clientName ?? null}
               focusTaskId={focusTaskId}
               clientSlug={clientSlug}
               onAsk={(prompt, taskId) => void ask(prompt, { taskId })}
@@ -782,6 +788,7 @@ function BriefView({
   loading,
   error,
   firstName,
+  clientName,
   focusTaskId,
   clientSlug,
   onAsk,
@@ -792,6 +799,7 @@ function BriefView({
   loading: boolean;
   error: string | null;
   firstName: string | null;
+  clientName: string | null;
   focusTaskId: string | null;
   clientSlug: string;
   onAsk: (prompt: string, taskId?: string) => void;
@@ -809,9 +817,11 @@ function BriefView({
   if (error) {
     return <p className="mx-4 my-5 rounded-[8px] border border-[var(--warning-50)] bg-[var(--warning-50)] px-3 py-2 text-xs text-[var(--warning-500)]">{error}</p>;
   }
+  // Never an empty panel while the brief is on its way (Dan, 26 Nov): say what's happening.
+  if (!brief || loading) return <BriefLoading firstName={firstName} clientName={clientName} />;
 
   return (
-    <div className="space-y-6 px-4 pb-6 pt-5">
+    <div className="motion-rise space-y-6 px-4 pb-6 pt-5">
       {/* Greeting */}
       <div className="px-1">
         <p className="text-[11px] uppercase tracking-[0.8px] text-[var(--text-4)]" style={MONO}>
@@ -977,6 +987,118 @@ function BriefView({
         ) : null}
       </section>
     </div>
+  );
+}
+
+/** What Dispatch is doing while the brief loads, typed out one step at a time. */
+const LOADING_STEPS = (client: string | null) =>
+  client
+    ? [`Reading ${client}'s board`, "Checking what's yours", "Looking at the next release", "Seeing who's on what", "Putting your brief together"]
+    : ["Finding your clients", "Getting things ready"];
+
+/**
+ * The panel while the brief (or the client list) loads (§175): the real greeting straight away,
+ * a progress bar, a line that types out what Dispatch is doing, and a placeholder in the shape of
+ * the brief. Dan, 26 Nov 2026: "we just can't be having bad empty states".
+ */
+function BriefLoading({ firstName, clientName }: { firstName: string | null; clientName: string | null }) {
+  const now = new Date();
+  const steps = LOADING_STEPS(clientName);
+  return (
+    <div className="space-y-6 px-4 pb-6 pt-5">
+      <div className="px-1">
+        <p className="text-[11px] uppercase tracking-[0.8px] text-[var(--text-4)]" style={MONO}>
+          {shortDay(now, browserTimeZone())}
+          {clientName ? ` · ${clientName}` : ""}
+        </p>
+        <p className="mt-1 text-[19px] font-semibold tracking-[-0.2px] text-[var(--text-1)]">
+          {greeting(now)}
+          {firstName ? `, ${firstName}` : ""}.
+        </p>
+        <div className="mt-2 flex items-center gap-2 text-sm text-[var(--text-3)]">
+          <SparklesIcon className="h-4 w-4 shrink-0 animate-pulse text-[var(--brand-600)]" aria-hidden />
+          <TypedSteps steps={steps} />
+        </div>
+        <div className="motion-progress-track mt-3" aria-hidden>
+          <div className="motion-progress-bar" />
+        </div>
+      </div>
+      {/* The brief's own shape, so nothing jumps when it arrives. */}
+      <div className="grid grid-cols-4 overflow-hidden rounded-[10px] border border-[var(--border-2)]" aria-hidden>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className={cn("space-y-1.5 px-3 py-2.5", i > 0 && "border-l border-[var(--border-2)]")}>
+            <Skeleton className="h-6 w-8" />
+            <Skeleton className="h-3 w-14" />
+          </div>
+        ))}
+      </div>
+      <div aria-hidden>
+        <Skeleton className="mb-2 h-3 w-28" />
+        <div className="divide-y divide-[var(--border-2)] overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+          {["w-3/4", "w-1/2", "w-2/3"].map((w) => (
+            <div key={w} className="flex items-center gap-2.5 px-3 py-3">
+              <Skeleton className="h-1.5 w-1.5 rounded-full" />
+              <Skeleton className={cn("h-3.5", w)} />
+              <Skeleton className="ml-auto h-4 w-16" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-2" aria-hidden>
+        <Skeleton className="h-3 w-24" />
+        {[0, 1].map((i) => (
+          <div key={i} className="flex items-center gap-3 rounded-[10px] border border-[var(--border-2)] px-3 py-2.5">
+            <Skeleton className="h-8 w-8 rounded-[8px]" />
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-3.5 w-2/3" />
+              <Skeleton className="h-3 w-1/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Types each step out, holds it, then the next; the last one stays. A screen reader hears each
+ * step once, whole (the typing itself is hidden from it), and anyone who prefers reduced motion
+ * sees each step whole.
+ */
+function TypedSteps({ steps }: { steps: readonly string[] }) {
+  const [index, setIndex] = useState(0);
+  const [shown, setShown] = useState(0);
+  const step = steps[Math.min(index, steps.length - 1)];
+  useEffect(() => {
+    const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      setShown(step.length);
+      if (index >= steps.length - 1) return;
+      const t = window.setTimeout(() => setIndex((i) => i + 1), 1400);
+      return () => window.clearTimeout(t);
+    }
+    if (shown < step.length) {
+      const t = window.setTimeout(() => setShown((n) => n + 1), 28);
+      return () => window.clearTimeout(t);
+    }
+    if (index >= steps.length - 1) return;
+    const t = window.setTimeout(() => {
+      setIndex((i) => i + 1);
+      setShown(0);
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [shown, index, step, steps.length]);
+  return (
+    <span className="min-w-0 truncate">
+      <span className="sr-only" role="status" aria-live="polite">
+        {step}…
+      </span>
+      <span aria-hidden>
+        {step.slice(0, shown)}
+        {shown >= step.length ? "…" : null}
+        <span className="motion-caret text-[var(--brand-600)]" />
+      </span>
+    </span>
   );
 }
 
@@ -1163,10 +1285,31 @@ function ChatItem({
 /** Icon-only header button that opens Dispatch. Hidden until the person can use it. */
 export function DispatchButton({ className }: { className?: string }) {
   const available = useDispatchAvailable();
+  const queryClient = useQueryClient();
+  // Fetch the brief (and the client list) before the panel opens, so it opens on the brief rather
+  // than a loading state (§175): once when the app is idle, and again on hover or focus.
+  const prefetch = useCallback(() => {
+    const slug = /^\/app\/portal\/([^/?#]+)/.exec(window.location.pathname)?.[1] ?? readLastClient();
+    void queryClient.prefetchQuery({ queryKey: ["clients", undefined], queryFn: () => listClients(undefined), staleTime: 60_000 });
+    if (slug) void queryClient.prefetchQuery(briefQuery(slug, null));
+  }, [queryClient]);
+  useEffect(() => {
+    // Only for someone who's used Dispatch before (a remembered client); hover covers the rest.
+    if (!available || !readLastClient()) return;
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number; cancelIdleCallback?: (id: number) => void };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(prefetch);
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(prefetch, 1500);
+    return () => window.clearTimeout(t);
+  }, [available, prefetch]);
   if (!available) return null;
   return (
     <button
       type="button"
+      onPointerEnter={prefetch}
+      onFocus={prefetch}
       onClick={() => {
         const m = /^\/app\/portal\/([^/?#]+)/.exec(window.location.pathname);
         openDispatch({ clientSlug: m?.[1] });

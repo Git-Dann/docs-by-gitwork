@@ -931,3 +931,4 @@ be resolved by reading. Do not renumber either one.
 - **§172** — Dispatch reads the Slack conversation, and you can reply without @Foundry
 - **§173** — Dispatch sees your calendar, checks its links, and remembers you
 - **§174** — Dispatch talks in your timezone
+- **§175** — No empty panel: Dispatch loads properly, and a stale tab says so

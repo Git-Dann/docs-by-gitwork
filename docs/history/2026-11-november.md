@@ -2869,3 +2869,33 @@ and much of the team works from Pakistan.
   brief shows them as written in any zone (`shortDay` defaults to UTC); moments (the panel's date
   line, when a chat was last used) use the browser's zone.
 - Tests: `src/lib/dispatch/__tests__/time.test.ts`.
+
+## 175. Recent Changes (November 2026) — No empty panel: Dispatch loads properly, and a stale tab says so
+
+Dan, 26 Nov: "opening up the side panel this morning it looked like the blank chat box… and the
+input was also the old design… then after a few seconds I got [the brief]… if it takes a bit to
+load, add some loading text, or have it type some on-the-nose loading text, an animation, the
+skeleton, a loading bar… we just can't be having bad empty states."
+
+Two causes, two fixes:
+
+- **A tab left open overnight was running yesterday's code.** Nothing told it Foundry had been
+  deployed. `UpdateWatcher` (`src/components/update-watcher.tsx`, in the app shell) notes the
+  deployed commit from `/api/health` when the page loads, checks again when the tab comes back
+  into view and every 10 minutes, and when a newer one is live shows a "Foundry has been updated ·
+  Refresh" pill; the next move to another page reloads instead, so nobody loses what they were
+  typing.
+- **The few seconds before the brief.** The panel now never shows an empty state:
+  - `BriefLoading`: the real greeting and date at once, a sparkle, a line that types out what
+    Dispatch is doing ("Reading Wedge's board…", "Checking what's yours…", "Looking at the next
+    release…", "Seeing who's on what…", `TypedSteps`), an indeterminate progress bar
+    (`.motion-progress-track`/`-bar` in globals.css), and a placeholder in the brief's own shape
+    (four number tiles, three rows, two suggestion cards) so nothing jumps when it arrives; the
+    brief then rises in (`motion-rise`). The same view covers the moment before the client list
+    is known (no more empty "which client" list). A screen reader hears each step once, whole;
+    reduced motion shows whole steps, a still bar and no blinking caret.
+  - **Faster**: the brief used to wait for the availability check to finish before it even
+    started; it now loads alongside it (the route checks access itself). And the header button
+    fetches the brief and the client list ahead of time (`briefQuery`, `prefetchQuery`): when the
+    app is idle, for anyone who's used Dispatch before, and on hover or focus, so the panel usually
+    opens straight onto the brief.
