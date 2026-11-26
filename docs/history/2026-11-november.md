@@ -2845,3 +2845,27 @@ Portal).
   them shape the reply but doesn't read them out. Saving needs no confirming: they're Dispatch's own
   notes, not a change to Foundry.
 - Tests: `calendar-links-memory.test.ts`.
+
+## 174. Recent Changes (November 2026) — Dispatch talks in your timezone
+
+Dan, 26 Nov: "we need to make sure we cater for other timezones". Dispatch told everyone UK time,
+and much of the team works from Pakistan.
+
+- **Whose time** (`pickTimeZone`, `src/lib/dispatch/time.ts`; `askerTimeZone`,
+  `src/server/dispatch/assistant/time-zone.ts`), best source first: what Slack (the asker's
+  profile `tz`, read in the same `users.info` call that identifies them) or the browser (Intl,
+  sent with each question from the panel) says right now; their notification settings; their
+  Staff record; the country on their membership (the one leave uses, mapped by
+  `COUNTRY_TIME_ZONES`); then UK time. Only real IANA zone names count.
+- **The "now" line** in a chat (`nowLine`): their own date, day and time and zone, plus UK time
+  when they aren't on it ("2026-11-26 (Thursday), 19:05 in Asia/Karachi (GMT+5); 14:05 UK
+  time"). Late evening in the UK is already tomorrow in Pakistan, and Dispatch now knows that.
+- **The prompt**: say times in the person's timezone, add UK time when it's about a client, a UK
+  meeting or someone else's day, never assume everyone is in the UK, and work out "today",
+  "tomorrow" and "this week" from their date.
+- **The calendar** (§173) shows meetings in the person's zone (`formatMeeting`); all-day events
+  stay on their date.
+- **Dates stay dates**: due dates and release dates are calendar dates (midnight UTC), so the
+  brief shows them as written in any zone (`shortDay` defaults to UTC); moments (the panel's date
+  line, when a chat was last used) use the browser's zone.
+- Tests: `src/lib/dispatch/__tests__/time.test.ts`.

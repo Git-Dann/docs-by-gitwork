@@ -17,6 +17,8 @@ const bodySchema = z
     conversationId: z.string().min(1).max(40).optional(),
     clientSlug: z.string().min(1).max(120).optional(),
     focusTaskId: z.string().min(1).max(40).optional(),
+    /** The browser's timezone (Intl), so times are the person's own (§174). Checked again server side. */
+    timeZone: z.string().max(64).optional(),
     /** Screenshots, shrunk in the browser; checked again here by their bytes. */
     images: z.array(z.string().max(2_100_000)).max(MAX_ATTACHMENTS).optional(),
   })
@@ -60,6 +62,7 @@ export async function POST(req: Request) {
           question: body.question,
           conversationId: body.conversationId,
           focusTaskId: body.focusTaskId,
+          timeZone: body.timeZone,
           images,
           emit: {
             conversation: (id) => send("conversation", { id }),

@@ -22,7 +22,7 @@ export async function resolveSlackAskerDetailed(
   botToken: string,
   workspaceId: string,
   slackUserId: string | null | undefined,
-): Promise<{ user: EffectiveUser } | { problem: AskerProblem }> {
+): Promise<{ user: EffectiveUser; timeZone?: string } | { problem: AskerProblem }> {
   if (!slackUserId) return { problem: { kind: "slack_error", error: "no_user_on_event" } };
   try {
     const info = await usersInfo(botToken, slackUserId);
@@ -43,7 +43,8 @@ export async function resolveSlackAskerDetailed(
     // Loaded lazily so the pure Slack triage helpers stay importable without the auth stack.
     const { resolveEffectiveUserById } = await import("@/server/mcp/auth");
     const effective = await resolveEffectiveUserById(user.id, workspaceId, { onlyThisWorkspace: true });
-    return effective ? { user: effective } : { problem: { kind: "not_active", email } };
+    // Their Slack timezone comes along, so Dispatch answers in their own time (§174).
+    return effective ? { user: effective, timeZone: info.data.user?.tz } : { problem: { kind: "not_active", email } };
   } catch (err) {
     return { problem: { kind: "slack_error", error: err instanceof Error ? err.message.slice(0, 120) : "lookup_failed" } };
   }

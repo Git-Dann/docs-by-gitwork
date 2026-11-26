@@ -478,10 +478,10 @@ const myCalendar = tool({
     } catch {
       return { text: "Google wouldn't let me read their calendar. Their Google connection may need renewing in Foundry (account settings).", isError: true };
     }
-    const when = (iso: string | null | undefined, allDay: boolean) =>
-      iso
-        ? new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", ...(allDay ? {} : { hour: "2-digit", minute: "2-digit", hour12: false }), timeZone: "Europe/London" }).format(new Date(iso))
-        : "";
+    // In the person's own timezone (§174), not UK time.
+    const { DEFAULT_TIME_ZONE, formatMeeting } = await import("@/lib/dispatch/time");
+    const tz = scope.timeZone ?? DEFAULT_TIME_ZONE;
+    const when = (iso: string | null | undefined, allDay: boolean) => (iso ? formatMeeting(iso, tz, allDay) : "");
     const clientWord = scope.client.name.toLowerCase();
     const rows = items
       .filter((e) => (e.eventType ?? "default") === "default" && e.status !== "cancelled")
@@ -496,7 +496,7 @@ const myCalendar = tool({
         return `- ${when(e.start?.dateTime ?? e.start?.date, allDay)}${allDay ? " (all day)" : ""}: ${e.summary ?? "(no title)"} · ${attendees.length} invited${video ? " · video call" : ""}${withClient ? ` · with ${scope.client.name}` : ""}`;
       });
     return {
-      text: asSource("calendar", "mine", rows.length ? `Next ${days ?? 7} days:\n${rows.join("\n")}` : `Nothing in their calendar for the next ${days ?? 7} days.`),
+      text: asSource("calendar", "mine", rows.length ? `Next ${days ?? 7} days (times in ${tz}):\n${rows.join("\n")}` : `Nothing in their calendar for the next ${days ?? 7} days.`),
     };
   },
 });
