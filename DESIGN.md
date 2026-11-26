@@ -1077,7 +1077,7 @@ The exception covers Canvas's own shell only. Don't carry the orange back into F
 
 The full token and component reference lives with its source, in `Git-Dann/canvas` `docs/BRAND.md`.
 
-## Gitwork OS (the sales demo at `/demo/os`, `CLAUDE.md` §169)
+## Gitwork OS (the sales demo at `/demo/os`, `CLAUDE.md` §170)
 
 **A deliberate exception to this whole document.** Gitwork OS is a picture of a Mac, so it uses a
 Mac's grammar, not Foundry's: system font stack, traffic-light window controls (full-radius circles),

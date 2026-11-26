@@ -42,6 +42,8 @@ export async function chatWithoutClient(input: {
     return { text: "I'd love to chat, but nobody's given me an Anthropic key yet. It goes in Foundry under Settings → Integrations.", model, ok: false };
   }
   const client = new Anthropic({ apiKey, maxRetries: 2 });
+  const { peopleContext } = await import("./people-context");
+  const people = await peopleContext(input.user);
   const started = Date.now();
   try {
     const res = await client.beta.messages.create({
@@ -63,6 +65,8 @@ export async function chatWithoutClient(input: {
               text: noClientContext({
                 askerName: input.user.name ?? input.user.email,
                 roleLabel: ROLES.find((r) => r.id === input.user.role)?.label ?? input.user.role,
+                askerTitle: people.askerTitle,
+                leadership: people.leadership,
                 today: new Date().toISOString().slice(0, 10),
                 where: input.where,
               }),

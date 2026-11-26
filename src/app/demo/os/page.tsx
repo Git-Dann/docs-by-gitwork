@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * Gitwork OS — a Labs sales demo (CLAUDE.md §68). Public and noindex like every
+ * Gitwork OS — a Labs sales demo (docs/history §170). Public and noindex like every
  * /demo page. Everything runs in the browser: Foundry's windows show the other
  * /demo pages over sample data, so nothing here reaches a client, a login or the
  * database.
