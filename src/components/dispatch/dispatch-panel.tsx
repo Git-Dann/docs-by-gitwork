@@ -22,6 +22,7 @@ import {
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
   ArrowUpIcon,
+  BookmarkIcon,
   ChatBubbleBottomCenterTextIcon,
   CheckCircleIcon,
   CheckIcon,
@@ -34,7 +35,7 @@ import {
   SparklesIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions, Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { Markdown } from "@/lib/markdown";
 import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import { cn } from "@/lib/format";
@@ -414,6 +415,7 @@ export function DispatchPanel() {
             <div className="min-w-0 flex-1 leading-tight">
               <p className="text-[13px] font-semibold text-[var(--text-1)]">Dispatch</p>
             </div>
+            {available ? <MemoryMenu /> : null}
             {history.length > 0 ? (
               <Listbox value="" onChange={(id: string) => id && void loadConversation(id)}>
                 <ListboxButton aria-label="Earlier chats" title="Earlier chats" className={iconButton}>
@@ -627,6 +629,63 @@ export function DispatchPanel() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * What Dispatch remembers for this person across chats (§173): their own notes, each with a
+ * delete. Dispatch adds to it when they ask it to remember something.
+ */
+function MemoryMenu() {
+  const [notes, setNotes] = useState<{ id: string; text: string }[] | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const load = useCallback(() => {
+    apiFetch<{ memories: { id: string; text: string }[] }>("/api/dispatch/memories")
+      .then((r) => setNotes(r.memories ?? []))
+      .catch(() => setNotes([]));
+  }, []);
+  return (
+    <Popover>
+      <PopoverButton aria-label="What Dispatch remembers" title="What Dispatch remembers" className={iconButton} onClick={load}>
+        <BookmarkIcon className="h-[18px] w-[18px]" aria-hidden />
+      </PopoverButton>
+      <PopoverPanel anchor={{ to: "bottom end", gap: 4 }} className={cn(menuPanel, "z-[70] w-80 p-3")}>
+        <p className="text-[10.5px] font-medium uppercase tracking-[0.8px] text-[var(--text-4)]" style={MONO}>
+          What I remember about you
+        </p>
+        {notes === null ? (
+          <Skeleton className="mt-2 h-8 w-full" />
+        ) : notes.length === 0 ? (
+          <p className="mt-2 text-xs text-[var(--text-3)]">
+            Nothing yet. Say &ldquo;remember that I work on iOS&rdquo; or &ldquo;from now on, keep it short&rdquo; and I&apos;ll keep it for every chat.
+          </p>
+        ) : (
+          <ul className="mt-2 max-h-72 space-y-1 overflow-y-auto">
+            {notes.map((n) => (
+              <li key={n.id} className="group flex items-start gap-2 rounded-[6px] px-1.5 py-1 hover:bg-[var(--surface-1)]">
+                <span className="min-w-0 flex-1 text-xs leading-5 text-[var(--text-2)]">{n.text}</span>
+                <button
+                  type="button"
+                  aria-label={`Forget: ${n.text}`}
+                  title="Forget this"
+                  disabled={removing === n.id}
+                  onClick={() => {
+                    setRemoving(n.id);
+                    apiFetch(`/api/dispatch/memories/${n.id}`, { method: "DELETE" })
+                      .then(() => setNotes((prev) => (prev ?? []).filter((x) => x.id !== n.id)))
+                      .catch(() => undefined)
+                      .finally(() => setRemoving(null));
+                  }}
+                  className="mt-0.5 shrink-0 rounded-[4px] p-0.5 text-[var(--text-4)] transition hover:text-[var(--danger-700)] disabled:opacity-40"
+                >
+                  {removing === n.id ? <Spinner size="sm" /> : <XMarkIcon className="h-3.5 w-3.5" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </PopoverPanel>
+    </Popover>
   );
 }
 

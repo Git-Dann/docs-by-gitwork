@@ -6686,6 +6686,19 @@ model DispatchMessage {
 /// Something Dispatch proposed that waits for the asker's click (create tasks, update a task,
 /// comment, flag, post to the internal Slack channel). Re-checked in full when confirmed.
 /// Also the audit trail of everything Dispatch did.
+/// Things a person asked Dispatch to remember across chats ("I'm on iOS", "always give me
+/// bullet points"), §173. Only ever read for that person; they see and delete them in the panel.
+/// Loose ids, like the other Dispatch rows.
+model DispatchMemory {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  text        String   @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, userId, createdAt])
+}
+
 model DispatchAction {
   id             String    @id @default(cuid())
   workspaceId    String

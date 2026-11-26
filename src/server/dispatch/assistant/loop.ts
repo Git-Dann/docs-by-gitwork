@@ -151,10 +151,12 @@ export async function runTurn(
     const { ownClients, activeOnly } = await import("./own-clients");
     const { clientTeam } = await import("@/server/client-team");
     const { peopleContext } = await import("./people-context");
-    const [own, team, people] = await Promise.all([
+    const { listMemories } = await import("./memory");
+    const [own, team, people, memories] = await Promise.all([
       ownClients(scope.user).then(activeOnly),
       clientTeam(scope.user.workspaceId, scope.client.id),
       peopleContext(scope.user),
+      listMemories(scope.user),
     ]);
     content.push({
       type: "text",
@@ -163,6 +165,7 @@ export async function runTurn(
         roleLabel: ROLES.find((r) => r.id === scope.user.role)?.label ?? scope.user.role,
         askerTitle: people.askerTitle,
         leadership: people.leadership,
+        memories: memories.map((m) => m.text),
         clientName: scope.client.name,
         clientCount: own.length,
         room: roomFor(scope),

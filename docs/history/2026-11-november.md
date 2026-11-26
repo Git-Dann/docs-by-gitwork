@@ -2816,3 +2816,32 @@ needs to."
   works and only the no-@ reply doesn't.
 - The date line in the chat context is now the date, the day and UK time (`ukNow`).
 - Tests: `slack-thread.test.ts`.
+
+## 173. Recent Changes (November 2026) — Dispatch sees your calendar, checks its links, and remembers you
+
+Dan, 26 Nov, from the list of what Dispatch couldn't do: "do 2, 3, 4": upcoming meetings, links
+it can't open, and memory across chats. And: "this is the only Figma link we need for Wedge now"
+(added to Wedge's Designs as "Wedge App UI Design System"; the old ones are to be removed in
+Portal).
+
+- **Upcoming meetings** (`my_calendar`): the asker's own Google Calendar for the next 1 to 14
+  days, read with their own Google connection (as Drive is): time in UK time, title, how many are
+  invited, whether there's a video call, and whether it's with the current client (its title names
+  the client, or an attendee is on the client's domains, `deriveClientDomains`). Declined and
+  cancelled events are left out. It's a personal calendar, so it's never read in a channel.
+- **What Dispatch can open** (`checkClientLinks`, `src/server/dispatch/assistant/link-check.ts`):
+  opens each of a client's Figma designs (with the workspace Figma token) and GitHub repositories
+  (with the server's token) the way Dispatch does, and says for each one that fails what's wrong
+  and the fix (share the Figma file with the token's account, give Gitwork's GitHub account
+  access, or fix the link in Portal). Dispatch uses it as `check_links` when a design or the code
+  won't open; Settings → Dispatch has card 05, "What Dispatch can open", that runs it for every
+  active client on a click (`GET /api/dispatch/links`, Super Admin).
+- **Memory across chats** (`DispatchMemory`, additive; `src/server/dispatch/assistant/memory.ts`):
+  `remember` saves a note when someone asks Dispatch to remember something or states a lasting
+  preference; `forget` removes notes. Notes are the person's own: read only into their own chats
+  (and the no-client reply), at most 30 of 300 characters, nothing that looks like a password or
+  key (`findSecrets`). The panel's header has a bookmark, "What I remember about you", listing them
+  with a delete each (`GET /api/dispatch/memories`, `DELETE …/[id]`). In a channel Dispatch lets
+  them shape the reply but doesn't read them out. Saving needs no confirming: they're Dispatch's own
+  notes, not a change to Foundry.
+- Tests: `calendar-links-memory.test.ts`.

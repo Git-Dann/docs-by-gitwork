@@ -241,7 +241,91 @@ export function DispatchSettingsPanel() {
           </form>
         )}
       </SettingsCard>
+
+      <LinkCheckCard />
     </div>
+  );
+}
+
+interface LinkCheckResult {
+  checkedAt: string;
+  clients: {
+    clientId: string;
+    clientName: string;
+    clientSlug: string;
+    links: { kind: "design" | "repo"; name: string; url: string | null; ok: boolean; problem: string | null; fix: string | null }[];
+    gaps: string[];
+  }[];
+}
+
+/**
+ * Which designs and repositories Dispatch can open, client by client, and how to fix the ones it
+ * can't (§173). Runs on a click: it opens every active client's links, which takes a moment.
+ */
+function LinkCheckCard() {
+  const [result, setResult] = useState<LinkCheckResult | null>(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = () => {
+    setRunning(true);
+    setError(null);
+    apiFetch<LinkCheckResult>("/api/dispatch/links")
+      .then(setResult)
+      .catch((e) => setError(e instanceof Error ? e.message : "The check didn't finish."))
+      .finally(() => setRunning(false));
+  };
+  const broken = result ? result.clients.reduce((n, c) => n + c.links.filter((l) => !l.ok).length, 0) : 0;
+  return (
+    <SettingsCard
+      number="05"
+      title="What Dispatch can open"
+      right={
+        <Button type="button" variant="secondary" size="sm" loading={running} onClick={run}>
+          {result ? "Check again" : "Check links"}
+        </Button>
+      }
+    >
+      <p className="text-sm text-[var(--text-3)]">
+        Opens every active client&apos;s Figma designs and GitHub repositories the way Dispatch does, and says what to fix for
+        any it can&apos;t.
+      </p>
+      {error ? <p className="mt-3 text-sm text-[var(--warning-500)]">{error}</p> : null}
+      {result ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs text-[var(--text-3)]">
+            {broken ? `${broken} link${broken === 1 ? "" : "s"} won't open.` : "Everything linked opens."} Checked {new Date(result.checkedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}.
+          </p>
+          <ul className="divide-y divide-[var(--border-2)] overflow-hidden rounded-[10px] border border-[var(--border-2)]">
+            {result.clients.map((c) => {
+              const bad = c.links.filter((l) => !l.ok);
+              return (
+                <li key={c.clientId} className="px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <a href={`/app/portal/${c.clientSlug}`} className="text-sm font-medium text-[var(--text-1)] hover:text-[var(--brand-700)]">
+                      {c.clientName}
+                    </a>
+                    <span className={bad.length ? "ml-auto text-xs text-[var(--warning-500)]" : "ml-auto text-xs text-[var(--text-4)]"}>
+                      {c.links.length ? `${c.links.length - bad.length} of ${c.links.length} open` : "nothing linked"}
+                    </span>
+                  </div>
+                  {bad.map((l) => (
+                    <div key={`${l.kind}:${l.name}`} className="mt-1.5 text-xs text-[var(--text-2)]">
+                      <span className="font-medium">{l.kind === "design" ? "Design" : "Code"}: {l.name}.</span> {l.problem}{" "}
+                      <span className="text-[var(--text-3)]">{l.fix}</span>
+                    </div>
+                  ))}
+                  {c.gaps.map((g) => (
+                    <p key={g} className="mt-1 text-xs text-[var(--text-4)]">
+                      {g}
+                    </p>
+                  ))}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+    </SettingsCard>
   );
 }
 
