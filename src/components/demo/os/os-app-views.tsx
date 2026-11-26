@@ -23,11 +23,24 @@ import {
 } from "@/lib/demo/os/gitwork-content";
 import { GITWORK } from "@/lib/gitwork";
 import { runTerminal, type TerminalLine, type TerminalEffect } from "@/lib/demo/os/terminal";
+import { lastWordsReply, type SecretId } from "@/lib/demo/os/secrets";
 import { AppIcon, GitworkMark } from "./os-apps";
+import { CrumpledArt } from "./os-art";
 import { WALLPAPERS, type WallpaperId } from "./os-wallpaper";
 
 export type Appearance = "dark" | "light";
-export type EggName = "confetti" | "matrix" | "restart" | "sleep" | "vibe" | "forcequit";
+export type EggName =
+  | "confetti"
+  | "ship"
+  | "matrix"
+  | "restart"
+  | "sleep"
+  | "vibe"
+  | "forcequit"
+  | "trash"
+  | "sudo"
+  | "shutdown"
+  | "party";
 
 /** What an app view may ask of the desktop. */
 export interface OsBridge {
@@ -39,6 +52,11 @@ export interface OsBridge {
   setWallpaper: (id: WallpaperId) => void;
   resetDesktop: () => void;
   egg: (name: EggName) => void;
+  /** How many secrets the visitor has found, for About This Mac. */
+  secretsFound: number;
+  secretsTotal: number;
+  /** Mark a secret found (shows its banner the first time). */
+  secret: (id: SecretId) => void;
   notify: (toast: { title: string; body: string; action?: { label: string; app: OsApp } }) => void;
 }
 
@@ -368,6 +386,24 @@ export function NotesView({ bridge, initial }: { bridge: OsBridge; initial?: str
     NOTES.some((n) => n.id === initial) ? (initial as NoteId) : "welcome",
   );
   const [scratch, setScratch] = useState("");
+  const answered = useRef(new Set<string>());
+  const replyTimer = useRef<number | undefined>(undefined);
+  const finePrint = useRef<HTMLSpanElement>(null);
+  const bridgeRef = useRef(bridge);
+  bridgeRef.current = bridge;
+
+  // The README's fine print is invisible until you select it. Selecting it is a secret.
+  useEffect(() => {
+    function onSelect() {
+      const sel = document.getSelection();
+      const el = finePrint.current;
+      if (sel && el && !sel.isCollapsed && sel.containsNode(el, true) && sel.toString().trim().length > 6) {
+        bridgeRef.current.secret("fineprint");
+      }
+    }
+    document.addEventListener("selectionchange", onSelect);
+    return () => document.removeEventListener("selectionchange", onSelect);
+  }, []);
   useEffect(() => {
     try {
       setScratch(window.localStorage.getItem(SCRATCH_KEY) ?? "");
@@ -382,7 +418,17 @@ export function NotesView({ bridge, initial }: { bridge: OsBridge; initial?: str
     } catch {
       /* in-memory only */
     }
+    // Famous last words get a reply, once each, after a pause in typing.
+    window.clearTimeout(replyTimer.current);
+    replyTimer.current = window.setTimeout(() => {
+      const hit = lastWordsReply(value, answered.current);
+      if (!hit) return;
+      answered.current.add(hit.key);
+      bridgeRef.current.notify({ title: "Notes", body: hit.reply });
+      bridgeRef.current.secret("lastwords");
+    }, 700);
   }
+
 
   return (
     <div className="flex h-full flex-col sm:flex-row">
@@ -432,6 +478,20 @@ export function NotesView({ bridge, initial }: { bridge: OsBridge; initial?: str
               Look around: the dock has our <b>work</b>, our <b>plans</b>, and <b>Foundry</b>, the platform every
               client gets a login to. And there&apos;s more behind the <GitworkMark size={14} /> in the top left.
             </p>
+            <p className="mt-6 text-[12px] italic text-[var(--os-text-3)]">There&apos;s more on this page than meets the eye.</p>
+            {/* The fine print: the same colour as the paper until it's selected. */}
+            <p className="os-fineprint mt-10 text-[13px] leading-relaxed">
+              <span ref={finePrint}>
+                P.S. You selected the invisible text. That&apos;s exactly the instinct we hire for: the bug is always
+                in the bit nobody looks at. Most apps have a last 20% hiding like this one: auth that only works on
+                the happy path, payments that work in test mode, a .env file somebody committed in 2023. We find it
+                and we finish it. (And yes, we read the fine print in your contracts too.)
+              </span>
+            </p>
+            <style>{`
+              .os-fineprint { color: transparent; }
+              .os-fineprint ::selection { color: #1C1917; background: #FACC15; }
+            `}</style>
           </>
         ) : null}
         {note === "process" ? (
@@ -783,7 +843,7 @@ export function TrashView({ bridge }: { bridge: OsBridge }) {
         <SecondaryButton
           onClick={() => {
             setEmptied(true);
-            bridge.egg("confetti");
+            bridge.egg("trash");
           }}
         >
           Empty
@@ -797,9 +857,7 @@ export function TrashView({ bridge }: { bridge: OsBridge }) {
         <ul className="divide-y divide-[var(--os-border)] overflow-auto">
           {GOT_RID_OF.map((g) => (
             <li key={g.name} className="flex items-center gap-3 px-4 py-2.5">
-              <span className="text-[18px]" aria-hidden>
-                🗑
-              </span>
+              <CrumpledArt size={28} seed={GOT_RID_OF.indexOf(g)} />
               <span>
                 <span className="block text-[13px] font-medium">{g.name}</span>
                 <span className="block text-[12px] text-[var(--os-text-3)]">{g.note}</span>
@@ -838,7 +896,11 @@ export function AboutView({ bridge }: { bridge: OsBridge }) {
           </div>
         ))}
       </dl>
-      <div className="mt-5">
+      <p className="mt-4 text-[12px] text-[var(--os-text-2)]">
+        Secrets found: <b>{bridge.secretsFound}</b> of {bridge.secretsTotal}
+        {bridge.secretsFound < bridge.secretsTotal ? " · click the clock for hints" : " · all of them"}
+      </p>
+      <div className="mt-3">
         <SecondaryButton onClick={() => bridge.egg("vibe")}>Run a vibe check…</SecondaryButton>
       </div>
       <p className="mt-4 text-[10.5px] leading-relaxed text-[var(--os-text-3)]">

@@ -4,62 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 import { GOT_RID_OF, LAST_20, TAGLINE } from "@/lib/demo/os/gitwork-content";
 import { GitworkMark } from "./os-apps";
+import { StuckAppArt } from "./os-art";
 
 /**
  * The moments of delight. Every one is dismissable by a click or Escape, and every
  * animation stops under prefers-reduced-motion — a joke that traps someone, or makes
  * them feel ill, stops being one.
  */
-
-/* Confetti — on ship, on emptying the Trash, on the live activity reaching 100% */
-export function Confetti({ seed }: { seed: number }) {
-  const pieces = useMemo(
-    () =>
-      Array.from({ length: 90 }).map((_, i) => {
-        const r = (n: number) => {
-          const x = Math.sin(seed * 997 + i * 31 + n * 7) * 10000;
-          return x - Math.floor(x);
-        };
-        return {
-          left: r(1) * 100,
-          delay: r(2) * 0.6,
-          duration: 1.6 + r(3) * 1.4,
-          rotate: r(4) * 720 - 360,
-          drift: r(5) * 160 - 80,
-          colour: ["#4F46E5", "#818CF8", "#A78BFA", "#FACC15", "#34D399", "#F472B6"][Math.floor(r(6) * 6)],
-          w: 6 + r(7) * 6,
-        };
-      }),
-    [seed],
-  );
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 z-[9700] overflow-hidden">
-      {pieces.map((p, i) => (
-        <span
-          key={i}
-          className="os-confetti absolute top-[-20px] block"
-          style={
-            {
-              left: `${p.left}%`,
-              width: p.w,
-              height: p.w * 0.45,
-              background: p.colour,
-              animationDelay: `${p.delay}s`,
-              animationDuration: `${p.duration}s`,
-              "--rot": `${p.rotate}deg`,
-              "--drift": `${p.drift}px`,
-            } as React.CSSProperties
-          }
-        />
-      ))}
-      <style>{`
-        .os-confetti { animation-name: os-fall; animation-timing-function: cubic-bezier(.2,.6,.4,1); animation-fill-mode: forwards; }
-        @keyframes os-fall { to { transform: translate(var(--drift), 105vh) rotate(var(--rot)); } }
-        @media (prefers-reduced-motion: reduce) { .os-confetti { display: none; } }
-      `}</style>
-    </div>
-  );
-}
 
 /* Restart — a boot screen with a progress bar */
 export function BootScreen({ onDone }: { onDone: () => void }) {
@@ -210,7 +161,7 @@ export function VibeCheck({ onClose, onShipped }: { onClose: () => void; onShipp
 }
 
 /* Force Quit — the agency habits Gitwork doesn't have */
-export function ForceQuit({ onClose, onQuit }: { onClose: () => void; onQuit: (name: string) => void }) {
+export function ForceQuit({ onClose, onQuit }: { onClose: () => void; onQuit: (name: string, remaining: number) => void }) {
   const [left, setLeft] = useState(GOT_RID_OF.map((g) => g.name));
   const [selected, setSelected] = useState<string | null>(GOT_RID_OF[0].name);
   return (
@@ -224,7 +175,7 @@ export function ForceQuit({ onClose, onQuit }: { onClose: () => void; onQuit: (n
               onClick={() => setSelected(name)}
               className={cn("flex w-full items-center gap-2 px-3 py-1 text-left text-[13px]", selected === name && "bg-[#4F46E5] text-white")}
             >
-              <span aria-hidden>🐌</span>
+              <StuckAppArt size={18} seed={GOT_RID_OF.findIndex((g) => g.name === name)} />
               {name}
               <span className="ml-auto text-[11px] opacity-60">(not responding)</span>
             </button>
@@ -238,8 +189,8 @@ export function ForceQuit({ onClose, onQuit }: { onClose: () => void; onQuit: (n
           disabled={!selected}
           onClick={() => {
             if (!selected) return;
-            onQuit(selected);
             const next = left.filter((n) => n !== selected);
+            onQuit(selected, next.length);
             setLeft(next);
             setSelected(next[0] ?? null);
           }}
