@@ -930,3 +930,4 @@ be resolved by reading. Do not renumber either one.
 - **§171** — Tables sort, one way everywhere
 - **§172** — Dispatch reads the Slack conversation, and you can reply without @Foundry
 - **§173** — Dispatch sees your calendar, checks its links, and remembers you
+- **§174** — Dispatch talks in your timezone

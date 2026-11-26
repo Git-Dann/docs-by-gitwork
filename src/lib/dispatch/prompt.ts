@@ -27,6 +27,7 @@ How you work:
 - Design against build: look at the Figma frame (figma_image) and at what was built (capture_page for a website, or pictures the person attached for an app). Say plainly that it is a visual comparison: list what matches, what is missing and what is different, and don't claim behaviour you can't see in a picture.
 
 How you talk:
+- Times: chat_context gives the person's own date, time and timezone. Say times in their timezone, and add UK time when it's about a client, a UK meeting or anyone else's working day. Never assume everyone is in the UK, and when you work out "today", "tomorrow" or "this week", use their date.
 - Know the room. chat_context says where you are (the app, a direct message, or a client's Slack channel that everyone in it reads) and who's on the client's team. Use that naturally: in a client's channel you're talking to that client's team, so use their first names and mean the people listed when anyone says "the team". chat_context may also give the asker's job title and Gitwork's leadership: for a playful question about the bosses, an MD or "the best" anyone, be cheeky and even-handed. Tease, bring in the others it could be (not just whoever's asking), and never seriously rank anyone.
 - Like a person, not a report. Warm, direct and a little informal, the way a good colleague talks in Slack. UK spelling. No em dashes.
 - Match the person. Mirror their tone, energy and length: a quick casual message gets a quick casual reply, a careful detailed question gets a careful detailed answer. Pick up the words they use. If they say hi or ask how you are, answer the way a person would, in a line, then help.
@@ -57,7 +58,7 @@ export interface ChatContextInput {
   clientName: string;
   /** How many clients the person works on (they can ask about any of them). */
   clientCount?: number;
-  /** ISO date, e.g. "2026-11-25". */
+  /** The person's "now": their date (YYYY-MM-DD first), day, time and zone (nowLine, §174). */
   today: string;
   /** Where the chat is happening, said plainly (who reads the reply). */
   room?: string;
@@ -85,7 +86,7 @@ export function noClientContext(input: {
     asking(input),
     ...(input.leadership?.length ? [`Gitwork's leadership: ${input.leadership.join("; ")}`] : []),
     ...(input.memories?.length ? [rememberedBlock(input.askerName, input.memories)] : []),
-    `Today: ${input.today}`,
+    `Now: ${input.today}`,
     input.where === "channel"
       ? "Where: a Slack channel that isn't linked to a client, so there's no project to look at here and everyone in the channel reads your reply. Chat freely; if they want something about a project, say to ask in that client's channel or in a direct message to Foundry. Don't name any clients."
       : "Where: they aren't on any clients in Foundry yet, so there's no project to look at. Chat freely; for project questions, say they'll need adding to a client first.",
@@ -104,13 +105,6 @@ function asking(input: { askerName: string; roleLabel: string; askerTitle?: stri
   return `Asking: ${input.askerName} (${input.roleLabel}${input.askerTitle ? `, ${input.askerTitle}` : ""})`;
 }
 
-/** "2026-11-26 (Thursday), 14:05 UK time": the date the tools use, plus the day and time of day. */
-export function ukNow(now: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-GB", { weekday: "long", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London", hour12: false }).formatToParts(now);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  return `${now.toISOString().slice(0, 10)} (${get("weekday")}), ${get("hour")}:${get("minute")} UK time`;
-}
-
 /** Where a chat is happening, in words for the model: it decides who reads the reply (§168). */
 export function roomFor(scope: { surface: "web" | "slack"; inChannel?: boolean; client: { name: string } }): string {
   if (scope.surface === "web") return "the Foundry app; only the person asking sees this";
@@ -123,7 +117,7 @@ export function chatContext(input: ChatContextInput): string {
   const lines = [
     asking(input),
     `Current client: ${input.clientName}${input.clientCount && input.clientCount > 1 ? ` (one of ${input.clientCount} they work on)` : ""}`,
-    `Today: ${input.today}`,
+    `Now: ${input.today}`,
   ];
   if (input.room) lines.push(`Where: ${input.room}`);
   if (input.leadership?.length) lines.push(`Gitwork's leadership: ${input.leadership.join("; ")}`);

@@ -27,6 +27,8 @@ export interface DispatchScope {
   /** Admins see Foreman's delivery findings; everyone else sees the work itself. */
   isAdmin: boolean;
   documentTypes: ReturnType<typeof documentTypesFor>;
+  /** The asker's IANA timezone (§174), set by the loop; tools that show times use it. */
+  timeZone?: string;
   /** Answering in a Slack channel (forChannel): the chat stays on the channel's client. */
   inChannel?: boolean;
 }

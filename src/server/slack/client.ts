@@ -204,6 +204,8 @@ export interface SlackUser {
   name?: string;
   real_name?: string;
   is_bot?: boolean;
+  /** Their timezone as set in Slack (IANA, e.g. "Asia/Karachi"). */
+  tz?: string;
   profile?: { email?: string; real_name?: string; display_name?: string };
 }
 

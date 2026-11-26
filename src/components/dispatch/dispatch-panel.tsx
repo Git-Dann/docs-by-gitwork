@@ -111,6 +111,15 @@ const TONE_BAR: Record<Tone, string> = {
   neutral: "bg-[var(--border-1)]",
 };
 
+/** The browser's timezone, so Dispatch talks in the person's own time (§174). */
+function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function greeting(now: Date): string {
   const h = now.getHours();
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
@@ -291,6 +300,7 @@ export function DispatchPanel() {
           question: q,
           ...(conversationId ? { conversationId } : { clientSlug }),
           ...(taskId && !conversationId ? { focusTaskId: taskId } : {}),
+          timeZone: browserTimeZone(),
           ...(sending.length ? { images: sending.map((p) => p.url) } : {}),
         }),
       });
@@ -428,7 +438,7 @@ export function DispatchPanel() {
                   {history.map((h) => (
                     <ListboxOption key={h.id} value={h.id} className={cn(menuItem, "flex-col items-start gap-0")}>
                       <span className="w-full truncate">{h.title}</span>
-                      <span className="text-[11px] text-[var(--text-4)]">{shortDay(h.updatedAt)}</span>
+                      <span className="text-[11px] text-[var(--text-4)]">{shortDay(h.updatedAt, browserTimeZone())}</span>
                     </ListboxOption>
                   ))}
                 </ListboxOptions>
@@ -805,7 +815,7 @@ function BriefView({
       {/* Greeting */}
       <div className="px-1">
         <p className="text-[11px] uppercase tracking-[0.8px] text-[var(--text-4)]" style={MONO}>
-          {shortDay(now)}
+          {shortDay(now, browserTimeZone())}
           {brief ? ` · ${brief.client.name}` : ""}
         </p>
         <p className="mt-1 text-[19px] font-semibold tracking-[-0.2px] text-[var(--text-1)]">

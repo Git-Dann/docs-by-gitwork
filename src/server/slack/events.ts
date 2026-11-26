@@ -180,6 +180,7 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
     const isExternal = await isExternalChannel(botToken, event.channel, event.channel_type);
     const resolved = await resolveSlackAskerDetailed(botToken, workspaceId, event.user ?? null);
     const asker = "user" in resolved ? resolved.user : null;
+    const askerTimeZone = "user" in resolved ? resolved.timeZone : undefined;
     const askerUserId = asker?.id ?? null;
 
     // Couldn't tell who is asking: say exactly why (a missing Slack permission reads very
@@ -216,6 +217,7 @@ export async function handleSlackEvent(args: HandleEventArgs): Promise<void> {
         question,
         messageTs: event.ts,
         botUserId,
+        timeZone: askerTimeZone,
         exchangeId,
       });
       if (outcome === "handled") return;

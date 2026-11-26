@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { isReplyToFoundry, slackContextLines, type SlackMessage } from "../slack-thread";
-import { ukNow } from "../prompt";
 
 const BOT = "UFOUNDRY";
 const names: Record<string, string> = { UDAN: "Dan Lindsay", UHARRY: "Harry Brown", USYED: "Syed Usama Bin Tahir" };
@@ -55,11 +54,5 @@ describe("a thread reply without an @mention (§172)", () => {
     expect(isReplyToFoundry({ ...base, foundryAnsweredHere: false, previous: prev })).toBe(false);
     expect(isReplyToFoundry({ ...base, inThread: false, previous: prev })).toBe(false);
     expect(isReplyToFoundry({ ...base, mentionsFoundry: true, previous: prev })).toBe(false);
-  });
-});
-
-describe("the date line", () => {
-  it("has the date, the day and UK time", () => {
-    expect(ukNow(new Date("2026-11-26T14:05:00Z"))).toBe("2026-11-26 (Thursday), 14:05 UK time");
   });
 });

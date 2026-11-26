@@ -15,7 +15,8 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-import { DISPATCH_SYSTEM_PROMPT, noClientContext, ukNow } from "@/lib/dispatch/prompt";
+import { DISPATCH_SYSTEM_PROMPT, noClientContext } from "@/lib/dispatch/prompt";
+import { nowLine } from "@/lib/dispatch/time";
 import { MAX_QUESTION_CHARS } from "@/lib/dispatch/limits";
 import { DISPATCH_MODELS } from "@/server/ai-provider";
 import { aiKeyFor } from "@/server/ai-keys";
@@ -34,6 +35,8 @@ export async function chatWithoutClient(input: {
   where: "channel" | "no_clients";
   /** The thread or the channel's recent messages, wrapped as a <source> (§172): its only memory. */
   slackContext?: string | null;
+  /** The asker's timezone as Slack reports it (§174). */
+  timeZone?: string | null;
 }): Promise<{ text: string; model: string; ok: boolean }> {
   const model = DISPATCH_MODELS.everyday;
   const ws = await prisma.workspace.findUnique({
@@ -47,7 +50,8 @@ export async function chatWithoutClient(input: {
   const client = new Anthropic({ apiKey, maxRetries: 2 });
   const { peopleContext } = await import("./people-context");
   const { listMemories } = await import("./memory");
-  const [people, memories] = await Promise.all([peopleContext(input.user), listMemories(input.user)]);
+  const { askerTimeZone } = await import("./time-zone");
+  const [people, memories, timeZone] = await Promise.all([peopleContext(input.user), listMemories(input.user), askerTimeZone(input.user, input.timeZone)]);
   const started = Date.now();
   try {
     const res = await client.beta.messages.create({
@@ -72,7 +76,7 @@ export async function chatWithoutClient(input: {
                 askerTitle: people.askerTitle,
                 leadership: people.leadership,
                 memories: memories.map((m) => m.text),
-                today: ukNow(),
+                today: nowLine(new Date(), timeZone),
                 where: input.where,
               }),
             },

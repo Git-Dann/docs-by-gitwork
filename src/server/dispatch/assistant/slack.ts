@@ -49,6 +49,8 @@ export interface SlackQuestion {
   messageTs: string;
   /** Foundry's bot user, to tell its own messages apart in the context. */
   botUserId: string | null;
+  /** The asker's timezone from their Slack profile (§174). */
+  timeZone?: string;
   /** The audit row created by events.ts for this delivery. */
   exchangeId: string;
 }
@@ -154,6 +156,7 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
       question: q.question,
       where: isDm ? "no_clients" : "channel",
       slackContext: await readContext(false),
+      timeZone: q.timeZone,
     });
     const reply = buildAssistantReply({ text: chat.text, actions: [], sources: [], clientName: null });
     await postMessage(q.botToken, { channel: q.channelId, ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}), text: reply.text, blocks: reply.blocks });
@@ -220,6 +223,7 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
       question: q.question,
       conversationId,
       slackContext,
+      timeZone: q.timeZone,
       slack: { channelId: q.channelId, threadTs: q.threadTs },
       emit: {
         conversation: () => undefined,
