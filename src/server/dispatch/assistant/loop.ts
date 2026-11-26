@@ -20,6 +20,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { DISPATCH_SYSTEM_PROMPT, chatContext, roomFor } from "@/lib/dispatch/prompt";
+import { nowLine } from "@/lib/dispatch/time";
 import {
   MAX_CHAT_MESSAGES,
   MAX_CHAT_TOKENS,
@@ -67,6 +68,10 @@ export interface TurnInput {
   /** The task the panel was opened from, if any (named in the chat context). */
   focusTaskId?: string | null;
   slack?: { channelId: string; threadTs: string };
+  /** The asker's timezone as Slack or the browser reports it right now (§174), if known. */
+  timeZone?: string | null;
+  /** What was said around the question in Slack, already wrapped as a <source> (§172). */
+  slackContext?: string | null;
   /** Pictures the person attached (already checked: src/lib/dispatch/images.ts). */
   images?: { mediaType: ToolImage["mediaType"]; data: string }[];
   emit: TurnEmitter;
@@ -89,6 +94,10 @@ export async function runTurn(
   // The client the chat is on. It can change mid-question (switch_client, §164), and every tool
   // after that works on the new one.
   let scope = input.scope;
+  // Their own timezone (§174): the "now" they're told, and the times tools show them.
+  const { askerTimeZone } = await import("./time-zone");
+  const timeZone = await askerTimeZone(scope.user, input.timeZone);
+  scope = { ...scope, timeZone };
   const question = input.question.trim().slice(0, MAX_QUESTION_CHARS);
   if (!question) throw new DispatchLimitError("That came through empty. What did you want to ask?");
 
@@ -149,10 +158,12 @@ export async function runTurn(
     const { ownClients, activeOnly } = await import("./own-clients");
     const { clientTeam } = await import("@/server/client-team");
     const { peopleContext } = await import("./people-context");
-    const [own, team, people] = await Promise.all([
+    const { listMemories } = await import("./memory");
+    const [own, team, people, memories] = await Promise.all([
       ownClients(scope.user).then(activeOnly),
       clientTeam(scope.user.workspaceId, scope.client.id),
       peopleContext(scope.user),
+      listMemories(scope.user),
     ]);
     content.push({
       type: "text",
@@ -161,11 +172,12 @@ export async function runTurn(
         roleLabel: ROLES.find((r) => r.id === scope.user.role)?.label ?? scope.user.role,
         askerTitle: people.askerTitle,
         leadership: people.leadership,
+        memories: memories.map((m) => m.text),
         clientName: scope.client.name,
         clientCount: own.length,
         room: roomFor(scope),
         team: team.map((t) => t.name),
-        today: new Date().toISOString().slice(0, 10),
+        today: nowLine(new Date(), timeZone),
         focusTask: focus ? { ref: taskRef(focus.id), title: focus.title } : null,
       }),
     });
@@ -178,6 +190,7 @@ export async function runTurn(
       text: `<chat_context>\nNow on client: ${movedTo}${team.length ? `\n${movedTo}'s team: ${team.join(", ")}` : ""}\n</chat_context>`,
     });
   }
+  if (input.slackContext) content.push({ type: "text", text: input.slackContext });
   const attached = (input.images ?? []).slice(0, MAX_IMAGES_PER_QUESTION);
   for (const img of attached) {
     content.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } });
@@ -321,7 +334,7 @@ export async function runTurn(
     // switch_client: the rest of this question, and the chat from now on, is about that client.
     const switched = outcomes.find((o) => o.switchTo)?.switchTo;
     if (switched && switched.client.id !== scope.client.id) {
-      scope = switched;
+      scope = { ...switched, timeZone };
       await prisma.dispatchConversation.update({ where: { id: conversationId }, data: { clientId: scope.client.id } });
       emit.client?.({ slug: scope.client.slug, name: scope.client.name });
     }

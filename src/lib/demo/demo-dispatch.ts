@@ -109,6 +109,8 @@ function demoBrief(taskId: string | null) {
 export function resolveDemoDispatch(pathname: string, search?: URLSearchParams): unknown | undefined {
   if (pathname === "/api/dispatch/brief") return demoBrief(search?.get("taskId") ?? null);
   if (pathname === "/api/dispatch/conversations") return { available: true, conversations: [] };
+  if (pathname === "/api/dispatch/memories") return { memories: [{ id: "demo-m1", text: "Works on the iOS app for Northwind." }, { id: "demo-m2", text: "Prefers short answers with bullet points." }] };
+  if (pathname.startsWith("/api/dispatch/memories/")) return { deleted: true };
   if (pathname.startsWith("/api/dispatch/actions/")) return { status: "done", message: "Done. (Demo: nothing was changed.)" };
   return undefined;
 }

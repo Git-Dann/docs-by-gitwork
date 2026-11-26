@@ -440,6 +440,113 @@ const allClientsOverview = tool({
   },
 });
 
+// ─── Calendar, links, and memory (§173) ─────────────────────────────────────
+
+const myCalendar = tool({
+  name: "my_calendar",
+  description:
+    "The person asking's own Google Calendar for the next few days (1 to 14): each meeting's time (UK), title, how many are invited, whether it has a video link, and whether it looks like it's with the current client. Use for 'what's on tomorrow?', 'when's our next call with the client?'.",
+  input_schema: obj({ days: { type: "integer", minimum: 1, maximum: 14, description: "How many days ahead. Default 7." } }),
+  schema: z.object({ days: z.number().int().min(1).max(14).optional() }).strict(),
+  status: "Looking at your calendar",
+  async run(scope, { days }) {
+    // A personal calendar is read into a DM or the app, never a channel everyone reads.
+    if (scope.inChannel) return { text: "That's the person's own calendar, so I don't read it in a channel. They can ask in a direct message to Foundry.", isError: true };
+    const user = await prisma.user.findUnique({ where: { id: scope.user.id }, select: { googleOAuthRefreshToken: true } });
+    if (!user?.googleOAuthRefreshToken) {
+      return { text: "Their Google account isn't connected to Foundry, so I can't see their calendar. They can connect it from their account settings in Foundry.", isError: true };
+    }
+    const { googleClientForRefreshToken } = await import("@/server/google-auth");
+    const auth = googleClientForRefreshToken(user.googleOAuthRefreshToken);
+    if (!auth) return { text: "Google isn't set up on this server.", isError: true };
+    const client = await prisma.workspaceClient.findFirst({ where: { id: scope.client.id }, select: { website: true, primaryContactEmail: true } });
+    const { deriveClientDomains } = await import("@/server/meetings");
+    const domains = deriveClientDomains({ website: client?.website ?? null, primaryContactEmail: client?.primaryContactEmail ?? null });
+    const now = new Date();
+    const until = new Date(now.getTime() + (days ?? 7) * DAY_MS);
+    let items: import("googleapis").calendar_v3.Schema$Event[] = [];
+    try {
+      const res = await google.calendar({ version: "v3", auth }).events.list({
+        calendarId: "primary",
+        timeMin: now.toISOString(),
+        timeMax: until.toISOString(),
+        singleEvents: true,
+        orderBy: "startTime",
+        maxResults: 60,
+      });
+      items = res.data.items ?? [];
+    } catch {
+      return { text: "Google wouldn't let me read their calendar. Their Google connection may need renewing in Foundry (account settings).", isError: true };
+    }
+    // In the person's own timezone (§174), not UK time.
+    const { DEFAULT_TIME_ZONE, formatMeeting } = await import("@/lib/dispatch/time");
+    const tz = scope.timeZone ?? DEFAULT_TIME_ZONE;
+    const when = (iso: string | null | undefined, allDay: boolean) => (iso ? formatMeeting(iso, tz, allDay) : "");
+    const clientWord = scope.client.name.toLowerCase();
+    const rows = items
+      .filter((e) => (e.eventType ?? "default") === "default" && e.status !== "cancelled")
+      .filter((e) => !(e.attendees ?? []).some((a) => a.self && a.responseStatus === "declined"))
+      .slice(0, 40)
+      .map((e) => {
+        const allDay = !e.start?.dateTime;
+        const attendees = (e.attendees ?? []).map((a) => (a.email ?? "").toLowerCase());
+        const withClient =
+          (e.summary ?? "").toLowerCase().includes(clientWord) || attendees.some((a) => domains.some((d) => a.endsWith(`@${d}`) || a.endsWith(`.${d}`)));
+        const video = Boolean(e.hangoutLink || e.conferenceData?.entryPoints?.some((p) => p.entryPointType === "video"));
+        return `- ${when(e.start?.dateTime ?? e.start?.date, allDay)}${allDay ? " (all day)" : ""}: ${e.summary ?? "(no title)"} · ${attendees.length} invited${video ? " · video call" : ""}${withClient ? ` · with ${scope.client.name}` : ""}`;
+      });
+    return {
+      text: asSource("calendar", "mine", rows.length ? `Next ${days ?? 7} days (times in ${tz}):\n${rows.join("\n")}` : `Nothing in their calendar for the next ${days ?? 7} days.`),
+    };
+  },
+});
+
+const checkLinks = tool({
+  name: "check_links",
+  description:
+    "Which of the current client's Figma designs and GitHub repositories Foundry can actually open, and for any that don't open, exactly what to do. Use when a design or the code won't open, or when asked what you can see for this client.",
+  input_schema: obj({}),
+  schema: z.object({}).strict(),
+  status: "Checking the client's links",
+  async run(scope) {
+    const { checkClientLinks, linksText } = await import("./link-check");
+    const r = await checkClientLinks(scope.user.workspaceId, scope.client.id);
+    if (!r) return { text: "I couldn't find this client's links.", isError: true };
+    return { text: asSource("links", scope.client.slug, linksText(r)) };
+  },
+});
+
+const remember = tool({
+  name: "remember",
+  description:
+    "Save something the person wants you to remember in every chat from now on: a preference ('always bullet points'), what they work on ('I'm on iOS for Wedge'), how they like things. Only when they ask you to remember, or clearly state a lasting preference ('from now on', 'always', 'never'). Never passwords, keys or anything secret.",
+  input_schema: obj({ note: { type: "string", description: "One short line, in the third person: 'Prefers bullet points.'" } }, ["note"]),
+  schema: z.object({ note: z.string().min(1).max(400) }).strict(),
+  status: "Remembering that",
+  async run(scope, { note }) {
+    const { findSecrets } = await import("@/server/pulse-checks/secret-formats");
+    if (findSecrets(note).length) return { text: "That looks like a password or key, so I won't store it. Say so.", isError: true };
+    const { addMemory } = await import("./memory");
+    const r = await addMemory(scope.user, note);
+    return r.saved
+      ? { text: "Saved. It's in every chat from now on, and they can see or delete it in the Dispatch panel (the bookmark)." }
+      : { text: r.reason ?? "Couldn't save that.", isError: true };
+  },
+});
+
+const forget = tool({
+  name: "forget",
+  description: "Forget things you were asked to remember: notes containing the words given, or 'everything'.",
+  input_schema: obj({ about: { type: "string", description: "Words from the note to forget, or 'everything'." } }, ["about"]),
+  schema: z.object({ about: z.string().min(1).max(200) }).strict(),
+  status: "Forgetting that",
+  async run(scope, { about }) {
+    const { forgetMemories } = await import("./memory");
+    const n = await forgetMemories(scope.user, about);
+    return { text: n ? `Forgot ${n} note${n === 1 ? "" : "s"}.` : "Nothing remembered matched that." };
+  },
+});
+
 // ─── Read tools ─────────────────────────────────────────────────────────────
 
 const projectOverview = tool({
@@ -1163,6 +1270,11 @@ export const DISPATCH_TOOLS: readonly DispatchTool[] = [
   // §166: a teammate's work and everything at once (questions Slack used to send to a template).
   personWork,
   allClientsOverview,
+  // §173: the person's calendar, the client's links, and memory across chats.
+  myCalendar,
+  checkLinks,
+  remember,
+  forget,
 ];
 
 const BY_NAME = new Map(DISPATCH_TOOLS.map((t) => [t.name, t]));

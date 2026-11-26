@@ -105,10 +105,12 @@ export interface Brief {
 const NEEDS_YOU_MAX = 6;
 const SUGGESTIONS_MAX = 3;
 
-/** "Thu 27 Nov", in UK time. */
-export function shortDay(iso: string | Date): string {
+/** "Thu 27 Nov". */
+export function shortDay(iso: string | Date, timeZone = "UTC"): string {
+  // A due date or release date is a calendar date (stored at midnight UTC), so by default it's shown
+  // as written whatever the zone (§174). Pass a zone for a moment in time ("now", last used).
   const d = typeof iso === "string" ? new Date(iso) : iso;
-  return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" }).format(d);
+  return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone }).format(d);
 }
 
 function utcDay(d: Date): number {

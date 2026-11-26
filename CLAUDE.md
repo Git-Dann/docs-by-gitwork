@@ -928,3 +928,6 @@ be resolved by reading. Do not renumber either one.
 - **§169** — Dispatch knows who's who
 - **§170** — Gitwork OS: a Mac in the browser that sells Gitwork
 - **§171** — Tables sort, one way everywhere
+- **§172** — Dispatch reads the Slack conversation, and you can reply without @Foundry
+- **§173** — Dispatch sees your calendar, checks its links, and remembers you
+- **§174** — Dispatch talks in your timezone

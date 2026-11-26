@@ -77,8 +77,9 @@ Slack does **not** grant new scopes to an existing token. Dispatch adds `app_men
 1. Open the app at <https://api.slack.com/apps> → **App Manifest**.
 2. Paste `docs/slack-app-manifest.json` (minus the `_comment` key — Slack rejects unknown
    top-level keys) and save. This sets the Events request URL to
-   `https://foundry.gitwork.co.uk/api/webhooks/slack/events` and subscribes `app_mention` +
-   `message.im`.
+   `https://foundry.gitwork.co.uk/api/webhooks/slack/events` and subscribes `app_mention`,
+   `message.im`, and (§172, for thread replies without an @mention) `message.channels` and
+   `message.groups`. The history scopes those need are already granted.
 3. Slack immediately sends a `url_verification` challenge to that URL. It must go green — the
    endpoint answers it (signature-checked) before anything else.
 4. **Reinstall to workspace**, then re-save the bot token in **Settings → Integrations**.
@@ -239,6 +240,21 @@ clients. Only a Slack Connect channel gets a fixed refusal.
 The first message of a chat tells Dispatch where it is (`roomFor`: the app, a DM, or a client's
 internal channel everyone reads) and the client's team (`clientTeam`). A new internal channel
 created by Foundry invites that team (`inviteClientTeam`), matched to Slack by email.
+
+### Reading the Slack conversation (§172)
+
+Before answering in Slack, Dispatch reads what was said around the question
+(`src/server/slack/thread-context.ts`): the thread, or for a top-level mention in a channel the
+channel's last 15 messages, named and given to the model as data. A chat that carries on gets only
+what was said since Foundry last replied. A reply in a thread where Foundry has answered, straight
+after Foundry's message, is answered without an @mention (`isUnmentionedReply` in `events.ts`).
+
+### Calendar, links and memory (§173)
+
+`my_calendar` reads the asker's own Google Calendar (never in a channel). `check_links`, and card
+05 in Settings → Dispatch, say which of a client's Figma designs and GitHub repositories open and
+how to fix the rest. `remember` / `forget` keep the person's own notes across chats
+(`DispatchMemory`), listed under the bookmark in the panel.
 
 ### The brief (§161)
 

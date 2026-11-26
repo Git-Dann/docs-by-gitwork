@@ -45,6 +45,12 @@ export interface SlackQuestion {
   /** The message was posted inside a thread (Slack sent thread_ts). */
   inThread: boolean;
   question: string;
+  /** The question's own Slack ts (left out of the context, it's the question). */
+  messageTs: string;
+  /** Foundry's bot user, to tell its own messages apart in the context. */
+  botUserId: string | null;
+  /** The asker's timezone from their Slack profile (§174). */
+  timeZone?: string;
   /** The audit row created by events.ts for this delivery. */
   exchangeId: string;
 }
@@ -124,12 +130,34 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
   // channel, always in the thread, so the channel stays quiet.
   const replyThreadTs = isDm && !q.inThread ? undefined : q.threadTs;
 
+  // What was said around the question (§172): the thread it's in, or for a top-level mention in a
+  // channel, the channel's last few messages. A DM's own chat is stored, so only a DM thread is read.
+  const { slackContextFor } = await import("@/server/slack/thread-context");
+  const readContext = (sinceFoundry: boolean) =>
+    isDm && !q.inThread
+      ? Promise.resolve(null)
+      : slackContextFor({
+          token: q.botToken,
+          channel: q.channelId,
+          threadTs: q.inThread ? q.threadTs : null,
+          currentTs: q.messageTs,
+          botUserId: q.botUserId,
+          sinceFoundry,
+        });
+
   if (decision.action === "no_client") {
     // Nothing to look at (a channel that isn't a client's, or no clients at all): Dispatch still
     // talks, with no lookups and no client named (small-talk.ts, §167). This was a fixed "which
     // client?" reply that also listed the person's clients in front of the channel.
     const { chatWithoutClient } = await import("./small-talk");
-    const chat = await chatWithoutClient({ user: q.asker, question: q.question, where: isDm ? "no_clients" : "channel" });
+    // No stored chat here, so the whole thread is its memory.
+    const chat = await chatWithoutClient({
+      user: q.asker,
+      question: q.question,
+      where: isDm ? "no_clients" : "channel",
+      slackContext: await readContext(false),
+      timeZone: q.timeZone,
+    });
     const reply = buildAssistantReply({ text: chat.text, actions: [], sources: [], clientName: null });
     await postMessage(q.botToken, { channel: q.channelId, ...(replyThreadTs ? { thread_ts: replyThreadTs } : {}), text: reply.text, blocks: reply.blocks });
     await prisma.dispatchExchange
@@ -188,10 +216,14 @@ export async function answerInSlack(q: SlackQuestion): Promise<"handled" | "lega
   let outcome = "failed";
   let usedModel: string | null = null;
   let endedOn = "";
+  // A chat that carries on already holds the earlier turns: only what was said since Foundry spoke.
+  const slackContext = await readContext(Boolean(existing));
   const ask = (conversationId: string | null) => runTurn({
       scope,
       question: q.question,
       conversationId,
+      slackContext,
+      timeZone: q.timeZone,
       slack: { channelId: q.channelId, threadTs: q.threadTs },
       emit: {
         conversation: () => undefined,

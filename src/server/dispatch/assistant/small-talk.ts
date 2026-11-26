@@ -9,12 +9,14 @@
  * nothing is looked up, so nothing about any client can come out of it. The context tells the
  * model where it is and to point project questions at the client's channel or a DM.
  *
- * Not stored as a chat (a chat belongs to a client), so each message here stands on its own.
+ * Not stored as a chat (a chat belongs to a client); the Slack thread it's in is read instead,
+ * so a reply in the thread still follows on (§172).
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { DISPATCH_SYSTEM_PROMPT, noClientContext } from "@/lib/dispatch/prompt";
+import { nowLine } from "@/lib/dispatch/time";
 import { MAX_QUESTION_CHARS } from "@/lib/dispatch/limits";
 import { DISPATCH_MODELS } from "@/server/ai-provider";
 import { aiKeyFor } from "@/server/ai-keys";
@@ -31,6 +33,10 @@ export async function chatWithoutClient(input: {
   user: EffectiveUser;
   question: string;
   where: "channel" | "no_clients";
+  /** The thread or the channel's recent messages, wrapped as a <source> (§172): its only memory. */
+  slackContext?: string | null;
+  /** The asker's timezone as Slack reports it (§174). */
+  timeZone?: string | null;
 }): Promise<{ text: string; model: string; ok: boolean }> {
   const model = DISPATCH_MODELS.everyday;
   const ws = await prisma.workspace.findUnique({
@@ -43,7 +49,9 @@ export async function chatWithoutClient(input: {
   }
   const client = new Anthropic({ apiKey, maxRetries: 2 });
   const { peopleContext } = await import("./people-context");
-  const people = await peopleContext(input.user);
+  const { listMemories } = await import("./memory");
+  const { askerTimeZone } = await import("./time-zone");
+  const [people, memories, timeZone] = await Promise.all([peopleContext(input.user), listMemories(input.user), askerTimeZone(input.user, input.timeZone)]);
   const started = Date.now();
   try {
     const res = await client.beta.messages.create({
@@ -67,10 +75,12 @@ export async function chatWithoutClient(input: {
                 roleLabel: ROLES.find((r) => r.id === input.user.role)?.label ?? input.user.role,
                 askerTitle: people.askerTitle,
                 leadership: people.leadership,
-                today: new Date().toISOString().slice(0, 10),
+                memories: memories.map((m) => m.text),
+                today: nowLine(new Date(), timeZone),
                 where: input.where,
               }),
             },
+            ...(input.slackContext ? [{ type: "text" as const, text: input.slackContext }] : []),
             { type: "text", text: input.question.trim().slice(0, MAX_QUESTION_CHARS) },
           ],
         },

@@ -2818,3 +2818,87 @@ vanished instead of animating, and party mode was just more confetti.
   found" banner ran inside a React state updater, which React may run twice (moved to a ref).
 - Verified: tsc, lint and the OS tests clean; clipping audit 0 findings across 36 window ×
   viewport states; every celebration driven and screenshotted in headless Chromium, no console errors.
+
+## 172. Recent Changes (November 2026) — Dispatch reads the Slack conversation, and you can reply without @Foundry
+
+Dan, 26 Nov: "So do we have a fully conversational chat now?" Two gaps in channels: every reply
+needed an @Foundry (Slack only sends an app the messages that mention it), and Dispatch couldn't
+see what anyone else had said. "Yes, build both… make sure the chat has context of everything it
+needs to."
+
+- **It reads the conversation around a question** (`slackContextFor`,
+  `src/server/slack/thread-context.ts`; the rules in `src/lib/dispatch/slack-thread.ts`): the
+  thread it's asked in (`conversations.replies`), or for a top-level mention in a channel, the
+  channel's last 15 messages (`conversations.history`). Names come from `users.info`, mentions
+  inside messages become names, the question itself is left out, messages are trimmed (500
+  characters each, 6,000 in all, oldest dropped first), and it's given as a `<source>` block:
+  data, never instructions. A chat that carries on only gets what was said since Foundry last
+  replied, so earlier turns aren't sent twice. A DM's own chat is stored, so only a DM thread is
+  read. The no-client reply (§167) gets the whole thread, which is now its memory. These messages
+  are from the channel the question was asked in, so nobody the answer can reach can't already
+  read them. Uses the history scopes already granted.
+- **A reply without @Foundry** (`isUnmentionedReply`, `src/server/slack/events.ts`): a message
+  in a channel thread where Foundry has already answered, straight after Foundry's own message, is
+  treated as a question, the way people take turns. People talking to each other in the thread,
+  top-level messages, edits and bots are left alone; a message that does @mention Foundry is left to
+  the `app_mention` event so it isn't answered twice. The cheap checks (shape, then one lookup on a
+  new `DispatchExchange` index `[workspaceId, channelId, threadTs]`, additive) run before anything
+  reads Slack, because every thread reply in a channel Foundry is in now arrives.
+  **Needs the Slack app subscribed to `message.channels` and `message.groups`** (Event
+  Subscriptions → bot events; `docs/slack-app-manifest.json` updated). Until then everything else
+  works and only the no-@ reply doesn't.
+- The date line in the chat context is now the date, the day and UK time (`ukNow`).
+- Tests: `slack-thread.test.ts`.
+
+## 173. Recent Changes (November 2026) — Dispatch sees your calendar, checks its links, and remembers you
+
+Dan, 26 Nov, from the list of what Dispatch couldn't do: "do 2, 3, 4": upcoming meetings, links
+it can't open, and memory across chats. And: "this is the only Figma link we need for Wedge now"
+(added to Wedge's Designs as "Wedge App UI Design System"; the old ones are to be removed in
+Portal).
+
+- **Upcoming meetings** (`my_calendar`): the asker's own Google Calendar for the next 1 to 14
+  days, read with their own Google connection (as Drive is): time in UK time, title, how many are
+  invited, whether there's a video call, and whether it's with the current client (its title names
+  the client, or an attendee is on the client's domains, `deriveClientDomains`). Declined and
+  cancelled events are left out. It's a personal calendar, so it's never read in a channel.
+- **What Dispatch can open** (`checkClientLinks`, `src/server/dispatch/assistant/link-check.ts`):
+  opens each of a client's Figma designs (with the workspace Figma token) and GitHub repositories
+  (with the server's token) the way Dispatch does, and says for each one that fails what's wrong
+  and the fix (share the Figma file with the token's account, give Gitwork's GitHub account
+  access, or fix the link in Portal). Dispatch uses it as `check_links` when a design or the code
+  won't open; Settings → Dispatch has card 05, "What Dispatch can open", that runs it for every
+  active client on a click (`GET /api/dispatch/links`, Super Admin).
+- **Memory across chats** (`DispatchMemory`, additive; `src/server/dispatch/assistant/memory.ts`):
+  `remember` saves a note when someone asks Dispatch to remember something or states a lasting
+  preference; `forget` removes notes. Notes are the person's own: read only into their own chats
+  (and the no-client reply), at most 30 of 300 characters, nothing that looks like a password or
+  key (`findSecrets`). The panel's header has a bookmark, "What I remember about you", listing them
+  with a delete each (`GET /api/dispatch/memories`, `DELETE …/[id]`). In a channel Dispatch lets
+  them shape the reply but doesn't read them out. Saving needs no confirming: they're Dispatch's own
+  notes, not a change to Foundry.
+- Tests: `calendar-links-memory.test.ts`.
+
+## 174. Recent Changes (November 2026) — Dispatch talks in your timezone
+
+Dan, 26 Nov: "we need to make sure we cater for other timezones". Dispatch told everyone UK time,
+and much of the team works from Pakistan.
+
+- **Whose time** (`pickTimeZone`, `src/lib/dispatch/time.ts`; `askerTimeZone`,
+  `src/server/dispatch/assistant/time-zone.ts`), best source first: what Slack (the asker's
+  profile `tz`, read in the same `users.info` call that identifies them) or the browser (Intl,
+  sent with each question from the panel) says right now; their notification settings; their
+  Staff record; the country on their membership (the one leave uses, mapped by
+  `COUNTRY_TIME_ZONES`); then UK time. Only real IANA zone names count.
+- **The "now" line** in a chat (`nowLine`): their own date, day and time and zone, plus UK time
+  when they aren't on it ("2026-11-26 (Thursday), 19:05 in Asia/Karachi (GMT+5); 14:05 UK
+  time"). Late evening in the UK is already tomorrow in Pakistan, and Dispatch now knows that.
+- **The prompt**: say times in the person's timezone, add UK time when it's about a client, a UK
+  meeting or someone else's day, never assume everyone is in the UK, and work out "today",
+  "tomorrow" and "this week" from their date.
+- **The calendar** (§173) shows meetings in the person's zone (`formatMeeting`); all-day events
+  stay on their date.
+- **Dates stay dates**: due dates and release dates are calendar dates (midnight UTC), so the
+  brief shows them as written in any zone (`shortDay` defaults to UTC); moments (the panel's date
+  line, when a chat was last used) use the browser's zone.
+- Tests: `src/lib/dispatch/__tests__/time.test.ts`.
