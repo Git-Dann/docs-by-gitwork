@@ -2794,6 +2794,11 @@ vanished instead of animating, and party mode was just more confetti.
 - Verified: tsc, lint and the OS tests clean; clipping audit 0 findings across 36 window ×
   viewport states; every celebration driven and screenshotted in headless Chromium, no console errors.
 
+### 170.2 The notch tucks itself away, and notifications stack smoothly
+
+- **The notch closes on its own.** It now closes when you click anywhere else, press Escape, or leave it alone for 5 seconds (`NOTCH_IDLE_MS`). While the pointer is over it, the timer is paused.
+- **Notifications stack like a Mac's.** The newest is on top. Each card sits in a slot that animates `grid-template-rows` between `0fr` and `1fr`. The slot opens before the card slides in and closes after the card slides out, so the rest of the stack moves smoothly instead of jumping 70px. The gap is padding inside the slot, so it closes up too. `dismiss()` now removes a card after 540ms, once both animations have finished.
+
 ## 171. Recent Changes (November 2026) — Tables sort, one way everywhere
 
 Luke (Big Wedge), 26 Nov: "can you make the course request columns sortable so I can always submit
