@@ -4339,6 +4339,8 @@ model DispatchExchange {
 
   @@index([workspaceId, createdAt])
   @@index([workspaceId, channelId, createdAt])
+  /// "Has Foundry spoken in this thread?", asked for every thread reply in a channel Foundry is in (§172).
+  @@index([workspaceId, channelId, threadTs])
 }
 
 // A viewer's resolution of a single Foreman finding, so the daily audit is manageable rather than a

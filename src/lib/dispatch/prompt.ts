@@ -93,6 +93,13 @@ function asking(input: { askerName: string; roleLabel: string; askerTitle?: stri
   return `Asking: ${input.askerName} (${input.roleLabel}${input.askerTitle ? `, ${input.askerTitle}` : ""})`;
 }
 
+/** "2026-11-26 (Thursday), 14:05 UK time": the date the tools use, plus the day and time of day. */
+export function ukNow(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { weekday: "long", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London", hour12: false }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${now.toISOString().slice(0, 10)} (${get("weekday")}), ${get("hour")}:${get("minute")} UK time`;
+}
+
 /** Where a chat is happening, in words for the model: it decides who reads the reply (§168). */
 export function roomFor(scope: { surface: "web" | "slack"; inChannel?: boolean; client: { name: string } }): string {
   if (scope.surface === "web") return "the Foundry app; only the person asking sees this";

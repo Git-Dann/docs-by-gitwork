@@ -9,12 +9,13 @@
  * nothing is looked up, so nothing about any client can come out of it. The context tells the
  * model where it is and to point project questions at the client's channel or a DM.
  *
- * Not stored as a chat (a chat belongs to a client), so each message here stands on its own.
+ * Not stored as a chat (a chat belongs to a client); the Slack thread it's in is read instead,
+ * so a reply in the thread still follows on (§172).
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-import { DISPATCH_SYSTEM_PROMPT, noClientContext } from "@/lib/dispatch/prompt";
+import { DISPATCH_SYSTEM_PROMPT, noClientContext, ukNow } from "@/lib/dispatch/prompt";
 import { MAX_QUESTION_CHARS } from "@/lib/dispatch/limits";
 import { DISPATCH_MODELS } from "@/server/ai-provider";
 import { aiKeyFor } from "@/server/ai-keys";
@@ -31,6 +32,8 @@ export async function chatWithoutClient(input: {
   user: EffectiveUser;
   question: string;
   where: "channel" | "no_clients";
+  /** The thread or the channel's recent messages, wrapped as a <source> (§172): its only memory. */
+  slackContext?: string | null;
 }): Promise<{ text: string; model: string; ok: boolean }> {
   const model = DISPATCH_MODELS.everyday;
   const ws = await prisma.workspace.findUnique({
@@ -67,10 +70,11 @@ export async function chatWithoutClient(input: {
                 roleLabel: ROLES.find((r) => r.id === input.user.role)?.label ?? input.user.role,
                 askerTitle: people.askerTitle,
                 leadership: people.leadership,
-                today: new Date().toISOString().slice(0, 10),
+                today: ukNow(),
                 where: input.where,
               }),
             },
+            ...(input.slackContext ? [{ type: "text" as const, text: input.slackContext }] : []),
             { type: "text", text: input.question.trim().slice(0, MAX_QUESTION_CHARS) },
           ],
         },
